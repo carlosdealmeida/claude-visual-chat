@@ -12,13 +12,17 @@ jobs:
   publish:
     name: Test, pack and publish to NuGet
     runs-on: ubuntu-latest
+    # Trusted Publishing: GitHub's OIDC token is exchanged on nuget.org for a one-hour API key, so no key is stored here
+    permissions:
+      contents: read
+      id-token: write
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -48,10 +52,17 @@ jobs:
       - name: Pack
         run: dotnet pack src/ClaudeVisualChat.Avalonia -c Release --no-build -o artifacts
 
+      # right before the push: the temporary key lasts one hour; NUGET_USER is the nuget.org profile name, not the e-mail
+      - name: NuGet login (OIDC to a temporary API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       # the .snupkg next to each .nupkg goes up with it
       - name: Publish
         run: >-
           dotnet nuget push artifacts/*.nupkg
-          --api-key ${{ secrets.NUGET_API_KEY }}
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
