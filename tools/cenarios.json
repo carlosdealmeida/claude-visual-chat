@@ -1,0 +1,73 @@
+[
+  {
+    "id": "edit",
+    "setup": {"notes.md": "line one\nline two\nline three\nline four\nline five\nline six\n"},
+    "passos": [
+      {"enviar": "Use the Edit tool to change line 3 of notes.md to 'line 3 (edited)'. Then use the Write tool to create todo.md with two bullet items. Be brief."}
+    ],
+    "respostas": ["allow", "allow"],
+    "espera": ["pedido:Edit", "pedido:Write", "resultado_ok:Edit", "resultado_ok:Write"]
+  },
+  {
+    "id": "bash",
+    "setup": {},
+    "passos": [
+      {"enviar": "Run a shell command that lists this folder, and then another shell command that prints the numbers 1 to 30, one per line. Be brief."}
+    ],
+    "respostas": ["allow", "allow"],
+    "repetir_ultima": true,
+    "espera": ["bash_30_linhas"]
+  },
+  {
+    "id": "subagent",
+    "setup": {"a.txt": "The cat sat on the mat.\n", "b.txt": "Rain fell all night over the hills.\n", "c.txt": "Compilers turn text into programs.\n"},
+    "passos": [
+      {"enviar": "Use the Agent tool to have a subagent read a.txt, b.txt and c.txt in this folder and summarize each in one line. Then reply with just the summary."}
+    ],
+    "respostas": ["allow"],
+    "repetir_ultima": true,
+    "espera": ["subagente"]
+  },
+  {
+    "id": "error",
+    "setup": {},
+    "passos": [
+      {"enviar": "Use the Read tool to read missing.txt in this folder, then tell me in one sentence what happened."}
+    ],
+    "respostas": [],
+    "espera": ["tool_result_erro"]
+  },
+  {
+    "id": "denied",
+    "setup": {},
+    "passos": [
+      {"enviar": "Use the Write tool to create secret.txt containing the word hello. Be brief."}
+    ],
+    "respostas": ["deny:Do not create files, just explain."],
+    "espera": ["recusado_e_resposta"]
+  },
+  {
+    "id": "interrupted",
+    "setup": {},
+    "passos": [
+      {"enviar": "Run a shell command that prints the numbers 1 to 300, one per line, then wait for it to finish."},
+      {"interromper_apos_s": 4}
+    ],
+    "respostas": [],
+    "sem_resposta": true,
+    "espera": ["interrompido"]
+  },
+  {
+    "id": "mode-and-model",
+    "setup": {},
+    "passos": [
+      {"modo": "acceptEdits"},
+      {"modelo": "sonnet"},
+      {"enviar": "Reply in Markdown with a title, a short bullet list, a small table with two columns and a code block with one line of Python. Do not use any tools."},
+      {"modo": "default"},
+      {"enviar": "Use the Write tool to create a.txt containing the word one. Be brief."}
+    ],
+    "respostas": ["allow_always"],
+    "espera": ["set_model_ok", "result_success", "pedido:Write"]
+  }
+]

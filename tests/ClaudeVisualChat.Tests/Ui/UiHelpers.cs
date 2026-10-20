@@ -1,0 +1,141 @@
+using System.Collections.Generic;
+using System.Linq;
+using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using ClaudeVisualChat.Controls;
+
+namespace ClaudeVisualChat.Tests.Ui;
+
+internal static class UiHelpers
+{
+    public const double Width = 1000;
+    public const double Height = 700;
+
+    /// <summary>Shows the control in a 1000×700 window and lets layout and bindings settle.</summary>
+    public static Window Show(Control content, double width = Width, double height = Height)
+    {
+        var window = new Window { Width = width, Height = height, Content = content };
+        window.Show();
+        Pump();
+        return window;
+    }
+
+    public static void Pump() => Dispatcher.UIThread.RunJobs();
+
+    public static ChatConversation Recording(string scenario, string source)
+    {
+        var conversation = new ChatConversation();
+        if (source == "stream")
+        {
+            foreach (var line in FixtureFiles.StreamLines(scenario)) conversation.AppendLine(line);
+        }
+        else
+        {
+            conversation.LoadTranscript(FixtureFiles.TranscriptLines(scenario));
+        }
+        return conversation;
+    }
+
+    /// <summary>The conversation list (the first one, before the lists of subagents).</summary>
+    public static ItemsControl ItemList(ClaudeChatView view) =>
+        view.GetLogicalDescendants().OfType<ItemsControl>().First();
+
+    public static ScrollViewer Scroller(ClaudeChatView view) =>
+        view.GetLogicalDescendants().OfType<ScrollViewer>().First();
+
+    /// <summary>The text of every TextBlock the user can see under <paramref name="root"/> (a text in pieces, joined).</summary>
+    public static List<string> Texts(Visual root) =>
+        root.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Where(t => t.IsEffectivelyVisible)
+            .Select(t => string.IsNullOrEmpty(t.Text) && t.Inlines is { Count: > 0 } inlines ? inlines.Text ?? "" : t.Text ?? "")
+            .ToList();
+
+    public static bool AtEnd(ScrollViewer scroller) =>
+        scroller.Offset.Y >= scroller.Extent.Height - scroller.Viewport.Height - 1;
+
+    // ---- the permission prompt and the reply box ----
+
+    public static PermissionPrompt Prompt(ClaudeChatView view) =>
+        view.GetVisualDescendants().OfType<PermissionPrompt>().Single();
+
+    public static ChatComposer Composer(ClaudeChatView view) =>
+        view.GetVisualDescendants().OfType<ChatComposer>().Single();
+
+    /// <summary>The text box of the reply box.</summary>
+    public static TextBox Input(ClaudeChatView view) =>
+        Composer(view).GetVisualDescendants().OfType<TextBox>().Single();
+
+    /// <summary>The one visible button under <paramref name="root"/> that shows <paramref name="text"/>, or is named so (an icon button).</summary>
+    public static Button ButtonWithText(Visual root, string text) =>
+        root.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible && (Texts(b).Contains(text) || AutomationProperties.GetName(b) == text));
+
+    /// <summary>The names of the visible icon buttons under <paramref name="root"/>: what a screen reader tells.</summary>
+    public static List<string> ButtonNames(Visual root) =>
+        root.GetVisualDescendants()
+            .OfType<Button>()
+            .Where(b => b.IsEffectivelyVisible && !string.IsNullOrEmpty(AutomationProperties.GetName(b)))
+            .Select(b => AutomationProperties.GetName(b)!)
+            .ToList();
+
+    /// <summary>A left click in the middle of the control, through the window's mouse.</summary>
+    public static void Click(Window window, Control control)
+    {
+        var center = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window);
+        if (center == null) throw new System.InvalidOperationException("the control is not in the window");
+        window.MouseMove(center.Value, RawInputModifiers.None);
+        window.MouseDown(center.Value, MouseButton.Left, RawInputModifiers.None);
+        window.MouseUp(center.Value, MouseButton.Left, RawInputModifiers.None);
+        Pump();
+    }
+
+    /// <summary>A key pressed and released on the focused control, through the window's keyboard.</summary>
+    public static void Press(Window window, Key key, RawInputModifiers modifiers = RawInputModifiers.None)
+    {
+        KeyDown(window, key, modifiers);
+        KeyUp(window, key, modifiers);
+    }
+
+    /// <summary>A key going down; sent again without <see cref="KeyUp"/>, it is the keyboard's repeat.</summary>
+    public static void KeyDown(Window window, Key key, RawInputModifiers modifiers = RawInputModifiers.None)
+    {
+        window.KeyPress(key, modifiers, PhysicalKeyOf(key), null);
+        Pump();
+    }
+
+    public static void KeyUp(Window window, Key key, RawInputModifiers modifiers = RawInputModifiers.None)
+    {
+        window.KeyRelease(key, modifiers, PhysicalKeyOf(key), null);
+        Pump();
+    }
+
+    private static PhysicalKey PhysicalKeyOf(Key key)
+    {
+        if (key >= Key.D0 && key <= Key.D9) return PhysicalKey.Digit0 + (key - Key.D0);
+        return System.Enum.TryParse<PhysicalKey>(key.ToString(), out var physical) ? physical : PhysicalKey.None;
+    }
+
+    /// <summary>Text typed into the focused control.</summary>
+    public static void Type(Window window, string text)
+    {
+        window.KeyTextInput(text);
+        Pump();
+    }
+
+    /// <summary>The keys that reach the window without anyone handling them (what the app would get).</summary>
+    public static List<Key> UnhandledKeys(Window window)
+    {
+        var keys = new List<Key>();
+        window.AddHandler(InputElement.KeyDownEvent, (_, e) => keys.Add(e.Key), RoutingStrategies.Bubble);
+        return keys;
+    }
+
+    public static IInputElement? Focused(Window window) => window.FocusManager?.GetFocusedElement();
+}

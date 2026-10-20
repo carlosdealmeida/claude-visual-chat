@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:ClaudeVisualChat.Controls"
+             x:Class="ClaudeVisualChat.Controls.ClaudeChatView">
+  <UserControl.Styles>
+    <StyleInclude Source="avares://ClaudeVisualChat.Avalonia/Themes/ClaudeChatTheme.axaml" />
+  </UserControl.Styles>
+
+  <Border Name="Root" Background="{DynamicResource ClaudeChat.Background}">
+    <Grid RowDefinitions="*,Auto,Auto">
+      <ScrollViewer Name="Scroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <!-- as wide as the view, like the extension's; the list's padding is ClaudeChat.ListPadding -->
+        <controls:ChatItemList Name="ItemList" Classes="ClaudeChatItems">
+          <controls:ChatItemList.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel />
+            </ItemsPanelTemplate>
+          </controls:ChatItemList.ItemsPanel>
+          <!-- while Claude works and nothing is arriving: a blinking dot and "Working…" -->
+          <controls:ChatItemList.Footer>
+            <Panel Name="WorkingRow" Classes="ClaudeChatWorking" IsVisible="False">
+              <Ellipse Name="WorkingDot" Classes="ClaudeChatWorkingDot" />
+              <TextBlock Name="WorkingText" Classes="ClaudeChatWorkingText" />
+            </Panel>
+          </controls:ChatItemList.Footer>
+        </controls:ChatItemList>
+      </ScrollViewer>
+      <!-- under the list, centered, 680 px at most: the request Claude waits on, then the reply box -->
+      <controls:PermissionPrompt Name="Prompt" Grid.Row="1" Margin="16,0,16,6"
+                                 MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
+      <controls:ChatComposer Name="Composer" Grid.Row="2" Margin="16,0,16,16"
+                             MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
+    </Grid>
+  </Border>
+</UserControl>

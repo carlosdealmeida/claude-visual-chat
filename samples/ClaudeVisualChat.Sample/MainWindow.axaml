@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:cvc="using:ClaudeVisualChat.Controls"
+        xmlns:local="using:ClaudeVisualChat.Sample"
+        x:Class="ClaudeVisualChat.Sample.MainWindow"
+        x:CompileBindings="True"
+        Title="Claude Visual Chat — sample"
+        Width="1280" Height="800" MinWidth="720" MinHeight="480"
+        Background="#191A1B">
+  <Window.Styles>
+    <Style Selector="TextBlock.label">
+      <Setter Property="Foreground" Value="#8C8C8C" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel>
+    <!-- the sample's bar: which recording, how, and the language of the view -->
+    <Border DockPanel.Dock="Top" Background="#121314" BorderBrush="#2A2B2C" BorderThickness="0,0,0,1" Padding="12,8">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+        <TextBlock Name="RecordingLabel" Classes="label" Margin="0,0,8,0" />
+        <ComboBox Name="ScenarioPicker" Grid.Column="1" MinWidth="170" />
+        <ComboBox Name="SourcePicker" Grid.Column="2" MinWidth="150" Margin="8,0,0,0" />
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" Margin="12,0,0,0">
+          <Button Name="PlayButton" Classes="accent" Click="OnPlay" />
+          <Button Name="RestartButton" Click="OnRestart" />
+        </StackPanel>
+        <TextBlock Name="StatusText" Grid.Column="4" Classes="label" Margin="16,0" TextTrimming="CharacterEllipsis" />
+        <ComboBox Name="LanguagePicker" Grid.Column="5" MinWidth="130" />
+      </Grid>
+    </Border>
+
+    <Grid ColumnDefinitions="*,1,360">
+      <cvc:ClaudeChatView Name="Chat" />
+      <Border Grid.Column="1" Background="#2A2B2C" />
+
+      <!-- what the view sent back, and the line the host would write to the claude's stdin for it -->
+      <DockPanel Grid.Column="2" Background="#121314">
+        <StackPanel DockPanel.Dock="Top" Margin="14,12,14,8" Spacing="2">
+          <TextBlock Name="LogTitle" Foreground="#BFBFBF" FontWeight="SemiBold" />
+          <TextBlock Name="LogHint" Classes="label" FontSize="12" TextWrapping="Wrap" />
+        </StackPanel>
+        <ScrollViewer Name="LogScroller" HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl Name="Log">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="local:LogEntry">
+                <StackPanel Margin="14,6,14,6" Spacing="3">
+                  <TextBlock Text="{Binding Event}" Foreground="#BFBFBF" FontSize="12" TextWrapping="Wrap" />
+                  <Border Background="#191A1B" BorderBrush="#2A2B2C" BorderThickness="1" CornerRadius="4" Padding="6,4">
+                    <SelectableTextBlock Text="{Binding Stdin}" Foreground="#8C8C8C" FontSize="11"
+                                         FontFamily="Consolas, Courier New, monospace" TextWrapping="Wrap" />
+                  </Border>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</Window>

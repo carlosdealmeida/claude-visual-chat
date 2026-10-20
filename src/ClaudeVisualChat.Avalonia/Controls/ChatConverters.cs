@@ -1,0 +1,119 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using Avalonia.Data.Converters;
+
+namespace ClaudeVisualChat.Controls;
+
+/// <summary>Converters of the theme's item templates.</summary>
+internal static class ChatConverters
+{
+    /// <summary>Longest message or thought shown; more than this is cut, so a huge paste stays quick to draw.</summary>
+    public const int MaxTextChars = 20000;
+
+    /// <summary>(<see cref="NoticeKind"/>, <see cref="ChatStrings"/>) → the notice text.</summary>
+    public static readonly IMultiValueConverter Notice = new StringsConverter<NoticeKind>((kind, strings) => strings.Notice(kind));
+
+    /// <summary>(<see cref="TurnFooterItem"/>, <see cref="ChatStrings"/>) → the footer, empty when nothing is known.</summary>
+    public static readonly IMultiValueConverter Footer = new StringsConverter<TurnFooterItem>((footer, strings) => strings.FormatFooter(footer));
+
+    /// <summary>(<see cref="DateTimeOffset"/>?, <see cref="ChatStrings"/>) → the time over a message; null when unknown.</summary>
+    public static readonly IMultiValueConverter Time = new TimeConverter();
+
+    /// <summary>(IsStreaming, DurationMs, <see cref="ChatStrings"/>) → "Thinking" or "Thought for 3s".</summary>
+    public static readonly IMultiValueConverter ThinkingLabel = new ThinkingLabelConverter();
+
+    public static readonly IValueConverter IsTurnFailed = new FuncValueConverter<NoticeKind, bool>(kind => kind == NoticeKind.TurnFailed);
+
+    public static readonly IValueConverter Clip = new FuncValueConverter<string?, string?>(text => ChatText.Clip(text, MaxTextChars));
+
+    /// <summary>A tool's summary as its tooltip: none when empty, else cut like the texts of the list.</summary>
+    public static readonly IValueConverter ToolTipText = new FuncValueConverter<string?, string?>(text =>
+        string.IsNullOrEmpty(text) ? null : ChatText.ClipLines(text, ToolCallView.BoxLines, ToolCallView.MaxLineChars));
+
+    private sealed class ThinkingLabelConverter : IMultiValueConverter
+    {
+        public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+        {
+            var strings = values.Count > 2 ? values[2] as ChatStrings ?? ChatStrings.English : ChatStrings.English;
+            var streaming = values.Count > 0 && values[0] is true;
+            return !streaming && values.Count > 1 && values[1] is long ms ? strings.FormatThoughtFor(ms) : strings.Thinking;
+        }
+    }
+
+    private sealed class TimeConverter : IMultiValueConverter
+    {
+        public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (values.Count < 1 || !(values[0] is DateTimeOffset time)) return null;
+            var strings = values.Count > 1 ? values[1] as ChatStrings ?? ChatStrings.English : ChatStrings.English;
+            return strings.FormatTime(time);
+        }
+    }
+
+    /// <summary>A value and the view's <see cref="ChatStrings"/> turned into text; anything odd gives an empty text.</summary>
+    private sealed class StringsConverter<T> : IMultiValueConverter
+    {
+        private readonly Func<T, ChatStrings, string> _convert;
+
+        public StringsConverter(Func<T, ChatStrings, string> convert)
+        {
+            _convert = convert;
+        }
+
+        public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (values.Count < 2 || !(values[0] is T value)) return "";
+            var strings = values[1] as ChatStrings ?? ChatStrings.English;
+            return _convert(value, strings);
+        }
+    }
+}
+
+/// <summary>Text helpers of the view.</summary>
+internal static class ChatText
+{
+    /// <summary>The text cut to <paramref name="maxChars"/> characters followed by "…", never inside a surrogate pair.</summary>
+    public static string Clip(string? text, int maxChars)
+    {
+        if (text == null) return "";
+        if (text.Length <= maxChars) return text;
+        var cut = maxChars;
+        if (cut > 0 && char.IsHighSurrogate(text[cut - 1])) cut--;
+        return text.Substring(0, cut) + "…";
+    }
+
+    /// <summary>
+    /// The first <paramref name="maxLines"/> lines of the text, each cut like <see cref="Clip"/> to
+    /// <paramref name="maxLineChars"/> characters; a "\r" before a line feed is left out. Only the start of the text is
+    /// read, so a heredoc of thousands of lines costs what its first lines cost.
+    /// </summary>
+    public static string ClipLines(string? text, int maxLines, int maxLineChars)
+    {
+        if (string.IsNullOrEmpty(text) || maxLines <= 0) return "";
+        var result = new StringBuilder();
+        var start = 0;
+        for (var line = 0; line < maxLines; line++)
+        {
+            var end = text!.IndexOf('\n', start);
+            var last = end < 0;
+            var length = (last ? text.Length : end) - start;
+            if (!last && length > 0 && text[end - 1] == '\r') length--;
+            if (line > 0) result.Append('\n');
+            if (length > maxLineChars)
+            {
+                var cut = maxLineChars;
+                if (cut > 0 && char.IsHighSurrogate(text[start + cut - 1])) cut--;
+                result.Append(text, start, cut).Append('…');
+            }
+            else
+            {
+                result.Append(text, start, length);
+            }
+            if (last) break;
+            start = end + 1;
+        }
+        return result.ToString();
+    }
+}

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ClaudeVisualChat.Sample</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
+  </ItemGroup>
+
+  <!-- the recorded sessions of the tests, played by the sample -->
+  <ItemGroup>
+    <AvaloniaResource Include="..\..\tests\fixtures\*.ndjson;..\..\tests\fixtures\*.jsonl" Link="Fixtures\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ClaudeVisualChat.Avalonia\ClaudeVisualChat.Avalonia.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -3,5 +3,8 @@ obj/
 *.user
 .vs/
 *.nupkg
+*.snupkg
+artifacts/
 __pycache__/
 .pytest_cache/
+tests/private-words.txt

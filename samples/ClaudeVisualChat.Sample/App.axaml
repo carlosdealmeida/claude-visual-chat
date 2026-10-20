@@ -1,0 +1,9 @@
+<!-- The component needs a theme for the standard controls: Fluent here (Simple works too). -->
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ClaudeVisualChat.Sample.App"
+             RequestedThemeVariant="Dark">
+  <Application.Styles>
+    <FluentTheme />
+  </Application.Styles>
+</Application>

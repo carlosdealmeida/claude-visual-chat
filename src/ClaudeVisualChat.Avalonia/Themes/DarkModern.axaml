@@ -1,0 +1,48 @@
+<!--
+  The colors of ClaudeChatView with the values of VS Code's "Dark Modern" theme, instead of the default "Dark 2026".
+  Put it in the view's resources:
+
+    <cvc:ClaudeChatView.Resources>
+      <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+          <ResourceInclude Source="avares://ClaudeVisualChat.Avalonia/Themes/DarkModern.axaml" />
+        </ResourceDictionary.MergedDictionaries>
+      </ResourceDictionary>
+    </cvc:ClaudeChatView.Resources>
+
+  Only the colors that come from the VS Code theme are here; the extension's own ones (the dots, the send button,
+  the diff's editor) are the same in both.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="ClaudeChat.Background" Color="#1F1F1F" />           <!-- editor.background -->
+  <SolidColorBrush x:Key="ClaudeChat.Surface" Color="#252526" />
+  <SolidColorBrush x:Key="ClaudeChat.Border" Color="#2B2B2B" />               <!-- widget/panel borders -->
+  <SolidColorBrush x:Key="ClaudeChat.BorderStrong" Color="#3C3C3C" />         <!-- input.border -->
+  <SolidColorBrush x:Key="ClaudeChat.Foreground" Color="#CCCCCC" />           <!-- foreground -->
+  <SolidColorBrush x:Key="ClaudeChat.ForegroundMuted" Color="#9D9D9D" />      <!-- descriptionForeground -->
+  <SolidColorBrush x:Key="ClaudeChat.Accent" Color="#4DAAFC" />               <!-- textLink.foreground -->
+  <SolidColorBrush x:Key="ClaudeChat.AccentFill" Color="#0078D4" />           <!-- button.background -->
+  <SolidColorBrush x:Key="ClaudeChat.AccentForeground" Color="#FFFFFF" />     <!-- button.foreground -->
+  <SolidColorBrush x:Key="ClaudeChat.FocusBorder" Color="#0078D4" />          <!-- focusBorder -->
+  <SolidColorBrush x:Key="ClaudeChat.Warning" Color="#CCA700" />
+  <SolidColorBrush x:Key="ClaudeChat.Error" Color="#F85149" />                <!-- errorForeground -->
+  <SolidColorBrush x:Key="ClaudeChat.Success" Color="#73C991" />
+  <SolidColorBrush x:Key="ClaudeChat.InputBackground" Color="#313131" />      <!-- input.background -->
+  <SolidColorBrush x:Key="ClaudeChat.InputBorder" Color="#33CCCCCC" />        <!-- inlineChatInput.border = editorWidget.border -->
+  <SolidColorBrush x:Key="ClaudeChat.InputActiveBorder" Color="#2488DB" />    <!-- inputOption.activeBorder -->
+  <SolidColorBrush x:Key="ClaudeChat.PermissionActiveBorder" Color="#A62488DB" /> <!-- inputOption.activeBorder at 65 % -->
+  <SolidColorBrush x:Key="ClaudeChat.InputPlaceholder" Color="#989898" />     <!-- input.placeholderForeground -->
+  <SolidColorBrush x:Key="ClaudeChat.HoverBackground" Color="#505A5D5E" />    <!-- toolbar.hoverBackground -->
+  <SolidColorBrush x:Key="ClaudeChat.TimelineLine" Color="#2B2B2B" />         <!-- sideBarActivityBarTop.border -->
+  <SolidColorBrush x:Key="ClaudeChat.Dot" Color="#9D9D9D" />                  <!-- descriptionForeground -->
+  <SolidColorBrush x:Key="ClaudeChat.ToolBackground" Color="#1F1F1F" />       <!-- editor.background -->
+  <SolidColorBrush x:Key="ClaudeChat.CodeBackground" Color="#3C3C3C" />       <!-- textPreformat.background -->
+  <SolidColorBrush x:Key="ClaudeChat.CodeForeground" Color="#D0D0D0" />       <!-- textPreformat.foreground -->
+  <SolidColorBrush x:Key="ClaudeChat.CodeBlockBackground" Color="#2B2B2B" />  <!-- textCodeBlock.background -->
+  <SolidColorBrush x:Key="ClaudeChat.PillBackground" Color="#1ACCCCCC" />     <!-- foreground at 10 % -->
+  <SolidColorBrush x:Key="ClaudeChat.PillHoverBackground" Color="#2ECCCCCC" /> <!-- foreground at 18 % -->
+  <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAcceptEdits">0 0 0 3 #1FCCCCCC</BoxShadows>
+  <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowPlan">0 0 0 3 #1F0078D4</BoxShadows>
+  <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAuto">0 0 0 3 #1FF85149</BoxShadows>
+</ResourceDictionary>

@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Test, pack and publish to NuGet
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # the tag v1.2.3 must be the Version of the package
+      - name: Check the tag against the version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(dotnet msbuild src/ClaudeVisualChat.Avalonia -getProperty:Version)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match the package Version $version in src/ClaudeVisualChat.Avalonia/ClaudeVisualChat.Avalonia.csproj."
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches Version $version."
+
+      # the UI tests draw text with Skia and the system fonts
+      - name: Install fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-dejavu-core
+
+      - name: Build
+        run: dotnet build -c Release
+
+      - name: Test
+        run: dotnet test -c Release --no-build
+
+      - name: Pack
+        run: dotnet pack src/ClaudeVisualChat.Avalonia -c Release --no-build -o artifacts
+
+      # the .snupkg next to each .nupkg goes up with it
+      - name: Publish
+        run: >-
+          dotnet nuget push artifacts/*.nupkg
+          --api-key ${{ secrets.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

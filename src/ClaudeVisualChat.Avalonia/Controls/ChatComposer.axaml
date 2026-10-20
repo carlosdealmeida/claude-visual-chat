@@ -1,0 +1,28 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ClaudeVisualChat.Controls.ChatComposer">
+  <Border Name="Box" Classes="ClaudeChatComposer">
+    <StackPanel>
+      <!-- Enter sends, Shift+Enter breaks the line -->
+      <TextBox Name="Input" Classes="ClaudeChatInput" AcceptsReturn="True" TextWrapping="Wrap" />
+      <!-- the bar: the model at the left; the mode, then send or stop, at the right -->
+      <Border Classes="ClaudeChatComposerBar">
+        <DockPanel>
+          <!-- send, and stop while Claude works: alone when nothing is written, next to send when something is -->
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" Margin="4,0,0,0">
+            <Button Name="SendButton" Classes="ClaudeChatButton ClaudeChatSend">
+              <Path Classes="ClaudeChatSendIcon" />
+            </Button>
+            <Button Name="StopButton" Classes="ClaudeChatButton ClaudeChatStop" IsVisible="False">
+              <Border Classes="ClaudeChatStopIcon" />
+            </Button>
+          </StackPanel>
+          <ComboBox Name="ModePicker" Classes="ClaudeChatPicker ClaudeChatModePicker" DockPanel.Dock="Right" />
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <ComboBox Name="ModelPicker" Classes="ClaudeChatPicker ClaudeChatModelPicker" IsVisible="False" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+    </StackPanel>
+  </Border>
+</UserControl>
