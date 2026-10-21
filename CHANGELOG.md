@@ -3,6 +3,15 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-21
+
+### Added
+
+- `ClaudeChatView.IsReadOnly` (a styled property, `false` by default): when `true`, the reply box and the permission
+  request are hidden, while the list keeps drawing, scrolling and letting the user select text. Pending requests stay
+  in `ChatConversation.PendingPermissions`, and the reply box keeps its draft, so setting it back to `false` shows
+  everything again. For closed conversations, offline machines and viewers.
+
 ## [0.1.0] - 2026-10-20
 
 First release.

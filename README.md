@@ -176,6 +176,19 @@ Chat.Strings = ChatStrings.English with { InputPlaceholder = "Ask Claude…", Ti
 
 Numbers use the record's own separators (`ThousandsSeparator`, `DecimalSeparator`), never the system culture.
 
+## Read-only
+
+Set `IsReadOnly` to show a conversation without letting the user act on it: a closed session, an offline machine, a
+viewer.
+
+```xml
+<controls:ClaudeChatView Conversation="{Binding Chat}" IsReadOnly="True" />
+```
+
+The reply box and the permission request are hidden; the list still draws, scrolls and lets the user select text.
+Pending requests stay in `ChatConversation.PendingPermissions`, and the reply box keeps its draft, so setting
+`IsReadOnly` back to `false` shows everything again.
+
 ## Limitations
 
 - The stream-json format is not a stable API, and it can change between versions of `claude`. The control was built

@@ -177,6 +177,19 @@ Chat.Strings = ChatStrings.PortugueseBrazil with { InputPlaceholder = "Pergunte 
 Os números usam os separadores do próprio record (`ThousandsSeparator` e `DecimalSeparator`), nunca a cultura do
 sistema.
 
+## Somente leitura
+
+Defina `IsReadOnly` para mostrar uma conversa sem deixar o usuário agir sobre ela: uma sessão encerrada, uma máquina
+fora do ar, um visualizador.
+
+```xml
+<controls:ClaudeChatView Conversation="{Binding Chat}" IsReadOnly="True" />
+```
+
+A caixa de resposta e o pedido de permissão ficam ocultos; a lista continua sendo desenhada, rolando e deixando
+selecionar o texto. Os pedidos pendentes continuam em `ChatConversation.PendingPermissions` e a caixa de resposta
+guarda o rascunho, então voltar `IsReadOnly` para `false` mostra tudo de novo.
+
 ## Limitações
 
 - O formato stream-json não é uma API estável e pode mudar entre versões do `claude`. O controle foi feito com o

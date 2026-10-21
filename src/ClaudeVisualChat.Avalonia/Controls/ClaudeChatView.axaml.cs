@@ -42,6 +42,14 @@ public partial class ClaudeChatView : UserControl
     public static readonly StyledProperty<IReadOnlyList<string>?> AvailableModelsProperty =
         AvaloniaProperty.Register<ClaudeChatView, IReadOnlyList<string>?>(nameof(AvailableModels));
 
+    /// <summary>
+    /// True to only show the conversation: the reply box and the permission request are hidden, while the list keeps
+    /// drawing, scrolling and letting the user select text. Pending requests stay in the conversation, and the
+    /// reply box keeps its draft. False (the default) shows everything.
+    /// </summary>
+    public static readonly StyledProperty<bool> IsReadOnlyProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(IsReadOnly));
+
     /// <summary>True while the conversation is busy; inherited, so a running tool's dot blinks only then.</summary>
     internal static readonly StyledProperty<bool> IsWorkingProperty =
         AvaloniaProperty.Register<ClaudeChatView, bool>("IsWorking", inherits: true);
@@ -97,6 +105,13 @@ public partial class ClaudeChatView : UserControl
         set => SetValue(AvailableModelsProperty, value);
     }
 
+    /// <summary>Shows the conversation only: no reply box, no permission request. False by default.</summary>
+    public bool IsReadOnly
+    {
+        get => GetValue(IsReadOnlyProperty);
+        set => SetValue(IsReadOnlyProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -108,6 +123,10 @@ public partial class ClaudeChatView : UserControl
             Composer.Conversation = Conversation; // before the prompt, which asks the reply box about focus
             Prompt.Conversation = Conversation;
             if (_attached) Track(Conversation);
+        }
+        else if (change.Property == IsReadOnlyProperty && !IsReadOnly)
+        {
+            Prompt.RestartPause(); // a request that came back must not be answered by a stray key
         }
         else if (change.Property == StringsProperty)
         {

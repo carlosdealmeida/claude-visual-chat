@@ -48,4 +48,14 @@ public class PublicApiTests
         Assert.DoesNotContain("PermissionModeChanged", events);
         Assert.DoesNotContain("ModelChanged", events);
     }
+
+    [Fact]
+    public void The_view_has_a_read_only_mode()
+    {
+        var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
+        var property = view.GetProperty("IsReadOnly");
+        Assert.NotNull(property);
+        Assert.Equal(typeof(bool), property!.PropertyType);
+        Assert.NotNull(view.GetField("IsReadOnlyProperty"));
+    }
 }

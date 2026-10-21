@@ -25,11 +25,15 @@
           </controls:ChatItemList.Footer>
         </controls:ChatItemList>
       </ScrollViewer>
-      <!-- under the list, centered, 680 px at most: the request Claude waits on, then the reply box -->
-      <controls:PermissionPrompt Name="Prompt" Grid.Row="1" Margin="16,0,16,6"
-                                 MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
-      <controls:ChatComposer Name="Composer" Grid.Row="2" Margin="16,0,16,16"
-                             MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
+      <!-- under the list, centered, 680 px at most: the request Claude waits on, then the reply box; both go away
+           while the view is read-only (the prompt shows and hides itself, so the one binding is on their parent) -->
+      <StackPanel Grid.Row="1" Grid.RowSpan="2"
+                  IsVisible="{Binding !IsReadOnly, RelativeSource={RelativeSource AncestorType=controls:ClaudeChatView}}">
+        <controls:PermissionPrompt Name="Prompt" Margin="16,0,16,6"
+                                   MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
+        <controls:ChatComposer Name="Composer" Margin="16,0,16,16"
+                               MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
+      </StackPanel>
     </Grid>
   </Border>
 </UserControl>

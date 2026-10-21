@@ -677,6 +677,32 @@ public class PermissionPromptTests
     }
 
     [AvaloniaFact]
+    public void Leaving_read_only_restarts_the_pause_before_a_key_answers()
+    {
+        var clock = new ManualClock();
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "git status"));
+        var ui = Open(c, clock: clock);
+        clock.Advance(1000);
+
+        ui.View.IsReadOnly = true;
+        UiHelpers.Pump();
+        clock.Advance(5000); // long hidden: the old time must not count
+        ui.View.IsReadOnly = false;
+        UiHelpers.Pump();
+        ui.Prompt.FocusFirstOption();
+
+        clock.Advance(299);
+        UiHelpers.Press(ui.Window, Key.D1);
+        Assert.Empty(ui.Answers); // a stray digit right after the prompt came back
+
+        clock.Advance(1);
+        UiHelpers.Press(ui.Window, Key.D1);
+        Assert.Equal("r1", Assert.Single(ui.Answers).Request.RequestId);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_click_right_after_the_change_is_ignored()
     {
         var clock = new ManualClock();

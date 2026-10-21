@@ -176,6 +176,12 @@ internal partial class PermissionPrompt : UserControl
         if (_heldKey == e.Key) _heldKey = null;
     }
 
+    /// <summary>
+    /// The prompt is shown again after being hidden (the view left read-only): the user has not seen the request yet,
+    /// so the pause before a key answers it starts over.
+    /// </summary>
+    internal void RestartPause() => _shownAt = Clock.Now;
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
