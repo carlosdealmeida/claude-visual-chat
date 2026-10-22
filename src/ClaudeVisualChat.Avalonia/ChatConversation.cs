@@ -23,7 +23,10 @@ public sealed class ChatConversation : ChatObservableObject
     private readonly HashSet<ToolCallItem> _nestedTools = new HashSet<ToolCallItem>();
     private readonly List<ToolCallItem> _turnTools = new List<ToolCallItem>();
     private readonly List<LiveBlock> _live = new List<LiveBlock>();
-    private readonly Queue<string> _echoes = new Queue<string>();
+    /// <summary>Sent messages shown at once, oldest first, whose repetition by the claude has not arrived.</summary>
+    private readonly List<MessageSubmittedEventArgs> _echoes = new List<MessageSubmittedEventArgs>();
+    /// <summary>Messages sent since the conversation was idle, while the claude has not answered: they alone keep it busy.</summary>
+    private readonly List<MessageSubmittedEventArgs> _unanswered = new List<MessageSubmittedEventArgs>();
     private StreamJsonParser _parser = new StreamJsonParser();
     private PendingPermission? _currentPermission;
     private bool _isBusy;
@@ -42,6 +45,9 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     public event EventHandler<MessageSubmittedEventArgs>? MessageSubmitted;
+
+    /// <summary>Raised by <see cref="UndoSubmit"/>: the reply box takes the text back when it is empty.</summary>
+    public event EventHandler<MessageSubmittedEventArgs>? SubmitUndone;
 
     public event EventHandler<PermissionAnsweredEventArgs>? PermissionAnswered;
 
@@ -237,6 +243,7 @@ public sealed class ChatConversation : ChatObservableObject
         _live.Clear();
         _parser = new StreamJsonParser();
         _echoes.Clear();
+        _unanswered.Clear();
         _interruptedThisTurn = false;
         IsBusy = false;
         UpdateStreaming();
@@ -248,13 +255,35 @@ public sealed class ChatConversation : ChatObservableObject
     public bool Submit(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
+        var submitted = new MessageSubmittedEventArgs(text) { Owner = this };
         if (EchoSubmittedMessages)
         {
-            Items.Add(new UserMessageItem(text) { Timestamp = _clock() });
-            _echoes.Enqueue(text);
+            submitted.Item = new UserMessageItem(text) { Timestamp = _clock() };
+            Items.Add(submitted.Item);
+            _echoes.Add(submitted);
         }
+        if (!IsBusy || _unanswered.Count > 0) _unanswered.Add(submitted);
         IsBusy = true;
-        MessageSubmitted?.Invoke(this, new MessageSubmittedEventArgs(text));
+        MessageSubmitted?.Invoke(this, submitted);
+        return true;
+    }
+
+    /// <summary>
+    /// Takes back a message the host could not deliver (no connection, refused): it leaves <see cref="Items"/>, the
+    /// conversation stops waiting for its repetition, and <see cref="IsBusy"/> goes back to false when only the
+    /// messages sent while idle kept it busy and the claude has not answered since. Raises <see cref="SubmitUndone"/>
+    /// with the text, even after <see cref="Clear"/> or <see cref="LoadTranscript"/>. Works inside
+    /// <see cref="MessageSubmitted"/>. False when the message was already taken back or is not this conversation's.
+    /// </summary>
+    public bool UndoSubmit(MessageSubmittedEventArgs submitted)
+    {
+        if (submitted == null) throw new ArgumentNullException(nameof(submitted));
+        if (!ReferenceEquals(submitted.Owner, this) || submitted.Undone) return false;
+        submitted.Undone = true;
+        if (submitted.Item != null) Items.Remove(submitted.Item);
+        _echoes.Remove(submitted);
+        if (_unanswered.Remove(submitted) && _unanswered.Count == 0) IsBusy = false;
+        SubmitUndone?.Invoke(this, submitted);
         return true;
     }
 
@@ -301,10 +330,17 @@ public sealed class ChatConversation : ChatObservableObject
 
     // ---- assistant blocks ----
 
+    /// <summary>Claude is answering: the turn keeps the conversation busy, whatever happens to the messages sent.</summary>
+    private void ClaudeIsWorking()
+    {
+        _unanswered.Clear();
+        IsBusy = true;
+    }
+
     private void OnAssistantBlock(AssistantBlock e)
     {
-        IsBusy = true;
-        var live = FindLive(e.MessageId, e.Block);
+        ClaudeIsWorking();
+        var live = FindLive(e.MessageId, e.ParentToolUseId, e.Block);
         switch (e.Block)
         {
             case TextContentBlock text:
@@ -366,7 +402,7 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnBlockStarted(BlockStarted e)
     {
-        IsBusy = true;
+        ClaudeIsWorking();
         ChatItem item;
         switch (e.Block)
         {
@@ -381,13 +417,13 @@ public sealed class ChatConversation : ChatObservableObject
                 {
                     ToolUseId = tool.Id, Name = tool.Name, Input = tool.Input, Status = ToolStatus.Running,
                 };
-                _live.Add(new LiveBlock(e.MessageId, e.Index, call));
+                _live.Add(new LiveBlock(e.MessageId, e.ParentToolUseId, e.Index, call));
                 AddTool(call, e.ParentToolUseId);
                 return;
             default:
                 return;
         }
-        _live.Add(new LiveBlock(e.MessageId, e.Index, item) { StartedAt = _clock() });
+        _live.Add(new LiveBlock(e.MessageId, e.ParentToolUseId, e.Index, item) { StartedAt = _clock() });
         Place(item, e.ParentToolUseId);
     }
 
@@ -412,12 +448,17 @@ public sealed class ChatConversation : ChatObservableObject
         if (live.Completed) _live.Remove(live);
     }
 
-    /// <summary>The first streamed block of that message, of the same kind, not yet completed.</summary>
-    private LiveBlock? FindLive(string messageId, ContentBlock block)
+    /// <summary>
+    /// The first streamed block of that message, of the same kind, not yet completed. A block that came without a
+    /// message id (its <c>message_start</c> arrived before the host started listening) belongs to any message of the
+    /// same agent.
+    /// </summary>
+    private LiveBlock? FindLive(string messageId, string? parentToolUseId, ContentBlock block)
     {
         foreach (var live in _live)
         {
-            if (live.Completed || live.MessageId != messageId) continue;
+            if (live.Completed) continue;
+            if (live.MessageId.Length == 0 ? live.ParentToolUseId != parentToolUseId : live.MessageId != messageId) continue;
             switch (block)
             {
                 case TextContentBlock _ when live.Item is AssistantTextItem:
@@ -508,9 +549,9 @@ public sealed class ChatConversation : ChatObservableObject
             AddNotice(NoticeKind.Compacted, e.ParentToolUseId);
             return;
         }
-        if (e.ParentToolUseId == null && _echoes.Count > 0 && _echoes.Peek() == text)
+        if (e.ParentToolUseId == null && _echoes.Count > 0 && _echoes[0].Text == text)
         {
-            _echoes.Dequeue(); // the claude repeated what Submit already shows
+            _echoes.RemoveAt(0); // the claude repeated what Submit already shows
             return;
         }
         Place(new UserMessageItem(text) { Timestamp = e.Timestamp }, e.ParentToolUseId);
@@ -573,6 +614,7 @@ public sealed class ChatConversation : ChatObservableObject
         Items.Add(new TurnFooterItem(e.DurationMs, e.InputTokens, e.OutputTokens, e.CostUsd, e.IsError));
         _turnTools.Clear();
         _interruptedThisTurn = false;
+        _unanswered.Clear();
         IsBusy = false;
     }
 
@@ -653,14 +695,18 @@ public sealed class ChatConversation : ChatObservableObject
 
     private sealed class LiveBlock
     {
-        public LiveBlock(string messageId, int index, ChatItem item)
+        public LiveBlock(string messageId, string? parentToolUseId, int index, ChatItem item)
         {
             MessageId = messageId;
+            ParentToolUseId = parentToolUseId;
             Index = index;
             Item = item;
         }
 
+        /// <summary>Empty when the block started before its <c>message_start</c> was seen.</summary>
         public string MessageId { get; }
+
+        public string? ParentToolUseId { get; }
 
         public int Index { get; }
 

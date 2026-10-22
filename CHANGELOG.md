@@ -3,6 +3,22 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-22
+
+### Added
+
+- `ChatConversation.UndoSubmit(MessageSubmittedEventArgs)` takes back a message the host could not deliver: it leaves
+  `Items`, the conversation stops waiting for the claude to repeat it, and `IsBusy` goes back to `false` when only the
+  messages sent while idle kept it busy and the claude has not answered since. It works inside `MessageSubmitted`.
+  The new `SubmitUndone` event carries the text, and the reply box shows it again when the box is empty.
+
+### Fixed
+
+- A conversation opened in the middle of a reply showed the reply's blocks twice. The host started listening after
+  the `message_start`, so the streamed blocks had no message id, and the assistant line that completes each block
+  added a new item instead. A block without a message id is now completed by the next assistant line of the same
+  kind from the same agent.
+
 ## [0.2.0] - 2026-10-21
 
 ### Added

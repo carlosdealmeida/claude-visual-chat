@@ -364,6 +364,59 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void Blocks_that_arrived_without_a_message_id_are_completed_in_place()
+    {
+        // opened in the middle of a reply: the message_start was missed, so the live blocks carry no message id
+        var c = new ChatConversation();
+        c.Apply(new BlockStarted("", 0, null, new ThinkingBlock("")));
+        c.Apply(new BlockDelta("", 0, null, DeltaKind.Thinking, "hm"));
+        c.Apply(new BlockStopped("", 0, null));
+        c.Apply(new AssistantBlock("m1", null, new ThinkingBlock("hm")));
+        c.Apply(new BlockStarted("", 1, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("", 1, null, DeltaKind.Text, "Hel"));
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("Hello")));
+        c.Apply(new BlockStopped("", 1, null));
+        c.Apply(new BlockStarted("", 2, null, new ToolUseBlock("toolu_1", "Bash", J("{}"))));
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("toolu_1", "Bash", J("{\"command\":\"ls\"}"))));
+
+        Assert.Equal(new[] { "thinking:hm", "text:Hello", "tool:Bash:ls:Running:0" }, c.Items.Select(Describe));
+        Assert.DoesNotContain(c.Items, IsStreaming);
+    }
+
+    [Fact]
+    public void A_subagent_line_does_not_complete_a_main_block_without_a_message_id()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m0", null, new ToolUseBlock("toolu_task", "Task", J("{}"))));
+        c.Apply(new BlockStarted("", 0, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("", 0, null, DeltaKind.Text, "main"));
+        c.Apply(new AssistantBlock("m_sub", "toolu_task", new TextContentBlock("from the subagent")));
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("main text")));
+
+        var task = Assert.IsType<ToolCallItem>(c.Items[0]);
+        Assert.Equal("text:from the subagent", Describe(Assert.Single(task.Children)));
+        Assert.Equal("text:main text", Describe(Assert.Single(c.Items.OfType<AssistantTextItem>())));
+    }
+
+    [Theory]
+    [MemberData(nameof(Scenarios))]
+    public void Opened_in_the_middle_of_a_reply_shows_each_block_once(string scenario)
+    {
+        var lines = FixtureFiles.StreamLines(scenario);
+        var firstStart = Array.FindIndex(lines, l => l.Contains("\"message_start\""));
+        Assert.True(firstStart >= 0);
+        var after = lines.Skip(firstStart + 1).ToList();
+
+        var partial = new ChatConversation();
+        foreach (var line in after) partial.AppendLine(line);
+        var full = new ChatConversation();
+        foreach (var line in after.Where(l => LineType(l) != "stream_event")) full.AppendLine(line);
+
+        Assert.Equal(All(full.Items).Select(Describe), All(partial.Items).Select(Describe));
+        Assert.DoesNotContain(All(partial.Items), IsStreaming);
+    }
+
+    [Fact]
     public void Turn_end_stops_whatever_is_still_streaming()
     {
         var c = new ChatConversation();
@@ -722,6 +775,100 @@ public class ChatConversationTests
         Assert.True(quiet.IsBusy);
         quiet.AppendLine(UserOi);
         Assert.Equal("oi", Assert.IsType<UserMessageItem>(Assert.Single(quiet.Items)).Text);
+    }
+
+    [Fact]
+    public void Undo_submit_takes_the_message_back()
+    {
+        var c = new ChatConversation();
+        MessageSubmittedEventArgs? sent = null;
+        var undone = new List<string>();
+        c.MessageSubmitted += (_, e) => sent = e;
+        c.SubmitUndone += (_, e) => undone.Add(e.Text);
+
+        c.Submit("oi");
+        Assert.True(c.IsBusy);
+        Assert.True(c.UndoSubmit(sent!));
+        Assert.Empty(c.Items);
+        Assert.False(c.IsBusy);
+        Assert.Equal(new[] { "oi" }, undone);
+
+        Assert.False(c.UndoSubmit(sent!)); // once
+        Assert.False(c.UndoSubmit(new MessageSubmittedEventArgs("oi"))); // not one of its messages
+        Assert.False(new ChatConversation().UndoSubmit(sent!));
+        Assert.Equal(new[] { "oi" }, undone);
+
+        // the claude never repeats a message taken back, so it does not wait for that repetition
+        c.Submit("tchau");
+        c.AppendLine(UserOi.Replace("\"oi\"", "\"tchau\""));
+        Assert.Equal("tchau", Assert.IsType<UserMessageItem>(Assert.Single(c.Items)).Text);
+    }
+
+    [Fact]
+    public void Undo_submit_leaves_the_busy_state_to_the_claude()
+    {
+        // the claude is working: the message taken back leaves, the work goes on
+        var working = new ChatConversation();
+        MessageSubmittedEventArgs? sent = null;
+        working.MessageSubmitted += (_, e) => sent = e;
+        working.Apply(new BlockStarted("m1", 0, null, new TextContentBlock("")));
+        working.Submit("more");
+        Assert.True(working.UndoSubmit(sent!));
+        Assert.True(working.IsBusy);
+        Assert.IsType<AssistantTextItem>(Assert.Single(working.Items));
+
+        // two messages from idle: busy until both are taken back
+        var twice = new ChatConversation();
+        var all = new List<MessageSubmittedEventArgs>();
+        twice.MessageSubmitted += (_, e) => all.Add(e);
+        twice.Submit("first");
+        twice.Submit("second");
+        twice.UndoSubmit(all[0]);
+        Assert.True(twice.IsBusy);
+        Assert.Equal("second", Assert.IsType<UserMessageItem>(Assert.Single(twice.Items)).Text);
+        twice.UndoSubmit(all[1]);
+        Assert.False(twice.IsBusy);
+
+        // the claude answered in between: the turn is the claude's now
+        var answered = new ChatConversation();
+        answered.MessageSubmitted += (_, e) => sent = e;
+        answered.Submit("oi");
+        answered.Apply(new AssistantBlock("m1", null, new TextContentBlock("ola")));
+        answered.UndoSubmit(sent!);
+        Assert.True(answered.IsBusy);
+        Assert.Equal("text:ola", Describe(Assert.Single(answered.Items)));
+    }
+
+    [Fact]
+    public void Undo_submit_works_from_the_handler_and_without_echo()
+    {
+        var c = new ChatConversation();
+        var undone = 0;
+        c.MessageSubmitted += (_, e) => Assert.True(c.UndoSubmit(e)); // refused at once
+        c.SubmitUndone += (_, _) => undone++;
+        Assert.True(c.Submit("oi"));
+        Assert.Empty(c.Items);
+        Assert.False(c.IsBusy);
+        Assert.Equal(1, undone);
+
+        var quiet = new ChatConversation { EchoSubmittedMessages = false };
+        MessageSubmittedEventArgs? sent = null;
+        quiet.MessageSubmitted += (_, e) => sent = e;
+        quiet.Submit("oi");
+        Assert.True(quiet.UndoSubmit(sent!));
+        Assert.False(quiet.IsBusy);
+
+        // after the items were replaced, the text still comes back
+        var loaded = new ChatConversation();
+        var back = new List<string>();
+        loaded.MessageSubmitted += (_, e) => sent = e;
+        loaded.SubmitUndone += (_, e) => back.Add(e.Text);
+        loaded.Submit("oi");
+        loaded.LoadTranscript(FixtureFiles.TranscriptLines("bash"));
+        var items = loaded.Items.Count;
+        Assert.True(loaded.UndoSubmit(sent!));
+        Assert.Equal(items, loaded.Items.Count);
+        Assert.Equal(new[] { "oi" }, back);
     }
 
     [Fact]

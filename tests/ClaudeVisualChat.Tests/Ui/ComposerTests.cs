@@ -385,6 +385,49 @@ public class ComposerTests
         ui.Window.Close();
     }
 
+    [AvaloniaFact]
+    public void A_message_taken_back_returns_to_the_box()
+    {
+        var c = new ChatConversation();
+        MessageSubmittedEventArgs? sent = null;
+        c.MessageSubmitted += (_, e) => sent = e;
+        var ui = Open(c);
+
+        ui.Type("oi");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal("", ui.Input.Text ?? "");
+        Assert.Contains("Stop", ui.Texts);
+        c.UndoSubmit(sent!);
+        UiHelpers.Pump();
+        Assert.Equal("oi", ui.Input.Text);
+        Assert.DoesNotContain("Stop", ui.Texts);
+
+        // something written since stays: the text taken back does not replace it
+        UiHelpers.Press(ui.Window, Key.Enter);
+        ui.Type("outra");
+        c.UndoSubmit(sent!);
+        UiHelpers.Pump();
+        Assert.Equal("outra", ui.Input.Text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_message_refused_at_once_stays_in_the_box()
+    {
+        var c = new ChatConversation();
+        c.MessageSubmitted += (_, e) => c.UndoSubmit(e);
+        var ui = Open(c);
+
+        ui.Type("oi");
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        Assert.Equal(new[] { "oi" }, ui.Sent);
+        Assert.Equal("oi", ui.Input.Text);
+        Assert.Empty(c.Items);
+        Assert.DoesNotContain("Stop", ui.Texts);
+        ui.Window.Close();
+    }
+
     /// <summary>Handlers on the conversation's PropertyChanged and on its requests' CollectionChanged.</summary>
     private static int Handlers(ChatConversation c)
     {

@@ -107,6 +107,19 @@ claude confirms it: the pickers show the new mode or model only once the claude 
 One view can show several conversations in turn: set `Conversation` to another one. What the user had written and not
 sent stays with its conversation and comes back with it.
 
+A message that cannot reach the claude (the connection dropped, a relay refused it) can be taken back with the event's
+arguments, at once inside the handler or later:
+
+```csharp
+conversation.MessageSubmitted += (_, e) =>
+{
+    if (!TrySend(StdinMessages.UserMessage(e.Text))) conversation.UndoSubmit(e);
+};
+```
+
+The message leaves the list, "working" goes away when nothing else keeps it, and the text returns to the reply box
+when the box is empty (`SubmitUndone` carries it, for a host that wants it elsewhere).
+
 ## Open a saved session
 
 Claude Code keeps each session in `~/.claude/projects/<folder>/<session id>.jsonl`. To show one:

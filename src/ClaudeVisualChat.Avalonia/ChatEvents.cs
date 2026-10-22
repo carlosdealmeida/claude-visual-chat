@@ -27,6 +27,10 @@ public sealed class PermissionAnsweredEventArgs : EventArgs
     public string? Message { get; }
 }
 
+/// <summary>
+/// A message the user sent; give it back to <see cref="ChatConversation.UndoSubmit(MessageSubmittedEventArgs)"/> when
+/// it cannot be delivered.
+/// </summary>
 public sealed class MessageSubmittedEventArgs : EventArgs
 {
     public MessageSubmittedEventArgs(string text)
@@ -35,6 +39,14 @@ public sealed class MessageSubmittedEventArgs : EventArgs
     }
 
     public string Text { get; }
+
+    /// <summary>The conversation that sent it; null for one made by hand.</summary>
+    internal ChatConversation? Owner { get; set; }
+
+    /// <summary>The message as shown; null when the conversation does not echo what is sent.</summary>
+    internal UserMessageItem? Item { get; set; }
+
+    internal bool Undone { get; set; }
 }
 
 /// <summary>A permission mode the user asked for, not yet confirmed by the claude.</summary>

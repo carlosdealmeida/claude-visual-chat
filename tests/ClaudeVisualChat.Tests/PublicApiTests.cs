@@ -50,6 +50,17 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_conversation_can_take_a_message_back()
+    {
+        var undo = typeof(ChatConversation).GetMethod("UndoSubmit");
+        Assert.NotNull(undo);
+        Assert.Equal(typeof(bool), undo!.ReturnType);
+        Assert.Equal(typeof(MessageSubmittedEventArgs), Assert.Single(undo.GetParameters()).ParameterType);
+        Assert.Equal(typeof(System.EventHandler<MessageSubmittedEventArgs>),
+            typeof(ChatConversation).GetEvent("SubmitUndone")?.EventHandlerType);
+    }
+
+    [Fact]
     public void The_view_has_a_read_only_mode()
     {
         var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);

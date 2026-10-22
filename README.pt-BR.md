@@ -107,6 +107,19 @@ troca, antes de o claude confirmar: a escolha de modo ou de modelo só mostra o 
 Uma view pode mostrar várias conversas, uma de cada vez: basta pôr outra em `Conversation`. O que o usuário escreveu e
 não mandou fica com a conversa dele e volta com ela.
 
+Uma mensagem que não chega ao claude (a conexão caiu, um relé a recusou) pode ser desfeita com os argumentos do
+evento, na hora, dentro do handler, ou depois:
+
+```csharp
+conversation.MessageSubmitted += (_, e) =>
+{
+    if (!TrySend(StdinMessages.UserMessage(e.Text))) conversation.UndoSubmit(e);
+};
+```
+
+A mensagem sai da lista, o "trabalhando" some quando nada mais o mantém, e o texto volta à caixa de resposta se ela
+estiver vazia (o `SubmitUndone` leva o texto, para quem quiser pô-lo em outro lugar).
+
 ## Abrir uma sessão gravada
 
 O Claude Code guarda cada sessão em `~/.claude/projects/<pasta>/<id da sessão>.jsonl`. Para mostrar uma:

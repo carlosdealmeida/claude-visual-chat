@@ -165,9 +165,17 @@ internal partial class ChatComposer : UserControl
     {
         if (!ReferenceEquals(conversation, _tracked))
         {
-            if (_tracked != null) _tracked.PropertyChanged -= OnConversationChanged;
+            if (_tracked != null)
+            {
+                _tracked.PropertyChanged -= OnConversationChanged;
+                _tracked.SubmitUndone -= OnSubmitUndone;
+            }
             _tracked = conversation;
-            if (_tracked != null) _tracked.PropertyChanged += OnConversationChanged;
+            if (_tracked != null)
+            {
+                _tracked.PropertyChanged += OnConversationChanged;
+                _tracked.SubmitUndone += OnSubmitUndone;
+            }
         }
         Refresh();
     }
@@ -187,6 +195,14 @@ internal partial class ChatComposer : UserControl
                 SelectModel();
                 break;
         }
+    }
+
+    /// <summary>The message never left: it comes back to the box, unless something else was written since.</summary>
+    private void OnSubmitUndone(object? sender, MessageSubmittedEventArgs e)
+    {
+        if (!IsEmpty) return;
+        Input.Text = e.Text;
+        Input.CaretIndex = e.Text.Length;
     }
 
     private void Refresh()
@@ -242,7 +258,10 @@ internal partial class ChatComposer : UserControl
     {
         var conversation = _tracked;
         if (conversation == null || IsEmpty) return;
-        if (conversation.Submit(Input.Text ?? "")) Input.Clear();
+        var text = Input.Text ?? "";
+        // cleared first: a host that refuses the message at once (UndoSubmit inside MessageSubmitted) gets it back here
+        Input.Clear();
+        conversation.Submit(text);
     }
 
     // ---- pickers ----

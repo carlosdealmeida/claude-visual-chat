@@ -14,7 +14,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>ClaudeVisualChat.Avalonia</PackageId>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <Authors>carlosdealmeida</Authors>
     <Description>Avalonia control that draws Claude Code conversations from the stream-json output of claude -p, in the style of the Claude Code extension for VS Code. Community project, not affiliated with Anthropic.</Description>
     <PackageTags>claude claude-code avalonia chat stream-json ui</PackageTags>
