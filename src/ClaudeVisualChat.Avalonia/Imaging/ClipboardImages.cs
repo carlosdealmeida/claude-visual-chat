@@ -25,6 +25,12 @@ internal static class ClipboardImages
 
     private static readonly Lazy<uint> PngFormat = new Lazy<uint>(() => RegisterClipboardFormat("PNG"));
 
+    /// <summary>
+    /// True when <see cref="HasText"/> and <see cref="HasImage"/> can answer at once: on Windows, or under the test
+    /// seams. Elsewhere the clipboard is only read asynchronously.
+    /// </summary>
+    public static bool CanCheckNow => IsWindows || HasTextOverride != null || HasImageOverride != null;
+
     public static bool HasText()
     {
         if (HasTextOverride != null) return HasTextOverride();

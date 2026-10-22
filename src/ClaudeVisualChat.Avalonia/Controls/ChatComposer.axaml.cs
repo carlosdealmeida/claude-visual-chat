@@ -65,8 +65,6 @@ internal partial class ChatComposer : UserControl
     /// <summary>Test seam: the file dialog of the + button.</summary>
     internal Func<Task<IReadOnlyList<byte[]>>>? PickImagesOverride;
 
-    private static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-
     public ChatComposer()
     {
         InitializeComponent();
@@ -345,7 +343,7 @@ internal partial class ChatComposer : UserControl
     private void OnPasting(object? sender, RoutedEventArgs e)
     {
         var conversation = _tracked;
-        if (!IsWindows)
+        if (!ClipboardImages.CanCheckNow)
         {
             _ = PasteImageWithoutTextAsync(conversation);
             return;
