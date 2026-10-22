@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 
 namespace ClaudeVisualChat.Protocol
@@ -16,7 +17,11 @@ namespace ClaudeVisualChat.Protocol
 
     public sealed record SessionStarted(
         string? SessionId, string? Model, string? WorkingDirectory, string? PermissionMode, string? ClaudeVersion)
-        : ClaudeEvent;
+        : ClaudeEvent
+    {
+        /// <summary>The commands the terminal handles itself (<c>terminal_slash_commands</c>); empty when not told.</summary>
+        public IReadOnlyList<string> TerminalCommands { get; init; } = Array.Empty<string>();
+    }
 
     public sealed record StatusChanged(string? Status, string? PermissionMode) : ClaudeEvent;
 
@@ -36,6 +41,9 @@ namespace ClaudeVisualChat.Protocol
     {
         /// <summary>When the line was written (its <c>timestamp</c>); null when the line has none.</summary>
         public DateTimeOffset? Timestamp { get; init; }
+
+        /// <summary>The images that came with the text; empty by default.</summary>
+        public IReadOnlyList<ImageBlock> Images { get; init; } = Array.Empty<ImageBlock>();
     }
 
     /// <summary>A streamed block opened. A <c>tool_use</c> starts with an empty <c>{}</c> input.</summary>
@@ -61,4 +69,28 @@ namespace ClaudeVisualChat.Protocol
 
     /// <summary>Marker for <c>compact_boundary</c> and <c>api_retry</c>.</summary>
     public sealed record SystemNotice(string Subtype) : ClaudeEvent;
+
+    /// <summary>The slash commands the session offers (from <c>initialize</c> or <c>commands_changed</c>).</summary>
+    public sealed record CommandsAvailable(IReadOnlyList<ChatCommand> Commands) : ClaudeEvent;
+
+    public sealed record ModelsAvailable(IReadOnlyList<ChatModel> Models) : ClaudeEvent;
+
+    /// <summary>The settings in force (from <c>get_settings</c>). <paramref name="HasEffort"/> is false when <c>effort</c> is absent.</summary>
+    public sealed record SettingsApplied(string? Model, string? Effort, bool HasEffort) : ClaudeEvent;
+
+    /// <summary>A reply used the prompt cache. <paramref name="Ttl"/> is null when the line does not say how long it lives.</summary>
+    public sealed record PromptCacheUsed(TimeSpan? Ttl, DateTimeOffset? At) : ClaudeEvent;
+
+    public sealed record ContextUsageReported(ContextUsage Usage) : ClaudeEvent;
+
+    public sealed record UsageLimitsReported(UsageLimits Limits) : ClaudeEvent;
+
+    /// <summary>Remote Control moved (<c>bridge_state</c>) or started (<c>session_url</c>).</summary>
+    public sealed record RemoteControlChanged(string? State, string? Url, string? Detail) : ClaudeEvent;
+
+    /// <summary>A slash command the user ran; <paramref name="Name"/> has no leading slash.</summary>
+    public sealed record CommandEcho(string Name, string Arguments) : ClaudeEvent;
+
+    /// <summary>What a local slash command printed (the inside of <c>local-command-stdout</c>).</summary>
+    public sealed record CommandOutput(string Text) : ClaudeEvent;
 }

@@ -66,13 +66,98 @@ def test_paths_are_replaced():
 
 def test_dropped_lines():
     assert gravar.higienizar_stream({"type": "rate_limit_event", "rate_limit_info": {}}, trocas()) is None
-    resp = {"type": "control_response", "response": {
-        "subtype": "success", "request_id": "init-1",
-        "response": {"commands": [{"name": "x"}], "account": {"email": "a@b"}}}}
-    assert gravar.higienizar_stream(resp, trocas()) is None
     outra = {"type": "control_response", "response": {
         "subtype": "success", "request_id": "mode-1", "response": {"mode": "acceptEdits"}}}
     assert gravar.higienizar_stream(outra, trocas()) == outra
+
+
+COMANDOS_PUBLICOS = ["compact", "context", "usage", "cost", "model", "effort", "hello"]
+
+
+def _comandos_reais():
+    return [{"name": n, "description": "d " + n, "argumentHint": ""} for n in COMANDOS_PUBLICOS[:3]] + [
+        {"name": "board", "description": "Cards do board do Carlos", "argumentHint": ""},
+        {"name": "enel", "description": "Troca Enel da WA", "argumentHint": "cdc"},
+    ] + [{"name": n, "description": "d " + n, "argumentHint": ""} for n in COMANDOS_PUBLICOS[3:]]
+
+
+def test_higieniza_resposta_do_initialize():
+    resp = {"type": "control_response", "response": {
+        "subtype": "success", "request_id": "init-1",
+        "response": {
+            "commands": _comandos_reais(),
+            "models": [{"value": "default", "resolvedModel": "claude-x", "displayName": "Default",
+                        "description": "d", "supportsEffort": True,
+                        "supportedEffortLevels": ["low", "high"]}],
+            "agents": [{"name": "meu-agente", "description": "privado"}],
+            "account": {"email": "a@b.com", "organization": "Org"},
+            "available_output_styles": ["default", "meu-estilo"],
+        }}}
+    out = gravar.higienizar_stream(resp, trocas())
+    interno = out["response"]["response"]
+    assert [c["name"] for c in interno["commands"]] == COMANDOS_PUBLICOS
+    assert interno["commands"][0]["description"] == "d compact"
+    assert interno["models"][0]["value"] == "default"
+    for campo in ("account", "available_output_styles", "agents"):
+        assert campo not in interno
+    texto = json.dumps(out)
+    assert "board" not in texto and "enel" not in texto and "a@b.com" not in texto
+
+
+def test_higieniza_get_settings():
+    resp = {"type": "control_response", "response": {
+        "subtype": "success", "request_id": "settings-2",
+        "response": {
+            "effective": {"env": {"TOKEN": "x"}, "permissions": {"allow": ["Bash(x)"]}, "model": "haiku"},
+            "applied": {"model": "haiku", "effort": "high", "outro": "x"},
+        }}}
+    out = gravar.higienizar_stream(resp, trocas())
+    assert out["response"]["response"] == {"applied": {"model": "haiku", "effort": "high"}}
+    texto = json.dumps(out)
+    for proibido in ("effective", "env", "permissions", "TOKEN"):
+        assert proibido not in texto
+
+
+def test_higieniza_context_usage():
+    resp = {"type": "control_response", "response": {
+        "subtype": "success", "request_id": "context-3",
+        "response": {
+            "categories": [{"name": "Messages", "tokens": 10, "color": "blue", "kind": "messages",
+                            "isDeferred": False}],
+            "totalTokens": 100, "maxTokens": 200000, "rawMaxTokens": 200000, "percentage": 0.5,
+            "gridRows": [[1, 2]], "mcp_tools": [{"name": "mcp__x"}], "memoryFiles": [HOME + r".md"],
+        }}}
+    out = gravar.higienizar_stream(resp, trocas())
+    assert out["response"]["response"] == {
+        "categories": [{"name": "Messages", "tokens": 10, "kind": "messages"}],
+        "totalTokens": 100, "maxTokens": 200000, "percentage": 0.5}
+
+
+def test_higieniza_commands_changed():
+    ev = {"type": "system", "subtype": "commands_changed", "commands": _comandos_reais(),
+          "uuid": "u", "session_id": "s"}
+    out = gravar.higienizar_stream(ev, trocas())
+    assert [c["name"] for c in out["commands"]] == COMANDOS_PUBLICOS
+    assert out["subtype"] == "commands_changed" and out["session_id"] == "s"
+
+
+def test_gera_png_valido():
+    import struct
+    import zlib
+    png = gravar.gerar_png(96, 48)
+    assert png[:8] == bytes([137]) + b"PNG" + bytes([13, 10, 26, 10])
+    pos, ihdr, dados = 8, None, b""
+    while pos < len(png):
+        n, tipo = struct.unpack(">I4s", png[pos:pos + 8])
+        corpo = png[pos + 8:pos + 8 + n]
+        assert zlib.crc32(tipo + corpo) == struct.unpack(">I", png[pos + 8 + n:pos + 12 + n])[0]
+        if tipo == b"IHDR":
+            ihdr = struct.unpack(">IIBBBBB", corpo)
+        elif tipo == b"IDAT":
+            dados += corpo
+        pos += 12 + n
+    assert ihdr[:2] == (96, 48)
+    assert len(zlib.decompress(dados)) == 48 * (1 + 96 * 3)
 
 
 def test_transcript_allowlist():

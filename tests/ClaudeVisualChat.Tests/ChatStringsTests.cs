@@ -197,4 +197,111 @@ public class ChatStringsTests
         Assert.Equal("Thinking", ChatStrings.English.Thinking);
         Assert.Equal(",", custom.ThousandsSeparator);
     }
+
+    // words that are the same in both languages
+    private static readonly string[] SameInBoth =
+    {
+        nameof(ChatStrings.ToolInput), nameof(ChatStrings.ToolOutput), nameof(ChatStrings.ModeDefault),
+        nameof(ChatStrings.RemoteControl),
+        nameof(ChatStrings.EffortMax), nameof(ChatStrings.EffortAuto),
+        nameof(ChatStrings.UsageResetsDay), nameof(ChatStrings.PanelLoading),
+    };
+
+    [Fact]
+    public void Every_text_differs_between_the_languages_except_the_listed_ones()
+    {
+        var same = new System.Collections.Generic.List<string>();
+        foreach (var p in typeof(ChatStrings).GetProperties())
+        {
+            if (p.PropertyType != typeof(string)) continue;
+            if (p.Name == nameof(ChatStrings.ThousandsSeparator) || p.Name == nameof(ChatStrings.DecimalSeparator)) continue;
+            Assert.False(string.IsNullOrEmpty((p.GetValue(En) as string)), p.Name);
+            Assert.False(string.IsNullOrEmpty((p.GetValue(Pt) as string)), p.Name);
+            if ((p.GetValue(En) as string) == (p.GetValue(Pt) as string) && Array.IndexOf(SameInBoth, p.Name) < 0) same.Add(p.Name);
+        }
+        Assert.Empty(same);
+    }
+
+    [Fact]
+    public void Bar_texts_in_english()
+    {
+        Assert.Equal("Add", En.AddAttachment);
+        Assert.Equal("Show command menu (/)", En.ShowCommands);
+        Assert.Equal("Prompt cache warm, about {0} min left.", En.CacheWarm);
+        Assert.Equal("Select a model", En.SelectModel);
+        Assert.Equal("Mostrar o menu de comandos (/)", Pt.ShowCommands);
+        Assert.Equal("Cache do prompt ativo, cerca de {0} min restantes.", Pt.CacheWarm);
+        Assert.Equal("Cache do prompt provavelmente expirado (parado há {0}).", Pt.CacheExpired);
+        Assert.Equal("Dismiss", En.Dismiss);
+        Assert.Equal("Dispensar", Pt.Dismiss);
+        Assert.Equal("Remote Control error: {0} · Run /remote-control to dismiss", En.RemoteControlFailedHint);
+        Assert.Equal("Erro no Remote Control: {0} · Use /remote-control para dispensar", Pt.RemoteControlFailedHint);
+        Assert.Equal("Remote Control error: x · Run /remote-control to dismiss", En.FormatRemoteControlFailedHint("x"));
+    }
+
+    [Theory]
+    [InlineData("low", "Low", "Baixo")]
+    [InlineData("medium", "Medium", "Médio")]
+    [InlineData("high", "High", "Alto")]
+    [InlineData("xhigh", "Extra high", "Muito alto")]
+    [InlineData("max", "Max", "Máximo")]
+    [InlineData(null, "Auto", "Automático")]
+    [InlineData("weird", "weird", "weird")]
+    public void Effort_labels(string? level, string english, string portuguese)
+    {
+        Assert.Equal(english, En.EffortLabel(level));
+        Assert.Equal(portuguese, Pt.EffortLabel(level));
+    }
+
+    [Theory]
+    [InlineData(0, "0m")]
+    [InlineData(59, "0m")]
+    [InlineData(60, "1m")]
+    [InlineData(12 * 60, "12m")]
+    [InlineData(75 * 60, "1h 15m")]
+    [InlineData(2 * 3600, "2h 0m")]
+    [InlineData(27 * 3600, "1d 3h")]
+    [InlineData(51 * 3600, "2d 3h")]
+    public void Idle_time_is_compact(int seconds, string expected)
+    {
+        Assert.Equal(expected, En.FormatIdle(TimeSpan.FromSeconds(seconds)));
+        Assert.Equal(expected, Pt.FormatIdle(TimeSpan.FromSeconds(seconds)));
+    }
+
+    [Fact]
+    public void Panel_texts()
+    {
+        var usage = new ContextUsage(36174, 200000, 18, Array.Empty<ContextCategory>());
+        Assert.Equal("36,174 / 200,000 (18%)", En.FormatContextTotal(usage));
+        Assert.Equal("36.174 / 200.000 (18 %)", Pt.FormatContextTotal(usage));
+
+        Assert.Equal("Current session (5h)", En.UsageWindowLabel("five_hour"));
+        Assert.Equal("Weekly (7 days)", En.UsageWindowLabel("seven_day"));
+        Assert.Equal("Sessão atual (5h)", Pt.UsageWindowLabel("five_hour"));
+        Assert.Equal("Semanal (7 dias)", Pt.UsageWindowLabel("seven_day"));
+        Assert.Equal("seven_day_opus", Pt.UsageWindowLabel("seven_day_opus"));
+
+        Assert.Equal("1%", En.FormatUsagePercent(0.01));
+        Assert.Equal("12 %", Pt.FormatUsagePercent(0.12));
+        Assert.Equal("0%", En.FormatUsagePercent(-0.5));
+        Assert.Equal("…", En.PanelLoading);
+
+        // today only the time; another day its short name first (2026-10-22 is a Thursday)
+        var now = new DateTimeOffset(new DateTime(2026, 10, 22, 9, 0, 0, DateTimeKind.Local));
+        var today = new DateTimeOffset(new DateTime(2026, 10, 22, 15, 30, 0, DateTimeKind.Local));
+        var saturday = new DateTimeOffset(new DateTime(2026, 10, 24, 8, 5, 0, DateTimeKind.Local));
+        Assert.Equal("Resets 3:30 PM", En.FormatUsageResets(today, now));
+        Assert.Equal("Resets Sat 8:05 AM", En.FormatUsageResets(saturday, now));
+        Assert.Equal("Renova 15:30", Pt.FormatUsageResets(today, now));
+        Assert.Equal("Renova sáb 08:05", Pt.FormatUsageResets(saturday, now));
+        // a list of day names that is not seven long falls back to the English ones
+        Assert.Equal("Resets Sat 8:05 AM", (En with { DayNames = "x y" }).FormatUsageResets(saturday, now));
+    }
+
+    [Fact]
+    public void Cache_minutes()
+    {
+        Assert.Equal("59m", En.FormatCacheMinutes(59));
+        Assert.Equal("5m", Pt.FormatCacheMinutes(5));
+    }
 }

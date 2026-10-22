@@ -42,6 +42,29 @@
   <SolidColorBrush x:Key="ClaudeChat.CodeBlockBackground" Color="#2B2B2B" />  <!-- textCodeBlock.background -->
   <SolidColorBrush x:Key="ClaudeChat.PillBackground" Color="#1ACCCCCC" />     <!-- foreground at 10 % -->
   <SolidColorBrush x:Key="ClaudeChat.PillHoverBackground" Color="#2ECCCCCC" /> <!-- foreground at 18 % -->
+  <SolidColorBrush x:Key="ClaudeChat.BannerForeground" Color="#8B98BE" />     <!-- BannerTint 50 % + foreground -->
+  <SolidColorBrush x:Key="ClaudeChat.BannerBackground" Color="#2A3043" />     <!-- BannerTint 25 % + editor.background -->
+  <SolidColorBrush x:Key="ClaudeChat.BannerErrorForeground" Color="#E28F8B" /> <!-- errorForeground 50 % + foreground -->
+  <SolidColorBrush x:Key="ClaudeChat.BannerErrorBackground" Color="#552C2A" /> <!-- errorForeground 25 % + editor.background -->
+  <SolidColorBrush x:Key="ClaudeChat.AttachmentBackground" Color="#414141" /> <!-- input.background 85 % + descriptionForeground -->
+  <SolidColorBrush x:Key="ClaudeChat.AttachmentHoverBorder" Color="#85CCCCCC" /> <!-- the input border 60 % + foreground -->
+  <LinearGradientBrush x:Key="ClaudeChat.AttachmentRemoveFade" StartPoint="0%,0%" EndPoint="100%,0%">
+    <GradientStop Offset="0" Color="#00414141" />
+    <GradientStop Offset="0.5" Color="#414141" />
+    <GradientStop Offset="1" Color="#414141" />
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="ClaudeChat.MenuBackground" Color="#1F1F1F" />       <!-- menu.background -->
+  <SolidColorBrush x:Key="ClaudeChat.MenuForeground" Color="#CCCCCC" />       <!-- menu.foreground -->
+  <SolidColorBrush x:Key="ClaudeChat.ListHoverBackground" Color="#2A2D2E" />  <!-- list.hoverBackground -->
+  <SolidColorBrush x:Key="ClaudeChat.ListActiveBackground" Color="#04395E" /> <!-- list.activeSelectionBackground -->
+  <SolidColorBrush x:Key="ClaudeChat.ListActiveForeground" Color="#FFFFFF" /> <!-- list.activeSelectionForeground -->
+  <!-- VS Code's chart colors; Dark Modern keeps the defaults -->
+  <SolidColorBrush x:Key="ClaudeChat.ContextColor1" Color="#3794FF" />        <!-- charts.blue -->
+  <SolidColorBrush x:Key="ClaudeChat.ContextColor2" Color="#B180D7" />        <!-- charts.purple -->
+  <SolidColorBrush x:Key="ClaudeChat.ContextColor3" Color="#D18616" />        <!-- charts.orange -->
+  <SolidColorBrush x:Key="ClaudeChat.ContextColor4" Color="#89D185" />        <!-- charts.green -->
+  <SolidColorBrush x:Key="ClaudeChat.ContextColor5" Color="#CCA700" />        <!-- charts.yellow -->
+  <SolidColorBrush x:Key="ClaudeChat.ContextColor6" Color="#F14C4C" />        <!-- charts.red -->
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAcceptEdits">0 0 0 3 #1FCCCCCC</BoxShadows>
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowPlan">0 0 0 3 #1F0078D4</BoxShadows>
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAuto">0 0 0 3 #1FF85149</BoxShadows>

@@ -191,4 +191,22 @@ public class FixturePlayerTests
         Assert.True(second > firstFooter && firstFooter > 0, "the second message starts the second turn");
         Assert.Equal(Direct("mode-and-model").Items.Count + 2, items.Count);
     }
+
+    [AvaloniaTheory]
+    [InlineData("image")]
+    [InlineData("commands")]
+    [InlineData("effort")]
+    public void The_new_recordings_play_to_the_end(string scenario)
+    {
+        var played = new ChatConversation();
+        var player = new FixturePlayer(FixtureFiles.StreamLines(scenario), played);
+
+        var task = player.PlayAsync(TimeSpan.Zero, TimeSpan.Zero, CancellationToken.None);
+        RunUntil(task, Long, () => AnswerYes(played));
+
+        Assert.True(task.IsCompletedSuccessfully);
+        Assert.Equal(FixtureFiles.StreamLines(scenario).Length, player.Position);
+        Assert.Equal(Kinds(Direct(scenario)), Kinds(played));
+        Assert.Empty(played.PendingPermissions);
+    }
 }

@@ -3,6 +3,90 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-22
+
+The reply box gets the bar of the Claude Code extension: attach images, a command palette, a model and effort chip,
+the prompt cache clock, the browser and Remote Control states, and the `/context` and `/usage` panels.
+
+### Added
+
+- Image attachments. The **+** button (file picker), Ctrl+V (the text wins when the clipboard has both), and dragging
+  files onto the box attach images, shown as pills with a thumbnail, name, size and a × and a full-screen preview.
+  `ChatConversation.Attachments`, `AddImageAsync` (returns an `AddImageResult`), `RemoveAttachment`, `MaxImages` (10),
+  `ImageBudgetBytes` (3,750,000) and `MaxImageSide` (1568 px). Images are shrunk to fit; a refused one says why
+  (`ImageTooBig`, `TooManyImages`, `NotAnImage`). The new `ChatImage` carries the media type and the base64 data,
+  `MessageSubmittedEventArgs.Images` brings them to the host, and `StdinMessages.UserMessage(text, images)` writes them.
+  On Windows the clipboard is read with the system calls (PNG, DIB, then DIBV5).
+- The bar, in the extension's order: **+**, **/**, the cache clock, the Remote Control pill, the model chip, the mode
+  and send or stop.
+- The command palette (the **/** button, or `/` typed in an empty box): a filter, then the commands by exact name,
+  prefix, name containing and description; arrows, Enter, Tab and Esc. The palette and the model menu close when the
+  view turns read-only, when the box is hidden and when a permission request arrives. `ChatConversation.Commands`,
+  `TerminalCommands`, `PaletteCommands`, `LocalCommands`, `InvokeCommand` and the `CommandInvoked` event for the local
+  commands (`context`, `usage`, `remote-control`, `rc`, `chrome`), which send nothing to the claude.
+- The model chip (**Opus 5.5 High**) and its menu: the models and a slider for the effort levels of the chosen model. A model id with a suffix (`claude-opus-5-5[1m]`) finds its
+  model, and the chip shows the suffix (**Opus 5.5 [1m] High**).
+  `ChatModel`, `ChatConversation.AvailableModels`, `CurrentModel`, `ModelSuffix`, `Effort`, `RequestedEffort`, `SetEffort` and the
+  `EffortRequested` event, raised before the claude confirms, as the mode and model are. `SettingsApplied` and the
+  `get_settings` answer move the chip.
+- The prompt cache clock (`PromptCacheExpiresAt`, `PromptCacheTtl`, `IsPromptCacheCompacted`, and `Clock` as its time
+  source), the browser banner (`BrowserStatus`, `BrowserError`, `DisconnectBrowser` and `BrowserDisconnectRequested`)
+  and the Remote Control pill and banner (`RemoteControlStatus`, `RemoteControlUrl`, `RemoteControlError`,
+  `OpenRemoteControl` and `RemoteControlLinkRequested`). The claude's `bridge_state` lines move the Remote Control.
+- `StdinMessages.ApplyEffort`, `GetSettings`, `GetContextUsage`, `RemoteControl` and `GetChromeStatus`.
+  The parser reads the `initialize`, `get_settings`, `get_context_usage` and Remote Control answers, so
+  `AppendLine` fills the commands, the models, the effort and the panels.
+- The `/context` and `/usage` panels (`ChatConversation.ShownPanel`). The extension shows them in VS Code dialogs,
+  which have no place in the webview, so here they are drawn over the end of the list in the frame of the
+  extension's menus (the menu's colors, the input's border, 8 px corners, a shadow), as wide as the reply box at
+  most, with a title and a ×. Esc closes them instead of stopping Claude; they also show in a read-only view.
+  Context: the tokens used of the window, a bar split by the used categories and a row per category. Usage: a bar
+  per rate limit window and when it renews. New resources `ClaudeChat.ContextColor1` to `6` (VS Code's chart
+  colors) and `ClaudeChat.PanelShadow`. New `ChatStrings` texts: `ContextTotal`, `UsageFiveHour`, `UsageSevenDay`,
+  `UsagePercent`, `UsageResetsDay`, `DayNames` (the seven short day names, Sunday first, separated by spaces),
+  `PanelLoading` (shown while the conversation is busy and the data has not come) and `UsageUnavailable` and
+  `ContextUnavailable` (shown when the conversation is idle and there is none).
+- The images of a user's message as thumbnails under its text, 64 px high and 256 px wide at most, in proportion and
+  never larger than the image; a click opens the preview. They are decoded off the UI thread, at most twice the size
+  they are drawn at.
+- What a local command printed (`CommandOutputItem`) in the editor's font, in the secondary color.
+- New resources for the bar, in "Dark 2026" and "Dark Modern": `BannerBackground`, `BannerForeground`, `BannerTint`,
+  `BannerErrorBackground`, `BannerErrorForeground`, `RemoteControlForeground`, `RemoteControlHoverBackground`,
+  `RemoteControlHoverForeground`, `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`,
+  `ListActiveForeground`, `EffortThumbShadow`, `AttachmentBackground`, `AttachmentHoverBorder`,
+  `AttachmentRemoveFade`, `PreviewOverlay`, `PreviewShadow`, and the icons `Icon.Add`, `Icon.Slash`, `Icon.Check`,
+  `Icon.Clock`, `Icon.Close` and `Icon.Remove`. New `ChatStrings` texts for all of it, in English and Portuguese.
+- The sample app plays three more recordings (an image, slash commands and an effort change), shows the new events
+  in its log with the stdin line for each, answers an effort request with a `SettingsApplied`, and shows the browser
+  and the Remote Control connected. `tools/gravar.py` records the new scenarios.
+- New dependency: `SkiaSharp` 2.88.7, to shrink and decode the images.
+
+### Breaking
+
+Recompile against 0.3.0; the changes below break binary compatibility.
+
+- `ImageBlock()` became `ImageBlock(string MediaType, string Data)`.
+- `StdinMessages.UserMessage`, the `MessageSubmittedEventArgs` constructor and the `UserMessageItem` constructor
+  gained an optional `images` parameter.
+- `ClaudeChatView.AvailableModels` was removed (see Removed).
+- The event arguments of `RemoteControlLinkRequested` are `RemoteControlLinkRequestedEventArgs`.
+
+### Changed
+
+- `ImageBlock` carries the data (`MediaType`, `Data`) instead of being empty, and `UserBlock.Images` brings the
+  images of a user's message; `UserMessageItem.Images` holds them, and the message shows them as thumbnails.
+- `ChatConversation.Submit` accepts a message that is only images (the text may be empty when something is attached).
+- The clipboard is read text first (a paste of both gives the text), then the image: PNG, then DIB, then DIBV5.
+
+### Removed
+
+- `ClaudeChatView.AvailableModels` (and its property field). The models come from
+  `ChatConversation.AvailableModels`, a list of `ChatModel`, so each conversation can have its own.
+
+### Fixed
+
+- The End key did not reach the end of a long list when the estimated heights were wrong; it now does.
+
 ## [0.2.1] - 2026-10-22
 
 ### Added

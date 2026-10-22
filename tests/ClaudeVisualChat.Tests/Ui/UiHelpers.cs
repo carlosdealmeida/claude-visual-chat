@@ -29,6 +29,29 @@ internal static class UiHelpers
 
     public static void Pump() => Dispatcher.UIThread.RunJobs();
 
+    /// <summary>Runs the UI jobs until <paramref name="done"/>, for work that ends on another thread (10 s at most).</summary>
+    public static void PumpUntil(System.Func<bool> done)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (!done() && clock.Elapsed < System.TimeSpan.FromSeconds(10))
+        {
+            Dispatcher.UIThread.RunJobs();
+            System.Threading.Thread.Sleep(5);
+        }
+        Dispatcher.UIThread.RunJobs();
+        Xunit.Assert.True(done());
+    }
+
+    /// <summary>Lets work on other threads run, for the checks that something did not happen.</summary>
+    public static void Settle()
+    {
+        for (var i = 0; i < 20; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            System.Threading.Thread.Sleep(5);
+        }
+    }
+
     public static ChatConversation Recording(string scenario, string source)
     {
         var conversation = new ChatConversation();

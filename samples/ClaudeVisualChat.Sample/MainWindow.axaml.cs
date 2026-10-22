@@ -28,6 +28,18 @@ public partial class MainWindow : Window
     private static readonly TimeSpan PerStreamEvent = TimeSpan.FromMilliseconds(25);
     private static readonly TimeSpan PerOtherLine = TimeSpan.FromMilliseconds(250);
     private static readonly PixelSize ScreenshotSize = new PixelSize(1280, 800);
+    private static readonly string[] EffortLevels = { "low", "medium", "high", "xhigh", "max" };
+
+    /// <summary>The models the sample offers, as the claude lists them in its <c>initialize</c> answer.</summary>
+    private static readonly ChatModel[] Models =
+    {
+        new ChatModel("opus", "claude-opus-5-5", "Opus 5.5", "For complex work and everyday tasks", EffortLevels),
+        new ChatModel("sonnet", "claude-sonnet-5-5", "Sonnet 5.5", "Most efficient for simpler tasks", EffortLevels),
+        new ChatModel("haiku", "claude-haiku-4-5-20251001", "Haiku 4.5", "Fastest for quick answers", Array.Empty<string>()),
+    };
+
+    /// <summary>A made-up link: the sample opens nothing.</summary>
+    private const string RemoteControlSession = "https://claude.ai/code/session_example";
 
     private readonly ObservableCollection<LogEntry> _log = new ObservableCollection<LogEntry>();
     private readonly DispatcherTimer _statusTimer;
@@ -48,7 +60,6 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Log.ItemsSource = _log;
-        Chat.AvailableModels = new[] { "opus", "sonnet", "haiku" };
         ScenarioPicker.ItemsSource = Recordings.Scenarios;
         ScenarioPicker.SelectedItem = options.Scenario;
         LanguagePicker.ItemsSource = new[] { "English", "Português" };
@@ -150,16 +161,31 @@ public partial class MainWindow : Window
             old.PermissionAnswered -= OnPermissionAnswered;
             old.PermissionModeRequested -= OnPermissionModeRequested;
             old.ModelRequested -= OnModelRequested;
+            old.EffortRequested -= OnEffortRequested;
+            old.CommandInvoked -= OnCommandInvoked;
+            old.BrowserDisconnectRequested -= OnBrowserDisconnectRequested;
+            old.RemoteControlLinkRequested -= OnRemoteControlLinkRequested;
             old.StopRequested -= OnStopRequested;
             old.PropertyChanged -= OnConversationChanged;
         }
         _log.Clear();
         _requestIds = 0;
-        var conversation = new ChatConversation();
+        var conversation = new ChatConversation
+        {
+            AvailableModels = Models,
+            // the host tells the state of the browser and of the Remote Control; here both are on, so the bar shows whole
+            BrowserStatus = ChatBrowserStatus.Connected,
+            RemoteControlStatus = ChatRemoteControlStatus.Connected,
+            RemoteControlUrl = RemoteControlSession,
+        };
         conversation.MessageSubmitted += OnMessageSubmitted;
         conversation.PermissionAnswered += OnPermissionAnswered;
         conversation.PermissionModeRequested += OnPermissionModeRequested;
         conversation.ModelRequested += OnModelRequested;
+        conversation.EffortRequested += OnEffortRequested;
+        conversation.CommandInvoked += OnCommandInvoked;
+        conversation.BrowserDisconnectRequested += OnBrowserDisconnectRequested;
+        conversation.RemoteControlLinkRequested += OnRemoteControlLinkRequested;
         conversation.StopRequested += OnStopRequested;
         conversation.PropertyChanged += OnConversationChanged;
         _conversation = conversation;
@@ -182,7 +208,8 @@ public partial class MainWindow : Window
     // ---- what the view sends back, and what the host would write to the claude ----
 
     private void OnMessageSubmitted(object? sender, MessageSubmittedEventArgs e) =>
-        Add("MessageSubmitted: \"" + e.Text + "\"", StdinMessages.UserMessage(e.Text));
+        Add("MessageSubmitted: \"" + e.Text + "\"" + (e.Images.Count > 0 ? " + " + e.Images.Count + " image(s)" : ""),
+            StdinMessages.UserMessage(e.Text, e.Images));
 
     private void OnPermissionAnswered(object? sender, PermissionAnsweredEventArgs e) =>
         Add("PermissionAnswered: " + e.Decision + " · " + e.Request.DisplayName, StdinMessages.PermissionResponse(e));
@@ -198,6 +225,66 @@ public partial class MainWindow : Window
 
     private void OnModelRequested(object? sender, ModelRequestedEventArgs e) =>
         Add("ModelRequested: " + e.Model, StdinMessages.SetModel(NextRequestId(), e.Model));
+
+    private void OnEffortRequested(object? sender, EffortRequestedEventArgs e)
+    {
+        Add("EffortRequested: " + (e.Effort ?? "(model's own)"), StdinMessages.ApplyEffort(NextRequestId(), e.Effort));
+        // the claude reports the level it applied; the sample answers for it, so the chip moves
+        if (sender is ChatConversation conversation)
+            Dispatcher.UIThread.Post(() => conversation.Apply(new SettingsApplied(null, e.Effort, true)));
+    }
+
+    private void OnCommandInvoked(object? sender, CommandInvokedEventArgs e)
+    {
+        var conversation = sender as ChatConversation;
+        var what = "CommandInvoked: /" + e.Name + (e.Arguments.Length > 0 ? " " + e.Arguments : "");
+        switch (e.Name)
+        {
+            case "context":
+                Add(what, StdinMessages.GetContextUsage(NextRequestId()));
+                // the claude answers with the numbers; the sample makes some up, so the panel has something to draw
+                conversation?.Apply(new ContextUsageReported(new ContextUsage(48_000, 200_000, 24, new[]
+                {
+                    new ContextCategory("System prompt", 6_000, "used"),
+                    new ContextCategory("Messages", 42_000, "used"),
+                    new ContextCategory("Free space", 152_000, "free"),
+                })));
+                break;
+            case "usage":
+                Add(what, "(no stdin line: the limits come in the rate_limit_event lines; the sample makes some up)");
+                conversation?.Apply(new UsageLimitsReported(new UsageLimits(new[]
+                {
+                    new UsageWindow("five_hour", 0.32, DateTimeOffset.Now.AddHours(3)),
+                    new UsageWindow("seven_day", 0.58, DateTimeOffset.Now.AddDays(3)),
+                })));
+                break;
+            case "chrome":
+                Add(what, StdinMessages.GetChromeStatus(NextRequestId()));
+                break;
+            case "remote-control":
+            case "rc":
+                var turnOn = conversation == null || conversation.RemoteControlStatus == ChatRemoteControlStatus.Off;
+                Add(what, StdinMessages.RemoteControl(NextRequestId(), turnOn));
+                if (conversation != null)
+                {
+                    conversation.RemoteControlStatus = turnOn ? ChatRemoteControlStatus.Connected : ChatRemoteControlStatus.Off;
+                    conversation.RemoteControlUrl = turnOn ? RemoteControlSession : null;
+                }
+                break;
+            default:
+                Add(what, "(no stdin line)");
+                break;
+        }
+    }
+
+    private void OnBrowserDisconnectRequested(object? sender, EventArgs e)
+    {
+        Add("BrowserDisconnectRequested", "(no stdin line: the host turns its browser extension off)");
+        if (sender is ChatConversation conversation) conversation.BrowserStatus = ChatBrowserStatus.Off;
+    }
+
+    private void OnRemoteControlLinkRequested(object? sender, RemoteControlLinkRequestedEventArgs e) =>
+        Add("RemoteControlLinkRequested: " + e.Url, "(no stdin line: the host opens the link, the sample does not)");
 
     private void OnStopRequested(object? sender, EventArgs e)
     {

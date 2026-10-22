@@ -1,22 +1,25 @@
 """Records real `claude -p` stream-json sessions and sanitizes them into test fixtures.
 
-Usage: python -I tools/gravar.py <scenario>|--todos|--re-higienizar|--re-extrair-historico
+Usage: python -I tools/gravar.py <scenario>...|--todos|--re-higienizar|--re-extrair-historico
        [--saida tests/fixtures]
 
 The sanitizer functions are pure (see test_gravar.py). Messages go to stderr; the
 original `system/init` content is never printed.
 """
 import argparse
+import base64
 import glob
 import json
 import os
 import queue
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import threading
 import time
+import zlib
 from datetime import datetime
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,6 +32,13 @@ TRANSCRIPT_CAMPOS = ("type", "subtype", "uuid", "parentUuid", "isSidechain", "is
                      "isCompactSummary", "timestamp", "sessionId", "message", "toolUseResult",
                      "toolDenialKind", "thinkingDurationMs")
 TRANSCRIPT_TIPOS = ("user", "assistant", "system")
+
+# Slash commands that may stay in a recording: the built-ins of Claude Code and the demo's own.
+COMANDOS_PUBLICOS = ("compact", "context", "usage", "cost", "model", "effort", "hello")
+INITIALIZE_CAMPOS = ("commands", "models")
+SETTINGS_APPLIED_CAMPOS = ("model", "effort")
+CONTEXTO_CAMPOS = ("totalTokens", "maxTokens", "percentage")
+CONTEXTO_CATEGORIA_CAMPOS = ("name", "tokens", "kind")
 
 DEMO_PASTA = r"C:\demo\app"
 DEMO_HOME = r"C:\Users\demo"
@@ -91,6 +101,41 @@ def _trocar(valor, troca):
     return valor
 
 
+def _com_resposta(obj, interno):
+    novo = dict(obj)
+    novo["response"] = dict(obj["response"])
+    novo["response"]["response"] = interno
+    return novo
+
+
+def _comandos_publicos(comandos):
+    return [c for c in comandos or [] if isinstance(c, dict) and c.get("name") in COMANDOS_PUBLICOS]
+
+
+def _higienizar_initialize(interno):
+    """Keep the public slash commands and the models; account, agents and output styles are the user's."""
+    novo = {k: interno[k] for k in INITIALIZE_CAMPOS if k in interno}
+    if "commands" in novo:
+        novo["commands"] = _comandos_publicos(novo["commands"])
+    return novo
+
+
+def _higienizar_settings(interno):
+    """Keep only what was applied (model, effort); `effective` carries env and permissions."""
+    aplicado = interno.get("applied")
+    aplicado = aplicado if isinstance(aplicado, dict) else {}
+    return {"applied": {k: aplicado[k] for k in SETTINGS_APPLIED_CAMPOS if k in aplicado}}
+
+
+def _higienizar_contexto(interno):
+    novo = {}
+    if isinstance(interno.get("categories"), list):
+        novo["categories"] = [{k: c[k] for k in CONTEXTO_CATEGORIA_CAMPOS if k in c}
+                              for c in interno["categories"] if isinstance(c, dict)]
+    novo.update({k: interno[k] for k in CONTEXTO_CAMPOS if k in interno})
+    return novo
+
+
 def higienizar_stream(obj, troca):
     if not isinstance(obj, dict):
         return None
@@ -101,10 +146,19 @@ def higienizar_stream(obj, troca):
         resp = obj.get("response")
         resp = resp if isinstance(resp, dict) else {}
         interno = resp.get("response")
-        rid = str(resp.get("request_id", ""))
-        if rid.startswith("init") or (isinstance(interno, dict) and (
-                "commands" in interno or "models" in interno or "account" in interno)):
+        if isinstance(interno, dict):
+            if "commands" in interno or "models" in interno or "account" in interno:
+                return _trocar(_com_resposta(obj, _higienizar_initialize(interno)), troca)
+            if "effective" in interno or "applied" in interno:
+                return _trocar(_com_resposta(obj, _higienizar_settings(interno)), troca)
+            if "categories" in interno and "totalTokens" in interno:
+                return _trocar(_com_resposta(obj, _higienizar_contexto(interno)), troca)
+        if str(resp.get("request_id", "")).startswith("init"):
             return None
+    if tipo == "system" and obj.get("subtype") == "commands_changed":
+        novo = dict(obj)
+        novo["commands"] = _comandos_publicos(obj.get("commands"))
+        return _trocar(novo, troca)
     if tipo == "system" and obj.get("subtype") == "init":
         novo = {k: obj[k] for k in INIT_CAMPOS if k in obj}
         if isinstance(novo.get("tools"), list):
@@ -169,6 +223,20 @@ def higienizar_transcript(obj, troca):
 
 
 # ---------------------------------------------------------------- recording
+
+def _bloco_png(tipo, corpo):
+    return struct.pack(">I", len(corpo)) + tipo + corpo + struct.pack(">I", zlib.crc32(tipo + corpo))
+
+
+def gerar_png(largura, altura):
+    """A PNG of two solid colour bands (red on top, blue below), RGB 8 bits, made with the stdlib."""
+    meio = altura // 2
+    linhas = b"".join(bytes([0]) + (bytes((220, 40, 40)) if y < meio else bytes((40, 80, 220))) * largura
+                      for y in range(altura))
+    assinatura = bytes([137]) + b"PNG" + bytes([13, 10, 26, 10])
+    return (assinatura + _bloco_png(b"IHDR", struct.pack(">IIBBBBB", largura, altura, 8, 2, 0, 0, 0)) +
+            _bloco_png(b"IDAT", zlib.compress(linhas)) + _bloco_png(b"IEND", b""))
+
 
 class Gravacao:
     def __init__(self, cenario, pasta):
@@ -293,19 +361,23 @@ class Gravacao:
             log("control_response %s: success" % request_id)
         return ev
 
+    def _mensagem(self, conteudo):
+        self.enviar({"type": "user", "message": {"role": "user", "content": conteudo},
+                     "parent_tool_use_id": None, "session_id": "default"})
+
     def executar(self, comando):
         self.proc = subprocess.Popen(comando, cwd=self.pasta, stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         threading.Thread(target=self._ler_stdout, daemon=True).start()
         threading.Thread(target=self._ler_stderr, daemon=True).start()
-        self.enviar({"type": "control_request", "request_id": "init-1",
-                     "request": {"subtype": "initialize"}})
         passos = self.cenario["passos"]
+        if not any(p.get("inicializar") for p in passos):
+            self.enviar({"type": "control_request", "request_id": "init-1",
+                         "request": {"subtype": "initialize"}})
         enviadas = 0
         for i, passo in enumerate(passos):
             if "enviar" in passo:
-                self.enviar({"type": "user", "message": {"role": "user", "content": passo["enviar"]},
-                             "parent_tool_use_id": None, "session_id": "default"})
+                self._mensagem(passo["enviar"])
                 enviadas += 1
                 proximo = passos[i + 1] if i + 1 < len(passos) else {}
                 if "interromper_apos_s" in proximo:
@@ -325,6 +397,27 @@ class Gravacao:
                 if not self._esperar_resultado(enviadas):
                     log("prazo estourado esperando o result da interrupcao")
                     break
+            elif "inicializar" in passo:
+                self._controle("init-1", {"subtype": "initialize"})
+            elif "imagem" in passo or "comando" in passo:
+                if "imagem" in passo:
+                    img = passo["imagem"]
+                    dados = base64.b64encode(gerar_png(img["largura"], img["altura"])).decode("ascii")
+                    self._mensagem([{"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                                                 "data": dados}},
+                                    {"type": "text", "text": img["texto"]}])
+                else:
+                    self._mensagem(passo["comando"])
+                enviadas += 1
+                if not self._esperar_resultado(enviadas):
+                    log("prazo estourado esperando o result")
+                    break
+            elif "esforco" in passo:
+                self._controle("effort-%d" % i, {"subtype": "apply_flag_settings",
+                                                 "settings": {"effortLevel": passo["esforco"]}})
+                self._controle("settings-%d" % i, {"subtype": "get_settings"})
+            elif "contexto" in passo:
+                self._controle("context-%d" % i, {"subtype": "get_context_usage"})
             elif "modo" in passo:
                 self._controle("mode-%d" % i, {"subtype": "set_permission_mode", "mode": passo["modo"]})
             elif "modelo" in passo:
@@ -441,7 +534,9 @@ def gravar_cenario(cenario, saida):
     pasta = os.path.join(temp, "cvc-demo", "%s-%s" % (cid, carimbo))
     os.makedirs(pasta)
     for nome, conteudo in (cenario.get("setup") or {}).items():
-        with open(os.path.join(pasta, nome), "w", encoding="utf-8", newline="\n") as f:
+        destino = os.path.join(pasta, nome)
+        os.makedirs(os.path.dirname(destino), exist_ok=True)
+        with open(destino, "w", encoding="utf-8", newline="\n") as f:
             f.write(conteudo)
     claude = shutil.which("claude")
     if not claude:
@@ -610,7 +705,7 @@ def re_higienizar(pasta):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cenario", nargs="?")
+    ap.add_argument("cenario", nargs="*")
     ap.add_argument("--todos", action="store_true")
     ap.add_argument("--re-higienizar", action="store_true",
                     help="apply the current replacements to the recordings already in --saida")
@@ -628,9 +723,10 @@ def main(argv=None):
     if args.todos:
         escolhidos = todos
     elif args.cenario:
-        escolhidos = [c for c in todos if c["id"] == args.cenario]
-        if not escolhidos:
-            log("cenario desconhecido: " + args.cenario)
+        escolhidos = [c for c in todos if c["id"] in args.cenario]
+        desconhecidos = [n for n in args.cenario if n not in {c["id"] for c in todos}]
+        if desconhecidos:
+            log("cenario desconhecido: " + ", ".join(desconhecidos))
             return 2
     else:
         ap.error("informe um cenario ou --todos")

@@ -26,7 +26,8 @@ namespace ClaudeVisualChat.Protocol
         public string? NonExecutionKind { get; init; }
     }
 
-    public sealed record ImageBlock() : ContentBlock;
+    /// <summary>An image; <paramref name="Data"/> is base64 as it came, empty when the source is not base64.</summary>
+    public sealed record ImageBlock(string MediaType, string Data) : ContentBlock;
 
     internal static class JsonHelpers
     {
@@ -77,6 +78,25 @@ namespace ClaudeVisualChat.Protocol
             return p != null && p.Value.ValueKind == JsonValueKind.Number ? p.Value.GetDouble() : (double?)null;
         }
 
+        public static JsonElement? Arr(JsonElement el, string name)
+        {
+            var p = Prop(el, name);
+            return p != null && p.Value.ValueKind == JsonValueKind.Array ? p : null;
+        }
+
+        /// <summary>The string items of an array property; empty when missing.</summary>
+        public static IReadOnlyList<string> Strings(JsonElement el, string name)
+        {
+            var list = new List<string>();
+            var array = Arr(el, name);
+            if (array == null) return list;
+            foreach (var item in array.Value.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String) list.Add(item.GetString() ?? "");
+            }
+            return list;
+        }
+
         /// <summary>An ISO 8601 time (<c>2026-10-19T21:31:35.778Z</c>); null when missing or not a time.</summary>
         public static DateTimeOffset? Time(JsonElement el, string name)
         {
@@ -117,10 +137,19 @@ namespace ClaudeVisualChat.Protocol
                         ReadResultText(JsonHelpers.Prop(block, "content")),
                         JsonHelpers.Bool(block, "is_error"));
                 case "image":
-                    return new ImageBlock();
+                    return ReadImage(block);
                 default:
                     return null;
             }
+        }
+
+        private static ImageBlock ReadImage(JsonElement block)
+        {
+            var source = JsonHelpers.Obj(block, "source");
+            if (source == null) return new ImageBlock("", "");
+            var mediaType = JsonHelpers.Str(source.Value, "media_type") ?? "";
+            var data = JsonHelpers.Str(source.Value, "type") == "base64" ? JsonHelpers.Str(source.Value, "data") ?? "" : "";
+            return new ImageBlock(mediaType, data);
         }
 
         /// <summary>Blocks of <c>message.content</c>; a plain string becomes one text block.</summary>

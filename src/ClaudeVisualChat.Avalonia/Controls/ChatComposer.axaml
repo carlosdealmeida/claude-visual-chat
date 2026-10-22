@@ -1,11 +1,17 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:ClaudeVisualChat.Controls"
              x:Class="ClaudeVisualChat.Controls.ChatComposer">
-  <Border Name="Box" Classes="ClaudeChatComposer">
+  <!-- image files dropped anywhere on the box are attached -->
+  <Border Name="Box" Classes="ClaudeChatComposer" DragDrop.AllowDrop="True">
     <StackPanel>
+      <!-- the images attached, above the text, and why the last one did not go in -->
+      <controls:AttachmentStrip Name="Strip" />
+      <TextBlock Name="AttachError" Classes="ClaudeChatAttachmentError" IsVisible="False" />
       <!-- Enter sends, Shift+Enter breaks the line -->
       <TextBox Name="Input" Classes="ClaudeChatInput" AcceptsReturn="True" TextWrapping="Wrap" />
-      <!-- the bar: the model at the left; the mode, then send or stop, at the right -->
+      <!-- the bar, in the extension's order: +, /, the cache clock, the Remote Control chip, the model chip; at the right
+           the mode, then send or stop -->
       <Border Classes="ClaudeChatComposerBar">
         <DockPanel>
           <!-- send, and stop while Claude works: alone when nothing is written, next to send when something is -->
@@ -18,11 +24,23 @@
             </Button>
           </StackPanel>
           <ComboBox Name="ModePicker" Classes="ClaudeChatPicker ClaudeChatModePicker" DockPanel.Dock="Right" />
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <ComboBox Name="ModelPicker" Classes="ClaudeChatPicker ClaudeChatModelPicker" IsVisible="False" />
+          <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+            <Button Name="AddButton" Classes="ClaudeChatButton ClaudeChatBarButton">
+              <Path Classes="ClaudeChatBarIcon ClaudeChatAddIcon" />
+            </Button>
+            <Button Name="CommandsButton" Classes="ClaudeChatButton ClaudeChatBarButton">
+              <Path Classes="ClaudeChatBarIcon ClaudeChatCommandsIcon" />
+            </Button>
+            <!-- each hidden, taking no room, until there is something to show -->
+            <controls:PromptCacheClock Name="CacheClock" />
+            <controls:RemoteControlChip Name="RemoteControlChip" />
+            <controls:ModelChip Name="ModelChip" />
           </StackPanel>
         </DockPanel>
       </Border>
+      <!-- the command palette and the model menu open over the box, as wide as it -->
+      <controls:CommandPalette Name="Palette" />
+      <controls:ModelMenu Name="ModelMenu" />
     </StackPanel>
   </Border>
 </UserControl>

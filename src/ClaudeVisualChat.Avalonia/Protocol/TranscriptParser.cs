@@ -59,6 +59,44 @@ namespace ClaudeVisualChat.Protocol
         }
     }
 
+    /// <summary>The slash command markup the CLI writes into user text.</summary>
+    internal static class CommandText
+    {
+        private static readonly Regex Output = new Regex(
+            "<local-command-stdout>(.*?)</local-command-stdout>", RegexOptions.Singleline | RegexOptions.Compiled);
+
+        /// <summary>A <see cref="CommandEcho"/> or <see cref="CommandOutput"/> when the text is command markup; else null.</summary>
+        public static ClaudeEvent? Read(string text)
+        {
+            var t = text.TrimStart();
+            if (t.StartsWith("<command-message>", StringComparison.Ordinal)
+                || t.StartsWith("<command-name>", StringComparison.Ordinal))
+            {
+                var name = Tag(t, "command-name") ?? Tag(t, "command-message") ?? "";
+                return new CommandEcho(name.Trim().TrimStart('/'), Tag(t, "command-args") ?? "");
+            }
+            return t.StartsWith("<local-command-stdout>", StringComparison.Ordinal) ? ReadOutput(t) : null;
+        }
+
+        /// <summary>The inside of <c>local-command-stdout</c>; the whole text when it has no such tags; null when empty.</summary>
+        public static CommandOutput? ReadOutput(string? text)
+        {
+            if (string.IsNullOrEmpty(text)) return null;
+            var m = Output.Match(text!);
+            return new CommandOutput(m.Success ? m.Groups[1].Value : text!);
+        }
+
+        private static string? Tag(string text, string tag)
+        {
+            var open = "<" + tag + ">";
+            var start = text.IndexOf(open, StringComparison.Ordinal);
+            if (start < 0) return null;
+            start += open.Length;
+            var end = text.IndexOf("</" + tag + ">", start, StringComparison.Ordinal);
+            return end < 0 ? null : text.Substring(start, end - start);
+        }
+    }
+
     internal static class EventReader
     {
         private static readonly IReadOnlyList<ClaudeEvent> None = Array.Empty<ClaudeEvent>();
@@ -67,8 +105,21 @@ namespace ClaudeVisualChat.Protocol
         {
             var message = JsonHelpers.Obj(root, "message");
             if (message == null) return None;
-            var blocks = BlockReader.ReadContent(JsonHelpers.Prop(message.Value, "content"));
-            if (blocks.Count == 0) return None;
+            var blocks = new List<ContentBlock>();
+            var images = new List<ImageBlock>();
+            foreach (var block in BlockReader.ReadContent(JsonHelpers.Prop(message.Value, "content")))
+            {
+                if (block is ImageBlock image) images.Add(image);
+                else blocks.Add(block);
+            }
+            if (blocks.Count == 0 && images.Count == 0) return None;
+            // Images ride with the first text; an image on its own gets an empty text to ride with.
+            var carrier = blocks.FindIndex(b => b is TextContentBlock);
+            if (carrier < 0 && images.Count > 0)
+            {
+                blocks.Insert(0, new TextContentBlock(""));
+                carrier = 0;
+            }
 
             var result = JsonHelpers.CloneNonNull(root, toolUseResultName);
             var isMeta = JsonHelpers.Bool(root, "isMeta");
@@ -77,15 +128,102 @@ namespace ClaudeVisualChat.Protocol
             var denialKind = JsonHelpers.Str(root, "toolDenialKind"); // session file
             var timestamp = JsonHelpers.Time(root, "timestamp");
             var events = new List<ClaudeEvent>(blocks.Count);
-            foreach (var block in blocks)
+            for (var i = 0; i < blocks.Count; i++)
             {
-                var b = block;
+                var b = blocks[i];
+                if (b is TextContentBlock text && CommandText.Read(text.Text) is { } command)
+                {
+                    events.Add(command);
+                    continue;
+                }
                 if (b is ToolResultBlock toolResult
                     && (NonExecutionKind(meta, toolResult.ToolUseId) ?? denialKind) is { } kind)
                     b = toolResult with { NonExecutionKind = kind };
-                events.Add(new UserBlock(parent, b, result, isMeta, isCompact) { Timestamp = timestamp });
+                var user = new UserBlock(parent, b, result, isMeta, isCompact) { Timestamp = timestamp };
+                events.Add(i == carrier && images.Count > 0 ? user with { Images = images } : user);
             }
             return events;
+        }
+
+        /// <summary>
+        /// The <c>response</c> of a control reply, told by its shape: <c>commands</c>/<c>models</c> (initialize),
+        /// <c>applied</c> (settings), <c>categories</c> with <c>totalTokens</c> (context usage), <c>session_url</c>.
+        /// </summary>
+        public static void ReadControlBody(JsonElement body, List<ClaudeEvent> events)
+        {
+            if (JsonHelpers.Arr(body, "commands") is { } commands)
+                events.Add(new CommandsAvailable(ReadCommands(commands)));
+            if (JsonHelpers.Arr(body, "models") is { } models)
+                events.Add(new ModelsAvailable(ReadModels(models)));
+
+            if (JsonHelpers.Obj(body, "applied") is { } applied)
+            {
+                var hasEffort = applied.TryGetProperty("effort", out _);
+                events.Add(new SettingsApplied(JsonHelpers.Str(applied, "model"), JsonHelpers.Str(applied, "effort"), hasEffort));
+            }
+
+            if (JsonHelpers.Arr(body, "categories") is { } categories && JsonHelpers.Long(body, "totalTokens") is { } total)
+            {
+                var list = new List<ContextCategory>();
+                foreach (var c in categories.EnumerateArray())
+                {
+                    list.Add(new ContextCategory(
+                        JsonHelpers.Str(c, "name") ?? "", JsonHelpers.Long(c, "tokens") ?? 0, JsonHelpers.Str(c, "kind") ?? ""));
+                }
+                var percentage = JsonHelpers.Double(body, "percentage") ?? 0;
+                events.Add(new ContextUsageReported(new ContextUsage(
+                    total, JsonHelpers.Long(body, "maxTokens") ?? 0, (int)Math.Round(percentage), list)));
+            }
+
+            if (JsonHelpers.Str(body, "session_url") is { } url)
+                events.Add(new RemoteControlChanged(null, url, null));
+        }
+
+        private static IReadOnlyList<ChatCommand> ReadCommands(JsonElement array)
+        {
+            var list = new List<ChatCommand>();
+            foreach (var c in array.EnumerateArray())
+            {
+                var name = JsonHelpers.Str(c, "name");
+                if (name == null) continue;
+                list.Add(new ChatCommand(
+                    name.TrimStart('/'), JsonHelpers.Str(c, "description") ?? "", JsonHelpers.Str(c, "argumentHint") ?? ""));
+            }
+            return list;
+        }
+
+        private static IReadOnlyList<ChatModel> ReadModels(JsonElement array)
+        {
+            var list = new List<ChatModel>();
+            foreach (var m in array.EnumerateArray())
+            {
+                var value = JsonHelpers.Str(m, "value");
+                if (value == null) continue;
+                list.Add(new ChatModel(
+                    value,
+                    JsonHelpers.Str(m, "resolvedModel") ?? value,
+                    JsonHelpers.Str(m, "displayName") ?? value,
+                    JsonHelpers.Str(m, "description") ?? "",
+                    JsonHelpers.Strings(m, "supportedEffortLevels")));
+            }
+            return list;
+        }
+
+        public static IReadOnlyList<ClaudeEvent> ReadRateLimit(JsonElement root)
+        {
+            var info = JsonHelpers.Obj(root, "rate_limit_info");
+            var windows = info == null ? null : JsonHelpers.Obj(info.Value, "unifiedWindows");
+            if (windows == null) return None;
+            var list = new List<UsageWindow>();
+            foreach (var window in windows.Value.EnumerateObject())
+            {
+                var utilization = JsonHelpers.Double(window.Value, "utilization");
+                if (utilization == null) continue;
+                var resets = JsonHelpers.Long(window.Value, "resetsAt");
+                list.Add(new UsageWindow(
+                    window.Name, utilization.Value, resets == null ? (DateTimeOffset?)null : DateTimeOffset.FromUnixTimeSeconds(resets.Value)));
+            }
+            return list.Count == 0 ? None : new ClaudeEvent[] { new UsageLimitsReported(new UsageLimits(list)) };
         }
 
         /// <summary>The <c>non_execution_kind</c> of the <c>tool_result_meta</c> entry for that tool call.</summary>
@@ -113,15 +251,56 @@ namespace ClaudeVisualChat.Protocol
             var events = new List<ClaudeEvent>();
             foreach (var block in BlockReader.ReadContent(content))
                 events.Add(new AssistantBlock(id, parent, block) { Timestamp = timestamp, ThinkingDurationMs = thinking });
+            if (parent == null && JsonHelpers.Str(message.Value, "model") != "<synthetic>"
+                && ReadCache(message.Value, timestamp) is { } cache)
+                events.Add(cache);
             return events;
+        }
+
+        /// <summary>The cache a reply used: 1 h or 5 min from <c>cache_creation</c>, no lifetime when only read.</summary>
+        private static PromptCacheUsed? ReadCache(JsonElement message, DateTimeOffset? at)
+        {
+            var usage = JsonHelpers.Obj(message, "usage");
+            if (usage == null) return null;
+            var u = usage.Value;
+            var creation = JsonHelpers.Obj(u, "cache_creation");
+            if (creation != null)
+            {
+                if ((JsonHelpers.Long(creation.Value, "ephemeral_1h_input_tokens") ?? 0) > 0)
+                    return new PromptCacheUsed(TimeSpan.FromHours(1), at);
+                if ((JsonHelpers.Long(creation.Value, "ephemeral_5m_input_tokens") ?? 0) > 0)
+                    return new PromptCacheUsed(TimeSpan.FromMinutes(5), at);
+            }
+            return (JsonHelpers.Long(u, "cache_read_input_tokens") ?? 0) > 0
+                   || (JsonHelpers.Long(u, "cache_creation_input_tokens") ?? 0) > 0
+                ? new PromptCacheUsed(null, at)
+                : null;
         }
 
         public static IReadOnlyList<ClaudeEvent> ReadNotice(JsonElement root)
         {
             var subtype = JsonHelpers.Str(root, "subtype");
-            return subtype == "compact_boundary" || subtype == "api_retry"
-                ? new ClaudeEvent[] { new SystemNotice(subtype!) }
-                : None;
+            switch (subtype)
+            {
+                case "compact_boundary":
+                case "api_retry":
+                    return new ClaudeEvent[] { new SystemNotice(subtype!) };
+                case "commands_changed":
+                    return JsonHelpers.Arr(root, "commands") is { } commands
+                        ? new ClaudeEvent[] { new CommandsAvailable(ReadCommands(commands)) }
+                        : None;
+                case "bridge_state":
+                    return new ClaudeEvent[]
+                    {
+                        new RemoteControlChanged(JsonHelpers.Str(root, "state"), null, JsonHelpers.Str(root, "detail")),
+                    };
+                case "local_command":
+                    return CommandText.ReadOutput(JsonHelpers.Str(root, "content")) is { } output
+                        ? new ClaudeEvent[] { output }
+                        : None;
+                default:
+                    return None;
+            }
         }
     }
 }

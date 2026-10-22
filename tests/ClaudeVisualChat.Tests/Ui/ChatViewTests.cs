@@ -72,12 +72,21 @@ public class ChatViewTests
         var conversation = UiHelpers.Recording(scenario, source);
         var (view, window) = Open(conversation);
 
-        var first = conversation.Items.OfType<ToolCallItem>().First();
-        Assert.NotEqual("", first.Summary);
-        UiHelpers.ItemList(view).ScrollIntoView(first);
-        UiHelpers.Pump();
+        // Recordings without a tool call (commands, effort) only have to open without logging errors.
+        var first = conversation.Items.OfType<ToolCallItem>().FirstOrDefault();
+        if (first != null)
+        {
+            Assert.NotEqual("", first.Summary);
+            UiHelpers.ItemList(view).ScrollIntoView(first);
+            UiHelpers.Pump();
 
-        Assert.Contains(first.Summary, UiHelpers.Texts(view));
+            Assert.Contains(first.Summary, UiHelpers.Texts(view));
+        }
+        else
+        {
+            UiHelpers.Pump();
+        }
+
         Assert.Empty(TestLog.Instance.Entries);
         window.Close();
     }
@@ -725,6 +734,220 @@ public class ChatViewTests
 
         Assert.Equal(50, scroller.Offset.Y); // the list stays where the user is
         Assert.False(UiHelpers.AtEnd(scroller));
+        window.Close();
+    }
+
+    // ---- images in a message, and what a command printed ----
+
+    private static byte[] Png(int w, int h)
+    {
+        using var bmp = new SkiaSharp.SKBitmap(w, h, SkiaSharp.SKColorType.Rgba8888, SkiaSharp.SKAlphaType.Premul);
+        bmp.Erase(new SkiaSharp.SKColor(30, 120, 200));
+        using var img = SkiaSharp.SKImage.FromBitmap(bmp);
+        using var data = img.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    private static List<Button> Thumbnails(Visual root) =>
+        root.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("ClaudeChatMessageImage")).ToList();
+
+    [AvaloniaFact]
+    public void User_message_shows_thumbnails()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(new UserMessageItem("look at these", new[]
+        {
+            ChatImage.FromBytes(Png(96, 48), "image/png"),
+            ChatImage.FromBytes(Png(1000, 500), "image/jpeg"),
+        }));
+        c.Items.Add(new UserMessageItem("", new[] { ChatImage.FromBytes(Png(20, 30), "image/png") }));
+        var (view, window) = Open(c);
+
+        var boxes = view.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ClaudeChatUser")).ToList();
+        Assert.Equal(2, boxes.Count);
+        var thumbs = Thumbnails(boxes[0]);
+        Assert.Equal(2, thumbs.Count);
+
+        // under the text, 64 px high at most and in proportion, never larger than the image; 4 px apart
+        var text = boxes[0].GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        Assert.Equal("look at these", text.Text);
+        var first = thumbs[0].TranslatePoint(default, boxes[0])!.Value;
+        Assert.True(first.Y >= text.TranslatePoint(default, boxes[0])!.Value.Y + text.Bounds.Height);
+        Assert.Equal(new Size(96, 48), thumbs[0].Bounds.Size);
+        Assert.Equal(new Size(128, 64), thumbs[1].Bounds.Size);
+        Assert.Equal(first.X + 96 + 4, thumbs[1].TranslatePoint(default, boxes[0])!.Value.X, 1);
+        Assert.Equal(new CornerRadius(4), thumbs[0].GetVisualDescendants().OfType<Border>().First(b => b.Name == "PART_ChatButton").CornerRadius);
+        Assert.Equal("image.png", Avalonia.Automation.AutomationProperties.GetName(thumbs[0]));
+        Assert.Equal("image-2.jpg", Avalonia.Automation.AutomationProperties.GetName(thumbs[1]));
+
+        // a message with only an image: no empty line of text over it
+        Assert.False(boxes[1].GetVisualDescendants().OfType<SelectableTextBlock>().Single().IsVisible);
+        Assert.Equal(new Size(20, 30), Thumbnails(boxes[1])[0].Bounds.Size);
+
+        // a click opens the preview, the one of the reply box's images
+        var preview = view.GetVisualDescendants().OfType<ImagePreview>().Single();
+        UiHelpers.Click(window, thumbs[1]);
+        Assert.True(preview.IsEffectivelyVisible);
+        Assert.Equal("image-2.jpg", Avalonia.Automation.AutomationProperties.GetName(preview));
+        Assert.Equal(1000, ((Avalonia.Media.Imaging.Bitmap)preview.GetVisualDescendants().OfType<Image>().Single().Source!).PixelSize.Width);
+        UiHelpers.Press(window, Avalonia.Input.Key.Escape);
+        Assert.False(preview.IsVisible);
+
+        // read-only: the thumbnails stay, and still open the preview
+        view.IsReadOnly = true;
+        UiHelpers.Pump();
+        thumbs = Thumbnails(view);
+        Assert.Equal(3, thumbs.Count);
+        Assert.All(thumbs, t => Assert.True(t.IsEffectivelyVisible));
+        UiHelpers.Click(window, thumbs[0]);
+        Assert.True(preview.IsEffectivelyVisible);
+        Assert.Equal("image.png", Avalonia.Automation.AutomationProperties.GetName(preview));
+        UiHelpers.Click(window, UiHelpers.ButtonWithText(preview, "Close"));
+        Assert.False(preview.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Thumbnails_decode_small()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(new UserMessageItem("", new[]
+        {
+            ChatImage.FromBytes(Png(1000, 500), "image/png"),
+            ChatImage.FromBytes(Png(2000, 50), "image/png"), // so wide that the width is what limits it
+        }));
+        c.Attachments.Add(ChatImage.FromBytes(Png(1568, 39), "image/png"));
+        var (view, window) = Open(c);
+
+        var images = Thumbnails(view).Select(t => t.GetVisualDescendants().OfType<Image>().Single()).ToList();
+        Assert.Equal(2, images.Count);
+        UiHelpers.PumpUntil(() => images.All(i => i.Source != null)); // decoded off the UI thread
+        foreach (var image in images)
+        {
+            var size = ((Avalonia.Media.Imaging.Bitmap)image.Source!).PixelSize;
+            Assert.True(size.Width <= 2 * image.Bounds.Width + 1, size + " for " + image.Bounds.Size);
+            Assert.True(size.Height <= 2 * image.Bounds.Height + 1, size + " for " + image.Bounds.Size);
+        }
+        Assert.Equal(new PixelSize(256, 128), ((Avalonia.Media.Imaging.Bitmap)images[0].Source!).PixelSize);
+
+        // the reply box's 12 px thumbnail: both sides at 24 px at most, however long the image
+        var strip = view.GetVisualDescendants().OfType<AttachmentStrip>().Single();
+        var pill = ((Avalonia.Media.Imaging.Bitmap)strip.GetVisualDescendants().OfType<Image>().Single().Source!).PixelSize;
+        Assert.True(pill.Width <= 24 && pill.Height <= 24, pill.ToString());
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Thumbnails_decode_off_the_ui_thread()
+    {
+        var cache = MessageImages.Thumbnails;
+        var run = cache.Run;
+        var pending = new List<(Func<Avalonia.Media.Imaging.Bitmap?> Work, System.Threading.Tasks.TaskCompletionSource<Avalonia.Media.Imaging.Bitmap?> Done)>();
+        cache.Run = work =>
+        {
+            var done = new System.Threading.Tasks.TaskCompletionSource<Avalonia.Media.Imaging.Bitmap?>();
+            pending.Add((work, done));
+            return done.Task;
+        };
+        // the decode ends on another thread, as Task.Run's does
+        void Finish(int i) => System.Threading.Tasks.Task.Run(() => pending[i].Done.SetResult(pending[i].Work()));
+        try
+        {
+            var c = new ChatConversation();
+            c.Items.Add(new UserMessageItem("", new[] { ChatImage.FromBytes(Png(100, 50), "image/png") }));
+            var (view, window) = Open(c);
+            Image Shown() => Thumbnails(view).Single().GetVisualDescendants().OfType<Image>().Single();
+
+            // realized without its picture, at its size already; the picture comes when the decode ends
+            var first = Shown();
+            Assert.Null(first.Source);
+            Assert.Equal(new Size(100, 50), Thumbnails(view).Single().Bounds.Size); // its place is kept
+            Assert.Single(pending);
+            Finish(0);
+            UiHelpers.PumpUntil(() => first.Source != null);
+            Assert.Equal(new PixelSize(100, 50), ((Avalonia.Media.Imaging.Bitmap)first.Source!).PixelSize);
+
+            // the control taken for other messages (the list recycles it) while their decodes run: the one that ends
+            // for a message no longer shown does not reach it
+            var images = view.GetVisualDescendants().OfType<MessageImages>().Single();
+            images.Images = new[] { ChatImage.FromBytes(Png(60, 30), "image/png") };
+            UiHelpers.Pump();
+            var stale = Shown();
+            images.Images = new[] { ChatImage.FromBytes(Png(30, 60), "image/png") };
+            UiHelpers.Pump();
+            var current = Shown();
+            Assert.Equal(3, pending.Count);
+            Finish(1);
+            UiHelpers.Settle();
+            Assert.Null(current.Source);
+            Assert.Null(stale.Source);
+            Finish(2);
+            UiHelpers.PumpUntil(() => current.Source != null);
+            Assert.Equal(new PixelSize(30, 60), ((Avalonia.Media.Imaging.Bitmap)current.Source!).PixelSize);
+
+            // decoded once: shown again, it is there at once
+            images.Images = new[] { c.Items.OfType<UserMessageItem>().Single().Images[0] };
+            UiHelpers.Pump();
+            Assert.NotNull(Shown().Source);
+            Assert.Equal(3, pending.Count);
+            window.Close();
+        }
+        finally
+        {
+            cache.Run = run;
+        }
+    }
+
+    [AvaloniaFact]
+    public void Command_output_is_text()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(new UserMessageItem("/hello Ana"));
+        c.Items.Add(new CommandOutputItem("Hello, Ana!\n  two spaces in"));
+        c.Items.Add(new AssistantTextItem { Text = "after" });
+        var (view, window) = Open(c);
+
+        var output = view.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Classes.Contains("ClaudeChatCommandOutput"));
+        Assert.Equal("Hello, Ana!\n  two spaces in", output.Text);
+        Assert.Equal(Resource(view, "ClaudeChat.MonoFontFamily"), output.FontFamily);
+        Assert.Equal(Resource(view, "ClaudeChat.CodeFontSize"), output.FontSize);
+        Assert.Equal(Assert.IsAssignableFrom<ISolidColorBrush>(Resource(view, "ClaudeChat.ForegroundMuted")).Color,
+            Assert.IsAssignableFrom<ISolidColorBrush>(output.Foreground).Color);
+
+        // in the timeline like an answer, without a dot
+        var row = output.FindAncestorOfType<ChatTimelineRow>()!;
+        Assert.Equal(30, output.TranslatePoint(default, row)!.Value.X, 0);
+        Assert.False(row.GetVisualDescendants().OfType<Ellipse>().Single(e => e.Name == "PART_Dot").IsEffectivelyVisible);
+
+        // the line of the run starts where its dot would be and goes on, unbroken, into the answer after it
+        var line = row.GetVisualDescendants().OfType<Rectangle>().Single(r => r.Name == "PART_Line");
+        Assert.True(line.IsEffectivelyVisible);
+        Assert.Equal(18, line.TranslatePoint(default, row)!.Value.Y, 0);
+        Assert.Equal(row.Bounds.Height, line.TranslatePoint(default, row)!.Value.Y + line.Bounds.Height, 0);
+        var next = view.GetVisualDescendants().OfType<ChatTimelineRow>().Single(r => r.DataContext is AssistantTextItem);
+        Assert.Equal(row.TranslatePoint(new Point(0, row.Bounds.Height), view)!.Value.Y, next.TranslatePoint(default, view)!.Value.Y, 0);
+        var nextLine = next.GetVisualDescendants().OfType<Rectangle>().Single(r => r.Name == "PART_Line");
+        Assert.True(nextLine.IsEffectivelyVisible);
+        Assert.Equal(0, nextLine.TranslatePoint(default, next)!.Value.Y, 0);
+
+        // alone between the user's messages: no line at all
+        c.Items.RemoveAt(2);
+        c.Items.Add(new UserMessageItem("thanks"));
+        UiHelpers.Pump();
+        Assert.False(line.IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Command_output_of_the_recording_shows()
+    {
+        var c = UiHelpers.Recording("commands", "transcript");
+        var item = c.Items.OfType<CommandOutputItem>().First();
+        var (view, window) = Open(c);
+        UiHelpers.ItemList(view).ScrollIntoView(item);
+        UiHelpers.Pump();
+        Assert.Contains(view.GetVisualDescendants().OfType<SelectableTextBlock>(),
+            t => t.Classes.Contains("ClaudeChatCommandOutput") && t.Text == item.Text && t.IsEffectivelyVisible);
         window.Close();
     }
 

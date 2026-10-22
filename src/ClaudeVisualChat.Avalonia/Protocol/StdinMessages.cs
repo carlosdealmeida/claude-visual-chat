@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -14,7 +15,11 @@ namespace ClaudeVisualChat.Protocol
     {
         public const string DefaultDenyMessage = "The user denied this tool use.";
 
-        public static string UserMessage(string text)
+        /// <summary>
+        /// A user turn. Without images the content is the plain text; with images it is an array of the image
+        /// blocks followed by the text block (left out when the text is empty).
+        /// </summary>
+        public static string UserMessage(string text, IReadOnlyList<ChatImage>? images = null)
         {
             if (text == null) throw new ArgumentNullException(nameof(text));
             return Write(w =>
@@ -22,7 +27,33 @@ namespace ClaudeVisualChat.Protocol
                 w.WriteString("type", "user");
                 w.WriteStartObject("message");
                 w.WriteString("role", "user");
-                w.WriteString("content", text);
+                if (images == null || images.Count == 0)
+                {
+                    w.WriteString("content", text);
+                }
+                else
+                {
+                    w.WriteStartArray("content");
+                    foreach (var image in images)
+                    {
+                        w.WriteStartObject();
+                        w.WriteString("type", "image");
+                        w.WriteStartObject("source");
+                        w.WriteString("type", "base64");
+                        w.WriteString("media_type", image.MediaType);
+                        w.WriteString("data", image.Data);
+                        w.WriteEndObject();
+                        w.WriteEndObject();
+                    }
+                    if (text.Length > 0)
+                    {
+                        w.WriteStartObject();
+                        w.WriteString("type", "text");
+                        w.WriteString("text", text);
+                        w.WriteEndObject();
+                    }
+                    w.WriteEndArray();
+                }
                 w.WriteEndObject();
                 w.WriteNull("parent_tool_use_id");
                 w.WriteString("session_id", "default");
@@ -83,6 +114,25 @@ namespace ClaudeVisualChat.Protocol
         public static string Interrupt(string requestId) => ControlRequest(requestId, "interrupt", null);
 
         public static string Initialize(string requestId) => ControlRequest(requestId, "initialize", null);
+
+        /// <summary>Sets the effort level for the session; null clears it (back to the model's default).</summary>
+        public static string ApplyEffort(string requestId, string? effort) =>
+            ControlRequest(requestId, "apply_flag_settings", w =>
+            {
+                w.WriteStartObject("settings");
+                if (effort == null) w.WriteNull("effortLevel");
+                else w.WriteString("effortLevel", effort);
+                w.WriteEndObject();
+            });
+
+        public static string GetSettings(string requestId) => ControlRequest(requestId, "get_settings", null);
+
+        public static string GetContextUsage(string requestId) => ControlRequest(requestId, "get_context_usage", null);
+
+        public static string RemoteControl(string requestId, bool enabled) =>
+            ControlRequest(requestId, "remote_control", w => w.WriteBoolean("enabled", enabled));
+
+        public static string GetChromeStatus(string requestId) => ControlRequest(requestId, "get_chrome_dialog", null);
 
         private static string ControlRequest(string requestId, string subtype, Action<Utf8JsonWriter>? fields)
         {

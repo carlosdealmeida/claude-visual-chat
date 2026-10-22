@@ -94,6 +94,10 @@ public class TimingTests
         scroller.ScrollToHome();
         UiHelpers.Pump();
         Assert.NotNull(list.ContainerFromIndex(0));
+        // End goes all the way: the list first lands on the end it had estimated, then measures the items it
+        // reached and the end moves down. Without the view following it, the offset stayed ~2 screens short with
+        // the mix of 10 recordings (it passed with 7 only because the estimate happened to be close); pumping
+        // more never helped, as the offset was stable.
         scroller.ScrollToEnd();
         UiHelpers.Pump();
         Assert.True(UiHelpers.AtEnd(scroller));

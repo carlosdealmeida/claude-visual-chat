@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using ClaudeVisualChat.Protocol;
+using SkiaSharp;
 using Xunit;
 
 namespace ClaudeVisualChat.Tests;
@@ -1159,5 +1161,443 @@ public class ChatConversationTests
         Assert.Equal(new[] { "Read", "Glob" }, c.Items.OfType<ToolCallItem>().Select(t => t.Name));
         Assert.Empty(c.Items.OfType<TurnFooterItem>());
         Assert.False(c.IsBusy);
+    }
+
+    // ---- image attachments ----
+
+    private static byte[] Png(int w, int h, bool noise)
+    {
+        using var bmp = new SKBitmap(w, h, SKColorType.Rgba8888, SKAlphaType.Premul);
+        if (noise)
+        {
+            var px = new byte[w * h * 4];
+            new Random(7).NextBytes(px);
+            for (var i = 3; i < px.Length; i += 4) px[i] = 255;
+            System.Runtime.InteropServices.Marshal.Copy(px, 0, bmp.GetPixels(), px.Length);
+        }
+        else
+        {
+            bmp.Erase(new SKColor(30, 120, 200));
+        }
+        using var img = SKImage.FromBitmap(bmp);
+        using var data = img.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    [Fact]
+    public async Task Attachments_go_with_the_message()
+    {
+        var c = new ChatConversation();
+        Assert.Equal(AddImageResult.Added, await c.AddImageAsync(Png(20, 10, false)));
+        Assert.Equal(AddImageResult.Added, await c.AddImageAsync(Png(30, 15, false)));
+        MessageSubmittedEventArgs? sent = null;
+        c.MessageSubmitted += (_, e) => sent = e;
+
+        Assert.True(c.Submit("oi"));
+
+        var item = Assert.IsType<UserMessageItem>(Assert.Single(c.Items));
+        Assert.Equal(2, item.Images.Count);
+        Assert.Equal(2, sent!.Images.Count);
+        Assert.Equal(20, item.Images[0].Width);
+        Assert.Empty(c.Attachments);
+    }
+
+    [Fact]
+    public async Task Images_alone_can_be_sent()
+    {
+        var c = new ChatConversation();
+        Assert.False(c.Submit(""));
+        await c.AddImageAsync(Png(20, 10, false));
+
+        Assert.True(c.Submit(""));
+
+        var item = Assert.IsType<UserMessageItem>(Assert.Single(c.Items));
+        Assert.Equal("", item.Text);
+        Assert.Single(item.Images);
+        Assert.False(c.Submit(""));
+    }
+
+    [Fact]
+    public async Task Budget_and_count()
+    {
+        var c = new ChatConversation { MaxImages = 2 };
+        Assert.Equal(AddImageResult.Added, await c.AddImageAsync(Png(8, 8, false)));
+        Assert.Equal(AddImageResult.Added, await c.AddImageAsync(Png(8, 8, false)));
+        Assert.Equal(AddImageResult.TooMany, await c.AddImageAsync(Png(8, 8, false)));
+        Assert.Equal(AddImageResult.NotAnImage, await new ChatConversation().AddImageAsync(new byte[] { 1, 2, 3, 4 }));
+
+        var b = new ChatConversation { ImageBudgetBytes = 50_000 };
+        b.Attachments.Add(new ChatImage("image/png", Convert.ToBase64String(new byte[40_000])));
+        var result = await b.AddImageAsync(Png(1920, 1080, true));
+
+        Assert.True(result == AddImageResult.Added || result == AddImageResult.TooBig);
+        Assert.True(b.Attachments.Sum(i => i.ToBytes().Length) <= 50_000);
+    }
+
+    [Fact]
+    public async Task Undo_brings_the_images_back()
+    {
+        var c = new ChatConversation();
+        MessageSubmittedEventArgs? sent = null;
+        c.MessageSubmitted += (_, e) => sent = e;
+        await c.AddImageAsync(Png(20, 10, false));
+        c.Submit("oi");
+        Assert.Empty(c.Attachments);
+
+        Assert.True(c.UndoSubmit(sent!));
+        Assert.Single(c.Attachments);
+
+        c.Submit("de novo");
+        var second = sent!;
+        await c.AddImageAsync(Png(8, 8, false));
+        Assert.True(c.UndoSubmit(second));
+        Assert.Single(c.Attachments);
+        Assert.Equal(8, c.Attachments[0].Width);
+    }
+
+    [Fact]
+    public void Images_from_the_stream_and_the_session_file()
+    {
+        // the recording has no replayed user line (its only image is a tool result), so the stream part is replayed by hand
+        var item = Assert.IsType<UserMessageItem>(Load("image").Items[0]);
+        var image = Assert.Single(item.Images);
+        Assert.Equal(96, image.Width);
+        Assert.Equal(48, image.Height);
+        Assert.Empty(Play("image").Items.OfType<UserMessageItem>());
+
+        var live = new ChatConversation();
+        live.Attachments.Add(ChatImage.FromBytes(Png(96, 48, false), "image/png"));
+        live.Submit("What two colors do you see? One line.");
+        var sent = Assert.Single(live.Items.OfType<UserMessageItem>()).Images;
+        live.Apply(new UserBlock(null, new TextContentBlock("What two colors do you see? One line."), null, false, false)
+        {
+            Images = new[] { new ImageBlock(sent[0].MediaType, sent[0].Data) },
+        });
+        foreach (var line in FixtureFiles.StreamLines("image")) live.AppendLine(line);
+        Assert.Single(live.Items.OfType<UserMessageItem>());
+    }
+
+[Fact]
+    public void Image_without_data_is_left_out()
+    {
+        var c = new ChatConversation();
+        c.Apply(new UserBlock(null, new TextContentBlock("oi"), null, false, false)
+        {
+            Images = new[] { new ImageBlock("image/png", "") },
+        });
+        Assert.Empty(Assert.IsType<UserMessageItem>(Assert.Single(c.Items)).Images);
+
+        c.Apply(new UserBlock(null, new TextContentBlock(""), null, false, false));
+        Assert.Single(c.Items);
+    }
+
+    // ---- commands, models, effort and panels ----
+
+    private const string RateLimitLine =
+        "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"resetsAt\":1792698600,\"rateLimitType\":\"five_hour\",\"unifiedWindows\":{\"five_hour\":{\"utilization\":0.01,\"resetsAt\":1792698600},\"seven_day\":{\"utilization\":0.12,\"resetsAt\":1793016000}}},\"uuid\":\"u1\",\"session_id\":\"s1\"}";
+
+    [Fact]
+    public void Commands_come_from_the_claude_and_hide_terminal_ones()
+    {
+        var c = Play("commands");
+        Assert.Contains(c.Commands, x => x.Name == "hello" && x.ArgumentHint == "name");
+
+        c.Apply(new CommandsAvailable(new[] { new ChatCommand("doctor", "", ""), new ChatCommand("hello", "", "name") }));
+        c.Apply(new SessionStarted(null, null, null, null, null) { TerminalCommands = new[] { "doctor" } });
+        Assert.Equal(new[] { "doctor" }, c.TerminalCommands);
+
+        var names = c.PaletteCommands.Select(x => x.Name).ToList();
+        Assert.DoesNotContain("doctor", names);
+        Assert.Contains("hello", names);
+        foreach (var local in new[] { "context", "usage", "remote-control", "chrome" })
+            Assert.Contains(local, names);
+        Assert.Equal(names.Count, names.Distinct().Count());
+    }
+
+    [Fact]
+    public void Palette_keeps_the_claudes_entry_for_a_local_command_it_lists()
+    {
+        var c = new ChatConversation();
+        c.Commands = new[] { new ChatCommand("context", "Show current context usage", "") };
+        Assert.Equal("Show current context usage", c.PaletteCommands.Single(x => x.Name == "context").Description);
+        Assert.Equal(new[] { "context", "usage", "remote-control", "rc", "chrome" }, ChatConversation.LocalCommands);
+        Assert.IsNotType<string[]>(ChatConversation.LocalCommands);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.Generic.IList<string>)ChatConversation.LocalCommands)[0] = "x");
+    }
+
+    [Fact]
+    public void Local_commands_raise_an_event_instead_of_a_message()
+    {
+        var c = new ChatConversation();
+        var invoked = new List<(string, string)>();
+        var sent = new List<string>();
+        c.CommandInvoked += (_, e) => invoked.Add((e.Name, e.Arguments));
+        c.MessageSubmitted += (_, e) => sent.Add(e.Text);
+
+        c.Attachments.Add(new ChatImage("image/png", Convert.ToBase64String(new byte[10])));
+        Assert.True(c.Submit("  /context  "));
+        Assert.Equal(new[] { ("context", "") }, invoked);
+        Assert.Empty(sent);
+        Assert.Empty(c.Items);
+        Assert.False(c.IsBusy);
+        Assert.Equal(ChatPanel.Context, c.ShownPanel);
+        Assert.Single(c.Attachments);
+
+        c.Submit("/usage");
+        Assert.Equal(ChatPanel.Usage, c.ShownPanel);
+        c.Submit("/rc on");
+        Assert.Equal(("rc", "on"), invoked.Last());
+        Assert.Equal(ChatPanel.Usage, c.ShownPanel);
+        Assert.Empty(sent);
+
+        c.Submit("/compact");
+        c.Submit("/hello Ana");
+        c.Submit("/Context");
+        c.Submit("/contexts");
+        Assert.Equal(new[] { "/compact", "/hello Ana", "/Context", "/contexts" }, sent);
+        Assert.Equal(3, invoked.Count);
+    }
+
+    [Fact]
+    public void Panels_fill_from_the_stream()
+    {
+        var c = Play("commands");
+        Assert.NotNull(c.ContextUsage);
+        Assert.True(c.ContextUsage!.MaxTokens > 0);
+        Assert.Null(c.UsageLimits);
+
+        c.AppendLine(RateLimitLine);
+        Assert.Equal(new[] { "five_hour", "seven_day" }, c.UsageLimits!.Windows.Select(w => w.Name));
+
+        c.InvokeCommand("usage", "");
+        Assert.Equal(ChatPanel.Usage, c.ShownPanel);
+        c.ClosePanel();
+        Assert.Equal(ChatPanel.None, c.ShownPanel);
+    }
+
+    [Fact]
+    public void Effort_waits_for_the_claude()
+    {
+        var c = new ChatConversation();
+        var asked = new List<string?>();
+        c.EffortRequested += (_, e) => asked.Add(e.Effort);
+        var changed = new List<string?>();
+        c.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        c.SetEffort("high");
+        Assert.Equal(new[] { "high" }, asked);
+        Assert.Equal("high", c.RequestedEffort);
+        Assert.Null(c.Effort);
+
+        c.Apply(new SettingsApplied("claude-opus-5-5", "high", true));
+        Assert.Equal("high", c.Effort);
+        Assert.Null(c.RequestedEffort);
+        Assert.Equal("claude-opus-5-5", c.Model);
+
+        c.Apply(new SettingsApplied("claude-haiku-4-5-20251001", null, false));
+        Assert.Equal("high", c.Effort);
+        Assert.Equal("claude-haiku-4-5-20251001", c.Model);
+
+        c.Apply(new SettingsApplied(null, null, true));
+        Assert.Null(c.Effort);
+        Assert.Contains(nameof(ChatConversation.Effort), changed);
+    }
+
+    [Fact]
+    public void Effort_recording_ends_with_the_efforts_the_claude_reported()
+    {
+        // the recorded get_settings after each apply_flag_settings answered effort: null (the CLI's real behavior),
+        // so the recording never confirms "low": the final state is no effort, on haiku
+        var c = Play("effort");
+        Assert.Null(c.Effort);
+        Assert.Null(c.RequestedEffort);
+        Assert.Equal("claude-haiku-4-5-20251001", c.Model);
+        Assert.NotNull(c.AvailableModels);
+    }
+
+    [Fact]
+    public void Current_model_follows_the_claude()
+    {
+        var c = Play("commands");
+        var changed = new List<string?>();
+        c.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        c.Apply(new SettingsApplied("claude-opus-5-5", null, false));
+        Assert.Equal("Opus 5.5", c.CurrentModel!.DisplayName);
+        Assert.Contains(nameof(ChatConversation.CurrentModel), changed);
+
+        Assert.Null(c.ModelSuffix);
+
+        // an id with a suffix finds its model
+        c.Apply(new SettingsApplied("claude-opus-5-5[1m]", null, false));
+        Assert.Equal("Opus 5.5", c.CurrentModel!.DisplayName);
+        Assert.Equal("[1m]", c.ModelSuffix);
+        Assert.NotEmpty(c.CurrentModel.EffortLevels);
+
+        // a model that is not offered, with a suffix or only a suffix
+        c.Apply(new SettingsApplied("claude-mystery-1[1m]", null, false));
+        Assert.Null(c.CurrentModel);
+        Assert.Null(c.ModelSuffix);
+        c.Apply(new SettingsApplied("[1m]", null, false));
+        Assert.Null(c.CurrentModel);
+
+        c.Apply(new SettingsApplied("default", null, false));
+        Assert.Equal("default", c.CurrentModel!.Value);
+
+        changed.Clear();
+        c.AvailableModels = null;
+        Assert.Null(c.CurrentModel);
+        Assert.Contains(nameof(ChatConversation.CurrentModel), changed);
+    }
+
+    [Fact]
+    public void Command_lines_become_items()
+    {
+        var c = Load("commands");
+        Assert.Contains(c.Items, i => i is UserMessageItem { Text: "/hello Ana" });
+        Assert.Contains(c.Items, i => i is CommandOutputItem o && o.Text.Length > 0);
+    }
+
+    [Fact]
+    public void Command_echo_already_shown_by_Submit_is_not_repeated()
+    {
+        var c = new ChatConversation();
+        c.Submit("/hello Ana");
+        c.Apply(new CommandEcho("hello", "Ana"));
+        c.Apply(new CommandEcho("compact", ""));
+        Assert.Equal(new[] { "/hello Ana", "/compact" }, c.Items.OfType<UserMessageItem>().Select(i => i.Text));
+    }
+
+    // ---- cache, browser and Remote Control ----
+
+    private static DateTimeOffset At(int h, int m, int s = 0) => new DateTimeOffset(2026, 10, 22, h, m, s, TimeSpan.Zero);
+
+    private static UserBlock ToolResultAt(string id, DateTimeOffset at) =>
+        new UserBlock(null, new ToolResultBlock(id, "ok", false), null, false, false) { Timestamp = at };
+
+    [Fact]
+    public void Cache_expires_an_hour_after_the_request()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        Assert.Null(c.PromptCacheExpiresAt);
+        c.Submit("oi");
+        now = At(10, 0, 5);
+        c.Apply(new PromptCacheUsed(TimeSpan.FromHours(1), null));
+        c.Apply(new PromptCacheUsed(TimeSpan.FromHours(1), null)); // repeated per block: idempotent
+        Assert.Equal(At(11, 0), c.PromptCacheExpiresAt);
+        Assert.Equal(TimeSpan.FromHours(1), c.PromptCacheTtl);
+
+        now = At(10, 20, 3);
+        c.Apply(ToolResultAt("t1", At(10, 20)));
+        c.Apply(new PromptCacheUsed(null, null));
+        Assert.Equal(At(11, 20), c.PromptCacheExpiresAt);
+        Assert.Equal(TimeSpan.FromHours(1), c.PromptCacheTtl);
+    }
+
+    [Fact]
+    public void A_local_command_does_not_move_the_cache_anchor()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        c.Submit("oi");
+        now = At(10, 30);
+        c.Submit("/usage");
+        c.Apply(new PromptCacheUsed(TimeSpan.FromHours(1), null));
+        Assert.Equal(At(11, 0), c.PromptCacheExpiresAt);
+    }
+
+    [Fact]
+    public void Cache_from_the_session_file()
+    {
+        var c = new ChatConversation { Clock = () => At(18, 0) };
+        c.LoadTranscript(FixtureFiles.TranscriptLines("image"));
+        Assert.Equal(new DateTimeOffset(2026, 10, 22, 16, 40, 5, 418, TimeSpan.Zero) + TimeSpan.FromHours(1),
+            c.PromptCacheExpiresAt);
+        Assert.False(c.IsPromptCacheCompacted);
+
+        c.Clear();
+        Assert.Null(c.PromptCacheExpiresAt);
+        Assert.Null(c.PromptCacheTtl);
+    }
+
+    [Fact]
+    public void Compaction_marks_the_cache_cold()
+    {
+        var c = new ChatConversation { Clock = () => At(10, 0) };
+        c.Apply(new PromptCacheUsed(TimeSpan.FromHours(1), null));
+        c.Apply(new SystemNotice("compact_boundary"));
+        Assert.True(c.IsPromptCacheCompacted);
+        c.Apply(new PromptCacheUsed(null, null));
+        Assert.False(c.IsPromptCacheCompacted);
+    }
+
+    [Fact]
+    public void Clock_skew_is_capped()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        c.Apply(ToolResultAt("t1", now + TimeSpan.FromHours(2)));
+        c.Apply(new PromptCacheUsed(TimeSpan.FromHours(1), null));
+        Assert.Equal(now + TimeSpan.FromHours(1), c.PromptCacheExpiresAt);
+    }
+
+    [Fact]
+    public void Remote_control_follows_the_bridge()
+    {
+        var c = new ChatConversation();
+        var links = new List<string>();
+        c.RemoteControlLinkRequested += (_, e) => links.Add(e.Url);
+        var changed = new List<string?>();
+        c.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        c.OpenRemoteControl();
+        Assert.Empty(links);
+
+        c.Apply(new RemoteControlChanged("ready", null, null));
+        Assert.Equal(ChatRemoteControlStatus.Connecting, c.RemoteControlStatus);
+        c.Apply(new RemoteControlChanged("connected", null, null));
+        Assert.Equal(ChatRemoteControlStatus.Connected, c.RemoteControlStatus);
+        c.Apply(new RemoteControlChanged("other", null, null));
+        Assert.Equal(ChatRemoteControlStatus.Connected, c.RemoteControlStatus);
+        c.Apply(new RemoteControlChanged("failed", null, "no network"));
+        Assert.Equal(ChatRemoteControlStatus.Error, c.RemoteControlStatus);
+        Assert.Equal("no network", c.RemoteControlError);
+
+        c.Apply(new RemoteControlChanged(null, "https://claude.ai/code/x", null));
+        Assert.Equal("https://claude.ai/code/x", c.RemoteControlUrl);
+        Assert.Equal(ChatRemoteControlStatus.Error, c.RemoteControlStatus);
+        Assert.Contains(nameof(ChatConversation.RemoteControlUrl), changed);
+
+        c.OpenRemoteControl();
+        Assert.Equal(new[] { "https://claude.ai/code/x" }, links);
+
+        // the same through the stream
+        var live = new ChatConversation();
+        live.AppendLine("{\"type\":\"system\",\"subtype\":\"bridge_state\",\"state\":\"connected\"}");
+        Assert.Equal(ChatRemoteControlStatus.Connected, live.RemoteControlStatus);
+    }
+
+    [Fact]
+    public void Browser_state_is_the_hosts()
+    {
+        var c = new ChatConversation();
+        var requests = 0;
+        c.BrowserDisconnectRequested += (_, _) => requests++;
+        c.DisconnectBrowser();
+        Assert.Equal(0, requests); // off: nothing to disconnect
+
+        c.BrowserStatus = ChatBrowserStatus.Connected;
+        c.DisconnectBrowser();
+        Assert.Equal(1, requests);
+        Assert.Equal(ChatBrowserStatus.Connected, c.BrowserStatus); // changes only when the host says
+
+        c.BrowserStatus = ChatBrowserStatus.Error;
+        c.BrowserError = "boom";
+        Assert.Equal("boom", c.BrowserError);
+
+        // Clear keeps what belongs to the host
+        c.Clear();
+        Assert.Equal(ChatBrowserStatus.Error, c.BrowserStatus);
     }
 }

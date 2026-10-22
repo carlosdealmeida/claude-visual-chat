@@ -57,6 +57,54 @@ public sealed record ChatStrings
         PermissionNo = "Não, e dizer o que fazer",
         DenyPlaceholder = "Diga ao Claude o que fazer",
         MorePending = "+{0} na fila",
+        AddAttachment = "Adicionar",
+        RemoveAttachment = "Remover anexo",
+        ShowCommands = "Mostrar o menu de comandos (/)",
+        FilterCommands = "Filtrar comandos…",
+        NoMatchingCommands = "Nenhum comando encontrado",
+        SlashCommands = "Comandos com barra",
+        CommandContextDescription = "Mostrar o uso do contexto",
+        CommandUsageDescription = "Mostrar os limites de uso do plano",
+        CommandRemoteControlDescription = "Ligar ou desligar o Remote Control",
+        CommandChromeDescription = "Conectar ou desconectar o navegador",
+        CacheWarm = "Cache do prompt ativo, cerca de {0} min restantes.",
+        CacheExpired = "Cache do prompt provavelmente expirado (parado há {0}).",
+        CacheCompacted = "O cache do prompt não cobre a conversa resumida.",
+        RemoteControlActive = "O Remote Control está ativo · Clique para abrir claude.ai/code · Use /remote-control para desligar",
+        RemoteControlConnecting = "Conectando ao claude.ai/code…",
+        RemoteControlFailed = "Erro no Remote Control: {0}",
+        RemoteControlFailedHint = "Erro no Remote Control: {0} · Use /remote-control para dispensar",
+        BrowserConnecting = "Conectando ao navegador…",
+        BrowserConnected = "Navegador conectado",
+        BrowserNoBrowsers = "Nenhum navegador conectado. Abra o Chrome com a extensão do Claude e confira se está na mesma conta do claude.ai.",
+        BrowserFailed = "Erro no navegador: {0}",
+        DisconnectBrowser = "Desconectar o navegador",
+        SelectModel = "Selecione um modelo",
+        Model = "Modelo",
+        SwitchModel = "Trocar o modelo",
+        Effort = "Esforço",
+        EffortLow = "Baixo",
+        EffortMedium = "Médio",
+        EffortHigh = "Alto",
+        EffortExtraHigh = "Muito alto",
+        EffortMax = "Máximo",
+        EffortAuto = "Automático",
+        ImageTooBig = "Imagem grande demais para anexar",
+        TooManyImages = "Imagens demais em uma mensagem",
+        NotAnImage = "Não é uma imagem",
+        ImageFiles = "Imagens",
+        ContextTitle = "Uso do contexto",
+        UsageTitle = "Uso",
+        UsageUnavailable = "Ainda sem dados de uso",
+        ContextUnavailable = "Ainda sem dados de contexto",
+        UsageResets = "Renova {0}",
+        ContextTotal = "{0} / {1} ({2} %)",
+        UsageFiveHour = "Sessão atual (5h)",
+        UsageSevenDay = "Semanal (7 dias)",
+        UsagePercent = "{0} %",
+        DayNames = "dom seg ter qua qui sex sáb",
+        Close = "Fechar",
+        Dismiss = "Dispensar",
         ThousandsSeparator = ".",
         DecimalSeparator = ",",
     };
@@ -187,6 +235,162 @@ public sealed record ChatStrings
     /// <summary>Requests waiting behind the one shown; <c>{0}</c> is the count.</summary>
     public string MorePending { get; init; } = "+{0} waiting";
 
+    /// <summary>The button that attaches a file or image to the message.</summary>
+    public string AddAttachment { get; init; } = "Add";
+
+    /// <summary>The button that takes an attachment off the message.</summary>
+    public string RemoveAttachment { get; init; } = "Remove attachment";
+
+    /// <summary>The button that opens the command menu.</summary>
+    public string ShowCommands { get; init; } = "Show command menu (/)";
+
+    /// <summary>The empty filter field of the command menu.</summary>
+    public string FilterCommands { get; init; } = "Filter actions…";
+
+    /// <summary>The command menu when the filter matches nothing.</summary>
+    public string NoMatchingCommands { get; init; } = "No matching commands";
+
+    /// <summary>The title of the command group in the menu.</summary>
+    public string SlashCommands { get; init; } = "Slash Commands";
+
+    /// <summary>What the context command does, in the menu.</summary>
+    public string CommandContextDescription { get; init; } = "Show context usage";
+
+    /// <summary>What the usage command does, in the menu.</summary>
+    public string CommandUsageDescription { get; init; } = "Show plan usage limits";
+
+    /// <summary>What the Remote Control command does, in the menu.</summary>
+    public string CommandRemoteControlDescription { get; init; } = "Turn Remote Control on or off";
+
+    /// <summary>What the browser command does, in the menu.</summary>
+    public string CommandChromeDescription { get; init; } = "Connect or disconnect the browser";
+
+    /// <summary>The prompt cache is still valid; <c>{0}</c> is the minutes left.</summary>
+    public string CacheWarm { get; init; } = "Prompt cache warm, about {0} min left.";
+
+    /// <summary>The prompt cache has probably expired; <c>{0}</c> is how long Claude has been idle ("1h 15m").</summary>
+    public string CacheExpired { get; init; } = "Prompt cache likely expired (idle {0}).";
+
+    /// <summary>The cache does not cover a conversation that was compacted.</summary>
+    public string CacheCompacted { get; init; } = "Prompt cache does not cover the compacted conversation.";
+
+    /// <summary>The name of Remote Control.</summary>
+    public string RemoteControl { get; init; } = "Remote Control";
+
+    /// <summary>The banner while Remote Control is on.</summary>
+    public string RemoteControlActive { get; init; } = "Remote Control is active · Click to open claude.ai/code · Run /remote-control to turn off";
+
+    /// <summary>The banner while Remote Control connects.</summary>
+    public string RemoteControlConnecting { get; init; } = "Connecting to claude.ai/code…";
+
+    /// <summary>The banner when Remote Control fails; <c>{0}</c> is the reason.</summary>
+    public string RemoteControlFailed { get; init; } = "Remote Control error: {0}";
+
+    /// <summary>The Remote Control chip's tooltip when it fails; <c>{0}</c> is the reason.</summary>
+    public string RemoteControlFailedHint { get; init; } = "Remote Control error: {0} · Run /remote-control to dismiss";
+
+    /// <summary>The banner while the browser connects.</summary>
+    public string BrowserConnecting { get; init; } = "Connecting to browser…";
+
+    /// <summary>The banner once the browser is connected.</summary>
+    public string BrowserConnected { get; init; } = "Browser connected";
+
+    /// <summary>The banner when no browser answers.</summary>
+    public string BrowserNoBrowsers { get; init; } = "No browsers are connected. Open Chrome with the Claude extension and make sure you're signed in to the same claude.ai account.";
+
+    /// <summary>The banner when the browser fails; <c>{0}</c> is the reason.</summary>
+    public string BrowserFailed { get; init; } = "Browser error: {0}";
+
+    /// <summary>The button that disconnects the browser.</summary>
+    public string DisconnectBrowser { get; init; } = "Disconnect browser";
+
+    /// <summary>The title of the model menu.</summary>
+    public string SelectModel { get; init; } = "Select a model";
+
+    /// <summary>The model chip before the claude reports a model.</summary>
+    public string Model { get; init; } = "Model";
+
+    /// <summary>The model chip's tooltip.</summary>
+    public string SwitchModel { get; init; } = "Switch model";
+
+    /// <summary>The title of the effort choice.</summary>
+    public string Effort { get; init; } = "Effort";
+
+    /// <summary>The <c>low</c> effort.</summary>
+    public string EffortLow { get; init; } = "Low";
+
+    /// <summary>The <c>medium</c> effort.</summary>
+    public string EffortMedium { get; init; } = "Medium";
+
+    /// <summary>The <c>high</c> effort.</summary>
+    public string EffortHigh { get; init; } = "High";
+
+    /// <summary>The <c>xhigh</c> effort.</summary>
+    public string EffortExtraHigh { get; init; } = "Extra high";
+
+    /// <summary>The <c>max</c> effort.</summary>
+    public string EffortMax { get; init; } = "Max";
+
+    /// <summary>No effort chosen: the model decides.</summary>
+    public string EffortAuto { get; init; } = "Auto";
+
+    /// <summary>Shown when an image is too large to attach.</summary>
+    public string ImageTooBig { get; init; } = "Image too large to attach";
+
+    /// <summary>Shown when a message would carry too many images.</summary>
+    public string TooManyImages { get; init; } = "Too many images in one message";
+
+    /// <summary>Shown when a pasted or dropped file is not an image.</summary>
+    public string NotAnImage { get; init; } = "Not an image";
+
+    /// <summary>The kind of file the + button's file dialog shows.</summary>
+    public string ImageFiles { get; init; } = "Images";
+
+    /// <summary>The title of the context usage panel.</summary>
+    public string ContextTitle { get; init; } = "Context usage";
+
+    /// <summary>The title of the plan usage panel.</summary>
+    public string UsageTitle { get; init; } = "Usage";
+
+    /// <summary>When a usage limit renews; <c>{0}</c> is the time.</summary>
+    public string UsageResets { get; init; } = "Resets {0}";
+
+    /// <summary>
+    /// When a usage limit renews on another day: <c>{0}</c> is the day's short name (<see cref="DayNames"/>),
+    /// <c>{1}</c> the time.
+    /// </summary>
+    public string UsageResetsDay { get; init; } = "{0} {1}";
+
+    /// <summary>The seven short day names, Sunday first, separated by spaces.</summary>
+    public string DayNames { get; init; } = "Sun Mon Tue Wed Thu Fri Sat";
+
+    /// <summary>The <c>five_hour</c> usage limit.</summary>
+    public string UsageFiveHour { get; init; } = "Current session (5h)";
+
+    /// <summary>The <c>seven_day</c> usage limit.</summary>
+    public string UsageSevenDay { get; init; } = "Weekly (7 days)";
+
+    /// <summary>How much of a usage limit is used; <c>{0}</c> is the percentage.</summary>
+    public string UsagePercent { get; init; } = "{0}%";
+
+    /// <summary>The line of the context panel: <c>{0}</c> tokens used, <c>{1}</c> the window, <c>{2}</c> the percentage.</summary>
+    public string ContextTotal { get; init; } = "{0} / {1} ({2}%)";
+
+    /// <summary>The usage panel when the claude has sent no rate limit data and the conversation is idle.</summary>
+    public string UsageUnavailable { get; init; } = "No usage data yet";
+
+    /// <summary>The context panel when the claude has sent no context data and the conversation is idle.</summary>
+    public string ContextUnavailable { get; init; } = "No context data yet";
+
+    /// <summary>A panel whose data the claude has not sent yet, while the conversation is busy.</summary>
+    public string PanelLoading { get; init; } = "…";
+
+    /// <summary>The name of a close button.</summary>
+    public string Close { get; init; } = "Close";
+
+    /// <summary>The name of the button that dismisses a banner.</summary>
+    public string Dismiss { get; init; } = "Dismiss";
+
     public string ThousandsSeparator { get; init; } = ",";
 
     public string DecimalSeparator { get; init; } = ".";
@@ -289,9 +493,89 @@ public sealed record ChatStrings
         _ => mode ?? "",
     };
 
+    /// <summary>The label of an effort level; no level is <see cref="EffortAuto"/>, an unknown one keeps its name.</summary>
+    internal string EffortLabel(string? level) => level switch
+    {
+        null => EffortAuto,
+        "low" => EffortLow,
+        "medium" => EffortMedium,
+        "high" => EffortHigh,
+        "xhigh" => EffortExtraHigh,
+        "max" => EffortMax,
+        _ => level,
+    };
+
+    /// <summary>Minutes left in the cache: 59 → "59m".</summary>
+    internal string FormatCacheMinutes(int minutes) => Plain(Math.Max(0, minutes)) + "m";
+
+    /// <summary>An idle time, compact: "0m", "12m", "1h 15m", "2d 3h".</summary>
+    internal string FormatIdle(TimeSpan idle)
+    {
+        var minutes = (long)Math.Max(0, idle.TotalMinutes);
+        var culture = CultureInfo.InvariantCulture;
+        if (minutes >= 1440) return (minutes / 1440).ToString(culture) + "d " + (minutes % 1440 / 60).ToString(culture) + "h";
+        if (minutes >= 60) return (minutes / 60).ToString(culture) + "h " + (minutes % 60).ToString(culture) + "m";
+        return minutes.ToString(culture) + "m";
+    }
+
+    /// <summary><see cref="CacheWarm"/> with the minutes left.</summary>
+    internal string FormatCacheWarm(int minutes) => CacheWarm.Replace("{0}", Plain(Math.Max(0, minutes)));
+
+    /// <summary><see cref="CacheExpired"/> with the idle time (<see cref="FormatIdle"/>).</summary>
+    internal string FormatCacheExpired(TimeSpan idle) => CacheExpired.Replace("{0}", FormatIdle(idle));
+
+    internal string FormatRemoteControlFailed(string? reason) => RemoteControlFailed.Replace("{0}", reason ?? "");
+
+    internal string FormatRemoteControlFailedHint(string? reason) => RemoteControlFailedHint.Replace("{0}", reason ?? "");
+
+    internal string FormatBrowserFailed(string? reason) => BrowserFailed.Replace("{0}", reason ?? "");
+
     internal string FormatUseTool(string toolName) => PermissionUseTool.Replace("{0}", toolName ?? "");
 
     internal string FormatMorePending(int count) => MorePending.Replace("{0}", FormatNumber(count));
+
+    /// <summary><see cref="ContextTotal"/>: "36,174 / 200,000 (18%)".</summary>
+    internal string FormatContextTotal(ContextUsage usage) => ContextTotal
+        .Replace("{0}", FormatNumber(usage.TotalTokens))
+        .Replace("{1}", FormatNumber(usage.MaxTokens))
+        .Replace("{2}", Plain(usage.Percentage));
+
+    /// <summary>The label of a usage limit; one without a label keeps its name.</summary>
+    internal string UsageWindowLabel(string name) => name switch
+    {
+        "five_hour" => UsageFiveHour,
+        "seven_day" => UsageSevenDay,
+        _ => name ?? "",
+    };
+
+    /// <summary><see cref="UsagePercent"/> of a use from 0 to 1, rounded: 0.12 → "12%".</summary>
+    internal string FormatUsagePercent(double utilization)
+    {
+        var percent = (long)Math.Round(Math.Max(0, utilization) * 100, MidpointRounding.AwayFromZero);
+        return UsagePercent.Replace("{0}", percent.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// <see cref="UsageResets"/> in local time: the time alone when it is on the day of <paramref name="now"/>, else
+    /// <see cref="UsageResetsDay"/> with the day's short name.
+    /// </summary>
+    internal string FormatUsageResets(DateTimeOffset at, DateTimeOffset now)
+    {
+        var local = at.ToLocalTime();
+        var time = FormatTime(at);
+        var when = local.Date == now.ToLocalTime().Date
+            ? time
+            : UsageResetsDay.Replace("{0}", DayName(local.DayOfWeek)).Replace("{1}", time);
+        return UsageResets.Replace("{0}", when);
+    }
+
+    /// <summary>The day's short name from <see cref="DayNames"/>; the English one when that is not seven names.</summary>
+    private string DayName(DayOfWeek day)
+    {
+        var names = (DayNames ?? "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (names.Length != 7) names = English.DayNames.Split(' ');
+        return names[(int)day];
+    }
 
     /// <summary><see cref="Footer"/> with what the turn reported; empty when it reported nothing.</summary>
     internal string FormatFooter(TurnFooterItem footer)

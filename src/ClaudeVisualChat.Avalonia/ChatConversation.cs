@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Linq;
+using System.Threading.Tasks;
+using ClaudeVisualChat.Imaging;
 using System.Text.Json;
 using ClaudeVisualChat.Protocol;
 
@@ -18,6 +21,9 @@ public sealed class ChatConversation : ChatObservableObject
     private const string TaskNotificationPrefix = "<task-notification>";
     private const string RejectedResultPrefix = "User rejected";
     private const string RejectedTextPrefix = "The user doesn't want to proceed";
+    private const string DefaultModelValue = "default";
+    private static readonly string[] LocalCommandNames = { "context", "usage", "remote-control", "rc", "chrome" };
+    private static readonly IReadOnlyList<string> LocalCommandList = new System.Collections.ObjectModel.ReadOnlyCollection<string>(LocalCommandNames);
 
     private readonly Dictionary<string, ToolCallItem> _tools = new Dictionary<string, ToolCallItem>();
     private readonly HashSet<ToolCallItem> _nestedTools = new HashSet<ToolCallItem>();
@@ -34,10 +40,27 @@ public sealed class ChatConversation : ChatObservableObject
     private string? _sessionId;
     private string? _model;
     private string? _requestedModel;
+    private string? _effort;
+    private string? _requestedEffort;
     private string? _workingDirectory;
+    private IReadOnlyList<ChatCommand> _commands = Array.Empty<ChatCommand>();
+    private IReadOnlyList<string> _terminalCommands = Array.Empty<string>();
+    private IReadOnlyList<ChatModel>? _availableModels;
+    private ChatPanel _shownPanel;
+    private ContextUsage? _contextUsage;
+    private UsageLimits? _usageLimits;
     private string _permissionMode = "default";
     private bool _interruptedThisTurn;
     private Func<DateTimeOffset> _clock = () => DateTimeOffset.Now;
+    private DateTimeOffset? _cacheAnchor;
+    private DateTimeOffset? _promptCacheExpiresAt;
+    private TimeSpan? _promptCacheTtl;
+    private bool _isPromptCacheCompacted;
+    private ChatBrowserStatus _browserStatus;
+    private string? _browserError;
+    private ChatRemoteControlStatus _remoteControlStatus;
+    private string? _remoteControlUrl;
+    private string? _remoteControlError;
 
     public ChatConversation()
     {
@@ -65,7 +88,38 @@ public sealed class ChatConversation : ChatObservableObject
     /// </summary>
     public event EventHandler<ModelRequestedEventArgs>? ModelRequested;
 
+    /// <summary>
+    /// Raised when the user asks for another effort level (<see cref="SetEffort"/>), before the claude confirms it:
+    /// the host sends <c>apply_flag_settings</c>; the level waits in <see cref="RequestedEffort"/>, and
+    /// <see cref="Effort"/> changes only when the claude reports it.
+    /// </summary>
+    public event EventHandler<EffortRequestedEventArgs>? EffortRequested;
+
+    /// <summary>
+    /// Raised for a local command (<see cref="LocalCommands"/>), by <see cref="InvokeCommand"/> and so by
+    /// <see cref="Submit"/>: the host acts on it (the Remote Control, the browser); nothing goes to the claude.
+    /// </summary>
+    public event EventHandler<CommandInvokedEventArgs>? CommandInvoked;
+
     public event EventHandler? StopRequested;
+
+    /// <summary>Raised by <see cref="DisconnectBrowser"/> while the browser is not <see cref="ChatBrowserStatus.Off"/>: the host disconnects it and sets <see cref="BrowserStatus"/>.</summary>
+    public event EventHandler? BrowserDisconnectRequested;
+
+    /// <summary>Raised by <see cref="OpenRemoteControl"/> when there is a link: the host opens the URL; the component never does.</summary>
+    public event EventHandler<RemoteControlLinkRequestedEventArgs>? RemoteControlLinkRequested;
+
+    /// <summary>Images waiting to go with the next message; <see cref="Submit"/> takes them all.</summary>
+    public ObservableCollection<ChatImage> Attachments { get; } = new ObservableCollection<ChatImage>();
+
+    /// <summary>The most images one message may carry.</summary>
+    public int MaxImages { get; set; } = 10;
+
+    /// <summary>The most bytes all the images of one message may add up to (about 5 MB once in base64).</summary>
+    public int ImageBudgetBytes { get; set; } = 3_750_000;
+
+    /// <summary>The longest side, in pixels, an attached image keeps.</summary>
+    public int MaxImageSide { get; set; } = 1568;
 
     public ObservableCollection<ChatItem> Items { get; } = new ObservableCollection<ChatItem>();
 
@@ -99,7 +153,145 @@ public sealed class ChatConversation : ChatObservableObject
     public string? Model
     {
         get => _model;
-        private set => SetField(ref _model, value);
+        private set
+        {
+            if (SetField(ref _model, value)) OnPropertyChanged(nameof(CurrentModel));
+        }
+    }
+
+    /// <summary>The models the session offers; null until the claude tells. Also filled by <c>ModelsAvailable</c>.</summary>
+    public IReadOnlyList<ChatModel>? AvailableModels
+    {
+        get => _availableModels;
+        set
+        {
+            if (SetField(ref _availableModels, value)) OnPropertyChanged(nameof(CurrentModel));
+        }
+    }
+
+    /// <summary>
+    /// The offered model that <see cref="Model"/> is: the one whose value equals it, else the first whose resolved
+    /// model equals it, leaving out the <c>default</c> entry; then the same two tries with a trailing <c>[...]</c>
+    /// suffix of the id stripped (<c>claude-opus-5-5[1m]</c>); null when none is.
+    /// </summary>
+    public ChatModel? CurrentModel
+    {
+        get
+        {
+            if (_availableModels == null || _model == null) return null;
+            var found = Find(_model);
+            if (found != null) return found;
+            var open = ModelSuffixStart(_model);
+            return open > 0 ? Find(_model.Substring(0, open)) : null;
+        }
+    }
+
+    /// <summary>The trailing <c>[...]</c> of <see cref="Model"/> (<c>[1m]</c>) when <see cref="CurrentModel"/> matched without it; else null.</summary>
+    public string? ModelSuffix
+    {
+        get
+        {
+            if (_availableModels == null || _model == null || Find(_model) != null) return null;
+            var open = ModelSuffixStart(_model);
+            return open > 0 && Find(_model.Substring(0, open)) != null ? _model.Substring(open) : null;
+        }
+    }
+
+    private static int ModelSuffixStart(string model) =>
+        model.EndsWith("]", StringComparison.Ordinal) ? model.LastIndexOf('[') : -1;
+
+    private ChatModel? Find(string id)
+    {
+        foreach (var model in _availableModels!)
+        {
+            if (model.Value == id) return model;
+        }
+        foreach (var model in _availableModels!)
+        {
+            if (model.ResolvedModel == id && model.Value != DefaultModelValue) return model;
+        }
+        return null;
+    }
+
+    /// <summary>The effort the claude reports; null when it has none (or has not told). <see cref="SetEffort"/> only asks.</summary>
+    public string? Effort
+    {
+        get => _effort;
+        private set => SetField(ref _effort, value);
+    }
+
+    /// <summary>The effort asked for with <see cref="SetEffort"/> and not yet confirmed; null when nothing waits.</summary>
+    public string? RequestedEffort
+    {
+        get => _requestedEffort;
+        private set => SetField(ref _requestedEffort, value);
+    }
+
+    /// <summary>The commands the claude lists (its <c>initialize</c> answer); set by the host or by <c>CommandsAvailable</c>.</summary>
+    public IReadOnlyList<ChatCommand> Commands
+    {
+        get => _commands;
+        set
+        {
+            if (SetField(ref _commands, value ?? Array.Empty<ChatCommand>())) OnPropertyChanged(nameof(PaletteCommands));
+        }
+    }
+
+    /// <summary>The commands the terminal handles itself, from the session start; they are not for the palette.</summary>
+    public IReadOnlyList<string> TerminalCommands
+    {
+        get => _terminalCommands;
+        private set
+        {
+            if (SetField(ref _terminalCommands, value)) OnPropertyChanged(nameof(PaletteCommands));
+        }
+    }
+
+    /// <summary>The names of the commands the conversation handles itself, without the slash.</summary>
+    public static IReadOnlyList<string> LocalCommands => LocalCommandList;
+
+    /// <summary>
+    /// What the palette lists: <see cref="Commands"/> without the terminal ones, plus the <see cref="LocalCommands"/>
+    /// the claude did not list (with no description), by name.
+    /// </summary>
+    public IReadOnlyList<ChatCommand> PaletteCommands
+    {
+        get
+        {
+            var list = new List<ChatCommand>();
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var command in _commands)
+            {
+                if (_terminalCommands.Contains(command.Name) || !names.Add(command.Name)) continue;
+                list.Add(command);
+            }
+            foreach (var name in LocalCommandNames)
+            {
+                if (names.Add(name)) list.Add(new ChatCommand(name, "", ""));
+            }
+            return list;
+        }
+    }
+
+    /// <summary>The panel to show over the reply box; <see cref="ClosePanel"/> hides it.</summary>
+    public ChatPanel ShownPanel
+    {
+        get => _shownPanel;
+        private set => SetField(ref _shownPanel, value);
+    }
+
+    /// <summary>The context window usage the claude last reported; null until it does.</summary>
+    public ContextUsage? ContextUsage
+    {
+        get => _contextUsage;
+        private set => SetField(ref _contextUsage, value);
+    }
+
+    /// <summary>The rate limit windows the claude last reported; null until it does.</summary>
+    public UsageLimits? UsageLimits
+    {
+        get => _usageLimits;
+        private set => SetField(ref _usageLimits, value);
     }
 
     /// <summary>
@@ -141,6 +333,65 @@ public sealed class ChatConversation : ChatObservableObject
         set => _clock = value ?? throw new ArgumentNullException(nameof(value));
     }
 
+    /// <summary>
+    /// When the prompt cache expires: the last request (the last top-level user line, or the message just sent) plus
+    /// the cache's lifetime, never beyond <c>Clock() + lifetime</c>. Null until the claude reports cache use.
+    /// </summary>
+    public DateTimeOffset? PromptCacheExpiresAt
+    {
+        get => _promptCacheExpiresAt;
+        private set => SetField(ref _promptCacheExpiresAt, value);
+    }
+
+    /// <summary>The lifetime of the cache the claude last reported (1 h or 5 min); kept when a later report has none.</summary>
+    public TimeSpan? PromptCacheTtl
+    {
+        get => _promptCacheTtl;
+        private set => SetField(ref _promptCacheTtl, value);
+    }
+
+    /// <summary>True after a compaction until the next cache use is reported: the cache is cold.</summary>
+    public bool IsPromptCacheCompacted
+    {
+        get => _isPromptCacheCompacted;
+        private set => SetField(ref _isPromptCacheCompacted, value);
+    }
+
+    /// <summary>The browser extension's state; the host sets it.</summary>
+    public ChatBrowserStatus BrowserStatus
+    {
+        get => _browserStatus;
+        set => SetField(ref _browserStatus, value);
+    }
+
+    /// <summary>Why the browser is in <see cref="ChatBrowserStatus.Error"/>; the host sets it.</summary>
+    public string? BrowserError
+    {
+        get => _browserError;
+        set => SetField(ref _browserError, value);
+    }
+
+    /// <summary>The Remote Control state; the host sets it, and the claude's <c>bridge_state</c> moves it.</summary>
+    public ChatRemoteControlStatus RemoteControlStatus
+    {
+        get => _remoteControlStatus;
+        set => SetField(ref _remoteControlStatus, value);
+    }
+
+    /// <summary>The Remote Control session link; the host sets it, or the claude's answer brings it.</summary>
+    public string? RemoteControlUrl
+    {
+        get => _remoteControlUrl;
+        set => SetField(ref _remoteControlUrl, value);
+    }
+
+    /// <summary>Why the Remote Control failed.</summary>
+    public string? RemoteControlError
+    {
+        get => _remoteControlError;
+        set => SetField(ref _remoteControlError, value);
+    }
+
     // ---- input ----
 
     /// <summary>Applies one line of <c>claude -p --output-format stream-json</c>; odd lines are ignored.</summary>
@@ -161,6 +412,37 @@ public sealed class ChatConversation : ChatObservableObject
                 RequestedModel = null; // the turn runs with the model it reports, whatever was asked
                 if (started.WorkingDirectory != null) WorkingDirectory = started.WorkingDirectory;
                 if (started.PermissionMode != null) PermissionMode = started.PermissionMode;
+                TerminalCommands = started.TerminalCommands;
+                break;
+            case CommandsAvailable available:
+                Commands = available.Commands;
+                break;
+            case ModelsAvailable models:
+                AvailableModels = models.Models;
+                break;
+            case SettingsApplied applied:
+                if (applied.Model != null)
+                {
+                    Model = applied.Model;
+                    RequestedModel = null;
+                }
+                if (applied.HasEffort)
+                {
+                    Effort = applied.Effort;
+                    RequestedEffort = null;
+                }
+                break;
+            case ContextUsageReported context:
+                ContextUsage = context.Usage;
+                break;
+            case UsageLimitsReported limits:
+                UsageLimits = limits.Limits;
+                break;
+            case CommandEcho echo:
+                OnCommandEcho(echo);
+                break;
+            case CommandOutput output:
+                Items.Add(new CommandOutputItem(output.Text));
                 break;
             case StatusChanged status:
                 if (status.PermissionMode != null) PermissionMode = status.PermissionMode;
@@ -194,6 +476,12 @@ public sealed class ChatConversation : ChatObservableObject
                 break;
             case SystemNotice notice:
                 OnSystemNotice(notice);
+                break;
+            case PromptCacheUsed cache:
+                OnPromptCacheUsed(cache);
+                break;
+            case RemoteControlChanged remote:
+                OnRemoteControlChanged(remote);
                 break;
         }
         UpdateStreaming();
@@ -245,20 +533,37 @@ public sealed class ChatConversation : ChatObservableObject
         _echoes.Clear();
         _unanswered.Clear();
         _interruptedThisTurn = false;
+        _cacheAnchor = null; // the cache belongs to the items; the browser and Remote Control belong to the host
+        PromptCacheExpiresAt = null;
+        PromptCacheTtl = null;
+        IsPromptCacheCompacted = false;
         IsBusy = false;
         UpdateStreaming();
     }
 
     // ---- user actions ----
 
-    /// <summary>Sends a message; blank text is ignored. Works while busy: the claude queues it.</summary>
+    /// <summary>
+    /// Sends a message with the <see cref="Attachments"/>, which it empties; blank text is ignored unless there is an
+    /// attachment. Works while busy: the claude queues it.
+    /// </summary>
     public bool Submit(string text)
     {
-        if (string.IsNullOrWhiteSpace(text)) return false;
-        var submitted = new MessageSubmittedEventArgs(text) { Owner = this };
+        var blank = string.IsNullOrWhiteSpace(text);
+        if (blank && Attachments.Count == 0) return false;
+        if (!blank && TryLocalCommand(text.Trim(), out var name, out var arguments))
+        {
+            InvokeCommand(name, arguments);
+            return true;
+        }
+        if (blank) text = "";
+        var images = Attachments.Count == 0 ? null : new List<ChatImage>(Attachments);
+        Attachments.Clear();
+        var submitted = new MessageSubmittedEventArgs(text, images) { Owner = this };
+        _cacheAnchor = _clock();
         if (EchoSubmittedMessages)
         {
-            submitted.Item = new UserMessageItem(text) { Timestamp = _clock() };
+            submitted.Item = new UserMessageItem(text, images) { Timestamp = _clock() };
             Items.Add(submitted.Item);
             _echoes.Add(submitted);
         }
@@ -266,6 +571,49 @@ public sealed class ChatConversation : ChatObservableObject
         IsBusy = true;
         MessageSubmitted?.Invoke(this, submitted);
         return true;
+    }
+
+    /// <summary>
+    /// Fits the image to <see cref="ImageBudgetBytes"/> and <see cref="MaxImageSide"/> off the UI thread and adds it to
+    /// <see cref="Attachments"/>. Await it on the UI thread: the adding happens in the continuation.
+    /// </summary>
+    public async Task<AddImageResult> AddImageAsync(byte[] encoded)
+    {
+        if (encoded == null) throw new ArgumentNullException(nameof(encoded));
+        if (Attachments.Count >= MaxImages) return AddImageResult.TooMany;
+        var remaining = ImageBudgetBytes - AttachedBytes();
+        var side = MaxImageSide;
+        var fitted = await Task.Run(() => ImageFitter.Fit(encoded, remaining, side));
+        if (fitted == null)
+            return ImageFitter.Measure(encoded) == null ? AddImageResult.NotAnImage : AddImageResult.TooBig;
+        // other images may have come while this one was being fitted
+        if (Attachments.Count >= MaxImages) return AddImageResult.TooMany;
+        if (fitted.Data.Length > ImageBudgetBytes - AttachedBytes()) return AddImageResult.TooBig;
+        Attachments.Add(ChatImage.FromBytes(fitted.Data, fitted.MediaType));
+        return AddImageResult.Added;
+    }
+
+    /// <summary>Takes an image out of <see cref="Attachments"/>.</summary>
+    public void RemoveAttachment(ChatImage image)
+    {
+        if (image == null) throw new ArgumentNullException(nameof(image));
+        Attachments.Remove(image);
+    }
+
+    private static int DecodedLength(string data)
+    {
+        var length = data.Length;
+        var padding = 0;
+        if (length > 0 && data[length - 1] == '=') padding++;
+        if (length > 1 && data[length - 2] == '=') padding++;
+        return length / 4 * 3 - padding + (length % 4 == 0 ? 0 : length % 4 - 1);
+    }
+
+    private int AttachedBytes()
+    {
+        var total = 0;
+        foreach (var image in Attachments) total += DecodedLength(image.Data);
+        return total;
     }
 
     /// <summary>
@@ -281,6 +629,11 @@ public sealed class ChatConversation : ChatObservableObject
         if (!ReferenceEquals(submitted.Owner, this) || submitted.Undone) return false;
         submitted.Undone = true;
         if (submitted.Item != null) Items.Remove(submitted.Item);
+        // the images go back to the reply box unless it already holds others
+        if (Attachments.Count == 0)
+        {
+            foreach (var image in submitted.Images) Attachments.Add(image);
+        }
         _echoes.Remove(submitted);
         if (_unanswered.Remove(submitted) && _unanswered.Count == 0) IsBusy = false;
         SubmitUndone?.Invoke(this, submitted);
@@ -323,6 +676,61 @@ public sealed class ChatConversation : ChatObservableObject
         if (model == null) throw new ArgumentNullException(nameof(model));
         RequestedModel = model;
         ModelRequested?.Invoke(this, new ModelRequestedEventArgs(model));
+    }
+
+    /// <summary>
+    /// Asks for an effort level (null for the model's own): raises <see cref="EffortRequested"/>; the level waits in
+    /// <see cref="RequestedEffort"/>, and <see cref="Effort"/> changes when the claude reports it.
+    /// </summary>
+    public void SetEffort(string? level)
+    {
+        RequestedEffort = level;
+        EffortRequested?.Invoke(this, new EffortRequestedEventArgs(level));
+    }
+
+    /// <summary>
+    /// Runs a local command: raises <see cref="CommandInvoked"/>, and <c>context</c> and <c>usage</c> also show their
+    /// panel. Nothing goes to the claude and no item is added.
+    /// </summary>
+    public void InvokeCommand(string name, string arguments)
+    {
+        if (name == null) throw new ArgumentNullException(nameof(name));
+        arguments ??= "";
+        if (name == "context") ShownPanel = ChatPanel.Context;
+        else if (name == "usage") ShownPanel = ChatPanel.Usage;
+        CommandInvoked?.Invoke(this, new CommandInvokedEventArgs(name, arguments));
+    }
+
+    /// <summary>Asks the host to disconnect the browser (raises <see cref="BrowserDisconnectRequested"/>) unless it is off; the state changes when the host sets it.</summary>
+    public void DisconnectBrowser()
+    {
+        if (_browserStatus == ChatBrowserStatus.Off) return;
+        BrowserDisconnectRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Asks the host to open the Remote Control link (raises <see cref="RemoteControlLinkRequested"/>); nothing without a link.</summary>
+    public void OpenRemoteControl()
+    {
+        var url = _remoteControlUrl;
+        if (url == null || url.Length == 0) return;
+        RemoteControlLinkRequested?.Invoke(this, new RemoteControlLinkRequestedEventArgs(url));
+    }
+
+    /// <summary>Hides the panel.</summary>
+    public void ClosePanel() => ShownPanel = ChatPanel.None;
+
+    /// <summary>A trimmed text of the form <c>/name arguments</c> whose name is one of <see cref="LocalCommands"/>.</summary>
+    private static bool TryLocalCommand(string text, out string name, out string arguments)
+    {
+        name = arguments = "";
+        if (text.Length < 2 || text[0] != '/') return false;
+        var end = 1;
+        while (end < text.Length && !char.IsWhiteSpace(text[end])) end++;
+        var token = text.Substring(1, end - 1);
+        if (Array.IndexOf(LocalCommandNames, token) < 0) return false;
+        name = token;
+        arguments = text.Substring(end).Trim();
+        return true;
     }
 
     /// <summary>Asks the claude to stop; the turn ends when its result arrives.</summary>
@@ -505,10 +913,12 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnUserBlock(UserBlock e)
     {
+        // a top-level user line (message or tool result) is a request: the cache lifetime counts from it
+        if (e.ParentToolUseId == null) _cacheAnchor = e.Timestamp ?? _clock();
         if (e.Block is ToolResultBlock result)
             OnToolResult(e, result);
         else if (e.Block is TextContentBlock text)
-            OnUserText(e, text.Text);
+            OnUserText(e, text.Text, ImagesOf(e));
     }
 
     private void OnToolResult(UserBlock e, ToolResultBlock result)
@@ -534,7 +944,19 @@ public sealed class ChatConversation : ChatObservableObject
         return result.IsError ? ToolStatus.Failed : ToolStatus.Succeeded;
     }
 
-    private void OnUserText(UserBlock e, string text)
+    /// <summary>The images of a user line, leaving out those that came without data.</summary>
+    private static IReadOnlyList<ChatImage>? ImagesOf(UserBlock e)
+    {
+        List<ChatImage>? images = null;
+        foreach (var image in e.Images)
+        {
+            if (image.Data.Length == 0) continue;
+            (images ??= new List<ChatImage>()).Add(new ChatImage(image.MediaType, image.Data));
+        }
+        return images;
+    }
+
+    private void OnUserText(UserBlock e, string text, IReadOnlyList<ChatImage>? images)
     {
         if (text.StartsWith(InterruptedPrefix, StringComparison.Ordinal))
         {
@@ -549,12 +971,24 @@ public sealed class ChatConversation : ChatObservableObject
             AddNotice(NoticeKind.Compacted, e.ParentToolUseId);
             return;
         }
+        if (text.Length == 0 && images == null) return;
         if (e.ParentToolUseId == null && _echoes.Count > 0 && _echoes[0].Text == text)
         {
             _echoes.RemoveAt(0); // the claude repeated what Submit already shows
             return;
         }
-        Place(new UserMessageItem(text) { Timestamp = e.Timestamp }, e.ParentToolUseId);
+        Place(new UserMessageItem(text, images) { Timestamp = e.Timestamp }, e.ParentToolUseId);
+    }
+
+    private void OnCommandEcho(CommandEcho e)
+    {
+        var text = "/" + e.Name + (e.Arguments.Length == 0 ? "" : " " + e.Arguments);
+        if (_echoes.Count > 0 && _echoes[0].Text == text)
+        {
+            _echoes.RemoveAt(0); // the claude repeated what Submit already shows
+            return;
+        }
+        Items.Add(new UserMessageItem(text));
     }
 
     // ---- permissions ----
@@ -656,8 +1090,40 @@ public sealed class ChatConversation : ChatObservableObject
         return false;
     }
 
+    private void OnPromptCacheUsed(PromptCacheUsed e)
+    {
+        IsPromptCacheCompacted = false;
+        if (e.Ttl != null) PromptCacheTtl = e.Ttl;
+        if (_promptCacheTtl == null) return;
+        var now = _clock();
+        var anchor = _cacheAnchor ?? now;
+        if (anchor > now) anchor = now; // an anchor from a clock ahead of ours never pushes the expiry past now + lifetime
+        PromptCacheExpiresAt = anchor + _promptCacheTtl.Value;
+    }
+
+    private void OnRemoteControlChanged(RemoteControlChanged e)
+    {
+        if (e.Url != null) RemoteControlUrl = e.Url;
+        switch (e.State)
+        {
+            case "ready":
+                RemoteControlStatus = ChatRemoteControlStatus.Connecting;
+                RemoteControlError = null;
+                break;
+            case "connected":
+                RemoteControlStatus = ChatRemoteControlStatus.Connected;
+                RemoteControlError = null;
+                break;
+            case "failed":
+                RemoteControlStatus = ChatRemoteControlStatus.Error;
+                RemoteControlError = e.Detail;
+                break;
+        }
+    }
+
     private void OnSystemNotice(SystemNotice e)
     {
+        if (e.Subtype == "compact_boundary") IsPromptCacheCompacted = true;
         if (e.Subtype == "compact_boundary") AddNotice(NoticeKind.Compacted, null);
         else if (e.Subtype == "api_retry") AddNotice(NoticeKind.ApiRetry, null);
     }

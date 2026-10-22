@@ -7,6 +7,41 @@ namespace ClaudeVisualChat.Tests.Protocol
     public class TranscriptParserTests
     {
         [Fact]
+        public void Image_message_from_the_session_file()
+        {
+            var events = FixtureFiles.TranscriptLines("image").SelectMany(TranscriptParser.Parse).ToList();
+
+            var user = events.OfType<UserBlock>().First(u => u.Images.Count > 0);
+            Assert.Equal("What two colors do you see? One line.", Assert.IsType<TextContentBlock>(user.Block).Text);
+            var image = Assert.Single(user.Images);
+            Assert.Equal("image/png", image.MediaType);
+            Assert.StartsWith("iVBOR", image.Data);
+            var meta = events.OfType<UserBlock>().First(u => u.IsMeta);
+            Assert.StartsWith("[Image: source:", Assert.IsType<TextContentBlock>(meta.Block).Text);
+        }
+
+        [Fact]
+        public void Command_lines_from_the_session_file()
+        {
+            var events = FixtureFiles.TranscriptLines("commands").SelectMany(TranscriptParser.Parse).ToList();
+
+            Assert.Contains(new CommandEcho("hello", "Ana"), events);
+            Assert.Contains(new CommandEcho("compact", ""), events);
+            Assert.Contains(new CommandOutput("Compacted "), events);
+            var caveat = events.OfType<UserBlock>().Single(
+                u => u.Block is TextContentBlock t && t.Text.StartsWith("<local-command-caveat>"));
+            Assert.True(caveat.IsMeta);
+            Assert.DoesNotContain(events.OfType<UserBlock>(), u => u.Block is TextContentBlock t && t.Text.Contains("<command-name>"));
+
+            var local = TranscriptParser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"local_command\",\"content\":\"<local-command-stdout>X</local-command-stdout>\"}");
+            Assert.Equal(new CommandOutput("X"), Assert.Single(local));
+            var user = TranscriptParser.Parse(
+                "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"<local-command-stdout>X</local-command-stdout>\"}}");
+            Assert.Equal(new CommandOutput("X"), Assert.Single(user));
+        }
+
+        [Fact]
         public void Transcript_user_text_and_tool_result()
         {
             var events = FixtureFiles.TranscriptLines("edit").SelectMany(TranscriptParser.Parse).ToList();

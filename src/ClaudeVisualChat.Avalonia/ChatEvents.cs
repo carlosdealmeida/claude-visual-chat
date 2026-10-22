@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace ClaudeVisualChat;
 
@@ -33,12 +34,16 @@ public sealed class PermissionAnsweredEventArgs : EventArgs
 /// </summary>
 public sealed class MessageSubmittedEventArgs : EventArgs
 {
-    public MessageSubmittedEventArgs(string text)
+    public MessageSubmittedEventArgs(string text, IReadOnlyList<ChatImage>? images = null)
     {
         Text = text ?? "";
+        Images = images ?? Array.Empty<ChatImage>();
     }
 
     public string Text { get; }
+
+    /// <summary>The images sent with the message; empty when there are none.</summary>
+    public IReadOnlyList<ChatImage> Images { get; }
 
     /// <summary>The conversation that sent it; null for one made by hand.</summary>
     internal ChatConversation? Owner { get; set; }
@@ -71,4 +76,70 @@ public sealed class ModelRequestedEventArgs : EventArgs
 
     /// <summary>The model asked for, as the claude takes it (<c>sonnet</c>, <c>opus</c>, a full model id…).</summary>
     public string Model { get; }
+}
+
+/// <summary>A slash command the conversation handles itself instead of sending it as a message.</summary>
+public sealed class CommandInvokedEventArgs : EventArgs
+{
+    public CommandInvokedEventArgs(string name, string arguments)
+    {
+        Name = name ?? "";
+        Arguments = arguments ?? "";
+    }
+
+    /// <summary>The command, without the slash (<c>context</c>, <c>usage</c>, <c>rc</c>…).</summary>
+    public string Name { get; }
+
+    /// <summary>What followed the name, trimmed; empty when nothing did.</summary>
+    public string Arguments { get; }
+}
+
+/// <summary>An effort level the user asked for, not yet confirmed by the claude.</summary>
+public sealed class EffortRequestedEventArgs : EventArgs
+{
+    public EffortRequestedEventArgs(string? effort)
+    {
+        Effort = effort;
+    }
+
+    /// <summary>The level asked for (<c>low</c>, <c>medium</c>, <c>high</c>…); null to go back to the model's own.</summary>
+    public string? Effort { get; }
+}
+
+/// <summary>The panel the conversation asks the view to show over the reply box.</summary>
+public enum ChatPanel
+{
+    None,
+    Context,
+    Usage,
+}
+
+/// <summary>The state of the browser extension, which the host reports.</summary>
+public enum ChatBrowserStatus
+{
+    Off,
+    Connecting,
+    Connected,
+    NoBrowser,
+    Error,
+}
+
+/// <summary>The state of the Remote Control.</summary>
+public enum ChatRemoteControlStatus
+{
+    Off,
+    Connecting,
+    Connected,
+    Error,
+}
+
+/// <summary>The user asked to open the Remote Control link; the host opens it.</summary>
+public sealed class RemoteControlLinkRequestedEventArgs : EventArgs
+{
+    public RemoteControlLinkRequestedEventArgs(string url)
+    {
+        Url = url;
+    }
+
+    public string Url { get; }
 }

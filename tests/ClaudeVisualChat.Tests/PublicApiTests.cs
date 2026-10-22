@@ -69,4 +69,48 @@ public class PublicApiTests
         Assert.Equal(typeof(bool), property!.PropertyType);
         Assert.NotNull(view.GetField("IsReadOnlyProperty"));
     }
+
+    [Fact]
+    public void The_bar_api_exists()
+    {
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        foreach (var type in new[]
+        {
+            "ClaudeVisualChat.ChatImage", "ClaudeVisualChat.AddImageResult", "ClaudeVisualChat.ChatCommand",
+            "ClaudeVisualChat.ChatModel", "ClaudeVisualChat.ContextUsage", "ClaudeVisualChat.ContextCategory",
+            "ClaudeVisualChat.UsageLimits", "ClaudeVisualChat.UsageWindow", "ClaudeVisualChat.ChatPanel",
+            "ClaudeVisualChat.ChatBrowserStatus", "ClaudeVisualChat.ChatRemoteControlStatus",
+            "ClaudeVisualChat.EffortRequestedEventArgs", "ClaudeVisualChat.CommandInvokedEventArgs",
+            "ClaudeVisualChat.RemoteControlLinkRequestedEventArgs", "ClaudeVisualChat.CommandOutputItem",
+            "ClaudeVisualChat.Protocol.SettingsApplied",
+        })
+        {
+            Assert.Contains(type, names);
+        }
+
+        var conversation = typeof(ChatConversation);
+        foreach (var member in new[]
+        {
+            "Attachments", "MaxImages", "ImageBudgetBytes", "MaxImageSide", "AvailableModels", "CurrentModel", "ModelSuffix", "Effort",
+            "RequestedEffort", "Commands", "TerminalCommands", "PaletteCommands", "ShownPanel", "ContextUsage",
+            "UsageLimits", "Clock", "PromptCacheExpiresAt", "PromptCacheTtl", "IsPromptCacheCompacted", "BrowserStatus",
+            "BrowserError", "RemoteControlStatus", "RemoteControlUrl", "RemoteControlError",
+            "AddImageAsync", "RemoveAttachment", "SetEffort", "InvokeCommand", "DisconnectBrowser", "OpenRemoteControl",
+            "ClosePanel", "EffortRequested", "CommandInvoked", "BrowserDisconnectRequested", "RemoteControlLinkRequested",
+        })
+        {
+            Assert.True(conversation.GetMember(member).Length > 0, "ChatConversation." + member);
+        }
+
+        var send = typeof(ClaudeVisualChat.Protocol.StdinMessages);
+        foreach (var method in new[] { "ApplyEffort", "GetSettings", "GetContextUsage", "RemoteControl", "GetChromeStatus", "Initialize" })
+            Assert.NotNull(send.GetMethod(method));
+        Assert.Equal(2, send.GetMethod("UserMessage")!.GetParameters().Length);
+
+        // the models come from the conversation now
+        var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
+        Assert.Null(view.GetProperty("AvailableModels"));
+        Assert.Null(view.GetField("AvailableModelsProperty"));
+        Assert.NotNull(view.GetProperty("AvailableModes"));
+    }
 }

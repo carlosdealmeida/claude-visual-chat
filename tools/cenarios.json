@@ -69,5 +69,41 @@
     ],
     "respostas": ["allow_always"],
     "espera": ["set_model_ok", "result_success", "pedido:Write"]
+  },
+  {
+    "id": "image",
+    "setup": {},
+    "passos": [
+      {"inicializar": true},
+      {"imagem": {"largura": 96, "altura": 48, "texto": "What two colors do you see? One line."}}
+    ],
+    "respostas": [],
+    "espera": ["result_success"]
+  },
+  {
+    "id": "commands",
+    "setup": {".claude/commands/hello.md": "---\ndescription: Say hello\nargument-hint: name\n---\nReply with exactly: hello, $ARGUMENTS\n"},
+    "passos": [
+      {"inicializar": true},
+      {"enviar": "Say hi in one line."},
+      {"contexto": true},
+      {"comando": "/hello Ana"},
+      {"comando": "/compact"}
+    ],
+    "respostas": [],
+    "espera": ["result_success"]
+  },
+  {
+    "id": "effort",
+    "setup": {},
+    "passos": [
+      {"inicializar": true},
+      {"esforco": "high"},
+      {"enviar": "Say hi in one line."},
+      {"modelo": "haiku"},
+      {"esforco": "low"}
+    ],
+    "respostas": [],
+    "espera": ["result_success", "set_model_ok"]
   }
 ]

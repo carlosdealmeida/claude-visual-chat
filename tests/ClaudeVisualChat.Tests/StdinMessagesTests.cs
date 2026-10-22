@@ -170,6 +170,67 @@ public class StdinMessagesTests
         Assert.Equal("setMode", inner.GetProperty("updatedPermissions")[0].GetProperty("type").GetString());
     }
 
+    private static JsonElement Request(string line) => Parse(line).GetProperty("request");
+
+    [Fact]
+    public void User_message_without_images_keeps_string_content()
+    {
+        var content = Parse(StdinMessages.UserMessage("oi")).GetProperty("message").GetProperty("content");
+        Assert.Equal(JsonValueKind.String, content.ValueKind);
+        Assert.Equal(StdinMessages.UserMessage("oi"), StdinMessages.UserMessage("oi", Array.Empty<ChatImage>()));
+    }
+
+    [Fact]
+    public void User_message_with_images_puts_images_before_the_text()
+    {
+        var png = new ChatImage("image/png", "QUJD");
+
+        var content = Parse(StdinMessages.UserMessage("oi", new[] { png })).GetProperty("message").GetProperty("content");
+
+        Assert.Equal(2, content.GetArrayLength());
+        Assert.Equal("image", content[0].GetProperty("type").GetString());
+        var source = content[0].GetProperty("source");
+        Assert.Equal("base64", source.GetProperty("type").GetString());
+        Assert.Equal("image/png", source.GetProperty("media_type").GetString());
+        Assert.Equal("QUJD", source.GetProperty("data").GetString());
+        Assert.Equal("text", content[1].GetProperty("type").GetString());
+        Assert.Equal("oi", content[1].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public void User_message_with_only_images_has_no_text_block()
+    {
+        var content = Parse(StdinMessages.UserMessage("", new[] { new ChatImage("image/png", "QUJD") }))
+            .GetProperty("message").GetProperty("content");
+
+        Assert.Equal(1, content.GetArrayLength());
+        Assert.Equal("image", content[0].GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void Apply_effort_sends_the_level_or_null()
+    {
+        var high = Request(StdinMessages.ApplyEffort("e1", "high"));
+        Assert.Equal("apply_flag_settings", high.GetProperty("subtype").GetString());
+        Assert.Equal("high", high.GetProperty("settings").GetProperty("effortLevel").GetString());
+        Assert.Equal("e1", Parse(StdinMessages.ApplyEffort("e1", "high")).GetProperty("request_id").GetString());
+
+        var cleared = Request(StdinMessages.ApplyEffort("e1", null));
+        Assert.Equal(JsonValueKind.Null, cleared.GetProperty("settings").GetProperty("effortLevel").ValueKind);
+    }
+
+    [Fact]
+    public void Query_and_remote_control_requests_have_the_right_subtype()
+    {
+        Assert.Equal("get_settings", Request(StdinMessages.GetSettings("a")).GetProperty("subtype").GetString());
+        Assert.Equal("get_context_usage", Request(StdinMessages.GetContextUsage("b")).GetProperty("subtype").GetString());
+        Assert.Equal("get_chrome_dialog", Request(StdinMessages.GetChromeStatus("c")).GetProperty("subtype").GetString());
+        var remote = Request(StdinMessages.RemoteControl("r1", true));
+        Assert.Equal("remote_control", remote.GetProperty("subtype").GetString());
+        Assert.True(remote.GetProperty("enabled").GetBoolean());
+        Assert.False(Request(StdinMessages.RemoteControl("r2", false)).GetProperty("enabled").GetBoolean());
+    }
+
     [Fact]
     public void Null_arguments_are_rejected()
     {

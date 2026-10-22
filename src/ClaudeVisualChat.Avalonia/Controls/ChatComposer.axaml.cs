@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -11,16 +14,22 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Threading;
+using ClaudeVisualChat.Imaging;
 
 namespace ClaudeVisualChat.Controls;
 
 /// <summary>
-/// The reply box, like the extension's: the text over a bar with the model, the mode and the square buttons: send
-/// (enabled when something is written) and, while Claude works, stop; with nothing written, only stop shows, as in the
-/// extension; with text, both, and what is sent waits in line.
+/// The reply box, like the extension's: the images attached, the text, and a bar with +, / (the command palette, also
+/// opened by a "/" typed in the empty box), the prompt cache clock, the Remote Control chip, the model chip (its menu
+/// has the models and the effort), the mode and the
+/// square buttons: send (enabled when something is written or attached) and, while Claude works, stop; with nothing
+/// to send, only stop shows, as in the extension; with something, both, and what is sent waits in line.
+/// Images come from the + button's file dialog, from Ctrl+V when the clipboard holds an image and no text, and from
+/// image files dropped on the box; one that does not go in says why under the strip until the next one goes in or
+/// the message is sent.
 /// Enter sends and clears; Shift+Enter breaks the line; Esc stops Claude while it works, and otherwise goes on to the
-/// app. The pickers show what the claude reports (a model asked for shows, marked pending, until the claude reports
-/// one); picking only asks for a change through the conversation's events. The box takes the mode's color: classes
+/// app. The mode picker and the model chip show what the claude reports; picking only asks for a change through the
+/// conversation's events. The box takes the mode's color: classes
 /// <c>plan</c>, <c>acceptEdits</c> and <c>auto</c> on its frame.
 /// </summary>
 internal partial class ChatComposer : UserControl
@@ -45,11 +54,18 @@ internal partial class ChatComposer : UserControl
     private ChatConversation? _conversation;
     private ChatConversation? _tracked;
     private IReadOnlyList<string> _modes = Array.Empty<string>();
-    private IReadOnlyList<string>? _models;
     private bool _attached;
 
-    /// <summary>True while the pickers are set from the conversation, so the change is not the user's.</summary>
+    /// <summary>True while the mode picker is set from the conversation, so the change is not the user's.</summary>
     private bool _syncing;
+
+    /// <summary>Why the last image did not go in; null when it did, or after a send.</summary>
+    private AddImageResult? _rejected;
+
+    /// <summary>Test seam: the file dialog of the + button.</summary>
+    internal Func<Task<IReadOnlyList<byte[]>>>? PickImagesOverride;
+
+    private static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
     public ChatComposer()
     {
@@ -69,7 +85,23 @@ internal partial class ChatComposer : UserControl
         };
         StopButton.Click += (_, _) => _tracked?.Stop();
         ModePicker.SelectionChanged += OnModePicked;
-        ModelPicker.SelectionChanged += OnModelPicked;
+        Palette.PlacementTarget = Box;
+        Palette.Opener = CommandsButton;
+        Palette.Input = Input;
+        CommandsButton.Click += (_, _) => Palette.Toggle();
+        ModelMenu.PlacementTarget = Box;
+        ModelMenu.Opener = ModelChip;
+        ModelChip.Menu = ModelMenu;
+        AddButton.Click += async (_, _) =>
+        {
+            var conversation = _tracked; // the one shown now, even if another is shown when the dialog closes
+            await AttachAsync(conversation, await PickImagesAsync());
+        };
+        Input.PastingFromClipboard += OnPasting;
+        Box.AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        Box.AddHandler(DragDrop.DropEvent, OnDrop);
+        Strip.RemoveRequested += (_, image) => _tracked?.RemoveAttachment(image);
+        Strip.OpenRequested += (_, e) => PreviewRequested?.Invoke(this, e);
         IsEnabled = false;
         Refresh();
     }
@@ -89,6 +121,11 @@ internal partial class ChatComposer : UserControl
                 _conversation = value;
                 ShowDraft(value);
             }
+            CacheClock.Conversation = value;
+            RemoteControlChip.Conversation = value;
+            ModelChip.Conversation = value;
+            ModelMenu.Conversation = value;
+            Palette.Conversation = value;
             IsEnabled = value != null;
             if (_attached) Track(value);
         }
@@ -123,21 +160,19 @@ internal partial class ChatComposer : UserControl
         }
     }
 
-    /// <summary>The models offered; null hides the model picker.</summary>
-    internal IReadOnlyList<string>? Models
-    {
-        get => _models;
-        set
-        {
-            _models = value;
-            RebuildModels();
-        }
-    }
+    /// <summary>The user clicked an attached image: the view shows it.</summary>
+    internal event EventHandler<(ChatImage Image, string Name)>? PreviewRequested;
 
     /// <summary>Nothing written yet (spaces do not count).</summary>
     internal bool IsEmpty => string.IsNullOrWhiteSpace(Input.Text);
 
+    /// <summary>Nothing written and no image attached: Enter would send nothing.</summary>
+    internal bool HasNothingToSend => IsEmpty && (_conversation == null || _conversation.Attachments.Count == 0);
+
     internal bool FocusInput() => Input.Focus();
+
+    /// <summary>The command palette or the model menu is open: they take Esc first.</summary>
+    internal bool HasOpenPopup => Palette.IsOpen || ModelMenu.IsOpen;
 
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
 
@@ -159,6 +194,17 @@ internal partial class ChatComposer : UserControl
     {
         base.OnPropertyChanged(change);
         if (change.Property == StringsProperty) Refresh();
+        else if (change.Property == IsVisibleProperty && !IsVisible) ClosePopups();
+    }
+
+    /// <summary>
+    /// Closes the command palette and the model menu: the reply box goes away (read-only, hidden) or a permission
+    /// request comes. Avalonia 11.0 does not tell a control that an ancestor hid it, so the view calls this too.
+    /// </summary>
+    internal void ClosePopups()
+    {
+        Palette.IsOpen = false;
+        ModelMenu.IsOpen = false;
     }
 
     private void Track(ChatConversation? conversation)
@@ -169,13 +215,17 @@ internal partial class ChatComposer : UserControl
             {
                 _tracked.PropertyChanged -= OnConversationChanged;
                 _tracked.SubmitUndone -= OnSubmitUndone;
+                _tracked.Attachments.CollectionChanged -= OnAttachmentsChanged;
             }
             _tracked = conversation;
             if (_tracked != null)
             {
                 _tracked.PropertyChanged += OnConversationChanged;
                 _tracked.SubmitUndone += OnSubmitUndone;
+                _tracked.Attachments.CollectionChanged += OnAttachmentsChanged;
             }
+            Strip.Images = _tracked?.Attachments;
+            ShowRejected(null);
         }
         Refresh();
     }
@@ -190,9 +240,8 @@ internal partial class ChatComposer : UserControl
             case nameof(ChatConversation.PermissionMode):
                 SelectMode();
                 break;
-            case nameof(ChatConversation.Model):
-            case nameof(ChatConversation.RequestedModel):
-                SelectModel();
+            case nameof(ChatConversation.CurrentPermission):
+                if (_tracked?.CurrentPermission != null) ClosePopups(); // the request comes first, the menus would cover it
                 break;
         }
     }
@@ -205,15 +254,23 @@ internal partial class ChatComposer : UserControl
         Input.CaretIndex = e.Text.Length;
     }
 
+    private void OnAttachmentsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        UpdateSend();
+        UpdateBusy();
+    }
+
     private void Refresh()
     {
         var strings = Strings;
         Label(SendButton, strings.Send);
         Label(StopButton, strings.Stop);
+        Label(AddButton, strings.AddAttachment);
+        Label(CommandsButton, strings.ShowCommands);
+        ShowRejected(_rejected);
         UpdateBusy();
         UpdateSend();
         RebuildModes();
-        RebuildModels();
     }
 
     private static void Label(Button button, string name)
@@ -224,7 +281,7 @@ internal partial class ChatComposer : UserControl
 
     /// <summary>
     /// While Claude works, stop shows and what is sent waits in line; send shows next to it once something is written
-    /// (alone, stop is the extension's square). Idle, only send.
+    /// or attached (alone, stop is the extension's square). Idle, only send.
     /// </summary>
     private void UpdateBusy()
     {
@@ -232,16 +289,26 @@ internal partial class ChatComposer : UserControl
         var strings = Strings;
         Input.Watermark = busy ? strings.InputPlaceholderBusy : strings.InputPlaceholder;
         StopButton.IsVisible = busy;
-        SendButton.IsVisible = !busy || !IsEmpty;
+        SendButton.IsVisible = !busy || HasSomethingToSend;
     }
 
-    private void UpdateSend() => SendButton.IsEnabled = _tracked != null && !IsEmpty;
+    private void UpdateSend() => SendButton.IsEnabled = HasSomethingToSend;
+
+    /// <summary>Text, or an image attached.</summary>
+    private bool HasSomethingToSend => _tracked != null && (!IsEmpty || _tracked.Attachments.Count > 0);
 
     // ---- keys and buttons ----
 
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
     {
+        // a hidden box (read-only, or an ancestor hidden) may keep the keyboard: its keys send and stop nothing
+        if (!IsEffectivelyVisible) return;
         if (e.KeyModifiers != KeyModifiers.None) return; // Shift+Enter: the text box breaks the line
+        if (Palette.HandleKey(e.Key))
+        {
+            e.Handled = true; // the palette's arrows, Enter, Tab and Esc
+            return;
+        }
         if (e.Key == Key.Enter)
         {
             e.Handled = true; // Enter is the send key, never a line break
@@ -257,14 +324,118 @@ internal partial class ChatComposer : UserControl
     private void Send()
     {
         var conversation = _tracked;
-        if (conversation == null || IsEmpty) return;
+        if (conversation == null || !HasSomethingToSend || !IsEffectivelyVisible) return;
         var text = Input.Text ?? "";
         // cleared first: a host that refuses the message at once (UndoSubmit inside MessageSubmitted) gets it back here
         Input.Clear();
+        ShowRejected(null);
         conversation.Submit(text);
     }
 
-    // ---- pickers ----
+    // ---- images ----
+
+    private Task<IReadOnlyList<byte[]>> PickImagesAsync() =>
+        PickImagesOverride != null ? PickImagesOverride() : ImageFiles.PickAsync(TopLevel.GetTopLevel(this), Strings, _tracked == null ? int.MaxValue : ImageFiles.ToRead(_tracked));
+
+    /// <summary>
+    /// Ctrl+V: text wins, so text copied with a picture (a browser, Word) pastes as text. On Windows, an image with no
+    /// text is attached instead of pasted; elsewhere the text box pastes, and an image found with no text is attached.
+    /// Each gesture attaches to the conversation shown when it began.
+    /// </summary>
+    private void OnPasting(object? sender, RoutedEventArgs e)
+    {
+        var conversation = _tracked;
+        if (!IsWindows)
+        {
+            _ = PasteImageWithoutTextAsync(conversation);
+            return;
+        }
+        if (ClipboardImages.HasText() || !ClipboardImages.HasImage()) return;
+        e.Handled = true;
+        _ = PasteImageAsync(conversation);
+    }
+
+    private async Task PasteImageAsync(ChatConversation? conversation)
+    {
+        var bytes = await ClipboardImages.ReadImageAsync(TopLevel.GetTopLevel(this));
+        await AttachAsync(conversation, new[] { bytes ?? Array.Empty<byte>() }); // unreadable: refused as not an image
+    }
+
+    private async Task PasteImageWithoutTextAsync(ChatConversation? conversation)
+    {
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard == null) return;
+        try
+        {
+            foreach (var format in await clipboard.GetFormatsAsync())
+            {
+                if (format == DataFormats.Text || format.StartsWith("text/", StringComparison.Ordinal) || format == "UTF8_STRING") return;
+            }
+        }
+        catch (Exception)
+        {
+            return;
+        }
+        var bytes = await ClipboardImages.ReadImageAsync(TopLevel.GetTopLevel(this));
+        if (bytes != null) await AttachAsync(conversation, new[] { bytes });
+    }
+
+    private void OnDragOver(object? sender, DragEventArgs e)
+    {
+        e.DragEffects = ImageFiles.Dropped(e.Data).Count > 0 ? e.DragEffects & DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void OnDrop(object? sender, DragEventArgs e)
+    {
+        var conversation = _tracked;
+        var files = ImageFiles.Dropped(e.Data);
+        e.Handled = true;
+        var images = new List<byte[]>(files.Count);
+        var max = conversation == null ? int.MaxValue : ImageFiles.ToRead(conversation);
+        try
+        {
+            foreach (var file in files)
+            {
+                if (images.Count >= max) break; // the rest would be refused as too many anyway
+                images.Add(await ImageFiles.ReadAsync(file) ?? Array.Empty<byte>());
+            }
+        }
+        finally
+        {
+            foreach (var file in files) file.Dispose();
+        }
+        await AttachAsync(conversation, images);
+    }
+
+    /// <summary>Attaches the images in order; the last one refused says why, and a batch with none refused clears it.</summary>
+    private async Task AttachAsync(ChatConversation? conversation, IReadOnlyList<byte[]> images)
+    {
+        if (conversation == null || images.Count == 0) return;
+        AddImageResult? rejected = null;
+        foreach (var bytes in images)
+        {
+            var result = ReferenceEquals(bytes, ImageFiles.TooBig) ? AddImageResult.TooBig : await conversation.AddImageAsync(bytes);
+            if (result != AddImageResult.Added) rejected = result;
+        }
+        if (ReferenceEquals(conversation, _tracked)) ShowRejected(rejected);
+    }
+
+    private void ShowRejected(AddImageResult? result)
+    {
+        _rejected = result;
+        var strings = Strings;
+        AttachError.Text = result switch
+        {
+            AddImageResult.TooMany => strings.TooManyImages,
+            AddImageResult.TooBig => strings.ImageTooBig,
+            AddImageResult.NotAnImage => strings.NotAnImage,
+            _ => null,
+        };
+        AttachError.IsVisible = result != null;
+    }
+
+    // ---- the mode ----
 
     private void RebuildModes()
     {
@@ -328,58 +499,6 @@ internal partial class ChatComposer : UserControl
         // stays when the claude refuses or confirms the mode it already had (both leave PermissionMode as it is);
         // posted, since the picker is still applying the user's choice
         Dispatcher.UIThread.Post(SelectMode);
-    }
-
-    private void RebuildModels()
-    {
-        ModelPicker.IsVisible = _models != null;
-        _syncing = true;
-        try
-        {
-            ModelPicker.ItemsSource = _models == null ? null : new List<string>(_models);
-        }
-        finally
-        {
-            _syncing = false;
-        }
-        SelectModel();
-    }
-
-    /// <summary>
-    /// Shows the model asked for while the claude has not confirmed it (marked pending), else the model the claude
-    /// reports; one that is not offered shows as the placeholder.
-    /// </summary>
-    private void SelectModel()
-    {
-        var requested = _tracked?.RequestedModel;
-        var model = requested ?? _tracked?.Model;
-        var offered = model != null && _models != null && Contains(_models, model);
-        _syncing = true;
-        try
-        {
-            ModelPicker.SelectedItem = offered ? model : null;
-            ModelPicker.PlaceholderText = offered ? null : model;
-            ModelPicker.Classes.Set("pending", requested != null);
-        }
-        finally
-        {
-            _syncing = false;
-        }
-    }
-
-    private void OnModelPicked(object? sender, SelectionChangedEventArgs e)
-    {
-        if (_syncing || _tracked == null || ModelPicker.SelectedItem is not string model) return;
-        _tracked.SetModel(model);
-    }
-
-    private static bool Contains(IReadOnlyList<string> list, string value)
-    {
-        foreach (var item in list)
-        {
-            if (item == value) return true;
-        }
-        return false;
     }
 
     /// <summary>A picker entry: the value sent to the claude and the label shown.</summary>

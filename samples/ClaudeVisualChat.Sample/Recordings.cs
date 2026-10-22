@@ -16,6 +16,7 @@ internal static class Recordings
     public static readonly string[] Scenarios =
     {
         "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model",
+        "image", "commands", "effort",
     };
 
     /// <summary>The folder the recordings were made in, after the recorder replaced the real one.</summary>

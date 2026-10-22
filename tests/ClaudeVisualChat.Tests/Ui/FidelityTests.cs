@@ -8,6 +8,7 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using ClaudeVisualChat;
 using ClaudeVisualChat.Controls;
 using Xunit;
 using AssistantBlock = ClaudeVisualChat.Protocol.AssistantBlock;
@@ -184,6 +185,16 @@ public class FidelityTests
         ("ClaudeChat.CodeBlockBackground", "#242526", "#2B2B2B"), // textCodeBlock.background
         ("ClaudeChat.PillBackground", "#1ABFBFBF", "#1ACCCCCC"),
         ("ClaudeChat.PillHoverBackground", "#2EBFBFBF", "#2ECCCCCC"),
+        ("ClaudeChat.AttachmentBackground", "#2A2B2C", "#414141"),     // input.background 85 % + descriptionForeground
+        ("ClaudeChat.AttachmentHoverBorder", "#666667", "#85CCCCCC"),  // the input border 60 % + foreground
+        ("ClaudeChat.MenuBackground", "#202122", "#1F1F1F"),           // menu.background
+        ("ClaudeChat.MenuForeground", "#BFBFBF", "#CCCCCC"),           // menu.foreground
+        ("ClaudeChat.ListHoverBackground", "#14FFFFFF", "#2A2D2E"),    // list.hoverBackground
+        // the banners: BannerTint or errorForeground at 50 % over foreground, at 25 % over editor.background
+        ("ClaudeChat.BannerForeground", "#8591B7", "#8B98BE"),
+        ("ClaudeChat.BannerBackground", "#20273B", "#2A3043"),
+        ("ClaudeChat.BannerErrorForeground", "#DAA398", "#E28F8B"),
+        ("ClaudeChat.BannerErrorBackground", "#4B302B", "#552C2A"),
     };
 
     /// <summary>The extension's own colors, the same in both.</summary>
@@ -201,6 +212,11 @@ public class FidelityTests
         ("ClaudeChat.SendForeground", "#FAF9F5"),
         ("ClaudeChat.FocusRing", "#D97757"),
         ("ClaudeChat.Spinner", "#D97757"),
+        ("ClaudeChat.PreviewOverlay", "#D9000000"), // the image preview's backdrop
+        ("ClaudeChat.BannerTint", "#4A63AF"),
+        ("ClaudeChat.RemoteControlForeground", "#FAF9F5"),
+        ("ClaudeChat.RemoteControlHoverBackground", "#516DC1"), // the connected chip's brightness(1.1)
+        ("ClaudeChat.RemoteControlHoverForeground", "#FFFFFF"),
     };
 
     [AvaloniaFact]
@@ -480,6 +496,90 @@ public class FidelityTests
         c.Apply(new ClaudeVisualChat.Protocol.StatusChanged(null, "default"));
         UiHelpers.Pump();
         Assert.Same(Resource(view, "ClaudeChat.SendBackground"), send.Background);
+        window.Close();
+    }
+    // ---- the new bar (2.1.306) ----
+    // Already pinned elsewhere, not repeated here: the 26 px size and 2 px gap of + and / (ComposerTests.The_bar_has_the_extension_order),
+    // the clock's 26 px and the Remote Control chip's 18 px / radius 9 / padding 8 (StatusTests.Clock_and_chip_sit_in_the_bar_with_the_extension_measures),
+    // the banner's tuck, radius, padding and text (StatusTests.Banner_is_tucked_under_the_reply_box), the model chip's 18 px / radius 9 /
+    // padding 8 and the menu's rows and slider (ModelMenuTests), the pill's 24 px, 4 px radius and strip padding (AttachmentTests),
+    // the palette's frame, rows and filter (CommandPaletteTests), the panel's frame (UsagePanelTests).
+
+    /// <summary>The scene of the extension's print: every part of the bar on, and the browser's banner over the box.</summary>
+    private static (ClaudeChatView View, Window Window, ChatComposer Composer) OpenBar()
+    {
+        var now = new DateTimeOffset(2026, 10, 22, 10, 0, 0, TimeSpan.Zero);
+        var c = new ChatConversation
+        {
+            Clock = () => now,
+            AvailableModels = new[] { new ClaudeVisualChat.ChatModel("opus", "claude-opus-5-5", "Opus 5.5", "", new[] { "low", "high" }) },
+        };
+        c.Apply(new ClaudeVisualChat.Protocol.SessionStarted("s1", "opus", null, "default", "2.1.306"));
+        c.Apply(new ClaudeVisualChat.Protocol.SettingsApplied(null, "high", true));
+        c.Apply(new ClaudeVisualChat.Protocol.PromptCacheUsed(TimeSpan.FromMinutes(60), null));
+        c.RemoteControlStatus = ChatRemoteControlStatus.Connected;
+        c.RemoteControlUrl = "https://claude.ai/code/session_1";
+        c.BrowserStatus = ChatBrowserStatus.Connected;
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view, 1000, 400);
+        return (view, window, UiHelpers.Composer(view));
+    }
+
+    [AvaloniaFact]
+    public void The_bar_parts_sit_on_one_row_with_the_extension_gaps()
+    {
+        var (view, window, composer) = OpenBar();
+        var box = BoundsIn(composer.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatComposer")), view);
+        Rect Of(Control c) => BoundsIn(c, view);
+        var add = Of(UiHelpers.ButtonWithText(composer, "Add"));
+        var slash = Of(UiHelpers.ButtonWithText(composer, "Show command menu (/)"));
+        var clock = Of(composer.GetVisualDescendants().OfType<PromptCacheClock>().Single());
+        var remote = Of(composer.GetVisualDescendants().OfType<RemoteControlChip>().Single());
+        var model = Of(composer.GetVisualDescendants().OfType<ModelChip>().Single());
+        var mode = Of(composer.GetVisualDescendants().OfType<ComboBox>().Single());
+        var send = Of(composer.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("ClaudeChatSend")));
+
+        // .inputFooterV2_gGYT1w: footer padding 5, flex gap 2, align-items center; its buttons 26 px high
+        // (the footer's .5 px top border is drawn as the 1 px line, so the bar is 36 and not 36.5)
+        Near(box.Bottom - 1 - 5, add.Bottom, "the bar's buttons end 5 px over the box's bottom edge");
+        Near(26, add.Height, "buttons are 26 high");
+        foreach (var (name, part) in new[] { ("slash", slash), ("clock", clock), ("mode", mode), ("send", send) })
+            Near(add.Top, part.Top, name + " is on the row of +");
+        // the chips (min-height 18, .modelPill_gGYT1w) are centered on the 26 px row
+        Near(add.Top + 4, remote.Top, "Remote Control chip centered");
+        Near(add.Top + 4, model.Top, "model chip centered");
+
+        // gap 2 between neighbors; the model chip adds margin-left 6 (.modelPill_gGYT1w) to the gap
+        Near(slash.Right + 2, clock.Left, "clock after /");
+        Near(clock.Right + 2, remote.Left, "chip after clock");
+        Near(remote.Right + 2 + 6, model.Left, "model chip: gap 2 + margin 6");
+        Near(mode.Right + 4, send.Left, "send after mode: gap 2 and the mode button's 2 px margin, as FidelityTests.Reply_box_is_680_wide...");
+        Near(box.Right - 1 - 5, send.Right, "send at the right of the bar");
+        Assert.Equal(new Size(26, 26), send.Size);
+
+        // the model chip's text: .85em, the effort at margin-left 4 in the secondary color
+        var chip = composer.GetVisualDescendants().OfType<ModelChip>().Single();
+        Assert.All(chip.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible), t => Assert.Equal(11.05, t.FontSize, 2));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_browser_banner_is_as_wide_as_the_box_and_20_px_of_content_high()
+    {
+        var (view, window, composer) = OpenBar();
+        var box = BoundsIn(composer.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatComposer")), view);
+        var banner = view.GetVisualDescendants().OfType<BrowserBanner>().Single();
+        var b = BoundsIn(banner, view);
+
+        // .banner_88YE4g: padding 6 6 12 16, border .5, the × (.closeButton_88YE4g: 4 + 12 + 4 = 20) is the tallest part
+        // (the text is 11.05 * 1.4 = 15.5); .5 px borders are drawn as 1 px, so 6 + 20 + 12 + 2 x .5 = 39 is 40 here
+        Near(40, b.Height, "banner height");
+        Near(box.Left, b.Left, "banner left");
+        Near(box.Right, b.Right, "banner right");
+        Near(box.Top + 8, b.Bottom, "margin-bottom -8: the banner's last 8 px are under the box");
+        var close = banner.GetVisualDescendants().OfType<Button>().Single(x => x.IsEffectivelyVisible);
+        Assert.Equal(new Size(20, 20), close.Bounds.Size);
+        Near(b.Right - 1 - 6, BoundsIn(close, view).Right, "the × sits 6 px from the right");
         window.Close();
     }
 }

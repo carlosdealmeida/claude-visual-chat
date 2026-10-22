@@ -5,7 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
-using Avalonia.Media;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
 using Xunit;
@@ -32,7 +32,6 @@ public class ComposerTests
             conversation.MessageSubmitted += (_, e) => Sent.Add(e.Text);
             conversation.StopRequested += (_, _) => Stops++;
             conversation.PermissionModeRequested += (_, e) => Modes.Add(e.Mode);
-            conversation.ModelRequested += (_, e) => Models.Add(e.Model);
             View = new ClaudeChatView { Conversation = conversation };
             if (strings != null) View.Strings = strings;
             Window = UiHelpers.Show(View);
@@ -50,16 +49,13 @@ public class ComposerTests
         public List<string> Sent { get; } = new List<string>();
         public int Stops { get; set; }
         public List<string> Modes { get; } = new List<string>();
-        public List<string> Models { get; } = new List<string>();
 
         /// <summary>What the reply box shows: its texts and the names of its icon buttons.</summary>
         public List<string> Texts => UiHelpers.Texts(Composer).Concat(UiHelpers.ButtonNames(Composer)).ToList();
 
-        public ComboBox ModePicker => Pickers[0];
+        public ComboBox ModePicker => Composer.GetVisualDescendants().OfType<ComboBox>().Single();
 
-        public ComboBox ModelPicker => Pickers[1];
-
-        private List<ComboBox> Pickers => Composer.GetVisualDescendants().OfType<ComboBox>().ToList();
+        public ModelChip ModelChip => Composer.GetVisualDescendants().OfType<ModelChip>().Single();
 
         public void Type(string text)
         {
@@ -162,12 +158,69 @@ public class ComposerTests
     }
 
     [AvaloniaFact]
-    public void Without_available_models_there_is_no_model_picker()
+    public void Without_models_there_is_no_model_chip()
     {
         var ui = Open();
-        Assert.Null(ui.View.AvailableModels);
-        Assert.False(ui.ModelPicker.IsEffectivelyVisible);
+        Assert.Null(ui.Conversation.AvailableModels);
+        Assert.False(ui.ModelChip.IsEffectivelyVisible);
         Assert.True(ui.ModePicker.IsEffectivelyVisible);
+        ui.Window.Close();
+    }
+
+    // ---- the bar ----
+
+    private static double X(Opened ui, Control control) => control.TranslatePoint(default, ui.Composer)!.Value.X;
+
+    [AvaloniaFact]
+    public void The_bar_has_the_extension_order()
+    {
+        var ui = Open();
+        ui.Conversation.AvailableModels = new[]
+        {
+            new ChatModel("opus", "claude-opus-5-5", "Opus 5.5", "", new[] { "low", "high" }),
+            new ChatModel("sonnet", "claude-sonnet-5-5", "Sonnet 5.5", "", new[] { "low", "high" }),
+        };
+        ui.Conversation.Apply(new SessionStarted("s1", "sonnet", null, "default", "2.1.286"));
+        UiHelpers.Pump();
+        var box = ui.Composer.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatComposer"));
+        var add = UiHelpers.ButtonWithText(ui.Composer, "Add");
+        var commands = UiHelpers.ButtonWithText(ui.Composer, "Show command menu (/)");
+
+        // +, /, (the clock and the Remote Control chip, empty for now), the model; then the mode and send at the right
+        Assert.Equal(box.Bounds.X + 1 + 5, X(ui, add), 1);
+        Assert.Equal(new Size(26, 26), add.Bounds.Size);
+        Assert.Equal(new Size(26, 26), commands.Bounds.Size);
+        Assert.Equal(X(ui, add) + 26 + 2, X(ui, commands), 1);
+        Assert.True(X(ui, ui.ModelChip) >= X(ui, commands) + 26 + 2 + 6);
+        Assert.True(X(ui, ui.ModePicker) > X(ui, ui.ModelChip) + ui.ModelChip.Bounds.Width);
+        Assert.True(X(ui, SendButton(ui)) > X(ui, ui.ModePicker));
+        Assert.Equal(add.TranslatePoint(default, ui.Composer)!.Value.Y, SendButton(ui).TranslatePoint(default, ui.Composer)!.Value.Y, 1);
+        Assert.Equal("Add", ToolTip.GetTip(add));
+        Assert.Equal("Show command menu (/)", ToolTip.GetTip(commands));
+        // the extension's 26 px icons, in the text's color
+        var plus = add.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single();
+        Assert.Equal(new Size(26, 26), plus.Bounds.Size);
+        Assert.Equal(13, plus.Data!.Bounds.Width + plus.StrokeThickness, 1);
+        Assert.Same(Resource(ui.View, "ClaudeChat.Foreground"), add.Foreground);
+
+        // / opens the command palette: it sends nothing and leaves the text alone
+        ui.Type("hi");
+        UiHelpers.Click(ui.Window, commands);
+        Assert.True(ui.Composer.GetLogicalDescendants().OfType<CommandPalette>().Single().IsOpen);
+        Assert.Empty(ui.Sent);
+        Assert.Equal("hi", ui.Input.Text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Bar_buttons_in_portuguese()
+    {
+        var ui = Open(strings: ChatStrings.PortugueseBrazil);
+        Assert.Contains("Adicionar", ui.Texts);
+        Assert.Contains("Mostrar o menu de comandos (/)", ui.Texts);
+        ui.View.Strings = ChatStrings.English;
+        UiHelpers.Pump();
+        Assert.Contains("Add", ui.Texts);
         ui.Window.Close();
     }
 
@@ -531,39 +584,6 @@ public class ComposerTests
     }
 
     [AvaloniaFact]
-    public void A_requested_model_shows_pending_until_the_claude_reports_one()
-    {
-        var ui = Open();
-        ui.View.AvailableModels = new[] { "opus", "sonnet" };
-        ui.Conversation.AppendLine("{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s1\",\"model\":\"claude-opus-4-5\"}");
-        UiHelpers.Pump();
-        Assert.Equal("claude-opus-4-5", ShownText(ui.ModelPicker).Text);
-        Assert.Equal(FontStyle.Normal, ShownText(ui.ModelPicker).FontStyle);
-
-        ui.Conversation.SetModel("sonnet");
-        UiHelpers.Pump();
-
-        Assert.Equal("sonnet", ShownText(ui.ModelPicker).Text);
-        Assert.Equal(FontStyle.Italic, ShownText(ui.ModelPicker).FontStyle); // asked, not confirmed
-
-        // the claude starts the next turn with the model it really uses
-        ui.Conversation.AppendLine("{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s1\",\"model\":\"claude-opus-4-5\"}");
-        UiHelpers.Pump();
-
-        Assert.Equal("claude-opus-4-5", ShownText(ui.ModelPicker).Text);
-        Assert.Equal(FontStyle.Normal, ShownText(ui.ModelPicker).FontStyle);
-
-        Pick(ui.ModelPicker, "sonnet"); // picking asks the same way
-        Assert.Equal(new[] { "sonnet", "sonnet" }, ui.Models);
-        Assert.Equal(FontStyle.Italic, ShownText(ui.ModelPicker).FontStyle);
-        ui.Window.Close();
-    }
-
-    /// <summary>The one text the picker shows: the chosen item or its placeholder.</summary>
-    private static TextBlock ShownText(ComboBox picker) =>
-        picker.GetVisualDescendants().OfType<TextBlock>().Single(t => t.IsEffectivelyVisible && !string.IsNullOrEmpty(t.Text));
-
-    [AvaloniaFact]
     public void Modes_come_from_available_modes_and_unknown_ones_show_raw()
     {
         var ui = Open();
@@ -602,36 +622,6 @@ public class ComposerTests
         Assert.Contains("Stop", ui.Texts);
         Assert.Contains("Manual", UiHelpers.Texts(ui.ModePicker));
         Assert.Empty(ui.Modes); // relabeling asks for nothing
-        ui.Window.Close();
-    }
-
-    // ---- the model ----
-
-    [AvaloniaFact]
-    public void Model_picker_shows_the_model_and_switching_asks_for_it()
-    {
-        TestLog.Instance.Clear();
-        var ui = Open();
-        ui.View.AvailableModels = new[] { "opus", "sonnet" };
-        ui.Conversation.Apply(new SessionStarted("s1", "sonnet", null, "default", "2.1.286"));
-        UiHelpers.Pump();
-
-        Assert.True(ui.ModelPicker.IsEffectivelyVisible);
-        Assert.Equal(new[] { "opus", "sonnet" }, Labels(ui.ModelPicker));
-        Assert.Contains("sonnet", UiHelpers.Texts(ui.ModelPicker));
-
-        Pick(ui.ModelPicker, "opus");
-        Assert.Equal(new[] { "opus" }, ui.Models);
-
-        ui.Conversation.Apply(new SessionStarted(null, "claude-haiku-4-5", null, null, null)); // not in the list
-        UiHelpers.Pump();
-        Assert.Contains("claude-haiku-4-5", UiHelpers.Texts(ui.ModelPicker));
-        Assert.Equal(new[] { "opus" }, ui.Models);
-
-        ui.View.AvailableModels = null;
-        UiHelpers.Pump();
-        Assert.False(ui.ModelPicker.IsEffectivelyVisible);
-        Assert.Empty(TestLog.Instance.Entries); // no binding or property warnings
         ui.Window.Close();
     }
 }

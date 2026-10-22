@@ -27,7 +27,8 @@ namespace ClaudeVisualChat.Tests.Protocol
             var line = FixtureFiles.StreamLines("edit")
                 .First(l => l.StartsWith("{\"type\": \"assistant\"") && l.Contains("\"name\": \"Edit\""));
 
-            var block = Assert.IsType<AssistantBlock>(Assert.Single(parser.Parse(line)));
+            // The line also reports its cache usage (PromptCacheUsed); the block is the one AssistantBlock.
+            var block = Assert.Single(parser.Parse(line).OfType<AssistantBlock>());
 
             var tool = Assert.IsType<ToolUseBlock>(block.Block);
             Assert.Equal("Edit", tool.Name);
@@ -309,6 +310,168 @@ namespace ClaudeVisualChat.Tests.Protocol
             var parser = new StreamJsonParser();
             var events = FixtureFiles.StreamLines("subagent").SelectMany(parser.Parse).ToList();
             Assert.Contains(events, e => e is AssistantBlock a && a.ParentToolUseId != null);
+        }
+
+        private static string Line(string scenario, string contains) =>
+            FixtureFiles.StreamLines(scenario).First(l => l.Contains(contains));
+
+        [Fact]
+        public void Initialize_response_lists_commands_and_models()
+        {
+            var events = new StreamJsonParser().Parse(Line("commands", "\"request_id\": \"init-1\""));
+
+            Assert.IsType<ControlAcknowledged>(events[0]);
+            var commands = events.OfType<CommandsAvailable>().Single().Commands;
+            var hello = commands.Single(c => c.Name == "hello");
+            Assert.Equal("name", hello.ArgumentHint);
+            Assert.Equal("Say hello (project)", hello.Description);
+            var models = events.OfType<ModelsAvailable>().Single().Models;
+            var haiku = models.Single(m => m.Value == "haiku");
+            Assert.Empty(haiku.EffortLevels);
+            Assert.Equal("claude-haiku-4-5-20251001", haiku.ResolvedModel);
+            Assert.Equal("Haiku 4.5", haiku.DisplayName);
+            Assert.Equal(new[] { "low", "medium", "high", "xhigh", "max" }, models.Single(m => m.Value == "opus").EffortLevels);
+        }
+
+        [Fact]
+        public void Commands_changed_lists_commands()
+        {
+            var events = new StreamJsonParser().Parse(
+                "{\"type\":\"system\",\"subtype\":\"commands_changed\",\"commands\":[{\"name\":\"/deploy\",\"description\":\"Ship\",\"argumentHint\":\"env\"}]}");
+
+            var command = Assert.Single(Assert.IsType<CommandsAvailable>(Assert.Single(events)).Commands);
+            Assert.Equal(new ChatCommand("deploy", "Ship", "env"), command);
+        }
+
+        private static string Control(string body) =>
+            "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"q\",\"response\":" + body + "}}";
+
+        [Fact]
+        public void Get_settings_reports_applied()
+        {
+            var parser = new StreamJsonParser();
+            var high = parser.Parse(Control("{\"applied\":{\"model\":\"claude-sonnet-5-5\",\"effort\":\"high\"}}"));
+            Assert.Equal(new SettingsApplied("claude-sonnet-5-5", "high", true), high.OfType<SettingsApplied>().Single());
+            Assert.IsType<ControlAcknowledged>(high[0]);
+
+            var recorded = parser.Parse(Line("effort", "\"request_id\": \"settings-1\""));
+            Assert.Equal(new SettingsApplied("claude-haiku-4-5-20251001", null, true), recorded.OfType<SettingsApplied>().Single());
+
+            var noKey = parser.Parse(Control("{\"applied\":{\"model\":\"m\"}}"));
+            Assert.False(noKey.OfType<SettingsApplied>().Single().HasEffort);
+
+            var none = parser.Parse(Control("{}"));
+            Assert.IsType<ControlAcknowledged>(Assert.Single(none));
+        }
+
+        private static string AssistantLine(string usage, string model = "claude-haiku-4-5", string parent = "null") =>
+            "{\"type\":\"assistant\",\"message\":{\"model\":\"" + model + "\",\"id\":\"m1\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"x\"}]"
+            + usage + "},\"parent_tool_use_id\":" + parent + ",\"timestamp\":\"2026-10-22T16:40:36.545Z\"}";
+
+        [Fact]
+        public void Assistant_usage_reports_the_cache()
+        {
+            var parser = new StreamJsonParser();
+            var at = System.DateTimeOffset.Parse("2026-10-22T16:40:36.545Z");
+
+            var h1 = parser.Parse(AssistantLine(",\"usage\":{\"cache_read_input_tokens\":5,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":9}}"));
+            Assert.Equal(new PromptCacheUsed(System.TimeSpan.FromHours(1), at), h1.OfType<PromptCacheUsed>().Single());
+            Assert.IsType<AssistantBlock>(h1[0]);
+
+            var m5 = parser.Parse(AssistantLine(",\"usage\":{\"cache_creation\":{\"ephemeral_5m_input_tokens\":7,\"ephemeral_1h_input_tokens\":0}}"));
+            Assert.Equal(System.TimeSpan.FromMinutes(5), m5.OfType<PromptCacheUsed>().Single().Ttl);
+
+            var read = parser.Parse(AssistantLine(",\"usage\":{\"cache_read_input_tokens\":5,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0}}"));
+            Assert.Null(read.OfType<PromptCacheUsed>().Single().Ttl);
+
+            Assert.Empty(parser.Parse(AssistantLine("")).OfType<PromptCacheUsed>());
+            Assert.Empty(parser.Parse(AssistantLine(",\"usage\":{\"cache_read_input_tokens\":0}")).OfType<PromptCacheUsed>());
+            Assert.Empty(parser.Parse(AssistantLine(",\"usage\":{\"cache_read_input_tokens\":5}", parent: "\"toolu_1\"")).OfType<PromptCacheUsed>());
+            Assert.Empty(parser.Parse(AssistantLine(",\"usage\":{\"cache_read_input_tokens\":5}", model: "<synthetic>")).OfType<PromptCacheUsed>());
+        }
+
+        [Fact]
+        public void Context_usage_response()
+        {
+            var events = new StreamJsonParser().Parse(Line("commands", "\"request_id\": \"context-2\""));
+
+            var usage = events.OfType<ContextUsageReported>().Single().Usage;
+            Assert.Equal(18, usage.Percentage);
+            Assert.Equal(200000, usage.MaxTokens);
+            Assert.Equal(36174, usage.TotalTokens);
+            Assert.Equal(7, usage.Categories.Count);
+            Assert.Equal(new ContextCategory("System prompt", 6579, "used"), usage.Categories[0]);
+            Assert.Equal("deferred", usage.Categories[2].Kind);
+            Assert.Equal(new ContextCategory("Free space", 163826, "free"), usage.Categories[6]);
+        }
+
+        [Fact]
+        public void Rate_limit_event_reports_the_windows()
+        {
+            const string line = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"resetsAt\":1792698600,\"rateLimitType\":\"five_hour\",\"unifiedWindows\":{\"five_hour\":{\"utilization\":0.01,\"resetsAt\":1792698600},\"seven_day\":{\"utilization\":0.12,\"resetsAt\":1793016000}}},\"uuid\":\"u1\",\"session_id\":\"s1\"}";
+
+            var limits = Assert.IsType<UsageLimitsReported>(Assert.Single(new StreamJsonParser().Parse(line))).Limits;
+
+            Assert.Equal(2, limits.Windows.Count);
+            Assert.Equal("five_hour", limits.Windows[0].Name);
+            Assert.Equal(0.01, limits.Windows[0].Utilization);
+            Assert.Equal(System.DateTimeOffset.FromUnixTimeSeconds(1792698600), limits.Windows[0].ResetsAt);
+            Assert.Equal("seven_day", limits.Windows[1].Name);
+            Assert.Equal(0.12, limits.Windows[1].Utilization);
+        }
+
+        [Fact]
+        public void Bridge_state_and_remote_control_response()
+        {
+            var parser = new StreamJsonParser();
+
+            var state = parser.Parse("{\"type\":\"system\",\"subtype\":\"bridge_state\",\"state\":\"connected\",\"detail\":\"ok\"}");
+            Assert.Equal(new RemoteControlChanged("connected", null, "ok"), Assert.Single(state));
+
+            var response = parser.Parse(Control("{\"session_url\":\"https://claude.ai/code/x\"}"));
+            Assert.Equal(new RemoteControlChanged(null, "https://claude.ai/code/x", null), response.OfType<RemoteControlChanged>().Single());
+        }
+
+        [Fact]
+        public void Init_lists_terminal_commands()
+        {
+            var events = new StreamJsonParser().Parse(
+                "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s\",\"terminal_slash_commands\":[\"clear\",\"exit\"]}");
+
+            var started = Assert.IsType<SessionStarted>(Assert.Single(events));
+            Assert.Equal(new[] { "clear", "exit" }, started.TerminalCommands);
+
+            var plain = Assert.IsType<SessionStarted>(Assert.Single(new StreamJsonParser().Parse(Line("edit", "\"subtype\": \"init\""))));
+            Assert.Empty(plain.TerminalCommands);
+        }
+
+        [Fact]
+        public void User_line_with_images_groups_them_with_the_text()
+        {
+            var parser = new StreamJsonParser();
+            const string img = "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"QUJD\"}}";
+
+            var both = parser.Parse("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[" + img + "," + img + ",{\"type\":\"text\",\"text\":\"look\"}]}}");
+            var user = Assert.IsType<UserBlock>(Assert.Single(both));
+            Assert.Equal("look", Assert.IsType<TextContentBlock>(user.Block).Text);
+            Assert.Equal(2, user.Images.Count);
+            Assert.Equal(new ImageBlock("image/png", "QUJD"), user.Images[0]);
+
+            var alone = parser.Parse("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[" + img + "]}}");
+            var only = Assert.IsType<UserBlock>(Assert.Single(alone));
+            Assert.Equal("", Assert.IsType<TextContentBlock>(only.Block).Text);
+            Assert.Single(only.Images);
+
+            var url = parser.Parse("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"url\",\"url\":\"http://x\"}}]}}");
+            Assert.Equal(new ImageBlock("", ""), Assert.IsType<UserBlock>(Assert.Single(url)).Images[0]);
+        }
+
+        [Fact]
+        public void Stream_replay_of_a_local_command()
+        {
+            var events = new StreamJsonParser().Parse(Line("commands", "<local-command-stdout>Compacted"));
+
+            Assert.Equal(new CommandOutput("Compacted "), Assert.Single(events));
         }
     }
 }

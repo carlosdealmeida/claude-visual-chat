@@ -14,8 +14,9 @@ namespace ClaudeVisualChat.Controls;
 /// <summary>
 /// Draws a <see cref="ChatConversation"/> in the style of the Claude Code extension for VS Code. The list sticks to
 /// its end while the user is there and stops following when the user scrolls up. Under the list, the permission
-/// request Claude waits on (keys 1, 2 and 3 answer while the focus is in it) and the reply box (Enter sends,
-/// Shift+Enter breaks the line, Esc stops Claude while it works). What the user does comes back as the
+/// request Claude waits on (keys 1, 2 and 3 answer while the focus is in it), the browser's or Remote Control's banner,
+/// and the reply box (Enter sends, Shift+Enter breaks the line, Esc stops Claude while it works). Over the end of the
+/// list, the <c>/context</c> and <c>/usage</c> panels (Esc closes the one open instead). What the user does comes back as the
 /// conversation's events. A key is marked handled only when the view acts on it, so the app's own shortcuts keep
 /// working. Colors and fonts come from the <c>ClaudeChat.*</c> resources, which can be redefined in
 /// <see cref="StyledElement.Resources"/>; the default colors are those of VS Code's "Dark 2026" theme, and
@@ -38,9 +39,6 @@ public partial class ClaudeChatView : UserControl
 
     public static readonly StyledProperty<IReadOnlyList<string>> AvailableModesProperty =
         AvaloniaProperty.Register<ClaudeChatView, IReadOnlyList<string>>(nameof(AvailableModes), DefaultModes);
-
-    public static readonly StyledProperty<IReadOnlyList<string>?> AvailableModelsProperty =
-        AvaloniaProperty.Register<ClaudeChatView, IReadOnlyList<string>?>(nameof(AvailableModels));
 
     /// <summary>
     /// True to only show the conversation: the reply box and the permission request are hidden, while the list keeps
@@ -74,9 +72,14 @@ public partial class ClaudeChatView : UserControl
         Scroller.ScrollChanged += OnScrollChanged;
         Scroller.TemplateApplied += (_, e) => _verticalBar = e.NameScope.Find<ScrollBar>("PART_VerticalScrollBar");
         Composer.Modes = AvailableModes;
-        Composer.Models = AvailableModels;
         Prompt.RequestChanged += OnPromptRequestChanged;
+        Composer.PreviewRequested += (_, e) => Preview.Show(e.Image, e.Name);
+        // a request that came while the preview was open was waiting for the keyboard
+        Preview.Closed += (_, _) => GiveBackKeyboard();
+        ContextPanel.FocusReleased += (_, _) => GiveBackKeyboard();
+        UsagePanel.FocusReleased += (_, _) => GiveBackKeyboard();
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, OnKeyDownNotTaken, RoutingStrategies.Bubble);
     }
 
     public ChatConversation? Conversation
@@ -98,13 +101,6 @@ public partial class ClaudeChatView : UserControl
         set => SetValue(AvailableModesProperty, value);
     }
 
-    /// <summary>Models offered to the user; null (the default) hides the model picker.</summary>
-    public IReadOnlyList<string>? AvailableModels
-    {
-        get => GetValue(AvailableModelsProperty);
-        set => SetValue(AvailableModelsProperty, value);
-    }
-
     /// <summary>Shows the conversation only: no reply box, no permission request. False by default.</summary>
     public bool IsReadOnly
     {
@@ -122,9 +118,18 @@ public partial class ClaudeChatView : UserControl
             QueueScrollToEnd();
             Composer.Conversation = Conversation; // before the prompt, which asks the reply box about focus
             Prompt.Conversation = Conversation;
+            BrowserBanner.Conversation = Conversation;
+            RemoteControlBanner.Conversation = Conversation;
+            ContextPanel.Conversation = Conversation;
+            UsagePanel.Conversation = Conversation;
+            Preview.Hide(); // its image was the other conversation's
             if (_attached) Track(Conversation);
         }
-        else if (change.Property == IsReadOnlyProperty && !IsReadOnly)
+        else if (change.Property == IsReadOnlyProperty && IsReadOnly)
+        {
+            Composer.ClosePopups(); // what is picked in a menu of a hidden reply box would go nowhere visible
+        }
+        else if (change.Property == IsReadOnlyProperty)
         {
             Prompt.RestartPause(); // a request that came back must not be answered by a stray key
         }
@@ -135,10 +140,6 @@ public partial class ClaudeChatView : UserControl
         else if (change.Property == AvailableModesProperty)
         {
             Composer.Modes = AvailableModes;
-        }
-        else if (change.Property == AvailableModelsProperty)
-        {
-            Composer.Models = AvailableModels;
         }
     }
 
@@ -195,15 +196,17 @@ public partial class ClaudeChatView : UserControl
     }
 
     /// <summary>
-    /// A new request takes the keyboard only when the reply box is empty and the focus is in the view or nowhere, so
-    /// a number typed in the reply box, or elsewhere in the app, never answers it. While the prompt has the
+    /// A new request takes the keyboard only when the reply box has nothing to send (no text, no image) and the focus
+    /// is in the view or nowhere, so a number typed in the reply box, or elsewhere in the app, never answers it; never
+    /// while an image preview covers the view (it gets the keyboard when the preview closes). While the prompt has the
     /// keyboard, the next request keeps it; when none is left, the reply box gets it back.
     /// </summary>
     private void OnPromptRequestChanged(bool hadFocus)
     {
+        if (Preview.IsVisible) return;
         if (Prompt.Request != null)
         {
-            if (hadFocus || (Composer.IsEmpty && FocusIsHereOrNowhere())) Prompt.FocusFirstOption();
+            if (hadFocus || (Composer.HasNothingToSend && FocusIsHereOrNowhere())) Prompt.FocusFirstOption();
         }
         else if (hadFocus)
         {
@@ -218,6 +221,38 @@ public partial class ClaudeChatView : UserControl
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         if (Prompt.IsHeld(e.Key)) e.Handled = true;
+        // Esc with a panel open closes it, before the reply box would stop Claude with it; the menus of the reply box
+        // and the request take theirs first (an Esc the request leaves closes the panel on the way back up)
+        else if (IsPanelEsc(e) && !Composer.HasOpenPopup && !Prompt.IsKeyboardFocusWithin) ClosePanel(e);
+    }
+
+    /// <summary>An Esc nothing under the view took: an open panel closes.</summary>
+    private void OnKeyDownNotTaken(object? sender, KeyEventArgs e)
+    {
+        if (IsPanelEsc(e)) ClosePanel(e);
+    }
+
+    private bool IsPanelEsc(KeyEventArgs e) =>
+        !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && !Preview.IsVisible
+        && Conversation is { ShownPanel: not ChatPanel.None };
+
+    private void ClosePanel(KeyEventArgs e)
+    {
+        e.Handled = true;
+        Conversation?.ClosePanel();
+    }
+
+    /// <summary>Shows an image over the view: an attached one, or one of a message.</summary>
+    internal void ShowPreview(ChatImage image, string name) => Preview.Show(image, name);
+
+    /// <summary>
+    /// What had the keyboard went away (the preview, a panel): a request waiting gets it, else the reply box (which
+    /// does not take it while hidden).
+    /// </summary>
+    private void GiveBackKeyboard()
+    {
+        if (Prompt.Request != null && Prompt.IsEffectivelyVisible) Prompt.FocusFirstOption();
+        else Composer.FocusInput();
     }
 
     private bool FocusIsHereOrNowhere()
@@ -239,9 +274,22 @@ public partial class ClaudeChatView : UserControl
         // input, between passes, so this is rare.)
         var keptInRange = e.ViewportDelta.Y > 0 && -e.OffsetDelta.Y <= e.ViewportDelta.Y + 0.5;
         if (e.OffsetDelta.Y < 0 && !atEnd && !keptInRange) _stickToEnd = false; // the user went up to read
-        else if (atEnd) _stickToEnd = true;                                      // or came back to the end
+        else if (atEnd || ReachedEndOfOldEstimate(e)) _stickToEnd = true;         // or came back to the end
 
         if (_stickToEnd && !atEnd) QueueScrollToEnd(); // new items, or a better estimate of the ones above
+    }
+
+    /// <summary>
+    /// True when a scroll down ended at the end the list estimated before this very pass (the End key, the scroll bar
+    /// dragged to its bottom): the pass then measured the items it reached and moved the end further down, so
+    /// the offset is no longer at the end, yet the user asked for it. Following the end from here makes it get there.
+    /// </summary>
+    private bool ReachedEndOfOldEstimate(ScrollChangedEventArgs e)
+    {
+        if (e.OffsetDelta.Y <= 0) return false;
+        var before = (Scroller.Extent.Height - e.ExtentDelta.Y) - (Scroller.Viewport.Height - e.ViewportDelta.Y)
+                     - Scroller.Offset.Y;
+        return before <= EndTolerance;
     }
 
     private double DistanceToEnd() => Scroller.Extent.Height - Scroller.Viewport.Height - Scroller.Offset.Y;

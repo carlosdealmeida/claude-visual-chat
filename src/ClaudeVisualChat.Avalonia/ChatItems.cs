@@ -15,12 +15,16 @@ public sealed class UserMessageItem : ChatItem
 {
     private DateTimeOffset? _timestamp;
 
-    public UserMessageItem(string text)
+    public UserMessageItem(string text, IReadOnlyList<ChatImage>? images = null)
     {
         Text = text ?? "";
+        Images = images ?? Array.Empty<ChatImage>();
     }
 
     public string Text { get; }
+
+    /// <summary>The images sent with the message; empty when there are none.</summary>
+    public IReadOnlyList<ChatImage> Images { get; }
 
     /// <summary>When it was sent; null when unknown. The view shows it above the message.</summary>
     public DateTimeOffset? Timestamp
@@ -228,4 +232,15 @@ public sealed class NoticeItem : ChatItem
     }
 
     public NoticeKind Kind { get; }
+}
+
+/// <summary>What a slash command the claude ran locally printed (<c>/compact</c>, <c>/context</c>…).</summary>
+public sealed class CommandOutputItem : ChatItem
+{
+    public CommandOutputItem(string text)
+    {
+        Text = text ?? "";
+    }
+
+    public string Text { get; }
 }

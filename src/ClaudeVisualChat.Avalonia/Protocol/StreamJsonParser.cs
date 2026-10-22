@@ -53,6 +53,8 @@ namespace ClaudeVisualChat.Protocol
                     return ParseControlResponse(root);
                 case "result":
                     return ParseResult(root);
+                case "rate_limit_event":
+                    return EventReader.ReadRateLimit(root);
                 default:
                     return None;
             }
@@ -70,7 +72,10 @@ namespace ClaudeVisualChat.Protocol
                             JsonHelpers.Str(root, "model"),
                             JsonHelpers.Str(root, "cwd"),
                             JsonHelpers.Str(root, "permissionMode"),
-                            JsonHelpers.Str(root, "claude_code_version")),
+                            JsonHelpers.Str(root, "claude_code_version"))
+                        {
+                            TerminalCommands = JsonHelpers.Strings(root, "terminal_slash_commands"),
+                        },
                     };
                 case "status":
                     return new ClaudeEvent[]
@@ -184,13 +189,13 @@ namespace ClaudeVisualChat.Protocol
             var r = response.Value;
             var requestId = JsonHelpers.Str(r, "request_id");
             if (requestId == null) return None;
-            return new ClaudeEvent[]
+            var body = JsonHelpers.CloneNonNull(r, "response");
+            var events = new List<ClaudeEvent>
             {
-                new ControlAcknowledged(
-                    requestId,
-                    JsonHelpers.Str(r, "subtype") == "error",
-                    JsonHelpers.CloneNonNull(r, "response")),
+                new ControlAcknowledged(requestId, JsonHelpers.Str(r, "subtype") == "error", body),
             };
+            if (body != null) EventReader.ReadControlBody(body.Value, events);
+            return events;
         }
 
         private static IReadOnlyList<ClaudeEvent> ParseResult(JsonElement root)

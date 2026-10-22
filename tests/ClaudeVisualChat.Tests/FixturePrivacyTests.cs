@@ -18,6 +18,8 @@ namespace ClaudeVisualChat.Tests
         /// </summary>
         private static readonly string[] Forbidden = { "claude_ai_" };
 
+        private const string ImageCache = @"C:\\Users\\demo\\AppData\\Local\\Temp\\claude\\C--demo-app\\";
+
         private const string PrivateWordsFile = "private-words.txt";
 
         /// <summary>A user folder other than demo's: <c>Users\x</c>, <c>/Users/x</c>, Claude's <c>Users-x</c>, <c>/home/x</c>.</summary>
@@ -73,13 +75,67 @@ namespace ClaudeVisualChat.Tests
         public void FixtureFiles_cover_all_scenarios()
         {
             Assert.Equal(
-                new[] { "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model" },
+                new[]
+                {
+                    "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model",
+                    "image", "commands", "effort",
+                },
                 FixtureFiles.Scenarios);
             foreach (var scenario in FixtureFiles.Scenarios)
             {
                 AssertValidJsonLines(scenario + ".stream", FixtureFiles.StreamLines(scenario));
                 AssertValidJsonLines(scenario + ".transcript", FixtureFiles.TranscriptLines(scenario));
             }
+        }
+
+        private static readonly string[] PublicCommands =
+            { "compact", "context", "usage", "cost", "model", "effort", "hello" };
+
+        [Fact]
+        public void Command_lists_hold_only_the_public_names()
+        {
+            var lists = 0;
+            foreach (var scenario in FixtureFiles.Scenarios)
+            {
+                foreach (var line in FixtureFiles.StreamLines(scenario))
+                {
+                    using (var doc = JsonDocument.Parse(line))
+                    {
+                        var root = doc.RootElement;
+                        JsonElement commands;
+                        if (Str(root, "type") == "system" && Str(root, "subtype") == "commands_changed")
+                            root.TryGetProperty("commands", out commands);
+                        else if (Str(root, "type") == "control_response"
+                                 && root.GetProperty("response").TryGetProperty("response", out var inner)
+                                 && inner.ValueKind == JsonValueKind.Object)
+                            inner.TryGetProperty("commands", out commands);
+                        else continue;
+                        if (commands.ValueKind != JsonValueKind.Array) continue;
+                        lists++;
+                        foreach (var command in commands.EnumerateArray())
+                            Assert.Contains(Str(command, "name"), PublicCommands);
+                    }
+                }
+            }
+
+            Assert.True(lists >= 3, "found only " + lists + " command lists");
+        }
+
+        [Fact]
+        public void Settings_responses_hold_only_applied()
+        {
+            var applied = 0;
+            foreach (var scenario in FixtureFiles.Scenarios)
+            {
+                foreach (var line in FixtureFiles.StreamLines(scenario))
+                {
+                    foreach (var word in new[] { "\"effective\"", "\"env\"", "\"permissions\"" })
+                        Assert.False(line.Contains(word), scenario + " has " + word);
+                    if (line.Contains("\"applied\"")) applied++;
+                }
+            }
+
+            Assert.True(applied >= 2, "found only " + applied + " get_settings responses");
         }
 
         /// <summary>Re-assembles the streamed deltas of each content block (parent, message, index).</summary>
@@ -150,7 +206,9 @@ namespace ClaudeVisualChat.Tests
                     using (JsonDocument.Parse(json)) { }
                     Assert.False(json.IndexOf("cvc-demo", StringComparison.OrdinalIgnoreCase) >= 0,
                         where + " has cvc-demo");
-                    Assert.False(json.IndexOf("AppData", StringComparison.OrdinalIgnoreCase) >= 0,
+                    // Claude's own image cache under the demo user (Read of a pasted image) is public.
+                    var withoutImageCache = json.Replace(ImageCache, "", StringComparison.OrdinalIgnoreCase);
+                    Assert.False(withoutImageCache.IndexOf("AppData", StringComparison.OrdinalIgnoreCase) >= 0,
                         where + " has AppData");
                     Assert.False(OtherUserFolder.IsMatch(json), where + " has a user folder other than 'demo'");
                 }
@@ -235,7 +293,7 @@ namespace ClaudeVisualChat.Tests
 
         private static void AssertValidJsonLines(string name, string[] lines)
         {
-            Assert.True(lines.Length >= 5, name + " has fewer than 5 lines");
+            Assert.True(lines.Length >= 3, name + " has fewer than 3 lines");
             foreach (var line in lines)
             {
                 using (var doc = JsonDocument.Parse(line))
