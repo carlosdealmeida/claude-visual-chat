@@ -5,7 +5,7 @@
 An Avalonia control that draws [Claude Code](https://github.com/anthropics/claude-code) conversations the way the
 Claude Code extension for VS Code draws them. Give it the lines `claude -p` writes in stream-json, or a session file
 Claude Code keeps on disk; it shows the conversation and hands back what the user did (a message, a yes or no to a
-permission request, a mode, model or effort change, a slash command, an image, stop) as .NET events.
+permission request, a mode, model or effort change, a slash command, an image or a file, stop) as .NET events.
 
 > Community project, not affiliated with or endorsed by Anthropic.
 
@@ -130,7 +130,8 @@ text, the text wins), and files can be dragged onto the box. Each one shows as a
 a ×; a click on the thumbnail opens a full preview. Images are shrunk to fit (`MaxImageSide`, 1568 px by default, and
 `ImageBudgetBytes`, 3,750,000 bytes for the whole message), at most `MaxImages` (10) per message; a refused image says
 why (`ImageTooBig`, `TooManyImages`, `NotAnImage` in `ChatStrings`). A message can be only images. The host sends them
-along with the text, and a user's message shows them as thumbnails under it:
+along with the text, and a user's message shows them as thumbnails above its text, in one row with its files (48 px
+high and up to 120 px wide, as the extension's):
 
 ```csharp
 conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e.Text, e.Images));
@@ -139,6 +140,50 @@ conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e.Text
 `ChatConversation.AddImageAsync(bytes)` attaches an image from your own code. The shrinking and decoding use
 SkiaSharp 2.88.7, which the package now depends on; Avalonia brings its native libraries. On Windows the clipboard is
 read with the system calls (PNG, then DIB and DIBV5); elsewhere with Avalonia's `image/png`.
+
+## Attached files
+
+The reply box also takes PDF, text and CSV files: the **+** button, dragging and Ctrl+V of files copied in Explorer
+work for them as for images, and images and files together go each to their place (text on the clipboard still wins
+over files). With `MaxFiles` at 0 the **+** dialog offers images only. A file is a `.pdf` that starts with `%PDF-`, or a
+`.txt`, `.log`, `.md`, `.json` or `.csv` with no null byte in its first 8 KB; at most `MaxFiles` (5) per message and
+`MaxFileBytes` (25 MB) each. A refused file says why (`FileTooBig`, `FileNotSupported`, `TooManyFiles` in
+`ChatStrings`). Each one shows as a chip with its type's icon, name and size. From your own code:
+`ChatConversation.AddFileAsync(path)` (reads only the size and the first 8 KB) or `AddFile(name, bytes)`.
+
+**Your app sends the files; the component only shows them.** The claude reads a file from a path on its own machine, so
+`MessageSubmitted` brings the files in `e.Files` and the text without them. Your app sends each file to the machine where
+the claude runs (from `ChatFile.LocalPath`, in parts, or from `ChatFile.Content`), writes `Progress` (0 to 1) as it goes
+and `RemotePath` when the file is there, then sends the message with one marker line per file at its end:
+
+```csharp
+conversation.MessageSubmitted += async (_, e) =>
+{
+    if (e.Files.Count == 0) { Send(StdinMessages.UserMessage(e.Text, e.Images)); return; }
+    try
+    {
+        var markers = new List<string>();
+        foreach (var file in e.Files)
+        {
+            // yours: copy or upload the file; report the progress on the UI thread
+            file.RemotePath = await UploadAsync(file, p => Dispatcher.UIThread.Post(() => file.Progress = p));
+            markers.Add(AttachedFileLine.Format(file.RemotePath)); // "[attached file: <path>]"
+        }
+        var text = e.Text.Length == 0 ? string.Join("\n", markers) : e.Text + "\n" + string.Join("\n", markers);
+        Send(StdinMessages.UserMessage(text, e.Images));
+    }
+    catch (Exception) // any failure: this handler is async void, so nothing may escape it
+    {
+        conversation.UndoSubmit(e); // the message and its files go back to the reply box
+    }
+};
+```
+
+While `Progress` is set and `RemotePath` is not, the chip says "Sending 42%" and has no ×. The marker line is
+`[attached file: <path>]`, alone on its line, at the end of the message; only the markers there count, so one the user
+writes in the middle of the text stays text. When the claude repeats the message, and in a session file, the
+conversation takes those lines off the text and shows a chip for each (named after the path's last part, with no size).
+`AttachedFileLine.Split(message)` does the same for your own code. Set `Progress` and `RemotePath` on the UI thread.
 
 ## Commands
 
@@ -234,6 +279,50 @@ conversation.RemoteControlLinkRequested += (_, e) =>
     Process.Start(new ProcessStartInfo(e.Url) { UseShellExecute = true });
 ```
 
+## Agent map
+
+![The Agent map of the sample's made-up session: the main agent at the left, its agents at the right, newest on top, three of them at work](https://raw.githubusercontent.com/carlosdealmeida/claude-visual-chat/main/docs/screenshot-agents.png)
+
+Once the conversation has had an agent, the bar shows a chip with how many are at work (**● 3 agents**, **0 agents**
+when all have ended, as the extension counts them); its dot turns green while one is. A click on it, or `ChatConversation.ShowAgents()`, opens the
+Agent map over the view (`ShownPanel` is `ChatPanel.Agents`): the main agent's card at the left, with its model and the
+tokens in its context, and the agents at its right, the newest on top, each with its dot, description, time and
+tokens ("7m 14s · 168.5k tokens"); an agent another one called goes under its caller. A click on an agent opens its
+card: "Running · general-purpose · Sonnet 5.5 · background", who called it, the time and tokens, what it is doing while
+it runs and its answer. Esc goes back from a card and closes the map; `ClosePanel()` closes it too.
+
+Nothing to set up: the map is built from lines `AppendLine` already gets. The Agent calls, the claude's
+`system/task_started`, `task_progress`, `task_updated` and `task_notification` lines and the Agent call's result fill
+`ChatConversation.Agents` (`AgentInfo`: description, type, model, status, start, time, tokens, tool uses, activity,
+result, caller and depth) and `RunningAgents`; a command an agent runs (`local_bash`) is not an agent. `LoadTranscript`
+builds the same map from a session file, where each end comes as a `<task-notification>` message (kept out of the
+list); an agent with no end there shows as stopped, and a later live line of it (its task lines, or a line of its own)
+brings it back to running. The time of a running agent counts from `Clock`. The chip shows as soon as `Agents` has
+one, live or from a session file.
+
+The main card says "Main agent": the component has no title for the conversation yet. The extension's card also has
+the agent's prompt, its tool calls, "Open transcript" and "Stop agent", which need the agent's own transcript and a way
+to stop it; they are not here.
+
+## Context ring
+
+Once more than half of the context window is used, the bar shows the extension's ring: a 20 px pie in the clay orange
+of the send button that fills in three steps (50, 75 and 99 %), with the tooltip "29% of context remaining until
+auto-compact." It reads `ChatConversation.ContextUsage`, which the answer to `get_context_usage` fills, so ask for it
+when you want the ring to move (after each reply, for example):
+
+```csharp
+conversation.PropertyChanged += (_, e) =>
+{
+    if (e.PropertyName == nameof(ChatConversation.IsBusy) && !conversation.IsBusy)
+        Send(StdinMessages.GetContextUsage("req_" + ++ids));
+};
+```
+
+A click on the ring opens the `/context` panel (it raises `CommandInvoked` with `context`, as the command does). The
+extension compacts the conversation on that click; here a stray click must not, so it only shows the numbers. Its colors
+are `ClaudeChat.ContextRingTrack` and `ClaudeChat.ContextRingFill`.
+
 ## Open a saved session
 
 Claude Code keeps each session in `~/.claude/projects/<folder>/<session id>.jsonl`. To show one:
@@ -286,9 +375,10 @@ The keys, all prefixed with `ClaudeChat.`:
 | Fonts | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |
 | Sizes | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize` |
 | Places | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter` |
-| Icons (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove` |
+| Icons (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table` |
 | Menus and the command palette | `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`, `ListActiveForeground`, `EffortThumbShadow` |
-| Attachments | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `PreviewOverlay`, `PreviewShadow` |
+| Attachments | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |
+| Agent map and context ring | `ModalOverlay`, `AgentRunning`, `ContextRingTrack`, `ContextRingFill` |
 | Banners and Remote Control | `BannerBackground`, `BannerForeground`, `BannerTint`, `BannerErrorBackground`, `BannerErrorForeground`, `RemoteControlForeground`, `RemoteControlHoverBackground`, `RemoteControlHoverForeground` |
 | `/context` and `/usage` panels | `ContextColor1` to `ContextColor6` (the chart colors of the context bar), `PanelShadow` |
 
@@ -325,15 +415,17 @@ Pending requests stay in `ChatConversation.PendingPermissions`, and the reply bo
 - The stream-json format is not a stable API, and it can change between versions of `claude`. The control was built
   against `claude` 2.1.286 and ignores what it does not know, so a new kind of line is left out rather than breaking
   the view.
-- Some buttons of the extension are not here, because they need features of the host: attaching files other than
-  images, and the microphone.
+- Some buttons of the extension are not here, because they need features of the host: the microphone, and on an
+  agent's card, its transcript and "Stop agent".
 
 ## Sample app
 
 `samples/ClaudeVisualChat.Sample` plays the recorded sessions of `tests/fixtures` (an edit, Bash commands, a subagent,
 an error, a denied request, an interruption, mode and model changes, an image, slash commands and an effort change) as a live stream or as a saved session, in
 English or Portuguese. The panel on the right shows each event the view sends back and the stdin line your app would
-write for it.
+write for it. One more session, `agents`, is made up in the sample (`DemoSession.cs`), since no short recording has
+it: seven agents (one called by another, three still at work), 71 % of the context used, and a file left in the reply
+box. Sending it shows a made-up upload, its progress and the message with its marker line.
 
 ```sh
 dotnet run --project samples/ClaudeVisualChat.Sample
@@ -345,9 +437,12 @@ says yes to every request, saves the 1280×800 window and exits.
 ```sh
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot.png --scenario edit
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot-pt.png --scenario edit --lang pt
+dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot-agents.png --scenario agents
+dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot-agents-pt.png --scenario agents --lang pt
 ```
 
-With `--history`, the screenshot shows the recording's session file instead of its stream.
+With `--history`, the screenshot shows the recording's session file instead of its stream. The `agents` screenshot
+also sends the file (stopped at 42 %) with a message and opens the Agent map.
 
 ## Recording new sessions
 

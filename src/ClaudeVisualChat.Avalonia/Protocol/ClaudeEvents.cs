@@ -93,4 +93,29 @@ namespace ClaudeVisualChat.Protocol
 
     /// <summary>What a local slash command printed (the inside of <c>local-command-stdout</c>).</summary>
     public sealed record CommandOutput(string Text) : ClaudeEvent;
+
+    /// <summary>
+    /// A task started (<c>system/task_started</c>). <paramref name="TaskType"/> is <c>local_agent</c> for a subagent
+    /// (<c>local_bash</c> for a command); empty when the line does not say.
+    /// </summary>
+    public sealed record AgentTaskStarted(
+        string TaskId, string ToolUseId, string Description, string? AgentType, bool IsBackground, int Depth, string TaskType)
+        : ClaudeEvent;
+
+    /// <summary>A task used a tool (<c>system/task_progress</c>); <paramref name="Activity"/> says what it is doing.</summary>
+    public sealed record AgentTaskProgress(
+        string TaskId, string ToolUseId, string? Activity, long? Tokens, int? ToolUses, long? DurationMs)
+        : ClaudeEvent;
+
+    /// <summary>A task changed (<c>system/task_updated</c>); <paramref name="Status"/> is its patch's status, if any.</summary>
+    public sealed record AgentTaskUpdated(string TaskId, string? Status) : ClaudeEvent;
+
+    /// <summary>
+    /// A task ended (<c>system/task_notification</c>, or the <c>&lt;task-notification&gt;</c> text of a session file).
+    /// <paramref name="Status"/> is <c>completed</c>, <c>failed</c>, <c>killed</c>…; <paramref name="Summary"/> is
+    /// what the agent answered.
+    /// </summary>
+    public sealed record AgentTaskFinished(
+        string TaskId, string ToolUseId, string Status, string? Summary, long? Tokens, int? ToolUses, long? DurationMs)
+        : ClaudeEvent;
 }

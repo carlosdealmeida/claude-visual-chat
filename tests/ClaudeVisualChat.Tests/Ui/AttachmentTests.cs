@@ -364,7 +364,7 @@ public class AttachmentTests
         data.Set(DataFormats.Files, new IStorageItem[]
         {
             new FakeFile("one.png", Png(96, 48)),
-            new FakeFile("notes.txt", System.Text.Encoding.UTF8.GetBytes("text")),
+            new FakeFile("notes.docx", System.Text.Encoding.UTF8.GetBytes("text")),
             new FakeFile("Two.PNG", Png(20, 30)),
         });
 
@@ -381,12 +381,14 @@ public class AttachmentTests
         Assert.Equal(20, c.Attachments[1].Width);
         Settle();
         Assert.Equal(2, c.Attachments.Count);
-        Assert.DoesNotContain("Not an image", ui.Texts); // the text file is left out, not refused
+        Assert.DoesNotContain("Not an image", ui.Texts);
+        Assert.Contains("Only PDF, text and CSV files", ui.Texts); // a file of another kind says why it stayed out (0.4.0)
+        Assert.Empty(c.Files);
         Assert.Equal("", ui.Input.Text ?? "");
 
-        // only text files: the drag says no
+        // no files at all: the drag says no
         var text = new DataObject();
-        text.Set(DataFormats.Files, new IStorageItem[] { new FakeFile("notes.txt", new byte[] { 1 }) });
+        text.Set(DataFormats.Text, "just text");
         var refused = new DragEventArgs(DragDrop.DragOverEvent, text, ui.Input, default, KeyModifiers.None) { DragEffects = DragDropEffects.Copy };
         ui.Input.RaiseEvent(refused);
         Assert.Equal(DragDropEffects.None, refused.DragEffects);

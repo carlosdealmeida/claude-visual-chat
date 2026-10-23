@@ -121,14 +121,25 @@ internal sealed class ModelChip : Button
         var model = conversation?.Model;
         var current = conversation?.CurrentModel;
         IsVisible = model != null || conversation?.AvailableModels is { Count: > 0 };
-        var suffix = conversation?.ModelSuffix;
-        _name.Text = current != null ? (suffix == null ? current.DisplayName : current.DisplayName + " " + suffix) : model ?? strings.Model;
+        _name.Text = (conversation == null ? null : NameOf(conversation)) ?? strings.Model;
         var effort = current != null && current.EffortLevels.Count > 0;
         _level.Text = effort ? strings.EffortLabel(conversation!.Effort) : null;
         _level.IsVisible = effort;
         Classes.Set("pending", conversation?.RequestedModel != null || conversation?.RequestedEffort != null);
         AutomationProperties.SetName(this, effort ? _name.Text + " " + _level.Text : _name.Text);
         ToolTip.SetTip(this, strings.SwitchModel);
+    }
+
+    /// <summary>
+    /// The model's name as the chip shows it: the offered model's name (with the id's <c>[1m]</c> when it matched
+    /// without it), else the raw id; null before the claude reports a model.
+    /// </summary>
+    internal static string? NameOf(ChatConversation conversation)
+    {
+        var current = conversation.CurrentModel;
+        if (current == null) return conversation.Model;
+        var suffix = conversation.ModelSuffix;
+        return suffix == null ? current.DisplayName : current.DisplayName + " " + suffix;
     }
 }
 

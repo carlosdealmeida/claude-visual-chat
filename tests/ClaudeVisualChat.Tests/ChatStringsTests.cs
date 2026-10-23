@@ -92,6 +92,41 @@ public class ChatStringsTests
         Assert.Equal("Diga ao Claude o que fazer", Pt.DenyPlaceholder);
     }
 
+    [Fact]
+    public void File_texts_in_both_languages()
+    {
+        Assert.Equal("File is larger than 25 MB", En.FormatFileTooBig(25L * 1024 * 1024));
+        Assert.Equal("Arquivo maior que 25 MB", Pt.FormatFileTooBig(25L * 1024 * 1024));
+        Assert.Equal("Only PDF, text and CSV files", En.FileNotSupported);
+        Assert.Equal("Só arquivos PDF, de texto e CSV", Pt.FileNotSupported);
+        Assert.Equal("Up to 5 files per message", En.FormatTooManyFiles(5));
+        Assert.Equal("Até 5 arquivos por mensagem", Pt.FormatTooManyFiles(5));
+        Assert.Equal("Sending 42%", En.FormatFileUploading(0.42));
+        Assert.Equal("Enviando 42%", Pt.FormatFileUploading(0.42));
+        Assert.Equal("Sending 0%", En.FormatFileUploading(-1));
+        Assert.Equal("Sending 100%", En.FormatFileUploading(7));
+        Assert.Equal("Images, PDF, text and CSV", En.AttachableFiles);
+        Assert.Equal("Imagens, PDF, texto e CSV", Pt.AttachableFiles);
+    }
+
+    [Theory]
+    [InlineData(0, "0 KB", "0 KB")]
+    [InlineData(1, "1 KB", "1 KB")]
+    [InlineData(1024, "1 KB", "1 KB")]
+    [InlineData(1025, "2 KB", "2 KB")]
+    [InlineData(1023 * 1024, "1,023 KB", "1.023 KB")]
+    [InlineData(1023 * 1024 + 1, "1 MB", "1 MB")] // 1024 KB once rounded up: in MB
+    [InlineData(1024 * 1024 - 1, "1 MB", "1 MB")]
+    [InlineData(1024 * 1024, "1 MB", "1 MB")]
+    [InlineData(1536 * 1024, "1.5 MB", "1,5 MB")]
+    [InlineData(20_000_000, "19.1 MB", "19,1 MB")]
+    [InlineData(25L * 1024 * 1024, "25 MB", "25 MB")]
+    public void File_sizes_in_KB_or_MB(long bytes, string english, string portuguese)
+    {
+        Assert.Equal(english, En.FormatFileSize(bytes));
+        Assert.Equal(portuguese, Pt.FormatFileSize(bytes));
+    }
+
     [Theory]
     [InlineData("plan", "Plan", "Plano")]
     [InlineData("default", "Manual", "Manual")] // the extension's name for the default mode
@@ -205,6 +240,7 @@ public class ChatStringsTests
         nameof(ChatStrings.RemoteControl),
         nameof(ChatStrings.EffortMax), nameof(ChatStrings.EffortAuto),
         nameof(ChatStrings.UsageResetsDay), nameof(ChatStrings.PanelLoading),
+        nameof(ChatStrings.AgentTokens),
     };
 
     [Fact]
@@ -296,6 +332,54 @@ public class ChatStringsTests
         Assert.Equal("Renova sáb 08:05", Pt.FormatUsageResets(saturday, now));
         // a list of day names that is not seven long falls back to the English ones
         Assert.Equal("Resets Sat 8:05 AM", (En with { DayNames = "x y" }).FormatUsageResets(saturday, now));
+    }
+
+    [Theory]
+    [InlineData(0, "0", "0")]
+    [InlineData(999, "999", "999")]
+    [InlineData(1000, "1.0k", "1,0k")]
+    [InlineData(26316, "26.3k", "26,3k")]
+    [InlineData(168549, "168.5k", "168,5k")]
+    [InlineData(999949, "999.9k", "999,9k")]
+    [InlineData(999950, "1.0M", "1,0M")]
+    [InlineData(1_250_000, "1.3M", "1,3M")]
+    public void Agent_tokens_are_short(long tokens, string english, string portuguese)
+    {
+        Assert.Equal(english, En.FormatShortTokens(tokens));
+        Assert.Equal(portuguese, Pt.FormatShortTokens(tokens));
+    }
+
+    [Theory]
+    [InlineData(0, "0s")]
+    [InlineData(44_999, "44s")]
+    [InlineData(60_000, "1m 0s")]
+    [InlineData(434_000, "7m 14s")]
+    [InlineData(3_725_000, "62m 5s")]
+    [InlineData(-5, "0s")]
+    public void Agent_time_is_whole_seconds(long ms, string expected) => Assert.Equal(expected, ChatStrings.FormatAgentTime(ms));
+
+    [Fact]
+    public void Agent_map_texts_in_both_languages()
+    {
+        Assert.Equal("0 agents", En.FormatAgentsChip(0));
+        Assert.Equal("1 agent", En.FormatAgentsChip(1));
+        Assert.Equal("3 agentes", Pt.FormatAgentsChip(3));
+        Assert.Equal("1 agente", Pt.FormatAgentsChip(1));
+        Assert.Equal("73 agents · click an agent for details", En.FormatAgentMapSubtitle(73));
+        Assert.Equal("73 agentes · clique num agente para ver detalhes", Pt.FormatAgentMapSubtitle(73));
+        Assert.Equal(("Agent map", "Mapa de agentes"), (En.AgentMapTitle, Pt.AgentMapTitle));
+        Assert.Equal(("Main agent", "Agente principal"), (En.AgentMain, Pt.AgentMain));
+        Assert.Equal("Spawned by Review Task 9", En.FormatAgentSpawnedBy("Review Task 9"));
+        Assert.Equal("Chamado por Review Task 9", Pt.FormatAgentSpawnedBy("Review Task 9"));
+        Assert.Equal(("Spawned by the main agent", "Chamado pelo agente principal"), (En.AgentSpawnedByMain, Pt.AgentSpawnedByMain));
+        Assert.Equal(("Running", "Rodando"), (En.AgentStatusLabel(AgentStatus.Running), Pt.AgentStatusLabel(AgentStatus.Running)));
+        Assert.Equal(("Finished", "Terminado"), (En.AgentStatusLabel(AgentStatus.Completed), Pt.AgentStatusLabel(AgentStatus.Completed)));
+        Assert.Equal(("Failed", "Falhou"), (En.AgentStatusLabel(AgentStatus.Failed), Pt.AgentStatusLabel(AgentStatus.Failed)));
+        Assert.Equal(("Stopped", "Parado"), (En.AgentStatusLabel(AgentStatus.Stopped), Pt.AgentStatusLabel(AgentStatus.Stopped)));
+        Assert.Equal(("background", "segundo plano"), (En.AgentBackground, Pt.AgentBackground));
+        Assert.Equal(("No result yet", "Sem resultado ainda"), (En.AgentNoResult, Pt.AgentNoResult));
+        Assert.Equal("168.5k tokens", En.FormatAgentTokens(168_549));
+        Assert.Equal("249,5k tokens no contexto", Pt.FormatAgentContextTokens(249_500));
     }
 
     [Fact]

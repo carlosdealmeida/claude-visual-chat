@@ -16,15 +16,28 @@ public sealed class UserMessageItem : ChatItem
     private DateTimeOffset? _timestamp;
 
     public UserMessageItem(string text, IReadOnlyList<ChatImage>? images = null)
+        : this(text, images, null)
+    {
+    }
+
+    public UserMessageItem(string text, IReadOnlyList<ChatImage>? images, IReadOnlyList<ChatFile>? files)
     {
         Text = text ?? "";
         Images = images ?? Array.Empty<ChatImage>();
+        Files = files ?? Array.Empty<ChatFile>();
     }
 
+    /// <summary>What the user wrote, without the lines that name the attached files.</summary>
     public string Text { get; }
 
     /// <summary>The images sent with the message; empty when there are none.</summary>
     public IReadOnlyList<ChatImage> Images { get; }
+
+    /// <summary>
+    /// The files sent with the message; empty when there are none. A message read back from the claude or from a
+    /// session file has the files its marker lines name, with no size.
+    /// </summary>
+    public IReadOnlyList<ChatFile> Files { get; }
 
     /// <summary>When it was sent; null when unknown. The view shows it above the message.</summary>
     public DateTimeOffset? Timestamp

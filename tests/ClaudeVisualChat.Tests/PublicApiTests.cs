@@ -102,6 +102,75 @@ public class PublicApiTests
             Assert.True(conversation.GetMember(member).Length > 0, "ChatConversation." + member);
         }
 
+        // the agent map (0.4.0)
+        foreach (var type in new[]
+        {
+            "ClaudeVisualChat.AgentInfo", "ClaudeVisualChat.AgentStatus",
+            "ClaudeVisualChat.Protocol.AgentTaskStarted", "ClaudeVisualChat.Protocol.AgentTaskProgress",
+            "ClaudeVisualChat.Protocol.AgentTaskUpdated", "ClaudeVisualChat.Protocol.AgentTaskFinished",
+        })
+        {
+            Assert.Contains(type, names);
+        }
+        Assert.DoesNotContain("ClaudeVisualChat.Protocol.TaskNotificationText", names);
+        foreach (var member in new[] { "Agents", "RunningAgents", "ShowAgents" })
+            Assert.True(conversation.GetMember(member).Length > 0, "ChatConversation." + member);
+        Assert.True(System.Enum.IsDefined(typeof(ChatPanel), "Agents"));
+        foreach (var member in new[]
+        {
+            "Id", "TaskId", "Description", "AgentType", "Model", "IsBackground", "Depth", "ParentId", "Status",
+            "StartedAt", "DurationMs", "Tokens", "ToolUses", "Activity", "Result",
+        })
+        {
+            Assert.NotNull(typeof(AgentInfo).GetProperty(member));
+        }
+        Assert.True(typeof(ChatObservableObject).IsAssignableFrom(typeof(AgentInfo)));
+        Assert.Empty(typeof(AgentInfo).GetConstructors()); // only the conversation makes them
+        Assert.Equal(new[] { "Running", "Completed", "Failed", "Stopped" }, System.Enum.GetNames(typeof(AgentStatus)));
+        Assert.Equal(typeof(System.Collections.ObjectModel.ObservableCollection<AgentInfo>), conversation.GetProperty("Agents")!.PropertyType);
+        Assert.Equal(typeof(int), conversation.GetProperty("RunningAgents")!.PropertyType);
+
+        // the texts of 0.4.0
+        foreach (var text in new[]
+        {
+            "FileTooBig", "FileNotSupported", "TooManyFiles", "FileUploading", "AttachableFiles", "AgentsChip",
+            "AgentsChipOne", "ContextRingTip", "ContextRingHint", "AgentMapTitle", "AgentMapSubtitle", "AgentMapSubtitleOne",
+            "AgentMain", "AgentSpawnedByMain", "AgentSpawnedBy", "AgentRunning", "AgentFinished", "AgentFailed",
+            "AgentStopped", "AgentBackground", "AgentNoResult", "AgentTokens", "AgentContextTokens", "Back",
+        })
+        {
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        }
+
+        // attached files (0.4.0)
+        foreach (var type in new[]
+        {
+            "ClaudeVisualChat.ChatFile", "ClaudeVisualChat.ChatFileKind", "ClaudeVisualChat.AddFileResult",
+            "ClaudeVisualChat.Protocol.AttachedFileLine",
+        })
+        {
+            Assert.Contains(type, names);
+        }
+        foreach (var member in new[] { "Files", "MaxFiles", "MaxFileBytes", "AddFileAsync", "AddFile", "RemoveFile" })
+            Assert.True(conversation.GetMember(member).Length > 0, "ChatConversation." + member);
+        foreach (var member in new[] { "Name", "Size", "MediaType", "Kind", "LocalPath", "Content", "Progress", "RemotePath" })
+            Assert.NotNull(typeof(ChatFile).GetProperty(member));
+        Assert.True(typeof(ChatObservableObject).IsAssignableFrom(typeof(ChatFile)));
+        Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<ChatFile>), typeof(MessageSubmittedEventArgs).GetProperty("Files")?.PropertyType);
+        Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<ChatFile>), typeof(UserMessageItem).GetProperty("Files")?.PropertyType);
+        Assert.NotNull(typeof(UserMessageItem).GetConstructor(new[]
+        {
+            typeof(string), typeof(System.Collections.Generic.IReadOnlyList<ChatImage>), typeof(System.Collections.Generic.IReadOnlyList<ChatFile>),
+        }));
+        Assert.NotNull(typeof(MessageSubmittedEventArgs).GetConstructor(new[] { typeof(string), typeof(System.Collections.Generic.IReadOnlyList<ChatImage>) }));
+        Assert.Empty(typeof(ChatFile).GetConstructors()); // only the conversation makes them
+        Assert.Equal(new[] { "Pdf", "Text", "Csv" }, System.Enum.GetNames(typeof(ChatFileKind)));
+        Assert.Equal(new[] { "Added", "TooMany", "TooBig", "NotSupported" }, System.Enum.GetNames(typeof(AddFileResult)));
+        Assert.Equal(typeof(System.Threading.Tasks.Task<AddFileResult>), conversation.GetMethod("AddFileAsync")!.ReturnType);
+        var line = typeof(ClaudeVisualChat.Protocol.AttachedFileLine);
+        Assert.NotNull(line.GetMethod("Format"));
+        Assert.NotNull(line.GetMethod("Split"));
+
         var send = typeof(ClaudeVisualChat.Protocol.StdinMessages);
         foreach (var method in new[] { "ApplyEffort", "GetSettings", "GetContextUsage", "RemoteControl", "GetChromeStatus", "Initialize" })
             Assert.NotNull(send.GetMethod(method));

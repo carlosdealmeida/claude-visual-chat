@@ -48,6 +48,7 @@
   <SolidColorBrush x:Key="ClaudeChat.BannerErrorBackground" Color="#552C2A" /> <!-- errorForeground 25 % + editor.background -->
   <SolidColorBrush x:Key="ClaudeChat.AttachmentBackground" Color="#414141" /> <!-- input.background 85 % + descriptionForeground -->
   <SolidColorBrush x:Key="ClaudeChat.AttachmentHoverBorder" Color="#85CCCCCC" /> <!-- the input border 60 % + foreground -->
+  <SolidColorBrush x:Key="ClaudeChat.ThumbnailHoverBorder" Color="#B39D9D9D" /> <!-- descriptionForeground at 70 % -->
   <LinearGradientBrush x:Key="ClaudeChat.AttachmentRemoveFade" StartPoint="0%,0%" EndPoint="100%,0%">
     <GradientStop Offset="0" Color="#00414141" />
     <GradientStop Offset="0.5" Color="#414141" />
@@ -65,6 +66,9 @@
   <SolidColorBrush x:Key="ClaudeChat.ContextColor4" Color="#89D185" />        <!-- charts.green -->
   <SolidColorBrush x:Key="ClaudeChat.ContextColor5" Color="#CCA700" />        <!-- charts.yellow -->
   <SolidColorBrush x:Key="ClaudeChat.ContextColor6" Color="#F14C4C" />        <!-- charts.red -->
+  <!-- the context ring: the track is the foreground at 15 %; the fill is the same as the default theme -->
+  <SolidColorBrush x:Key="ClaudeChat.ContextRingTrack" Color="#26CCCCCC" />
+  <SolidColorBrush x:Key="ClaudeChat.ContextRingFill" Color="#C6613F" />
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAcceptEdits">0 0 0 3 #1FCCCCCC</BoxShadows>
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowPlan">0 0 0 3 #1F0078D4</BoxShadows>
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAuto">0 0 0 3 #1FF85149</BoxShadows>

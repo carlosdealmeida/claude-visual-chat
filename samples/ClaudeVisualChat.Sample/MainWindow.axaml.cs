@@ -121,14 +121,19 @@ public partial class MainWindow : Window
             // the session file has no init to say where Claude worked: the recordings' folder, so paths show relative
             conversation.WorkingDirectory = Recordings.WorkingDirectory;
             conversation.LoadTranscript(Recordings.Transcript(scenario));
+            if (scenario == DemoSession.Scenario) AttachDemoFile(conversation);
             UpdateStatus();
             return;
         }
 
         var lines = Recordings.Stream(scenario);
         var player = _player = new FixturePlayer(lines, conversation) { Prompts = Recordings.Prompts(scenario) };
-        // the times and the thought durations are the recording's, not the playing's
-        conversation.Clock = () => player.RecordingTime ?? DateTimeOffset.Now;
+        // the times and the thought durations are the recording's, not the playing's; once it has played, the time
+        // goes on from its end (the agents still at work count their minutes), except in a screenshot
+        DateTimeOffset? endedAt = null;
+        conversation.Clock = () => player.RecordingTime is { } time
+            ? endedAt is { } ended ? time + (DateTimeOffset.Now - ended) : time
+            : DateTimeOffset.Now;
         _lineCount = lines.Count;
         PlayButton.IsEnabled = false;
         _statusTimer.Start();
@@ -136,6 +141,8 @@ public partial class MainWindow : Window
         {
             await player.PlayAsync(perStreamEvent, perOtherLine, playing.Token);
             _finished = true;
+            if (!_answerYes) endedAt = DateTimeOffset.Now;
+            if (scenario == DemoSession.Scenario) AttachDemoFile(conversation);
         }
         catch (OperationCanceledException) when (playing.IsCancellationRequested)
         {
@@ -207,9 +214,48 @@ public partial class MainWindow : Window
 
     // ---- what the view sends back, and what the host would write to the claude ----
 
-    private void OnMessageSubmitted(object? sender, MessageSubmittedEventArgs e) =>
-        Add("MessageSubmitted: \"" + e.Text + "\"" + (e.Images.Count > 0 ? " + " + e.Images.Count + " image(s)" : ""),
-            StdinMessages.UserMessage(e.Text, e.Images));
+    private void OnMessageSubmitted(object? sender, MessageSubmittedEventArgs e)
+    {
+        var what = "MessageSubmitted: \"" + e.Text + "\"" + (e.Images.Count > 0 ? " + " + e.Images.Count + " image(s)" : "")
+                   + (e.Files.Count > 0 ? " + " + e.Files.Count + " file(s)" : "");
+        if (e.Files.Count == 0)
+        {
+            Add(what, StdinMessages.UserMessage(e.Text, e.Images));
+            return;
+        }
+        // the files go to the claude's machine first; the message follows, naming each one on a line of its own
+        Add(what, "(the app sends the files first; the message follows when they are there)");
+        if (!_answerYes && sender is ChatConversation conversation) _ = UploadAsync(conversation, e);
+        else foreach (var file in e.Files) file.Progress = 0.42; // the screenshot shows a file half sent
+    }
+
+    /// <summary>
+    /// What a host does with a message's files, made up: it sends each one (here it only waits), telling the progress
+    /// on the UI thread, sets where the file landed, then writes the message with one marker line per file.
+    /// </summary>
+    private async Task UploadAsync(ChatConversation conversation, MessageSubmittedEventArgs e)
+    {
+        var markers = new System.Collections.Generic.List<string>();
+        foreach (var file in e.Files)
+        {
+            for (var step = 0; step <= 20; step++)
+            {
+                if (!ReferenceEquals(_conversation, conversation)) return; // another play took over
+                file.Progress = step / 20.0;
+                await Task.Delay(150);
+            }
+            file.RemotePath = Recordings.WorkingDirectory + @"\.uploads\" + file.Name;
+            markers.Add(AttachedFileLine.Format(file.RemotePath));
+        }
+        var text = e.Text.Length == 0 ? string.Join("\n", markers) : e.Text + "\n" + string.Join("\n", markers);
+        Add("Files sent: " + string.Join(", ", e.Files.Select(f => f.RemotePath)), StdinMessages.UserMessage(text, e.Images));
+    }
+
+    /// <summary>The made-up session leaves a file in the reply box, for the user to send.</summary>
+    private static void AttachDemoFile(ChatConversation conversation)
+    {
+        if (conversation.Files.Count == 0) conversation.AddFile(DemoSession.FileName, DemoSession.FileContent);
+    }
 
     private void OnPermissionAnswered(object? sender, PermissionAnsweredEventArgs e) =>
         Add("PermissionAnswered: " + e.Decision + " · " + e.Request.DisplayName, StdinMessages.PermissionResponse(e));
@@ -325,6 +371,12 @@ public partial class MainWindow : Window
         SourcePicker.SelectedIndex = history ? 1 : 0;
         await PlayAsync(TimeSpan.Zero, TimeSpan.Zero);
         if (!history && !_finished) throw new InvalidOperationException("the recording did not play to the end");
+        if (ScenarioPicker.SelectedItem as string == DemoSession.Scenario && _conversation is { } demo)
+        {
+            // the made-up session: its file sent (half way) with a message, and the Agent map open
+            demo.Submit(DemoSession.FileMessage);
+            demo.ShowAgents();
+        }
 
         // the last texts are drawn (markdown is redrawn at most every 100 ms) and the list reaches its end
         await Task.Delay(TimeSpan.FromMilliseconds(800));

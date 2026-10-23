@@ -10,7 +10,9 @@ using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
 using SkiaSharp;
 using Xunit;
+using AgentTaskStarted = ClaudeVisualChat.Protocol.AgentTaskStarted;
 using AssistantBlock = ClaudeVisualChat.Protocol.AssistantBlock;
+using ContextUsageReported = ClaudeVisualChat.Protocol.ContextUsageReported;
 using PermissionRequested = ClaudeVisualChat.Protocol.PermissionRequested;
 using PromptCacheUsed = ClaudeVisualChat.Protocol.PromptCacheUsed;
 using SessionStarted = ClaudeVisualChat.Protocol.SessionStarted;
@@ -70,6 +72,25 @@ public class DetachTests
         return c;
     }
 
+    /// <summary>
+    /// <see cref="Busy"/> with the controls of 0.4.0 on screen too: an agent at work and the Agent map open over the
+    /// view (its timer running), the context ring, a sent message with an image and a file in its attachments row, and
+    /// a file chip in the reply box.
+    /// </summary>
+    private static ChatConversation BusyWithAgents()
+    {
+        var c = Busy();
+        c.Apply(new AssistantBlock("m2", null, new ToolUseBlock("toolu_a", "Agent", J("{\"description\":\"Look around\",\"subagent_type\":\"Explore\"}"))));
+        c.Apply(new AgentTaskStarted("task1", "toolu_a", "Look around", "Explore", true, 1, "local_agent"));
+        c.Apply(new ContextUsageReported(new ContextUsage(140_000, 200_000, 70, Array.Empty<ContextCategory>())));
+        Assert.Equal(AddFileResult.Added, c.AddFile("sent.txt", System.Text.Encoding.UTF8.GetBytes("sent")));
+        c.Submit("with a file"); // takes Busy's image too: the message's row has a thumbnail and a file
+        Assert.Equal(AddFileResult.Added, c.AddFile("notes.txt", System.Text.Encoding.UTF8.GetBytes("notes")));
+        c.Files[0].Progress = 0.5;
+        c.ShowAgents();
+        return c;
+    }
+
     private static ContentPresenter Presenter(ContentControl host) =>
         host.GetVisualDescendants().OfType<ContentPresenter>().First();
 
@@ -126,6 +147,36 @@ public class DetachTests
     public void A_host_swapping_out_a_busy_view_gets_its_new_content()
     {
         SwapsOut(Busy());
+    }
+
+    [AvaloniaFact]
+    public void A_host_swapping_out_a_view_with_the_agent_map_open_gets_its_new_content()
+    {
+        var c = BusyWithAgents();
+        var host = Shell(c);
+        var window = UiHelpers.Show(host);
+        var view = Assert.IsType<ClaudeChatView>(Presenter(host).Child);
+        UiHelpers.Pump();
+        // the 0.4.0 controls are on screen
+        var map = view.GetVisualDescendants().OfType<AgentMapPanel>().Single();
+        Assert.True(map.IsEffectivelyVisible);
+        Assert.True(map.IsTicking);
+        Assert.True(view.GetVisualDescendants().OfType<AgentsChip>().Single().IsVisible);
+        Assert.True(view.GetVisualDescendants().OfType<ContextRing>().Single().IsVisible);
+        Assert.Contains(view.GetVisualDescendants().OfType<MessageAttachments>(), r => r.IsVisible);
+        Assert.Equal(2, view.GetVisualDescendants().OfType<FileChipContent>().Count()); // the sent one and the box's
+        Handlers(c, out var shown);
+
+        host.Content = new OtherPage();
+        UiHelpers.Pump();
+
+        var other = Assert.IsType<TextBlock>(Presenter(host).Child);
+        Assert.Equal("Tokens", other.Text);
+        Assert.Contains(other, Presenter(host).GetVisualChildren());
+        Assert.False(map.IsTicking);
+        Handlers(c, out var left);
+        Assert.True(left < shown);
+        window.Close();
     }
 
     // ---- out and back ----
@@ -244,15 +295,26 @@ public class DetachTests
 
     // ---- out, the conversation no longer reaches the view ----
 
-    /// <summary>Handlers on the conversation's PropertyChanged and on its attachments' CollectionChanged.</summary>
+    /// <summary>
+    /// Handlers on the conversation's PropertyChanged, on its attachments', files' and agents' CollectionChanged, and
+    /// on each agent's and file's PropertyChanged (the reply box's files and the sent messages').
+    /// </summary>
     private static int Handlers(ChatConversation c)
     {
         const System.Reflection.BindingFlags field = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        var changed = (Delegate?)typeof(ChatObservableObject).GetField("PropertyChanged", field)!.GetValue(c);
-        var attachments = (Delegate?)typeof(System.Collections.ObjectModel.ObservableCollection<ChatImage>)
-            .GetField("CollectionChanged", field)!.GetValue(c.Attachments);
-        return (changed?.GetInvocationList().Length ?? 0) + (attachments?.GetInvocationList().Length ?? 0);
+        int Count(object target, Type owner, string name) =>
+            ((Delegate?)owner.GetField(name, field)!.GetValue(target))?.GetInvocationList().Length ?? 0;
+        var count = Count(c, typeof(ChatObservableObject), "PropertyChanged")
+                    + Count(c.Attachments, typeof(System.Collections.ObjectModel.ObservableCollection<ChatImage>), "CollectionChanged")
+                    + Count(c.Files, typeof(System.Collections.ObjectModel.ObservableCollection<ChatFile>), "CollectionChanged")
+                    + Count(c.Agents, typeof(System.Collections.ObjectModel.ObservableCollection<AgentInfo>), "CollectionChanged");
+        foreach (var agent in c.Agents) count += Count(agent, typeof(ChatObservableObject), "PropertyChanged");
+        var files = c.Files.Concat(c.Items.OfType<UserMessageItem>().SelectMany(m => m.Files)).Distinct();
+        foreach (var file in files) count += Count(file, typeof(ChatObservableObject), "PropertyChanged");
+        return count;
     }
+
+    private static void Handlers(ChatConversation c, out int count) => count = Handlers(c);
 
     [AvaloniaFact]
     public void Out_of_the_window_the_conversation_no_longer_reaches_the_view()
@@ -281,6 +343,31 @@ public class DetachTests
         Assert.DoesNotContain("Plan", UiHelpers.Texts(picker));
         Assert.Single(strip.GetVisualDescendants().OfType<Button>(), b => b.Classes.Contains("ClaudeChatAttachment"));
         Assert.False(m.Clock.IsTicking);
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Out_of_the_window_the_0_4_controls_let_go_of_the_conversation_its_agents_and_its_files()
+    {
+        var c = BusyWithAgents();
+        var own = Handlers(c); // the conversation's own, before any view
+        var m = new Mounted(c);
+        var map = m.View.GetVisualDescendants().OfType<AgentMapPanel>().Single();
+        Assert.True(map.IsTicking);
+        Assert.True(Handlers(c) > own);
+
+        m.Out();
+        Assert.Equal(own, Handlers(c)); // the chip, the ring, the map, the strip and every file chip let go
+        Assert.False(map.IsTicking);
+
+        // what changes while out is drawn when back
+        c.Apply(new AgentTaskStarted("task2", "toolu_b", "Look again", "Explore", true, 1, "local_agent"));
+        c.Files[0].Progress = null;
+        UiHelpers.Pump();
+        m.In();
+        Assert.True(map.IsTicking);
+        Assert.Contains("2 agents", UiHelpers.Texts(m.Composer.GetVisualDescendants().OfType<AgentsChip>().Single()));
+        Assert.Equal(2, map.GetVisualDescendants().OfType<Button>().Count(b => b.Classes.Contains("ClaudeChatAgentRow") && b.IsEffectivelyVisible));
         m.Window.Close();
     }
 }

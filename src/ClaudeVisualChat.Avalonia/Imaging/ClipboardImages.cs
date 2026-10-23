@@ -16,9 +16,11 @@ internal static class ClipboardImages
     internal static Func<bool>? HasTextOverride;
     internal static Func<bool>? HasImageOverride;
     internal static Func<Task<byte[]?>>? ReadOverride;
+    internal static Func<bool>? HasFilesOverride;
 
     private const uint CF_DIB = 8;
     private const uint CF_UNICODETEXT = 13;
+    private const uint CF_HDROP = 15;
     private const uint CF_DIBV5 = 17;
 
     private static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -29,7 +31,19 @@ internal static class ClipboardImages
     /// True when <see cref="HasText"/> and <see cref="HasImage"/> can answer at once: on Windows, or under the test
     /// seams. Elsewhere the clipboard is only read asynchronously.
     /// </summary>
-    public static bool CanCheckNow => IsWindows || HasTextOverride != null || HasImageOverride != null;
+    public static bool CanCheckNow => IsWindows || HasTextOverride != null || HasImageOverride != null || HasFilesOverride != null;
+
+    /// <summary>
+    /// True when the clipboard holds files (copied in Explorer: CF_HDROP), which a paste attaches as a drop would.
+    /// Under the other test seams, false unless <see cref="HasFilesOverride"/> says otherwise, so the real clipboard
+    /// never leaks into a test.
+    /// </summary>
+    public static bool HasFiles()
+    {
+        if (HasFilesOverride != null) return HasFilesOverride();
+        if (HasTextOverride != null || HasImageOverride != null) return false;
+        return IsWindows && IsClipboardFormatAvailable(CF_HDROP);
+    }
 
     public static bool HasText()
     {

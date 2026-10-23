@@ -35,15 +35,31 @@ public sealed class PermissionAnsweredEventArgs : EventArgs
 public sealed class MessageSubmittedEventArgs : EventArgs
 {
     public MessageSubmittedEventArgs(string text, IReadOnlyList<ChatImage>? images = null)
+        : this(text, images, null)
+    {
+    }
+
+    internal MessageSubmittedEventArgs(string text, IReadOnlyList<ChatImage>? images, IReadOnlyList<ChatFile>? files)
     {
         Text = text ?? "";
         Images = images ?? Array.Empty<ChatImage>();
+        Files = files ?? Array.Empty<ChatFile>();
     }
 
+    /// <summary>What the user wrote; the files are not named in it (see <see cref="Files"/>).</summary>
     public string Text { get; }
 
     /// <summary>The images sent with the message; empty when there are none.</summary>
     public IReadOnlyList<ChatImage> Images { get; }
+
+    /// <summary>
+    /// The files sent with the message; empty when there are none. The host sends each one to the claude's machine,
+    /// setting <see cref="ChatFile.Progress"/> as it goes and <see cref="ChatFile.RemotePath"/> when done (both on the
+    /// UI thread: post them from an upload worker), then sends
+    /// the text followed by one <see cref="Protocol.AttachedFileLine.Format"/> line per file; when that fails, it
+    /// gives the message back with <see cref="ChatConversation.UndoSubmit"/>, and the files go back to the reply box.
+    /// </summary>
+    public IReadOnlyList<ChatFile> Files { get; }
 
     /// <summary>The conversation that sent it; null for one made by hand.</summary>
     internal ChatConversation? Owner { get; set; }
@@ -112,6 +128,9 @@ public enum ChatPanel
     None,
     Context,
     Usage,
+
+    /// <summary>The Agent map: the conversation's subagents, over the whole view (<see cref="ChatConversation.ShowAgents"/>).</summary>
+    Agents,
 }
 
 /// <summary>The state of the browser extension, which the host reports.</summary>

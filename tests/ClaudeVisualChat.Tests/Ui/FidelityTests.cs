@@ -187,6 +187,8 @@ public class FidelityTests
         ("ClaudeChat.PillHoverBackground", "#2EBFBFBF", "#2ECCCCCC"),
         ("ClaudeChat.AttachmentBackground", "#2A2B2C", "#414141"),     // input.background 85 % + descriptionForeground
         ("ClaudeChat.AttachmentHoverBorder", "#666667", "#85CCCCCC"),  // the input border 60 % + foreground
+        ("ClaudeChat.ThumbnailHoverBorder", "#B38C8C8C", "#B39D9D9D"), // descriptionForeground at 70 %
+        ("ClaudeChat.ContextRingTrack", "#26BFBFBF", "#26CCCCCC"),     // the context ring's track: foreground at 15 %
         ("ClaudeChat.MenuBackground", "#202122", "#1F1F1F"),           // menu.background
         ("ClaudeChat.MenuForeground", "#BFBFBF", "#CCCCCC"),           // menu.foreground
         ("ClaudeChat.ListHoverBackground", "#14FFFFFF", "#2A2D2E"),    // list.hoverBackground
@@ -217,6 +219,9 @@ public class FidelityTests
         ("ClaudeChat.RemoteControlForeground", "#FAF9F5"),
         ("ClaudeChat.RemoteControlHoverBackground", "#516DC1"), // the connected chip's brightness(1.1)
         ("ClaudeChat.RemoteControlHoverForeground", "#FFFFFF"),
+        ("ClaudeChat.ModalOverlay", "#BF000000"),   // the Agent map's backdrop (--app-modal-background)
+        ("ClaudeChat.AgentRunning", "#89D185"),     // an agent at work: the status-busy green
+        ("ClaudeChat.ContextRingFill", "#C6613F"),  // the context ring: the send button's clay
     };
 
     [AvaloniaFact]
@@ -517,6 +522,9 @@ public class FidelityTests
         c.Apply(new ClaudeVisualChat.Protocol.SessionStarted("s1", "opus", null, "default", "2.1.306"));
         c.Apply(new ClaudeVisualChat.Protocol.SettingsApplied(null, "high", true));
         c.Apply(new ClaudeVisualChat.Protocol.PromptCacheUsed(TimeSpan.FromMinutes(60), null));
+        c.Apply(new ClaudeVisualChat.Protocol.ContextUsageReported(new ContextUsage(700000, 1000000, 70, System.Array.Empty<ContextCategory>())));
+        // an agent, so the agents chip shows (the extension's shows only once the map has one)
+        c.Apply(new ClaudeVisualChat.Protocol.AgentTaskStarted("t1", "toolu_1", "Look around", "general-purpose", true, 1, "local_agent"));
         c.RemoteControlStatus = ChatRemoteControlStatus.Connected;
         c.RemoteControlUrl = "https://claude.ai/code/session_1";
         c.BrowserStatus = ChatBrowserStatus.Connected;
@@ -535,6 +543,8 @@ public class FidelityTests
         var slash = Of(UiHelpers.ButtonWithText(composer, "Show command menu (/)"));
         var clock = Of(composer.GetVisualDescendants().OfType<PromptCacheClock>().Single());
         var remote = Of(composer.GetVisualDescendants().OfType<RemoteControlChip>().Single());
+        var agents = Of(composer.GetVisualDescendants().OfType<AgentsChip>().Single());
+        var ring = Of(composer.GetVisualDescendants().OfType<ContextRing>().Single());
         var model = Of(composer.GetVisualDescendants().OfType<ModelChip>().Single());
         var mode = Of(composer.GetVisualDescendants().OfType<ComboBox>().Single());
         var send = Of(composer.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("ClaudeChatSend")));
@@ -547,12 +557,35 @@ public class FidelityTests
             Near(add.Top, part.Top, name + " is on the row of +");
         // the chips (min-height 18, .modelPill_gGYT1w) are centered on the 26 px row
         Near(add.Top + 4, remote.Top, "Remote Control chip centered");
+        Near(add.Top + 4, agents.Top, "agents chip centered");
         Near(add.Top + 4, model.Top, "model chip centered");
 
-        // gap 2 between neighbors; the model chip adds margin-left 6 (.modelPill_gGYT1w) to the gap
-        Near(slash.Right + 2, clock.Left, "clock after /");
+        // gap 2 between neighbors; the model chip adds margin-left 6 (.modelPill_gGYT1w) to the gap. The order of the
+        // extension's 2.1.309 bar: +, /, the context ring (iv0), the clock (kv0), Remote Control (av0), the agents (Iv0),
+        // the model (vb1)
+        // the context ring (the extension's 20 px pie, shown over 50 % used; 28 x 24) right after /
+        Near(slash.Right + 2, ring.Left, "ring after /: gap 2");
+        Near(ring.Right + 2, clock.Left, "clock after the ring: gap 2");
         Near(clock.Right + 2, remote.Left, "chip after clock");
-        Near(remote.Right + 2 + 6, model.Left, "model chip: gap 2 + margin 6");
+        // the "N agents" chip, a .modelPill_gGYT1w too, between the Remote Control chip and the model chip (2.1.309)
+        Near(remote.Right + 2 + 6, agents.Left, "agents chip: gap 2 + margin 6");
+        Near(agents.Right + 2 + 6, model.Left, "model chip: gap 2 + margin 6");
+        Near(add.Top + 1, ring.Top, "ring is centered on the 26 px row");
+        Near(28, ring.Width, "ring button is 28 wide (.usage: padding 2px 4px around the 20 px svg)");
+        Near(24, ring.Height, "ring button is 24 high");
+        var arc = Of(composer.GetVisualDescendants().OfType<ContextRingArc>().Single());
+        Near(20, arc.Width, "the pie is 20 wide");
+        Near(20, arc.Height, "the pie is 20 high");
+        Near(ring.Left + 4, arc.Left, "the pie sits 4 px in from the button's edge");
+        Near(ring.Top + 2, arc.Top, "and 2 px down");
+
+        // under 50 % used the ring is hidden and takes no room, like the other chips
+        UiHelpers.Pump();
+        view.Conversation!.Apply(new ClaudeVisualChat.Protocol.ContextUsageReported(new ContextUsage(100, 1000, 10, System.Array.Empty<ContextCategory>())));
+        UiHelpers.Pump();
+        Near(slash.Right + 2, Of(composer.GetVisualDescendants().OfType<PromptCacheClock>().Single()).Left, "hidden ring: the clock follows /");
+        Near(Of(composer.GetVisualDescendants().OfType<AgentsChip>().Single()).Right + 2 + 6, Of(composer.GetVisualDescendants().OfType<ModelChip>().Single()).Left, "the model chip still follows the agents chip");
+        Near(18, agents.Height, "agents chip is 18 high");
         Near(mode.Right + 4, send.Left, "send after mode: gap 2 and the mode button's 2 px margin, as FidelityTests.Reply_box_is_680_wide...");
         Near(box.Right - 1 - 5, send.Right, "send at the right of the bar");
         Assert.Equal(new Size(26, 26), send.Size);

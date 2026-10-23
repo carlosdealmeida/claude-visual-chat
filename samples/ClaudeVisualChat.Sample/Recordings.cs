@@ -16,15 +16,17 @@ internal static class Recordings
     public static readonly string[] Scenarios =
     {
         "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model",
-        "image", "commands", "effort",
+        "image", "commands", "effort", DemoSession.Scenario,
     };
 
     /// <summary>The folder the recordings were made in, after the recorder replaced the real one.</summary>
     public const string WorkingDirectory = @"C:\demo\app";
 
-    public static IReadOnlyList<string> Stream(string scenario) => Read(scenario + ".stream.ndjson");
+    public static IReadOnlyList<string> Stream(string scenario) =>
+        scenario == DemoSession.Scenario ? DemoSession.Stream() : Read(scenario + ".stream.ndjson");
 
-    public static IReadOnlyList<string> Transcript(string scenario) => Read(scenario + ".transcript.jsonl");
+    public static IReadOnlyList<string> Transcript(string scenario) =>
+        scenario == DemoSession.Scenario ? DemoSession.Transcript() : Read(scenario + ".transcript.jsonl");
 
     /// <summary>
     /// What the user typed in the recording, which the claude's output does not repeat: the user's messages of the

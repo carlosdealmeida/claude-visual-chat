@@ -3,6 +3,64 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-10-23
+
+The Agent map, the context ring and attached files, as the Claude Code extension 2.1.309 has them.
+
+### Added
+
+- The Agent map. `ChatConversation.Agents` (the newest first) and `RunningAgents` follow the subagents: `AgentInfo`
+  (`Id`, `TaskId`, `Description`, `AgentType`, `Model`, `IsBackground`, `Depth`, `ParentId`, `Status`, `StartedAt`,
+  `DurationMs`, `Tokens`, `ToolUses`, `Activity`, `Result`) and `AgentStatus` (`Running`, `Completed`, `Failed`,
+  `Stopped`). They come from the Agent (or Task) calls, from the claude's `system/task_started`, `task_progress`,
+  `task_updated` and `task_notification` lines (the new events `AgentTaskStarted`, `AgentTaskProgress`,
+  `AgentTaskUpdated` and `AgentTaskFinished`) and from the Agent call's result; `LoadTranscript` builds them from a
+  session file's `<task-notification>` messages. A command an agent runs (`local_bash`) is not an agent. An agent with
+  no end in a session file is shown stopped; a later live line of it (its task lines, or a line of its own) brings it
+  back to running.
+- The "N agents" chip in the bar, between the Remote Control chip and the model chip (the running agents, "0 agents"
+  once all have ended, its dot green while one is), shown once the conversation has an agent, as the extension's. It
+  opens the Agent map (`ChatConversation.ShowAgents()`, `ChatPanel.Agents`):
+  the main agent's card, kept in sight while the list scrolls, and the agents as a tree, newest on top, with their time
+  (counting from `Clock` while they run) and tokens. A click on an agent opens its card: status, type, model,
+  background, who called it, time and tokens, what it is doing while it runs, and its answer as the extension shows it
+  (the text as it came, not as markdown). Esc, the back arrow and the × work as in the extension; the dialogs' border
+  takes the input's active border with the keyboard in them.
+- The context ring in the bar, right after the **/** button (before the cache clock, as the extension's): shown once more than half of the window is used (`ContextUsage`), a 20 px pie in the
+  send button's clay that fills in three steps (50, 75 and 99 %), with the extension's tooltip. A click opens the
+  `/context` panel; unlike the extension's, it does not compact the conversation.
+- Attached files: PDF (`%PDF-`), text (`.txt`, `.log`, `.md`, `.json`) and CSV files, through the **+** button, a drop,
+  Ctrl+V of files copied in Explorer (as a drop; text on the clipboard still wins; images and files are told apart;
+  with `MaxFiles` at 0 the dialog offers images only) or `ChatConversation.AddFileAsync(path)` and `AddFile(name, bytes)`; `Files`,
+  `RemoveFile`, `MaxFiles` (5) and `MaxFileBytes` (25 MB). `ChatFile` (`Name`, `Size`, `MediaType`, `Kind`,
+  `LocalPath`, `Content`, and `Progress` and `RemotePath`, which the host writes), `ChatFileKind` and `AddFileResult`.
+  The host sends each file and then the message with one `[attached file: <path>]` line per file at its end
+  (`Protocol.AttachedFileLine.Format` and `Split`); the conversation takes those lines off the user's messages, live
+  and in session files, and shows a chip instead. While a file is being sent its chip says "Sending 42%". A message
+  can be only files. `UserMessageItem.Files` holds a message's files.
+- New `ChatStrings` texts, in English and Portuguese: `AgentsChip`, `AgentsChipOne`, `AgentMapTitle`,
+  `AgentMapSubtitle`, `AgentMapSubtitleOne`, `AgentMain`, `AgentSpawnedByMain`, `AgentSpawnedBy`, `AgentRunning`,
+  `AgentFinished`, `AgentFailed`, `AgentStopped`, `AgentBackground`, `AgentNoResult`, `AgentTokens`,
+  `AgentContextTokens`, `Back`, `ContextRingTip`, `ContextRingHint`, `FileTooBig`, `FileNotSupported`, `TooManyFiles`,
+  `FileUploading` and `AttachableFiles`.
+- New resources: `ClaudeChat.ModalOverlay`, `AgentRunning`, `ContextRingTrack`, `ContextRingFill`,
+  `ThumbnailHoverBorder` (also in "Dark Modern" where they differ) and the icons `Icon.ArrowLeft`, `Icon.FilePdf`,
+  `Icon.FileText` and `Icon.Table`.
+- The sample app has a made-up `agents` session (seven agents, one called by another, 71 % of the context used, a file
+  in the reply box with a made-up upload), and its screenshot shows the Agent map.
+
+### Changed
+
+- `MessageSubmittedEventArgs` gained `Files` (empty when there are none). A host that sends only `e.Text` and
+  `e.Images` drops the files: send them and add their marker lines (see the README), or set `MaxFiles` to 0 to refuse them.
+- A user message whose text starts with `<task-notification>` is now read for the Agent map. It still does not show.
+- `ChatPanel` gained `Agents`: a `switch` over `ShownPanel` may need a case for it.
+- A sent message's images now show above its text, in one row with its files, as the extension's message attachments,
+  instead of under it. The thumbnails are the extension's: 48 px high and up to 120 px wide, cut at the sides past that
+  (they were 64 by 256 px at most, in proportion), with 7 px corners in a 1 px frame with 8 px corners.
+- A file dropped on the reply box that is neither an image nor a PDF, text or CSV file is refused with the reason,
+  instead of being ignored.
+
 ## [0.3.1] - 2026-10-23
 
 ### Fixed

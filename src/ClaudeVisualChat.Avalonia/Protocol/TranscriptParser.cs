@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -298,9 +299,107 @@ namespace ClaudeVisualChat.Protocol
                     return CommandText.ReadOutput(JsonHelpers.Str(root, "content")) is { } output
                         ? new ClaudeEvent[] { output }
                         : None;
+                case "task_started":
+                case "task_progress":
+                case "task_updated":
+                case "task_notification":
+                    return ReadTask(subtype!, root);
                 default:
                     return None;
             }
+        }
+
+        /// <summary>A <c>system/task_*</c> line; none without a <c>task_id</c>.</summary>
+        private static IReadOnlyList<ClaudeEvent> ReadTask(string subtype, JsonElement root)
+        {
+            var taskId = JsonHelpers.Str(root, "task_id");
+            if (string.IsNullOrEmpty(taskId)) return None;
+            var toolUseId = JsonHelpers.Str(root, "tool_use_id") ?? "";
+            var usage = JsonHelpers.Obj(root, "usage");
+            long? tokens = usage == null ? null : JsonHelpers.Long(usage.Value, "total_tokens");
+            var toolUses = usage == null ? null : JsonHelpers.Long(usage.Value, "tool_uses");
+            long? duration = usage == null ? null : JsonHelpers.Long(usage.Value, "duration_ms");
+            ClaudeEvent e;
+            switch (subtype)
+            {
+                case "task_started":
+                    e = new AgentTaskStarted(
+                        taskId!, toolUseId, JsonHelpers.Str(root, "description") ?? "", JsonHelpers.Str(root, "subagent_type"),
+                        JsonHelpers.Bool(root, "is_backgrounded"), (int)(JsonHelpers.Long(root, "spawn_depth") ?? 1),
+                        JsonHelpers.Str(root, "task_type") ?? "");
+                    break;
+                case "task_progress":
+                    e = new AgentTaskProgress(
+                        taskId!, toolUseId, JsonHelpers.Str(root, "description"), tokens, (int?)toolUses, duration);
+                    break;
+                case "task_updated":
+                    var patch = JsonHelpers.Obj(root, "patch");
+                    e = new AgentTaskUpdated(taskId!, patch == null ? null : JsonHelpers.Str(patch.Value, "status"));
+                    break;
+                default:
+                    e = new AgentTaskFinished(
+                        taskId!, toolUseId, JsonHelpers.Str(root, "status") ?? "", JsonHelpers.Str(root, "summary"),
+                        tokens, (int?)toolUses, duration);
+                    break;
+            }
+            return new[] { e };
+        }
+    }
+
+    /// <summary>
+    /// The <c>&lt;task-notification&gt;</c> text a session file keeps as a user message when a background task ends:
+    /// tags <c>task-id</c>, <c>tool-use-id</c>, <c>status</c>, <c>summary</c>, <c>result</c> and <c>usage</c> (with
+    /// <c>subagent_tokens</c>, <c>tool_uses</c> and <c>duration_ms</c>).
+    /// </summary>
+    internal static class TaskNotificationText
+    {
+        public const string Prefix = "<task-notification>";
+
+        /// <summary>
+        /// The task that ended, with the <c>result</c> (else the <c>summary</c>) as its summary; null when the text is
+        /// not a notification or has no task id.
+        /// </summary>
+        public static AgentTaskFinished? Read(string text)
+        {
+            if (text == null || !text.TrimStart().StartsWith(Prefix, StringComparison.Ordinal)) return null;
+            // the result is the agent's own text and may hold anything: the tags before it are read from the start,
+            // the result up to its last closing tag, and the usage that follows it from the end
+            var taskId = Tag(text, "task-id", false)?.Trim();
+            if (string.IsNullOrEmpty(taskId)) return null;
+            var usage = Tag(text, "usage", true) ?? "";
+            return new AgentTaskFinished(
+                taskId!,
+                Tag(text, "tool-use-id", false)?.Trim() ?? "",
+                Tag(text, "status", false)?.Trim() ?? "",
+                Tag(text, "result", true) ?? Tag(text, "summary", false),
+                Number(usage, "subagent_tokens"),
+                (int?)Number(usage, "tool_uses"),
+                Number(usage, "duration_ms"));
+        }
+
+        private static long? Number(string text, string tag) =>
+            long.TryParse(Tag(text, tag, false)?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
+                ? n
+                : (long?)null;
+
+        /// <summary>
+        /// The inside of a tag: from its first opening to the next closing, or, with <paramref name="toLastClose"/>,
+        /// to the last closing (for the result, whose text may hold the same tag). The usage, after the result, opens
+        /// at its last opening.
+        /// </summary>
+        private static string? Tag(string text, string tag, bool toLastClose)
+        {
+            var open = "<" + tag + ">";
+            var close = "</" + tag + ">";
+            var start = tag == "usage"
+                ? text.LastIndexOf(open, StringComparison.Ordinal)
+                : text.IndexOf(open, StringComparison.Ordinal);
+            if (start < 0) return null;
+            start += open.Length;
+            var end = toLastClose
+                ? text.LastIndexOf(close, StringComparison.Ordinal)
+                : text.IndexOf(close, start, StringComparison.Ordinal);
+            return end < start ? null : text.Substring(start, end - start);
         }
     }
 }

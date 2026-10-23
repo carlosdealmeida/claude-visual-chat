@@ -93,6 +93,11 @@ public sealed record ChatStrings
         TooManyImages = "Imagens demais em uma mensagem",
         NotAnImage = "Não é uma imagem",
         ImageFiles = "Imagens",
+        FileTooBig = "Arquivo maior que {0}",
+        FileNotSupported = "Só arquivos PDF, de texto e CSV",
+        TooManyFiles = "Até {0} arquivos por mensagem",
+        FileUploading = "Enviando {0}%",
+        AttachableFiles = "Imagens, PDF, texto e CSV",
         ContextTitle = "Uso do contexto",
         UsageTitle = "Uso",
         UsageUnavailable = "Ainda sem dados de uso",
@@ -103,6 +108,25 @@ public sealed record ChatStrings
         UsageSevenDay = "Semanal (7 dias)",
         UsagePercent = "{0} %",
         DayNames = "dom seg ter qua qui sex sáb",
+        AgentsChip = "{0} agentes",
+        AgentsChipOne = "1 agente",
+        ContextRingTip = "{0}% do contexto restante até o auto-compactar.",
+        ContextRingHint = "Clique para ver o uso do contexto.",
+        AgentMapTitle = "Mapa de agentes",
+        AgentMapSubtitle = "{0} agentes · clique num agente para ver detalhes",
+        AgentMapSubtitleOne = "1 agente · clique num agente para ver detalhes",
+        AgentMain = "Agente principal",
+        AgentSpawnedByMain = "Chamado pelo agente principal",
+        AgentSpawnedBy = "Chamado por {0}",
+        AgentRunning = "Rodando",
+        AgentFinished = "Terminado",
+        AgentFailed = "Falhou",
+        AgentStopped = "Parado",
+        AgentBackground = "segundo plano",
+        AgentNoResult = "Sem resultado ainda",
+        AgentTokens = "{0} tokens",
+        AgentContextTokens = "{0} tokens no contexto",
+        Back = "Voltar",
         Close = "Fechar",
         Dismiss = "Dispensar",
         ThousandsSeparator = ".",
@@ -346,6 +370,21 @@ public sealed record ChatStrings
     /// <summary>The kind of file the + button's file dialog shows.</summary>
     public string ImageFiles { get; init; } = "Images";
 
+    /// <summary>Shown when a file is larger than the conversation's ceiling; <c>{0}</c> is the ceiling (<c>25 MB</c>).</summary>
+    public string FileTooBig { get; init; } = "File is larger than {0}";
+
+    /// <summary>Shown when a file is neither an image nor a PDF, text or CSV file.</summary>
+    public string FileNotSupported { get; init; } = "Only PDF, text and CSV files";
+
+    /// <summary>Shown when a message would carry too many files; <c>{0}</c> is how many it may carry.</summary>
+    public string TooManyFiles { get; init; } = "Up to {0} files per message";
+
+    /// <summary>On a file's chip while the host sends it, instead of its size; <c>{0}</c> is the whole percentage.</summary>
+    public string FileUploading { get; init; } = "Sending {0}%";
+
+    /// <summary>The kind of file the + button's file dialog shows: images and the files that may be attached.</summary>
+    public string AttachableFiles { get; init; } = "Images, PDF, text and CSV";
+
     /// <summary>The title of the context usage panel.</summary>
     public string ContextTitle { get; init; } = "Context usage";
 
@@ -384,6 +423,63 @@ public sealed record ChatStrings
 
     /// <summary>A panel whose data the claude has not sent yet, while the conversation is busy.</summary>
     public string PanelLoading { get; init; } = "…";
+
+    /// <summary>The chip of the reply box's bar: <c>{0}</c> is how many agents are at work.</summary>
+    public string AgentsChip { get; init; } = "{0} agents";
+
+    /// <summary>The context ring's tooltip, the extension's words: <c>{0}</c> is the percentage of the window still free.</summary>
+    public string ContextRingTip { get; init; } = "{0}% of context remaining until auto-compact.";
+
+    /// <summary>The tooltip's second line (the extension's says "Click to compact now."; a click here shows the usage).</summary>
+    public string ContextRingHint { get; init; } = "Click to see the context usage.";
+
+    /// <summary>The chip with one agent at work.</summary>
+    public string AgentsChipOne { get; init; } = "1 agent";
+
+    /// <summary>The title of the Agent map.</summary>
+    public string AgentMapTitle { get; init; } = "Agent map";
+
+    /// <summary>The line under the Agent map's title: <c>{0}</c> is how many agents the conversation had.</summary>
+    public string AgentMapSubtitle { get; init; } = "{0} agents · click an agent for details";
+
+    /// <summary>The line under the Agent map's title with one agent.</summary>
+    public string AgentMapSubtitleOne { get; init; } = "1 agent · click an agent for details";
+
+    /// <summary>The main agent's card in the Agent map.</summary>
+    public string AgentMain { get; init; } = "Main agent";
+
+    /// <summary>An agent's details: the main agent called it.</summary>
+    public string AgentSpawnedByMain { get; init; } = "Spawned by the main agent";
+
+    /// <summary>An agent's details: <c>{0}</c> is the description of the agent that called it.</summary>
+    public string AgentSpawnedBy { get; init; } = "Spawned by {0}";
+
+    /// <summary>An agent at work.</summary>
+    public string AgentRunning { get; init; } = "Running";
+
+    /// <summary>An agent that finished.</summary>
+    public string AgentFinished { get; init; } = "Finished";
+
+    /// <summary>An agent that failed.</summary>
+    public string AgentFailed { get; init; } = "Failed";
+
+    /// <summary>An agent stopped before its end.</summary>
+    public string AgentStopped { get; init; } = "Stopped";
+
+    /// <summary>An agent that runs while the conversation goes on.</summary>
+    public string AgentBackground { get; init; } = "background";
+
+    /// <summary>An agent's details, before its answer.</summary>
+    public string AgentNoResult { get; init; } = "No result yet";
+
+    /// <summary>The tokens an agent used: <c>{0}</c> is the count, short ("26.3k").</summary>
+    public string AgentTokens { get; init; } = "{0} tokens";
+
+    /// <summary>The main agent's context: <c>{0}</c> is the count, short ("249.5k").</summary>
+    public string AgentContextTokens { get; init; } = "{0} tokens in context";
+
+    /// <summary>The name of a back button.</summary>
+    public string Back { get; init; } = "Back";
 
     /// <summary>The name of a close button.</summary>
     public string Close { get; init; } = "Close";
@@ -441,6 +537,33 @@ public sealed record ChatStrings
     }
 
     internal string FormatMoreLines(int lines) => MoreLines.Replace("{0}", FormatNumber(lines));
+
+    /// <summary>
+    /// A file size: below 1 MB in whole KB, rounded up ("1 KB" for a few bytes); from 1 MB on in MB with one decimal,
+    /// without a ".0" ("1.5 MB", "25 MB"). 1 KB is 1024 bytes.
+    /// </summary>
+    internal string FormatFileSize(long bytes)
+    {
+        if (bytes < 0) bytes = 0;
+        const long Kb = 1024;
+        const long Mb = 1024 * 1024;
+        var kilobytes = (bytes + Kb - 1) / Kb;
+        if (kilobytes < 1024) return FormatNumber(kilobytes) + " KB"; // 1024 KB once rounded up is 1 MB
+        var tenths = (long)Math.Round(bytes * 10.0 / Mb, MidpointRounding.AwayFromZero);
+        var whole = FormatNumber(tenths / 10);
+        return (tenths % 10 == 0 ? whole : whole + DecimalSeparator + (tenths % 10)) + " MB";
+    }
+
+    internal string FormatFileTooBig(long maxBytes) => FileTooBig.Replace("{0}", FormatFileSize(maxBytes));
+
+    internal string FormatTooManyFiles(int maxFiles) => TooManyFiles.Replace("{0}", FormatNumber(maxFiles));
+
+    /// <summary>The upload's whole percentage, from 0 to 100.</summary>
+    internal string FormatFileUploading(double progress)
+    {
+        var percent = double.IsNaN(progress) ? 0 : Math.Max(0, Math.Min(100, Math.Round(progress * 100, MidpointRounding.AwayFromZero)));
+        return FileUploading.Replace("{0}", ((int)percent).ToString(CultureInfo.InvariantCulture));
+    }
 
     /// <summary>A time in local time, with <see cref="TimeFormat"/>; a format .NET refuses gives "HH:mm".</summary>
     internal string FormatTime(DateTimeOffset time)
@@ -539,6 +662,55 @@ public sealed record ChatStrings
         .Replace("{0}", FormatNumber(usage.TotalTokens))
         .Replace("{1}", FormatNumber(usage.MaxTokens))
         .Replace("{2}", Plain(usage.Percentage));
+
+    /// <summary>The ring's tooltip for a percentage used (0 to 100): the free share, then the hint.</summary>
+    internal string FormatContextRingTip(double percentUsed) =>
+        ContextRingTip.Replace("{0}", Plain((int)Math.Round(100 - percentUsed))) + "\n" + ContextRingHint;
+
+    /// <summary><see cref="AgentsChip"/>: "0 agents", "1 agent", "3 agents".</summary>
+    internal string FormatAgentsChip(int count) =>
+        count == 1 ? AgentsChipOne : AgentsChip.Replace("{0}", FormatNumber(count));
+
+    /// <summary><see cref="AgentMapSubtitle"/>: "73 agents · click an agent for details".</summary>
+    internal string FormatAgentMapSubtitle(int count) =>
+        count == 1 ? AgentMapSubtitleOne : AgentMapSubtitle.Replace("{0}", FormatNumber(count));
+
+    /// <summary>
+    /// A token count, short, like the extension's: as is below 1,000 ("800"), then thousands with one decimal up to
+    /// "999.9k", then millions ("1.2M").
+    /// </summary>
+    internal string FormatShortTokens(long tokens)
+    {
+        if (tokens < 1000) return Plain(Math.Max(0, tokens));
+        var tenths = (long)Math.Round(tokens / 100.0, MidpointRounding.AwayFromZero);
+        if (tenths < 10_000) return Plain(tenths / 10) + DecimalSeparator + Plain(tenths % 10) + "k";
+        tenths = (long)Math.Round(tokens / 100_000.0, MidpointRounding.AwayFromZero);
+        return FormatNumber(tenths / 10) + DecimalSeparator + Plain(tenths % 10) + "M";
+    }
+
+    private static string Plain(long value) => value.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>How long an agent ran, like the extension's: "44s", "7m 14s" (whole seconds, cut down).</summary>
+    internal static string FormatAgentTime(long milliseconds)
+    {
+        var seconds = Math.Max(0, milliseconds) / 1000;
+        return seconds < 60 ? Plain(seconds) + "s" : Plain(seconds / 60) + "m " + Plain(seconds % 60) + "s";
+    }
+
+    internal string FormatAgentTokens(long tokens) => AgentTokens.Replace("{0}", FormatShortTokens(tokens));
+
+    internal string FormatAgentContextTokens(long tokens) => AgentContextTokens.Replace("{0}", FormatShortTokens(tokens));
+
+    internal string FormatAgentSpawnedBy(string caller) => AgentSpawnedBy.Replace("{0}", caller ?? "");
+
+    /// <summary>The word for an agent's state.</summary>
+    internal string AgentStatusLabel(AgentStatus status) => status switch
+    {
+        AgentStatus.Running => AgentRunning,
+        AgentStatus.Completed => AgentFinished,
+        AgentStatus.Failed => AgentFailed,
+        _ => AgentStopped,
+    };
 
     /// <summary>The label of a usage limit; one without a label keeps its name.</summary>
     internal string UsageWindowLabel(string name) => name switch

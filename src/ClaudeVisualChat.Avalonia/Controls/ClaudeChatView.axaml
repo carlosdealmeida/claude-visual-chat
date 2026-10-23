@@ -44,6 +44,8 @@
         <controls:ChatComposer Name="Composer" Margin="16,0,16,16"
                                MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
       </StackPanel>
+      <!-- the Agent map, over the whole view; also while read-only -->
+      <controls:AgentMapPanel Name="AgentMap" Grid.RowSpan="3" />
       <!-- an attached image, over the whole view -->
       <controls:ImagePreview Name="Preview" Grid.RowSpan="3" />
     </Grid>

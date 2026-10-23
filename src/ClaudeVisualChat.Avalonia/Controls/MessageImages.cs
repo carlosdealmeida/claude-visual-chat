@@ -12,22 +12,24 @@ using Avalonia.VisualTree;
 namespace ClaudeVisualChat.Controls;
 
 /// <summary>
-/// The images of a user's message, under its text: a thumbnail each, 64 px high at most and in proportion (never
-/// larger than the image), 4 px corners, 4 px apart, wrapping. A click shows the image over the view, in the
-/// preview of the reply box's images; also while the view is read-only. Hidden when there are none. The pictures are
-/// decoded off the UI thread, once per image; each thumbnail has its size before its picture comes.
+/// The images of a user's message, first in its attachments row above the text (<see cref="MessageAttachments"/>), as
+/// the extension's (2.1.309) thumbnails: each 48 px high, as wide as its proportion gives up to 120 px (a longer image
+/// is cut at its sides, keeping its middle), with 7 px corners inside a 1 px frame in the input's border color with
+/// 8 px corners, 4 px after each one, in that one row. A click shows the image over the view, in the preview of the
+/// reply box's images; also while the view is read-only. Hidden when there are none. The pictures are decoded off the
+/// UI thread, once per image; each thumbnail has its size before its picture comes.
 /// </summary>
 internal sealed class MessageImages : WrapPanel
 {
-    /// <summary>The largest a thumbnail is drawn.</summary>
-    internal const double ThumbnailMaxWidth = 256;
-    internal const double ThumbnailMaxHeight = 64;
+    /// <summary>The height of a thumbnail's picture, and the widest it gets.</summary>
+    internal const double ThumbnailHeight = 48;
+    internal const double ThumbnailMaxWidth = 120;
 
     public static readonly StyledProperty<IReadOnlyList<ChatImage>?> ImagesProperty =
         AvaloniaProperty.Register<MessageImages, IReadOnlyList<ChatImage>?>(nameof(Images));
 
-    /// <summary>Decoded once per image, at most twice the size they are drawn at.</summary>
-    internal static readonly ThumbnailCache Thumbnails = new ThumbnailCache(ThumbnailMaxWidth, ThumbnailMaxHeight);
+    /// <summary>Decoded once per image, filling twice the size they are drawn at (see <see cref="ThumbnailCache.Cover"/>).</summary>
+    internal static readonly ThumbnailCache Thumbnails = ThumbnailCache.Cover(ThumbnailMaxWidth, ThumbnailHeight);
 
     /// <summary>Counts the rebuilds: a decode that ends after another one is for images no longer shown.</summary>
     private int _generation;
@@ -70,13 +72,13 @@ internal sealed class MessageImages : WrapPanel
 
     private Control? Thumbnail(ChatImage image, string name)
     {
-        var (width, height) = ThumbnailCache.Fit(image.Width, image.Height, ThumbnailMaxWidth, ThumbnailMaxHeight);
-        if (width <= 0 || height <= 0) return null; // not an image it can read
+        if (image.Width <= 0 || image.Height <= 0) return null; // not an image it can read
         var picture = new Image
         {
-            Width = width, // the size is known before the picture: the list does not move when it comes
-            Height = height,
-            Stretch = Stretch.Fill, // the bitmap has the image's proportion, rounded to whole pixels
+            // the size is known before the picture: the list does not move when it comes
+            Width = Math.Min(ThumbnailMaxWidth, ThumbnailHeight * image.Width / image.Height),
+            Height = ThumbnailHeight,
+            Stretch = Stretch.UniformToFill, // the extension's object-fit: cover
         };
         // decoded off the UI thread (a history may hold many screenshots); shown if this control still shows that image
         var decoding = Thumbnails.Load(image);

@@ -13,17 +13,34 @@ namespace ClaudeVisualChat.Controls;
 /// </summary>
 internal sealed class ThumbnailCache
 {
+    /// <summary>How many boxes wide a <see cref="Cover"/> bitmap may be, for an image much longer than its box.</summary>
+    private const double CoverWidths = 4;
+
     private readonly ConditionalWeakTable<ChatImage, Task<Bitmap?>> _bitmaps = new ConditionalWeakTable<ChatImage, Task<Bitmap?>>();
     private readonly double _maxWidth;
     private readonly double _maxHeight;
+    private readonly bool _cover;
 
     /// <param name="maxWidth">The widest the thumbnail is drawn, in pixels.</param>
     /// <param name="maxHeight">The tallest the thumbnail is drawn, in pixels.</param>
     public ThumbnailCache(double maxWidth, double maxHeight)
+        : this(maxWidth, maxHeight, false)
+    {
+    }
+
+    private ThumbnailCache(double maxWidth, double maxHeight, bool cover)
     {
         _maxWidth = maxWidth;
         _maxHeight = maxHeight;
+        _cover = cover;
     }
+
+    /// <summary>
+    /// For thumbnails drawn <paramref name="height"/> high and cut at their sides past <paramref name="maxWidth"/>
+    /// (the extension's <c>object-fit: cover</c>): the bitmap is twice that height (never larger than the image), and
+    /// for an image so long that this would make it wider than four times twice the box, as wide as that.
+    /// </summary>
+    public static ThumbnailCache Cover(double maxWidth, double height) => new ThumbnailCache(maxWidth, height, true);
 
     /// <summary>Test seam: where <see cref="Load"/> runs a decode. A background thread by default.</summary>
     internal Func<Func<Bitmap?>, Task<Bitmap?>> Run { get; set; } = work => Task.Run(work);
@@ -48,7 +65,15 @@ internal sealed class ThumbnailCache
         return task;
     }
 
-    private Bitmap? Decode(ChatImage image) => Decode(image, 2 * _maxWidth, 2 * _maxHeight);
+    private Bitmap? Decode(ChatImage image)
+    {
+        if (!_cover || image.Width <= 0 || image.Height <= 0) return Decode(image, 2 * _maxWidth, 2 * _maxHeight);
+        // the height decides, so the cut picture keeps its sharpness; a very long image is held to a width
+        var scale = Math.Min(1, 2 * _maxHeight / image.Height);
+        var widest = CoverWidths * 2 * _maxWidth;
+        if (image.Width * scale > widest) scale = widest / image.Width;
+        return Decode(image, image.Width * scale, image.Height * scale);
+    }
 
     /// <summary>
     /// The size an image is drawn at in a box: in proportion, as large as fits, never larger than the image. Zero

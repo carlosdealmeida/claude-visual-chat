@@ -1,14 +1,11 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Platform.Storage;
 
 namespace ClaudeVisualChat.Imaging;
 
-/// <summary>Image files the user picks with the + button or drops on the reply box.</summary>
+/// <summary>Image files the user picks with the + button or drops on the reply box (sorted by <c>AttachFiles</c>).</summary>
 internal static class ImageFiles
 {
     /// <summary>The largest file read; a bigger one is left out as too big.</summary>
@@ -23,6 +20,12 @@ internal static class ImageFiles
 
     private static readonly string[] Extensions = { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp" };
 
+    /// <summary>The image patterns of the file dialog.</summary>
+    internal static readonly string[] Patterns = { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.bmp" };
+
+    /// <summary>The image media types of the file dialog.</summary>
+    internal static readonly string[] MimeTypes = { "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp" };
+
     /// <summary>True for a name with an image extension (any case).</summary>
     public static bool IsImageName(string? name)
     {
@@ -33,63 +36,6 @@ internal static class ImageFiles
         }
         return false;
     }
-
-    /// <summary>The image files a drag carries; the others are left out.</summary>
-    public static List<IStorageFile> Dropped(IDataObject data)
-    {
-        var files = new List<IStorageFile>();
-        var items = data.GetFiles();
-        if (items == null) return files;
-        foreach (var item in items)
-        {
-            if (item is IStorageFile file && IsImageName(file.Name)) files.Add(file);
-        }
-        return files;
-    }
-
-    /// <summary>The file dialog, several images at once; the bytes of each one picked, at most <paramref name="max"/> read (none when cancelled).</summary>
-    public static async Task<IReadOnlyList<byte[]>> PickAsync(TopLevel? top, ChatStrings strings, int max = int.MaxValue)
-    {
-        var picked = new List<byte[]>();
-        if (top == null || !top.StorageProvider.CanOpen) return picked;
-        IReadOnlyList<IStorageFile> files;
-        try
-        {
-            files = await top.StorageProvider.OpenFilePickerAsync(Options(strings));
-        }
-        catch (Exception)
-        {
-            return picked; // no dialog on this platform
-        }
-        try
-        {
-            foreach (var file in files)
-            {
-                if (picked.Count >= max) break; // the rest would be refused as too many anyway
-                picked.Add(await ReadAsync(file) ?? Array.Empty<byte>()); // unreadable: refused as not an image
-            }
-        }
-        finally
-        {
-            foreach (var file in files) file.Dispose();
-        }
-        return picked;
-    }
-
-    private static FilePickerOpenOptions Options(ChatStrings strings) =>
-        new FilePickerOpenOptions
-        {
-            AllowMultiple = true,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType(strings.ImageFiles)
-                {
-                    Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.bmp" },
-                    MimeTypes = new[] { "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp" },
-                    AppleUniformTypeIdentifiers = new[] { "public.image" },
-                },
-            },
-        };
 
     /// <summary>The file's bytes; null when it cannot be read.</summary>
     public static async Task<byte[]?> ReadAsync(IStorageFile file)

@@ -16,7 +16,8 @@ namespace ClaudeVisualChat.Controls;
 /// its end while the user is there and stops following when the user scrolls up. Under the list, the permission
 /// request Claude waits on (keys 1, 2 and 3 answer while the focus is in it), the browser's or Remote Control's banner,
 /// and the reply box (Enter sends, Shift+Enter breaks the line, Esc stops Claude while it works). Over the end of the
-/// list, the <c>/context</c> and <c>/usage</c> panels (Esc closes the one open instead). What the user does comes back as the
+/// list, the <c>/context</c> and <c>/usage</c> panels (Esc closes the one open instead); over the whole view, the Agent map
+/// (Esc closes it, or goes back from an agent's card to the list). What the user does comes back as the
 /// conversation's events. A key is marked handled only when the view acts on it, so the app's own shortcuts keep
 /// working. Colors and fonts come from the <c>ClaudeChat.*</c> resources, which can be redefined in
 /// <see cref="StyledElement.Resources"/>; the default colors are those of VS Code's "Dark 2026" theme, and
@@ -78,6 +79,7 @@ public partial class ClaudeChatView : UserControl
         Preview.Closed += (_, _) => GiveBackKeyboard();
         ContextPanel.FocusReleased += (_, _) => GiveBackKeyboard();
         UsagePanel.FocusReleased += (_, _) => GiveBackKeyboard();
+        AgentMap.FocusReleased += (_, _) => GiveBackKeyboard();
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnKeyDownNotTaken, RoutingStrategies.Bubble);
     }
@@ -122,6 +124,7 @@ public partial class ClaudeChatView : UserControl
             RemoteControlBanner.Conversation = Conversation;
             ContextPanel.Conversation = Conversation;
             UsagePanel.Conversation = Conversation;
+            AgentMap.Conversation = Conversation;
             Preview.Hide(); // its image was the other conversation's
             if (_attached) Track(Conversation);
         }
@@ -199,12 +202,12 @@ public partial class ClaudeChatView : UserControl
     /// <summary>
     /// A new request takes the keyboard only when the reply box has nothing to send (no text, no image) and the focus
     /// is in the view or nowhere, so a number typed in the reply box, or elsewhere in the app, never answers it; never
-    /// while an image preview covers the view (it gets the keyboard when the preview closes). While the prompt has the
+    /// while an image preview or the Agent map covers the view (it gets the keyboard when that closes). While the prompt has the
     /// keyboard, the next request keeps it; when none is left, the reply box gets it back.
     /// </summary>
     private void OnPromptRequestChanged(bool hadFocus)
     {
-        if (Preview.IsVisible) return;
+        if (Preview.IsVisible || AgentMap.IsVisible) return;
         if (Prompt.Request != null)
         {
             if (hadFocus || (Composer.HasNothingToSend && FocusIsHereOrNowhere())) Prompt.FocusFirstOption();
@@ -237,9 +240,11 @@ public partial class ClaudeChatView : UserControl
         !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && !Preview.IsVisible
         && Conversation is { ShownPanel: not ChatPanel.None };
 
+    /// <summary>Esc on an open panel closes it; on an agent's card in the Agent map, it goes back to the list.</summary>
     private void ClosePanel(KeyEventArgs e)
     {
         e.Handled = true;
+        if (AgentMap.Back()) return;
         Conversation?.ClosePanel();
     }
 

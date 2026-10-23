@@ -75,9 +75,16 @@
       <GradientStop Offset="0.5" Color="#2A2B2C" />
       <GradientStop Offset="1" Color="#2A2B2C" />
     </LinearGradientBrush>
+    <!-- a message's thumbnail under the pointer: its frame at 70 % of descriptionForeground -->
+    <SolidColorBrush x:Key="ClaudeChat.ThumbnailHoverBorder" Color="#B38C8C8C" />
     <!-- the image preview: the extension's backdrop and shadow; its close button is a menu's -->
     <SolidColorBrush x:Key="ClaudeChat.PreviewOverlay" Color="#D9000000" />
     <BoxShadows x:Key="ClaudeChat.PreviewShadow">0 4 24 0 #80000000</BoxShadows>
+    <!-- the Agent map: the extension's modal backdrop, and the dot of an agent at work (its status-busy green) -->
+    <SolidColorBrush x:Key="ClaudeChat.ModalOverlay" Color="#BF000000" />
+    <SolidColorBrush x:Key="ClaudeChat.AgentRunning" Color="#89D185" />
+    <SolidColorBrush x:Key="ClaudeChat.ContextRingTrack" Color="#26BFBFBF" />   <!-- the ring's track: the foreground at 15 % -->
+    <SolidColorBrush x:Key="ClaudeChat.ContextRingFill" Color="#C6613F" />      <!-- the extension clay button orange -->
     <SolidColorBrush x:Key="ClaudeChat.MenuBackground" Color="#202122" />       <!-- menu.background -->
     <SolidColorBrush x:Key="ClaudeChat.MenuForeground" Color="#BFBFBF" />       <!-- menu.foreground -->
     <SolidColorBrush x:Key="ClaudeChat.ListHoverBackground" Color="#14FFFFFF" /> <!-- list.hoverBackground -->
@@ -159,6 +166,13 @@
     <!-- on a 16 px box, stroked like the chevron; shapes after the Codicons (MIT) clock and close -->
     <StreamGeometry x:Key="ClaudeChat.Icon.Clock">M8,2 C11.3,2 14,4.7 14,8 C14,11.3 11.3,14 8,14 C4.7,14 2,11.3 2,8 C2,4.7 4.7,2 8,2 Z M8,4.5 L8,8 L10.5,9.5</StreamGeometry>
     <StreamGeometry x:Key="ClaudeChat.Icon.Close">M3.5,3.5 L12.5,12.5 M12.5,3.5 L3.5,12.5</StreamGeometry>
+    <!-- the Agent map's back arrow, on a 16 px box: after the Codicons (MIT) arrow-left -->
+    <StreamGeometry x:Key="ClaudeChat.Icon.ArrowLeft">M13.5,8 L2.5,8 M7,3.5 L2.5,8 L7,12.5</StreamGeometry>
+    <!-- a file's chip, on a 16 px box stroked like the chevron, drawn at 12 px: shapes after the Codicons (MIT)
+         file-pdf, file-text and table -->
+    <StreamGeometry x:Key="ClaudeChat.Icon.FilePdf">M3.5,1.5 L9.5,1.5 L12.5,4.5 L12.5,14.5 L3.5,14.5 Z M9.5,1.5 L9.5,4.5 L12.5,4.5 M5.5,12.5 C6.8,11.2 8,8.8 8,7.2 C8,6.3 7.2,6.3 7.1,7.2 C7,8.6 8.6,10.9 10.5,11.3</StreamGeometry>
+    <StreamGeometry x:Key="ClaudeChat.Icon.FileText">M3.5,1.5 L9.5,1.5 L12.5,4.5 L12.5,14.5 L3.5,14.5 Z M9.5,1.5 L9.5,4.5 L12.5,4.5 M5.5,8 L10.5,8 M5.5,10 L10.5,10 M5.5,12 L8.5,12</StreamGeometry>
+    <StreamGeometry x:Key="ClaudeChat.Icon.Table">M2.5,2.5 L13.5,2.5 L13.5,13.5 L2.5,13.5 Z M2.5,6 L13.5,6 M2.5,9.75 L13.5,9.75 M6.5,6 L6.5,13.5</StreamGeometry>
     <!-- the current model's check, on a 24 px box with a 1.5 px line (the extension's heroicons check, drawn at 16 px) -->
     <StreamGeometry x:Key="ClaudeChat.Icon.Check">M4.5,12.75 L10.5,18.75 L19.5,5.25</StreamGeometry>
 
@@ -178,13 +192,13 @@
             </TextBlock.Text>
           </TextBlock>
           <Border Classes="ClaudeChatUser">
-            <!-- the text, then the images it took -->
+            <!-- what it took, images then files, in one row above the text (as the extension's), then the text -->
             <StackPanel>
+              <controls:MessageAttachments Images="{Binding Images}" Files="{Binding Files}"
+                                           Classes.alone="{Binding Text, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
               <SelectableTextBlock Classes="ClaudeChatUserText"
                                    Text="{Binding Text, Converter={x:Static controls:ChatConverters.Clip}}"
                                    IsVisible="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              <controls:MessageImages Images="{Binding Images}"
-                                      Classes.alone="{Binding Text, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
             </StackPanel>
           </Border>
         </StackPanel>
@@ -503,15 +517,24 @@
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
   </Style>
 
-  <!-- the images of a message, under its text: 4 px apart (the panel gives the last ones' 4 px back), 4 px corners -->
-  <Style Selector="WrapPanel.ClaudeChatMessageImages">
-    <Setter Property="Margin" Value="0,4,-4,-4" />
+  <!-- what a message took, above its text: the extension's message attachments (2.1.309), one row 6 px over the
+       text; a message with nothing written has nothing under it. The thumbnails keep 4 px after each one, and the
+       files come 4 px after the last (the thumbnails are buttons: their styles come after the buttons') -->
+  <Style Selector="ScrollViewer.ClaudeChatMessageAttachments">
+    <Setter Property="Margin" Value="0,0,0,6" />
   </Style>
-  <!-- a message with only images: 6 px over and under them, as at their sides -->
-  <Style Selector="WrapPanel.ClaudeChatMessageImages.alone">
-    <Setter Property="Margin" Value="0,2,-4,-2" />
+  <Style Selector="ScrollViewer.ClaudeChatMessageAttachments.alone">
+    <Setter Property="Margin" Value="0" />
   </Style>
-  <!-- (the thumbnails are buttons: their styles come after the buttons') -->
+  <!-- a file there: the reply box's pill, without the × -->
+  <Style Selector="Border.ClaudeChatMessageFile">
+    <Setter Property="Height" Value="24" />
+    <Setter Property="MaxWidth" Value="180" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.AttachmentBackground}" />
+  </Style>
 
   <!-- what a command printed: the editor's font at .9em, in the secondary color, its spaces kept -->
   <Style Selector="SelectableTextBlock.ClaudeChatCommandOutput">
@@ -1366,24 +1389,26 @@
     <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.EffortThumbShadow}" />
   </Style>
 
-  <!-- ===== a thumbnail of a message's image: a button without padding, 4 px corners, 4 px after and under it ===== -->
+  <!-- ===== a thumbnail of a message's image, as the extension's (2.1.309): a button without padding, a 1 px frame in
+       the input's border color with 8 px corners, the picture's 7 px corners inside it, 4 px after it; the frame at
+       70 % of the secondary color under the pointer, in the focus color with the keyboard ===== -->
 
   <Style Selector="Button.ClaudeChatMessageImage">
     <Setter Property="Padding" Value="0" />
-    <Setter Property="Margin" Value="0,0,4,4" />
-    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Margin" Value="0,0,4,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
     <Setter Property="VerticalAlignment" Value="Top" />
   </Style>
   <Style Selector="Border.ClaudeChatMessageImageClip">
-    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="CornerRadius" Value="7" />
     <Setter Property="ClipToBounds" Value="True" />
   </Style>
-  <!-- with the keyboard on it, a 1 px line around it; the image stays where it was -->
-  <Style Selector="Button.ClaudeChatMessageImage:focus-visible">
-    <Setter Property="Margin" Value="-1,-1,3,3" />
+  <Style Selector="Button.ClaudeChatMessageImage:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.ThumbnailHoverBorder}" />
   </Style>
   <Style Selector="Button.ClaudeChatMessageImage:focus-visible /template/ Border#PART_ChatButton">
-    <Setter Property="BorderThickness" Value="1" />
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
   </Style>
 
@@ -1541,6 +1566,30 @@
     <Setter Property="Margin" Value="0,0,4,0" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
+  <!-- a file's icon in place of the thumbnail: 12 px, the secondary color, 4 px before the name -->
+  <Style Selector="Viewbox.ClaudeChatFileIcon">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="Margin" Value="0,0,4,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Path.ClaudeChatFileIcon">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Stroke" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="StrokeThickness" Value="1.2" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+  </Style>
+  <Style Selector="Path.ClaudeChatFileIcon.pdf">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.FilePdf}" />
+  </Style>
+  <Style Selector="Path.ClaudeChatFileIcon.text">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.FileText}" />
+  </Style>
+  <Style Selector="Path.ClaudeChatFileIcon.csv">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Table}" />
+  </Style>
   <Style Selector="TextBlock.ClaudeChatAttachmentName">
     <Setter Property="FontSize" Value="11" />
     <Setter Property="FontWeight" Value="Medium" />
@@ -1581,7 +1630,7 @@
     <Setter Property="StrokeThickness" Value="1.5" />
     <Setter Property="StrokeLineCap" Value="Round" />
   </Style>
-  <!-- why an image did not go in -->
+  <!-- why an image or a file did not go in -->
   <Style Selector="TextBlock.ClaudeChatAttachmentError">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Error}" />
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
@@ -1623,6 +1672,249 @@
   <Style Selector="Button.ClaudeChatPreviewClose Viewbox.ClaudeChatRemoveIcon">
     <Setter Property="Width" Value="18" />
     <Setter Property="Height" Value="18" />
+  </Style>
+
+  <!-- ===== the "N agents" chip and the Agent map (the extension's 2.1.309) ===== -->
+
+  <!-- the chip: the model chip's pill, a 6 px dot 4 px before the count; the dot at 40 % of the secondary color, the
+       busy green while an agent runs -->
+  <Style Selector="Button.ClaudeChatAgentsChip">
+    <Setter Property="Height" Value="18" />
+    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="Margin" Value="6,0,0,0" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.PillBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.PillHoverBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip StackPanel">
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Ellipse.ClaudeChatAgentsChipDot">
+    <Setter Property="Width" Value="6" />
+    <Setter Property="Height" Value="6" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip.running Ellipse.ClaudeChatAgentsChipDot">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.AgentRunning}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <!-- the context ring: a bar button around the extension's 20 px pie -->
+  <Style Selector="Button.ClaudeChatContextRing">
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Padding" Value="4,2" />
+  </Style>
+  <Style Selector="controls|ContextRingArc">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Track" Value="{DynamicResource ClaudeChat.ContextRingTrack}" />
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.ContextRingFill}" />
+  </Style>
+
+  <!-- the map: the backdrop over the whole view; the dialog in the sidebar's color with its activity bar's line, 8 px
+       corners, 16 px inside and around, 1200 px wide at most and as wide as its tree -->
+  <Style Selector="controls|AgentMapPanel">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ModalOverlay}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentMap, Border.ClaudeChatAgentCard">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.TimelineLine}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="Margin" Value="16" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentMap">
+    <Setter Property="MaxWidth" Value="1200" />
+  </Style>
+  <!-- with the keyboard in it, the border takes the input's active border at 65 %, as the extension's dialogs -->
+  <Style Selector="Border.ClaudeChatAgentMap:focus-within, Border.ClaudeChatAgentCard:focus-within">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.PermissionActiveBorder}" />
+  </Style>
+  <!-- an agent's card: 420 px, over the map with a backdrop of its own -->
+  <Style Selector="Border.ClaudeChatAgentCard">
+    <Setter Property="Width" Value="420" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentCardLayer">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ModalOverlay}" />
+  </Style>
+  <!-- the title line: 8 px over what follows; the title at 16 px, semibold -->
+  <Style Selector="DockPanel.ClaudeChatAgentMapHeader">
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAgentMapTitle">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- the subtitle: the text's 1.5 line, 12 px over the tree -->
+  <Style Selector="TextBlock.ClaudeChatAgentMapSubtitle">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="Margin" Value="0,0,0,12" />
+  </Style>
+  <!-- the × and the back arrow: the extension's icon buttons, a 20 px icon with 4 px around it, in the secondary color;
+       the hover's background and the primary color under the pointer or with the keyboard -->
+  <Style Selector="Button.ClaudeChatAgentMapButton">
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentMapButton:pointerover, Button.ClaudeChatAgentMapButton:focus-visible">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentMapButton:pointerover /template/ Border#PART_ChatButton, Button.ClaudeChatAgentMapButton:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.HoverBackground}" />
+  </Style>
+  <Style Selector="Path.ClaudeChatAgentBackIcon">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.ArrowLeft}" />
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}" />
+    <Setter Property="StrokeThickness" Value="1.2" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+  </Style>
+  <!-- the tree: 4 px over it, 8 px at its right and under it; the agents' column 32 px after the main card, its rows
+       8 px apart; the lines in the input's border color -->
+  <Style Selector="Grid.ClaudeChatAgentTree">
+    <Setter Property="Margin" Value="0,4,8,8" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatAgentColumn">
+    <Setter Property="Spacing" Value="8" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatAgentColumn.nested">
+    <Setter Property="Margin" Value="0,8,0,0" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentLine">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBorder}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentLine.stub">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- the main card's line starts right at its border and reaches the spine -->
+  <Style Selector="Border.ClaudeChatAgentLine.stub.main">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentLine.spine">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Margin" Value="16,0,0,0" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentLine.spine.down">
+    <Setter Property="Height" Value="8" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+  </Style>
+  <!-- a row: 300 px (the main card 320), the menu's background with the input's border, 4 px corners, 6 px by 10 px
+       inside; the list's hover over it -->
+  <!-- one style for the agents' rows (buttons) and the main card (a border): Button's frame properties are Border's
+       (and Padding Decorator's), shared through AddOwner -->
+  <Style Selector=":is(Control).ClaudeChatAgentRow">
+    <Setter Property="Width" Value="300" />
+    <Setter Property="Decorator.Padding" Value="10,6" />
+    <Setter Property="Border.CornerRadius" Value="4" />
+    <Setter Property="Border.BorderThickness" Value="1" />
+    <Setter Property="Border.BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+    <Setter Property="Border.Background" Value="{DynamicResource ClaudeChat.MenuBackground}" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentRow">
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentRow.main">
+    <Setter Property="Width" Value="320" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentRow:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ListHoverBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentRow:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatAgentRowBody">
+    <Setter Property="Spacing" Value="2" />
+  </Style>
+  <!-- the title: the dot 6 px before it, cut with an ellipsis; semibold on the main card; a 17 px line (the
+       extension's button keeps the font's own 17.3 px, which whole pixels would make 18, and the row 49 px instead of
+       its 48). The meta line: .85em, in the secondary color, 14 px in (under the title) -->
+  <Style Selector="TextBlock.ClaudeChatAgentRowTitle">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="LineHeight" Value="17" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentRow.main TextBlock.ClaudeChatAgentRowTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAgentRowMeta">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="Margin" Value="14,0,0,0" />
+  </Style>
+  <!-- the extension's status dot: 8 px; idle, 40 % of the secondary color; at work, the busy green; failed or
+       stopped, the error color -->
+  <Style Selector="Ellipse.ClaudeChatAgentDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Margin" Value="0,0,6,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+  <Style Selector="Ellipse.ClaudeChatAgentDot.card">
+    <Setter Property="Margin" Value="0,0,8,0" />
+  </Style>
+  <Style Selector="Ellipse.ClaudeChatAgentDot.running">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.AgentRunning}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Ellipse.ClaudeChatAgentDot.failed">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.Error}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <!-- the card's lines: .85em in the secondary color, on the text's 1.5 line, 4 px apart. Under them, 10 px down: what
+       a running agent is doing, and its answer as the extension shows it (the text as it came, its line breaks kept,
+       on a 1.4 line) -->
+  <Style Selector="TextBlock.ClaudeChatAgentCardMeta">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.SmallLineHeight}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="0,4,0,0" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAgentCardMeta.ClaudeChatAgentResult">
+    <Setter Property="Margin" Value="0,10,0,0" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAgentActivity, SelectableTextBlock.ClaudeChatAgentResult">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="0,10,0,0" />
+  </Style>
+  <Style Selector="SelectableTextBlock.ClaudeChatAgentResult">
+    <Setter Property="LineHeight" Value="18.2" />
   </Style>
 
   <!-- ===== the banners over the reply box (the browser's, a Remote Control error) ===== -->

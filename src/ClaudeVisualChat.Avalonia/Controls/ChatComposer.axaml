@@ -10,8 +10,8 @@
       <TextBlock Name="AttachError" Classes="ClaudeChatAttachmentError" IsVisible="False" />
       <!-- Enter sends, Shift+Enter breaks the line -->
       <TextBox Name="Input" Classes="ClaudeChatInput" AcceptsReturn="True" TextWrapping="Wrap" />
-      <!-- the bar, in the extension's order: +, /, the cache clock, the Remote Control chip, the model chip; at the right
-           the mode, then send or stop -->
+      <!-- the bar, in the extension's (2.1.309) order: +, /, the context ring, the cache clock, the Remote Control chip,
+           the agents chip, the model chip; at the right the mode, then send or stop -->
       <Border Classes="ClaudeChatComposerBar">
         <DockPanel>
           <!-- send, and stop while Claude works: alone when nothing is written, next to send when something is -->
@@ -32,8 +32,10 @@
               <Path Classes="ClaudeChatBarIcon ClaudeChatCommandsIcon" />
             </Button>
             <!-- each hidden, taking no room, until there is something to show -->
+            <controls:ContextRing Name="ContextRing" />
             <controls:PromptCacheClock Name="CacheClock" />
             <controls:RemoteControlChip Name="RemoteControlChip" />
+            <controls:AgentsChip Name="AgentsChip" />
             <controls:ModelChip Name="ModelChip" />
           </StackPanel>
         </DockPanel>

@@ -768,21 +768,29 @@ public class ChatViewTests
         var thumbs = Thumbnails(boxes[0]);
         Assert.Equal(2, thumbs.Count);
 
-        // under the text, 64 px high at most and in proportion, never larger than the image; 4 px apart
+        // above the text, as the extension's message attachments (0.4.0), 6 px over it; as the extension's 2.1.309
+        // thumbnails, the picture 48 px high and in proportion up to 120 px wide, in a 1 px frame; 4 px apart, in one row
         var text = boxes[0].GetVisualDescendants().OfType<SelectableTextBlock>().Single();
         Assert.Equal("look at these", text.Text);
         var first = thumbs[0].TranslatePoint(default, boxes[0])!.Value;
-        Assert.True(first.Y >= text.TranslatePoint(default, boxes[0])!.Value.Y + text.Bounds.Height);
-        Assert.Equal(new Size(96, 48), thumbs[0].Bounds.Size);
-        Assert.Equal(new Size(128, 64), thumbs[1].Bounds.Size);
-        Assert.Equal(first.X + 96 + 4, thumbs[1].TranslatePoint(default, boxes[0])!.Value.X, 1);
-        Assert.Equal(new CornerRadius(4), thumbs[0].GetVisualDescendants().OfType<Border>().First(b => b.Name == "PART_ChatButton").CornerRadius);
+        var row = boxes[0].GetVisualDescendants().OfType<MessageAttachments>().Single();
+        Assert.Equal(6, text.Bounds.Top - row.Bounds.Bottom, 1);
+        Assert.Equal(50, row.Bounds.Height, 1); // 48 and the frame
+        Assert.Equal(first.Y, thumbs[1].TranslatePoint(default, boxes[0])!.Value.Y, 1);
+        Assert.True(first.Y + 50 <= text.TranslatePoint(default, boxes[0])!.Value.Y);
+        Assert.Equal(new Size(98, 50), thumbs[0].Bounds.Size);
+        Assert.Equal(new Size(98, 50), thumbs[1].Bounds.Size);
+        Assert.Equal(first.X + 98 + 4, thumbs[1].TranslatePoint(default, boxes[0])!.Value.X, 1);
+        var frame = thumbs[0].GetVisualDescendants().OfType<Border>().First(b => b.Name == "PART_ChatButton");
+        Assert.Equal(new CornerRadius(8), frame.CornerRadius);
+        Assert.Equal(new Thickness(1), frame.BorderThickness);
+        Assert.Equal(new CornerRadius(7), thumbs[0].GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatMessageImageClip")).CornerRadius);
         Assert.Equal("image.png", Avalonia.Automation.AutomationProperties.GetName(thumbs[0]));
         Assert.Equal("image-2.jpg", Avalonia.Automation.AutomationProperties.GetName(thumbs[1]));
 
         // a message with only an image: no empty line of text over it
         Assert.False(boxes[1].GetVisualDescendants().OfType<SelectableTextBlock>().Single().IsVisible);
-        Assert.Equal(new Size(20, 30), Thumbnails(boxes[1])[0].Bounds.Size);
+        Assert.Equal(new Size(34, 50), Thumbnails(boxes[1])[0].Bounds.Size); // a small image is drawn 48 px high too
 
         // a click opens the preview, the one of the reply box's images
         var preview = view.GetVisualDescendants().OfType<ImagePreview>().Single();
@@ -822,13 +830,11 @@ public class ChatViewTests
         var images = Thumbnails(view).Select(t => t.GetVisualDescendants().OfType<Image>().Single()).ToList();
         Assert.Equal(2, images.Count);
         UiHelpers.PumpUntil(() => images.All(i => i.Source != null)); // decoded off the UI thread
-        foreach (var image in images)
-        {
-            var size = ((Avalonia.Media.Imaging.Bitmap)image.Source!).PixelSize;
-            Assert.True(size.Width <= 2 * image.Bounds.Width + 1, size + " for " + image.Bounds.Size);
-            Assert.True(size.Height <= 2 * image.Bounds.Height + 1, size + " for " + image.Bounds.Size);
-        }
-        Assert.Equal(new PixelSize(256, 128), ((Avalonia.Media.Imaging.Bitmap)images[0].Source!).PixelSize);
+        // twice the 48 px it is drawn at; the long one, cut at its sides, held to four times twice its 120 px
+        Assert.Equal(new Size(96, 48), images[0].Bounds.Size);
+        Assert.Equal(new PixelSize(192, 96), ((Avalonia.Media.Imaging.Bitmap)images[0].Source!).PixelSize);
+        Assert.Equal(new Size(120, 48), images[1].Bounds.Size);
+        Assert.Equal(new PixelSize(960, 24), ((Avalonia.Media.Imaging.Bitmap)images[1].Source!).PixelSize);
 
         // the reply box's 12 px thumbnail: both sides at 24 px at most, however long the image
         var strip = view.GetVisualDescendants().OfType<AttachmentStrip>().Single();
@@ -861,7 +867,7 @@ public class ChatViewTests
             // realized without its picture, at its size already; the picture comes when the decode ends
             var first = Shown();
             Assert.Null(first.Source);
-            Assert.Equal(new Size(100, 50), Thumbnails(view).Single().Bounds.Size); // its place is kept
+            Assert.Equal(new Size(98, 50), Thumbnails(view).Single().Bounds.Size); // its place is kept
             Assert.Single(pending);
             Finish(0);
             UiHelpers.PumpUntil(() => first.Source != null);

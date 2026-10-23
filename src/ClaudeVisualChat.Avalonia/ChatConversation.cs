@@ -18,7 +18,8 @@ namespace ClaudeVisualChat;
 public sealed class ChatConversation : ChatObservableObject
 {
     private const string InterruptedPrefix = "[Request interrupted";
-    private const string TaskNotificationPrefix = "<task-notification>";
+    private const string TaskNotificationPrefix = TaskNotificationText.Prefix;
+    private const string AgentTaskType = "local_agent";
     private const string RejectedResultPrefix = "User rejected";
     private const string RejectedTextPrefix = "The user doesn't want to proceed";
     private const string DefaultModelValue = "default";
@@ -33,7 +34,10 @@ public sealed class ChatConversation : ChatObservableObject
     private readonly List<MessageSubmittedEventArgs> _echoes = new List<MessageSubmittedEventArgs>();
     /// <summary>Messages sent since the conversation was idle, while the claude has not answered: they alone keep it busy.</summary>
     private readonly List<MessageSubmittedEventArgs> _unanswered = new List<MessageSubmittedEventArgs>();
+    /// <summary>Agents a session file left without an end: a task line from the live claude brings them back to running.</summary>
+    private readonly HashSet<AgentInfo> _agentsStoppedByHistory = new HashSet<AgentInfo>();
     private StreamJsonParser _parser = new StreamJsonParser();
+    private int _runningAgents;
     private PendingPermission? _currentPermission;
     private bool _isBusy;
     private bool _isStreaming;
@@ -121,7 +125,32 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>The longest side, in pixels, an attached image keeps.</summary>
     public int MaxImageSide { get; set; } = 1568;
 
+    /// <summary>
+    /// PDF, text and CSV files waiting to go with the next message (<see cref="AddFileAsync"/>, <see cref="AddFile"/>);
+    /// <see cref="Submit"/> takes them all. Images go to <see cref="Attachments"/>, with their own limits.
+    /// </summary>
+    public ObservableCollection<ChatFile> Files { get; } = new ObservableCollection<ChatFile>();
+
+    /// <summary>The most files one message may carry.</summary>
+    public int MaxFiles { get; set; } = 5;
+
+    /// <summary>The largest file that may be attached, in bytes (25 MB by default).</summary>
+    public long MaxFileBytes { get; set; } = 25L * 1024 * 1024;
+
     public ObservableCollection<ChatItem> Items { get; } = new ObservableCollection<ChatItem>();
+
+    /// <summary>
+    /// The subagents of the conversation, the newest first: each Agent call, filled by the claude's task lines and by
+    /// the call's result (or, in a session file, by the task notification).
+    /// </summary>
+    public ObservableCollection<AgentInfo> Agents { get; } = new ObservableCollection<AgentInfo>();
+
+    /// <summary>How many of the <see cref="Agents"/> are <see cref="AgentStatus.Running"/>.</summary>
+    public int RunningAgents
+    {
+        get => _runningAgents;
+        private set => SetField(ref _runningAgents, value);
+    }
 
     /// <summary>Permission requests in arrival order; the view shows <see cref="CurrentPermission"/>.</summary>
     public ObservableCollection<PendingPermission> PendingPermissions { get; } =
@@ -483,8 +512,21 @@ public sealed class ChatConversation : ChatObservableObject
             case RemoteControlChanged remote:
                 OnRemoteControlChanged(remote);
                 break;
+            case AgentTaskStarted started:
+                OnAgentTaskStarted(started);
+                break;
+            case AgentTaskProgress progress:
+                OnAgentTaskProgress(progress);
+                break;
+            case AgentTaskUpdated updated:
+                OnAgentTaskUpdated(updated);
+                break;
+            case AgentTaskFinished finished:
+                OnAgentTaskFinished(finished);
+                break;
         }
         UpdateStreaming();
+        UpdateRunningAgents();
     }
 
     /// <summary>A text or a thought is still arriving: one of the streamed blocks has not ended.</summary>
@@ -517,13 +559,17 @@ public sealed class ChatConversation : ChatObservableObject
         _turnTools.Clear();
         _interruptedThisTurn = false;
         IsBusy = false;
+        SettleAgentsLeftRunning();
         UpdateStreaming();
+        UpdateRunningAgents();
     }
 
-    /// <summary>Empties the items and the pending requests. Session details stay.</summary>
+    /// <summary>Empties the items, the agents and the pending requests. Session details stay.</summary>
     public void Clear()
     {
         Items.Clear();
+        Agents.Clear();
+        _agentsStoppedByHistory.Clear();
         if (PendingPermissions.Count > 0) PendingPermissions.Clear();
         _tools.Clear();
         _nestedTools.Clear();
@@ -539,18 +585,19 @@ public sealed class ChatConversation : ChatObservableObject
         IsPromptCacheCompacted = false;
         IsBusy = false;
         UpdateStreaming();
+        UpdateRunningAgents();
     }
 
     // ---- user actions ----
 
     /// <summary>
-    /// Sends a message with the <see cref="Attachments"/>, which it empties; blank text is ignored unless there is an
-    /// attachment. Works while busy: the claude queues it.
+    /// Sends a message with the <see cref="Attachments"/> and the <see cref="Files"/>, which it empties; blank text is
+    /// ignored unless there is an image or a file. Works while busy: the claude queues it.
     /// </summary>
     public bool Submit(string text)
     {
         var blank = string.IsNullOrWhiteSpace(text);
-        if (blank && Attachments.Count == 0) return false;
+        if (blank && Attachments.Count == 0 && Files.Count == 0) return false;
         if (!blank && TryLocalCommand(text.Trim(), out var name, out var arguments))
         {
             InvokeCommand(name, arguments);
@@ -559,11 +606,13 @@ public sealed class ChatConversation : ChatObservableObject
         if (blank) text = "";
         var images = Attachments.Count == 0 ? null : new List<ChatImage>(Attachments);
         Attachments.Clear();
-        var submitted = new MessageSubmittedEventArgs(text, images) { Owner = this };
+        var files = Files.Count == 0 ? null : new List<ChatFile>(Files);
+        Files.Clear();
+        var submitted = new MessageSubmittedEventArgs(text, images, files) { Owner = this };
         _cacheAnchor = _clock();
         if (EchoSubmittedMessages)
         {
-            submitted.Item = new UserMessageItem(text, images) { Timestamp = _clock() };
+            submitted.Item = new UserMessageItem(text, images, files) { Timestamp = _clock() };
             Items.Add(submitted.Item);
             _echoes.Add(submitted);
         }
@@ -600,6 +649,97 @@ public sealed class ChatConversation : ChatObservableObject
         Attachments.Remove(image);
     }
 
+    /// <summary>
+    /// Adds a PDF, text or CSV file from the disk to <see cref="Files"/>: a <c>.pdf</c> that begins with
+    /// <c>%PDF-</c>, or a <c>.txt</c>, <c>.log</c>, <c>.md</c>, <c>.json</c> or <c>.csv</c> with no null byte in its
+    /// first 8 KB, of <see cref="MaxFileBytes"/> at most. Only the size and the first 8 KB are read, off the UI thread:
+    /// the host reads the file itself, in parts, from <see cref="ChatFile.LocalPath"/>. Await it on the UI thread: the
+    /// adding happens in the continuation. A file that cannot be read is <see cref="AddFileResult.NotSupported"/>.
+    /// </summary>
+    public async Task<AddFileResult> AddFileAsync(string path)
+    {
+        if (path == null) throw new ArgumentNullException(nameof(path));
+        if (Files.Count >= MaxFiles) return AddFileResult.TooMany;
+        var maxBytes = MaxFileBytes;
+        var found = await Task.Run(() => InspectFile(path, maxBytes));
+        if (found.Result != AddFileResult.Added) return found.Result;
+        // other files may have come while this one was being read
+        if (Files.Count >= MaxFiles) return AddFileResult.TooMany;
+        Files.Add(new ChatFile(found.Name, found.Size, found.Kind, found.FullPath));
+        return AddFileResult.Added;
+    }
+
+    /// <summary>
+    /// Adds a file that does not come from the disk (a paste, a download) to <see cref="Files"/>, by its name and its
+    /// bytes, with the rules of <see cref="AddFileAsync"/>; the bytes stay in <see cref="ChatFile.Content"/>.
+    /// </summary>
+    public AddFileResult AddFile(string name, byte[] content)
+    {
+        if (name == null) throw new ArgumentNullException(nameof(name));
+        if (content == null) throw new ArgumentNullException(nameof(content));
+        if (Files.Count >= MaxFiles) return AddFileResult.TooMany;
+        var fileName = ChatFile.LastSegment(name);
+        if (ChatFile.KindOf(fileName) is not { } kind) return AddFileResult.NotSupported;
+        if (content.Length > MaxFileBytes) return AddFileResult.TooBig;
+        if (!ChatFile.StartFits(kind, content, content.Length)) return AddFileResult.NotSupported;
+        Files.Add(new ChatFile(fileName, content.Length, kind, null, content));
+        return AddFileResult.Added;
+    }
+
+    /// <summary>Takes a file out of <see cref="Files"/>.</summary>
+    public void RemoveFile(ChatFile file)
+    {
+        if (file == null) throw new ArgumentNullException(nameof(file));
+        Files.Remove(file);
+    }
+
+    /// <summary>The kind, the size and the first bytes of a file on the disk; never throws.</summary>
+    private static FoundFile InspectFile(string path, long maxBytes)
+    {
+        try
+        {
+            var full = System.IO.Path.GetFullPath(path);
+            var name = System.IO.Path.GetFileName(full);
+            if (ChatFile.KindOf(name) is not { } kind) return new FoundFile(AddFileResult.NotSupported);
+            var info = new System.IO.FileInfo(full);
+            if (!info.Exists) return new FoundFile(AddFileResult.NotSupported);
+            if (info.Length > maxBytes) return new FoundFile(AddFileResult.TooBig);
+            var head = new byte[ChatFile.TextCheckBytes];
+            var count = 0;
+            using (var stream = new System.IO.FileStream(full, System.IO.FileMode.Open, System.IO.FileAccess.Read,
+                       System.IO.FileShare.ReadWrite | System.IO.FileShare.Delete))
+            {
+                int read;
+                while (count < head.Length && (read = stream.Read(head, count, head.Length - count)) > 0) count += read;
+            }
+            if (!ChatFile.StartFits(kind, head, count)) return new FoundFile(AddFileResult.NotSupported);
+            return new FoundFile(AddFileResult.Added, name, full, info.Length, kind);
+        }
+        catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException || e is ArgumentException
+                                  || e is NotSupportedException || e is System.Security.SecurityException)
+        {
+            return new FoundFile(AddFileResult.NotSupported);
+        }
+    }
+
+    private readonly struct FoundFile
+    {
+        public FoundFile(AddFileResult result, string name = "", string fullPath = "", long size = 0, ChatFileKind kind = ChatFileKind.Text)
+        {
+            Result = result;
+            Name = name;
+            FullPath = fullPath;
+            Size = size;
+            Kind = kind;
+        }
+
+        public AddFileResult Result { get; }
+        public string Name { get; }
+        public string FullPath { get; }
+        public long Size { get; }
+        public ChatFileKind Kind { get; }
+    }
+
     private static int DecodedLength(string data)
     {
         var length = data.Length;
@@ -617,7 +757,8 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
-    /// Takes back a message the host could not deliver (no connection, refused): it leaves <see cref="Items"/>, the
+    /// Takes back a message the host could not deliver (no connection, refused, a file that did not get through): its
+    /// images and files go back to the reply box when it holds none, it leaves <see cref="Items"/>, the
     /// conversation stops waiting for its repetition, and <see cref="IsBusy"/> goes back to false when only the
     /// messages sent while idle kept it busy and the claude has not answered since. Raises <see cref="SubmitUndone"/>
     /// with the text, even after <see cref="Clear"/> or <see cref="LoadTranscript"/>. Works inside
@@ -633,6 +774,16 @@ public sealed class ChatConversation : ChatObservableObject
         if (Attachments.Count == 0)
         {
             foreach (var image in submitted.Images) Attachments.Add(image);
+        }
+        // so do the files, no longer being sent: their × shows again, and a new send starts over
+        if (Files.Count == 0)
+        {
+            foreach (var file in submitted.Files)
+            {
+                file.Progress = null;
+                file.RemotePath = null;
+                Files.Add(file);
+            }
         }
         _echoes.Remove(submitted);
         if (_unanswered.Remove(submitted) && _unanswered.Count == 0) IsBusy = false;
@@ -719,6 +870,9 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>Hides the panel.</summary>
     public void ClosePanel() => ShownPanel = ChatPanel.None;
 
+    /// <summary>Shows the Agent map (<see cref="ChatPanel.Agents"/>), as the "N agents" chip does; <see cref="ClosePanel"/> hides it.</summary>
+    public void ShowAgents() => ShownPanel = ChatPanel.Agents;
+
     /// <summary>A trimmed text of the form <c>/name arguments</c> whose name is one of <see cref="LocalCommands"/>.</summary>
     private static bool TryLocalCommand(string text, out string name, out string arguments)
     {
@@ -748,6 +902,7 @@ public sealed class ChatConversation : ChatObservableObject
     private void OnAssistantBlock(AssistantBlock e)
     {
         ClaudeIsWorking();
+        ReviveFromHistory(e.ParentToolUseId);
         var live = FindLive(e.MessageId, e.ParentToolUseId, e.Block);
         switch (e.Block)
         {
@@ -795,6 +950,7 @@ public sealed class ChatConversation : ChatObservableObject
                     Fill(item, tool);
                     AddTool(item, e.ParentToolUseId);
                 }
+                if (IsAgentTool(tool.Name)) OnAgentCall(tool, e.ParentToolUseId, e.Timestamp);
                 break;
         }
     }
@@ -811,6 +967,7 @@ public sealed class ChatConversation : ChatObservableObject
     private void OnBlockStarted(BlockStarted e)
     {
         ClaudeIsWorking();
+        ReviveFromHistory(e.ParentToolUseId);
         ChatItem item;
         switch (e.Block)
         {
@@ -915,6 +1072,7 @@ public sealed class ChatConversation : ChatObservableObject
     {
         // a top-level user line (message or tool result) is a request: the cache lifetime counts from it
         if (e.ParentToolUseId == null) _cacheAnchor = e.Timestamp ?? _clock();
+        ReviveFromHistory(e.ParentToolUseId); // a subagent's own tool result: it runs
         if (e.Block is ToolResultBlock result)
             OnToolResult(e, result);
         else if (e.Block is TextContentBlock text)
@@ -924,6 +1082,7 @@ public sealed class ChatConversation : ChatObservableObject
     private void OnToolResult(UserBlock e, ToolResultBlock result)
     {
         RemovePermissionsFor(result.ToolUseId);
+        if (FindAgent(result.ToolUseId) is { } agent) OnAgentResult(agent, e, result);
         if (!_tools.TryGetValue(result.ToolUseId, out var tool)) return;
         var cut = ToolPresentation.Truncate(result.Text, ToolPresentation.OutputLines);
         tool.ResultText = cut.Text;
@@ -964,20 +1123,32 @@ public sealed class ChatConversation : ChatObservableObject
             AddNotice(NoticeKind.Interrupted, e.ParentToolUseId);
             return;
         }
-        // a task notification is the claude telling itself that a background subagent finished
-        if (e.IsMeta || text.StartsWith(TaskNotificationPrefix, StringComparison.Ordinal)) return;
+        // a task notification is the claude telling itself that a background subagent finished: it ends the agent and
+        // stays out of the conversation
+        if (text.StartsWith(TaskNotificationPrefix, StringComparison.Ordinal))
+        {
+            if (TaskNotificationText.Read(text) is { } finished) OnAgentTaskFinished(finished);
+            return;
+        }
+        if (e.IsMeta) return;
         if (e.IsCompactSummary)
         {
             AddNotice(NoticeKind.Compacted, e.ParentToolUseId);
             return;
         }
-        if (text.Length == 0 && images == null) return;
-        if (e.ParentToolUseId == null && _echoes.Count > 0 && _echoes[0].Text == text)
+        // the files the host sent are named by lines at the end of the text: chips, not text
+        var (shown, paths) = AttachedFileLine.Split(text);
+        if (shown.Length == 0 && images == null && paths.Count == 0) return;
+        // Split takes the line breaks before the markers off: a sent text that ended with one still matches
+        if (e.ParentToolUseId == null && _echoes.Count > 0
+            && (_echoes[0].Text == text || _echoes[0].Text.TrimEnd('\r', '\n') == shown))
         {
             _echoes.RemoveAt(0); // the claude repeated what Submit already shows
             return;
         }
-        Place(new UserMessageItem(text, images) { Timestamp = e.Timestamp }, e.ParentToolUseId);
+        List<ChatFile>? files = null;
+        foreach (var path in paths) (files ??= new List<ChatFile>()).Add(ChatFile.FromRemotePath(path));
+        Place(new UserMessageItem(shown, images, files) { Timestamp = e.Timestamp }, e.ParentToolUseId);
     }
 
     private void OnCommandEcho(CommandEcho e)
@@ -989,6 +1160,256 @@ public sealed class ChatConversation : ChatObservableObject
             return;
         }
         Items.Add(new UserMessageItem(text));
+    }
+
+    // ---- agents ----
+
+    private static bool IsAgentTool(string name) => name == "Agent" || name == "Task";
+
+    private AgentInfo? FindAgent(string? toolUseId)
+    {
+        if (string.IsNullOrEmpty(toolUseId)) return null;
+        foreach (var agent in Agents)
+        {
+            if (agent.Id == toolUseId) return agent;
+        }
+        return null;
+    }
+
+    /// <summary>The agent of a task line: by its call's id, else by the task id.</summary>
+    private AgentInfo? FindAgent(string? toolUseId, string taskId)
+    {
+        var agent = FindAgent(toolUseId);
+        if (agent != null) return agent;
+        foreach (var candidate in Agents)
+        {
+            if (candidate.TaskId == taskId) return candidate;
+        }
+        return null;
+    }
+
+    private AgentInfo NewAgent(string id, DateTimeOffset startedAt)
+    {
+        var agent = new AgentInfo(id) { StartedAt = startedAt };
+        Agents.Insert(0, agent);
+        return agent;
+    }
+
+    private void UpdateRunningAgents()
+    {
+        var running = 0;
+        foreach (var agent in Agents)
+        {
+            if (agent.Status == AgentStatus.Running) running++;
+        }
+        RunningAgents = running;
+    }
+
+    /// <summary>An Agent (or Task) call with its whole input: it starts the agent, or completes the one a task line started.</summary>
+    private void OnAgentCall(ToolUseBlock tool, string? parentToolUseId, DateTimeOffset? timestamp)
+    {
+        if (tool.Id.Length == 0) return;
+        var agent = FindAgent(tool.Id);
+        if (agent == null)
+        {
+            agent = NewAgent(tool.Id, timestamp ?? _clock());
+            agent.Depth = parentToolUseId == null ? 1 : (FindAgent(parentToolUseId)?.Depth ?? 1) + 1;
+            if (JsonHelpers.Prop(tool.Input, "run_in_background") is { ValueKind: JsonValueKind.True })
+                agent.IsBackground = true;
+        }
+        else if (timestamp != null)
+        {
+            agent.StartedAt = timestamp.Value;
+        }
+        agent.ParentId ??= parentToolUseId;
+        if (agent.Description.Length == 0) agent.Description = JsonHelpers.Str(tool.Input, "description") ?? "";
+        agent.AgentType ??= JsonHelpers.Str(tool.Input, "subagent_type");
+    }
+
+    private void OnAgentTaskStarted(AgentTaskStarted e)
+    {
+        // a command the agent runs (local_bash) is a task too, but no agent
+        if (e.TaskType.Length > 0 && e.TaskType != AgentTaskType) return;
+        var agent = FindAgent(e.ToolUseId, e.TaskId);
+        if (agent == null)
+        {
+            if (e.TaskType.Length == 0 || e.ToolUseId.Length == 0) return;
+            agent = NewAgent(e.ToolUseId, _clock());
+        }
+        agent.TaskId = e.TaskId;
+        agent.IsBackground = e.IsBackground;
+        agent.Depth = e.Depth;
+        if (agent.Description.Length == 0) agent.Description = e.Description;
+        agent.AgentType ??= e.AgentType;
+        Resume(agent);
+        ReviveFromHistory(agent.ParentId);
+    }
+
+    private void OnAgentTaskProgress(AgentTaskProgress e)
+    {
+        var agent = FindAgent(e.ToolUseId, e.TaskId);
+        if (agent == null) return;
+        agent.TaskId ??= e.TaskId;
+        if (e.Activity != null) agent.Activity = e.Activity;
+        if (e.Tokens != null) agent.Tokens = e.Tokens;
+        if (e.ToolUses != null) agent.ToolUses = e.ToolUses;
+        if (e.DurationMs != null) agent.DurationMs = e.DurationMs;
+        Resume(agent);
+        ReviveFromHistory(agent.ParentId);
+    }
+
+    /// <summary>A failure or a stop ends the agent here; <c>completed</c> waits for the notification or the result, which bring it.</summary>
+    private void OnAgentTaskUpdated(AgentTaskUpdated e)
+    {
+        var agent = FindAgent(null, e.TaskId);
+        if (agent == null || agent.Status != AgentStatus.Running || e.Status == null) return;
+        var status = EndStatus(e.Status);
+        if (status != AgentStatus.Completed) agent.Status = status;
+    }
+
+    private void OnAgentTaskFinished(AgentTaskFinished e)
+    {
+        var agent = FindAgent(e.ToolUseId, e.TaskId);
+        if (agent == null) return;
+        _agentsStoppedByHistory.Remove(agent);
+        agent.TaskId ??= e.TaskId;
+        agent.Status = EndStatus(e.Status);
+        if (e.Summary != null) agent.Result = e.Summary;
+        if (e.Tokens != null) agent.Tokens = e.Tokens;
+        if (e.ToolUses != null) agent.ToolUses = e.ToolUses;
+        if (e.DurationMs != null) agent.DurationMs = e.DurationMs;
+    }
+
+    /// <summary>
+    /// The result of the Agent call. A foreground agent's (<c>totalTokens</c>) ends it with its totals; a background
+    /// one's (<c>isAsync</c>) only tells the model, and the notification ends it later. Without the structured result
+    /// (an older claude, a refusal, an error), the tool result's own status and text are used.
+    /// </summary>
+    private void OnAgentResult(AgentInfo agent, UserBlock e, ToolResultBlock result)
+    {
+        if (e.ToolUseResult is { ValueKind: JsonValueKind.Object } structured)
+        {
+            var agentId = JsonHelpers.Str(structured, "agentId");
+            if (agentId != null && agent.TaskId != null && agentId != agent.TaskId) return; // another call's result
+            if (agentId != null) agent.TaskId ??= agentId;
+            if (JsonHelpers.Str(structured, "resolvedModel") is { } model) agent.Model = model;
+            agent.AgentType ??= JsonHelpers.Str(structured, "agentType");
+            if (JsonHelpers.Bool(structured, "isAsync"))
+            {
+                agent.IsBackground = true;
+                return;
+            }
+            if (JsonHelpers.Long(structured, "totalTokens") is { } tokens)
+            {
+                _agentsStoppedByHistory.Remove(agent);
+                agent.Status = AgentStatus.Completed;
+                agent.Tokens = tokens;
+                if (JsonHelpers.Long(structured, "totalDurationMs") is { } duration) agent.DurationMs = duration;
+                if (JsonHelpers.Long(structured, "totalToolUseCount") is { } uses) agent.ToolUses = (int)uses;
+                agent.Result = ResultText(JsonHelpers.Prop(structured, "content")) ?? result.Text;
+                return;
+            }
+        }
+        if (agent.Status != AgentStatus.Running) return;
+        switch (ResultStatus(e, result))
+        {
+            case ToolStatus.Rejected:
+                agent.Status = AgentStatus.Stopped;
+                break;
+            case ToolStatus.Failed:
+                agent.Status = AgentStatus.Failed;
+                agent.Result = result.Text;
+                break;
+            default:
+                if (agent.IsBackground) break; // the launch receipt of a background agent: it ends with its notification
+                agent.Status = AgentStatus.Completed;
+                agent.Result = result.Text;
+                break;
+        }
+    }
+
+    /// <summary>The <c>content</c> of an agent's result: a string, or the texts of its blocks joined by a blank line.</summary>
+    private static string? ResultText(JsonElement? content)
+    {
+        if (content == null) return null;
+        var c = content.Value;
+        if (c.ValueKind == JsonValueKind.String) return c.GetString();
+        if (c.ValueKind != JsonValueKind.Array) return null;
+        var texts = new List<string>();
+        foreach (var block in c.EnumerateArray())
+        {
+            if (JsonHelpers.Str(block, "type") == "text" && JsonHelpers.Str(block, "text") is { } text) texts.Add(text);
+        }
+        return texts.Count == 0 ? null : string.Join("\n\n", texts);
+    }
+
+    private static AgentStatus EndStatus(string status)
+    {
+        switch (status)
+        {
+            case "":
+            case "completed":
+                return AgentStatus.Completed;
+            case "failed":
+            case "error":
+                return AgentStatus.Failed;
+            default: // killed, stopped…
+                return AgentStatus.Stopped;
+        }
+    }
+
+    /// <summary>
+    /// At the end of a session file, every agent with no end is <see cref="AgentStatus.Stopped"/>, remembered as
+    /// stopped by the history: a sign of life from the live claude brings it back (<see cref="ReviveFromHistory"/>,
+    /// <see cref="Resume"/>).
+    /// </summary>
+    private void SettleAgentsLeftRunning()
+    {
+        foreach (var agent in Agents)
+        {
+            if (agent.Status != AgentStatus.Running) continue;
+            agent.Status = AgentStatus.Stopped;
+            _agentsStoppedByHistory.Add(agent);
+        }
+    }
+
+    /// <summary>
+    /// A line of a subagent (its <c>parent_tool_use_id</c>) proves that agent runs: when the history had stopped it,
+    /// it runs again, and so do the callers the history had stopped.
+    /// </summary>
+    private void ReviveFromHistory(string? parentToolUseId)
+    {
+        if (_agentsStoppedByHistory.Count == 0) return;
+        var agent = FindAgent(parentToolUseId);
+        var steps = Agents.Count; // a guard against a loop of parents
+        while (agent != null && steps-- > 0)
+        {
+            if (_agentsStoppedByHistory.Remove(agent)) agent.Status = AgentStatus.Running;
+            agent = FindAgent(agent.ParentId);
+        }
+    }
+
+    /// <summary>A task line of the agent itself: it runs, whatever ended it before (the history, or an end it was resumed from).</summary>
+    private void Resume(AgentInfo agent)
+    {
+        _agentsStoppedByHistory.Remove(agent);
+        agent.Status = AgentStatus.Running;
+    }
+
+    /// <summary>
+    /// A failed or interrupted turn takes its foreground agents with it, and the foreground agents those called.
+    /// Background agents go on, with the agents they call.
+    /// </summary>
+    private void StopForegroundAgents()
+    {
+        // oldest first, so a caller is settled before the agents it called
+        for (var i = Agents.Count - 1; i >= 0; i--)
+        {
+            var agent = Agents[i];
+            if (agent.Status != AgentStatus.Running || agent.IsBackground) continue;
+            var caller = FindAgent(agent.ParentId);
+            if (caller == null || caller.Status != AgentStatus.Running) agent.Status = AgentStatus.Stopped;
+        }
     }
 
     // ---- permissions ----
@@ -1043,7 +1464,11 @@ public sealed class ChatConversation : ChatObservableObject
     {
         RemoveTurnPermissions();
         EndStreaming();
-        if (e.IsError || _interruptedThisTurn) RejectToolsLeftRunning();
+        if (e.IsError || _interruptedThisTurn)
+        {
+            RejectToolsLeftRunning();
+            StopForegroundAgents();
+        }
         if (e.IsError && !_interruptedThisTurn) Items.Add(new NoticeItem(NoticeKind.TurnFailed));
         Items.Add(new TurnFooterItem(e.DurationMs, e.InputTokens, e.OutputTokens, e.CostUsd, e.IsError));
         _turnTools.Clear();

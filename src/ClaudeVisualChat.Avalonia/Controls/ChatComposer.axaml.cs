@@ -20,13 +20,14 @@ namespace ClaudeVisualChat.Controls;
 
 /// <summary>
 /// The reply box, like the extension's: the images attached, the text, and a bar with +, / (the command palette, also
-/// opened by a "/" typed in the empty box), the prompt cache clock, the Remote Control chip, the model chip (its menu
+/// opened by a "/" typed in the empty box), the prompt cache clock, the Remote Control chip, the "N agents" chip (it
+/// opens the Agent map), the model chip (its menu
 /// has the models and the effort), the mode and the
 /// square buttons: send (enabled when something is written or attached) and, while Claude works, stop; with nothing
 /// to send, only stop shows, as in the extension; with something, both, and what is sent waits in line.
 /// Images come from the + button's file dialog, from Ctrl+V when the clipboard holds an image and no text, and from
-/// image files dropped on the box; one that does not go in says why under the strip until the next one goes in or
-/// the message is sent.
+/// image files dropped on the box; PDF, text and CSV files from the same dialog and drop, as chips after the images.
+/// One that does not go in says why under the strip until the next one goes in or the message is sent.
 /// Enter sends and clears; Shift+Enter breaks the line; Esc stops Claude while it works, and otherwise goes on to the
 /// app. The mode picker and the model chip show what the claude reports; picking only asks for a change through the
 /// conversation's events. The box takes the mode's color: classes
@@ -59,11 +60,14 @@ internal partial class ChatComposer : UserControl
     /// <summary>True while the mode picker is set from the conversation, so the change is not the user's.</summary>
     private bool _syncing;
 
-    /// <summary>Why the last image did not go in; null when it did, or after a send.</summary>
-    private AddImageResult? _rejected;
+    /// <summary>Why the last image or file did not go in; null when it did, or after a send.</summary>
+    private Rejection? _rejected;
 
-    /// <summary>Test seam: the file dialog of the + button.</summary>
+    /// <summary>Test seam: the file dialog of the + button, giving image bytes (it takes the place of the dialog).</summary>
     internal Func<Task<IReadOnlyList<byte[]>>>? PickImagesOverride;
+
+    /// <summary>Test seam: the file dialog of the + button, giving paths of images and files.</summary>
+    internal Func<Task<IReadOnlyList<string>>>? PickFilesOverride;
 
     public ChatComposer()
     {
@@ -93,12 +97,18 @@ internal partial class ChatComposer : UserControl
         AddButton.Click += async (_, _) =>
         {
             var conversation = _tracked; // the one shown now, even if another is shown when the dialog closes
-            await AttachAsync(conversation, await PickImagesAsync());
+            if (PickImagesOverride != null)
+            {
+                await AttachAsync(conversation, await PickImagesOverride());
+                return;
+            }
+            await AttachSourcesAsync(conversation, await PickAsync(conversation == null || conversation.MaxFiles > 0));
         };
         Input.PastingFromClipboard += OnPasting;
         Box.AddHandler(DragDrop.DragOverEvent, OnDragOver);
         Box.AddHandler(DragDrop.DropEvent, OnDrop);
         Strip.RemoveRequested += (_, image) => _tracked?.RemoveAttachment(image);
+        Strip.RemoveFileRequested += (_, file) => _tracked?.RemoveFile(file);
         Strip.OpenRequested += (_, e) => PreviewRequested?.Invoke(this, e);
         IsEnabled = false;
         Refresh();
@@ -121,6 +131,8 @@ internal partial class ChatComposer : UserControl
             }
             CacheClock.Conversation = value;
             RemoteControlChip.Conversation = value;
+            AgentsChip.Conversation = value;
+            ContextRing.Conversation = value;
             ModelChip.Conversation = value;
             ModelMenu.Conversation = value;
             Palette.Conversation = value;
@@ -164,8 +176,9 @@ internal partial class ChatComposer : UserControl
     /// <summary>Nothing written yet (spaces do not count).</summary>
     internal bool IsEmpty => string.IsNullOrWhiteSpace(Input.Text);
 
-    /// <summary>Nothing written and no image attached: Enter would send nothing.</summary>
-    internal bool HasNothingToSend => IsEmpty && (_conversation == null || _conversation.Attachments.Count == 0);
+    /// <summary>Nothing written and no image or file attached: Enter would send nothing.</summary>
+    internal bool HasNothingToSend =>
+        IsEmpty && (_conversation == null || (_conversation.Attachments.Count == 0 && _conversation.Files.Count == 0));
 
     internal bool FocusInput() => Input.Focus();
 
@@ -220,6 +233,7 @@ internal partial class ChatComposer : UserControl
                 _tracked.PropertyChanged -= OnConversationChanged;
                 _tracked.SubmitUndone -= OnSubmitUndone;
                 _tracked.Attachments.CollectionChanged -= OnAttachmentsChanged;
+                _tracked.Files.CollectionChanged -= OnAttachmentsChanged;
             }
             _tracked = conversation;
             if (_tracked != null)
@@ -227,12 +241,14 @@ internal partial class ChatComposer : UserControl
                 _tracked.PropertyChanged += OnConversationChanged;
                 _tracked.SubmitUndone += OnSubmitUndone;
                 _tracked.Attachments.CollectionChanged += OnAttachmentsChanged;
+                _tracked.Files.CollectionChanged += OnAttachmentsChanged;
             }
         }
         if (!_attached) return;
         if (changed)
         {
             Strip.Images = _tracked?.Attachments;
+            Strip.Files = _tracked?.Files;
             ShowRejected(null);
         }
         Refresh();
@@ -302,8 +318,9 @@ internal partial class ChatComposer : UserControl
 
     private void UpdateSend() => SendButton.IsEnabled = HasSomethingToSend;
 
-    /// <summary>Text, or an image attached.</summary>
-    private bool HasSomethingToSend => _tracked != null && (!IsEmpty || _tracked.Attachments.Count > 0);
+    /// <summary>Text, or an image or a file attached.</summary>
+    private bool HasSomethingToSend =>
+        _tracked != null && (!IsEmpty || _tracked.Attachments.Count > 0 || _tracked.Files.Count > 0);
 
     // ---- keys and buttons ----
 
@@ -340,15 +357,23 @@ internal partial class ChatComposer : UserControl
         conversation.Submit(text);
     }
 
-    // ---- images ----
+    // ---- images and files ----
 
-    private Task<IReadOnlyList<byte[]>> PickImagesAsync() =>
-        PickImagesOverride != null ? PickImagesOverride() : ImageFiles.PickAsync(TopLevel.GetTopLevel(this), Strings, _tracked == null ? int.MaxValue : ImageFiles.ToRead(_tracked));
+    /// <summary>The + button's dialog: images and PDF, text and CSV files together (images only when no file is taken).</summary>
+    private async Task<IReadOnlyList<AttachSource>> PickAsync(bool files)
+    {
+        if (PickFilesOverride == null) return await AttachFiles.PickAsync(TopLevel.GetTopLevel(this), Strings, files);
+        var sources = new List<AttachSource>();
+        foreach (var path in await PickFilesOverride()) sources.Add(AttachSource.FromPath(path));
+        return sources;
+    }
 
     /// <summary>
-    /// Ctrl+V: text wins, so text copied with a picture (a browser, Word) pastes as text. On Windows, an image with no
-    /// text is attached instead of pasted; elsewhere the text box pastes, and an image found with no text is attached.
-    /// Each gesture attaches to the conversation shown when it began.
+    /// Ctrl+V: text wins, so text copied with a picture (a browser, Word) pastes as text. With no text, files copied in
+    /// Explorer or a file manager are attached as a drop would attach them (an image file to the images, a PDF, text or
+    /// CSV file to the files, any other refused with its reason), else an image (a bitmap) is attached. On Windows this
+    /// happens instead of the paste; elsewhere the text box pastes, and what is found with no text is attached. Each
+    /// gesture attaches to the conversation shown when it began.
     /// </summary>
     private void OnPasting(object? sender, RoutedEventArgs e)
     {
@@ -358,9 +383,22 @@ internal partial class ChatComposer : UserControl
             _ = PasteImageWithoutTextAsync(conversation);
             return;
         }
-        if (ClipboardImages.HasText() || !ClipboardImages.HasImage()) return;
+        if (ClipboardImages.HasText()) return;
+        if (ClipboardImages.HasFiles())
+        {
+            e.Handled = true;
+            _ = PasteFilesAsync(conversation);
+            return;
+        }
+        if (!ClipboardImages.HasImage()) return;
         e.Handled = true;
         _ = PasteImageAsync(conversation);
+    }
+
+    private async Task PasteFilesAsync(ChatConversation? conversation)
+    {
+        var sources = await AttachFiles.PastedAsync(TopLevel.GetTopLevel(this));
+        await AttachSourcesAsync(conversation, sources);
     }
 
     private async Task PasteImageAsync(ChatConversation? conversation)
@@ -373,74 +411,159 @@ internal partial class ChatComposer : UserControl
     {
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard == null) return;
+        var files = false;
         try
         {
             foreach (var format in await clipboard.GetFormatsAsync())
             {
                 if (format == DataFormats.Text || format.StartsWith("text/", StringComparison.Ordinal) || format == "UTF8_STRING") return;
+                files |= format == DataFormats.Files;
             }
         }
         catch (Exception)
         {
             return;
         }
+        if (files)
+        {
+            var sources = await AttachFiles.PastedAsync(TopLevel.GetTopLevel(this));
+            if (sources.Count > 0)
+            {
+                await AttachSourcesAsync(conversation, sources);
+                return;
+            }
+        }
         var bytes = await ClipboardImages.ReadImageAsync(TopLevel.GetTopLevel(this));
         if (bytes != null) await AttachAsync(conversation, new[] { bytes });
     }
 
+    /// <summary>A drag of files: each one is sorted when dropped (an image, a file, or one refused with its reason).</summary>
     private void OnDragOver(object? sender, DragEventArgs e)
     {
-        e.DragEffects = ImageFiles.Dropped(e.Data).Count > 0 ? e.DragEffects & DragDropEffects.Copy : DragDropEffects.None;
+        e.DragEffects = AttachFiles.Dropped(e.Data).Count > 0 ? e.DragEffects & DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
     private async void OnDrop(object? sender, DragEventArgs e)
     {
         var conversation = _tracked;
-        var files = ImageFiles.Dropped(e.Data);
+        var sources = AttachFiles.Dropped(e.Data);
         e.Handled = true;
-        var images = new List<byte[]>(files.Count);
-        var max = conversation == null ? int.MaxValue : ImageFiles.ToRead(conversation);
+        await AttachSourcesAsync(conversation, sources);
+    }
+
+    /// <summary>
+    /// Sorts what was picked or dropped: images go to the images, PDF, text and CSV files to the files, each with
+    /// their own limits; any other file is refused. What goes in goes in; the last one refused says why (the images
+    /// are attached last), and a batch with none refused clears it. Images beyond the room left are never read.
+    /// </summary>
+    private async Task AttachSourcesAsync(ChatConversation? conversation, IReadOnlyList<AttachSource> sources)
+    {
+        if (conversation == null || sources.Count == 0)
+        {
+            Dispose(sources);
+            return;
+        }
+        var images = new List<byte[]>();
+        var maxImages = ImageFiles.ToRead(conversation);
+        Rejection? rejected = null;
         try
         {
-            foreach (var file in files)
+            foreach (var source in sources)
             {
-                if (images.Count >= max) break; // the rest would be refused as too many anyway
-                images.Add(await ImageFiles.ReadAsync(file) ?? Array.Empty<byte>());
+                if (source.IsImage)
+                {
+                    if (images.Count >= maxImages) continue; // it would be refused as too many anyway
+                    images.Add(await AttachFiles.ReadImageAsync(source) ?? Array.Empty<byte>()); // unreadable: not an image
+                }
+                else
+                {
+                    var result = source.IsAttachableFile ? await AttachFiles.AddFileAsync(conversation, source) : AddFileResult.NotSupported;
+                    if (result != AddFileResult.Added) rejected = Rejection.Of(result, conversation);
+                }
             }
         }
         finally
         {
-            foreach (var file in files) file.Dispose();
+            Dispose(sources);
         }
-        await AttachAsync(conversation, images);
+        if (await AttachImagesAsync(conversation, images) is { } image) rejected = Rejection.Of(image);
+        if (ReferenceEquals(conversation, _tracked)) ShowRejected(rejected);
     }
 
-    /// <summary>Attaches the images in order; the last one refused says why, and a batch with none refused clears it.</summary>
+    private static void Dispose(IReadOnlyList<AttachSource> sources)
+    {
+        foreach (var source in sources) source.File?.Dispose();
+    }
+
+    /// <summary>Attaches the images in order, and says why the last one refused did not go in.</summary>
     private async Task AttachAsync(ChatConversation? conversation, IReadOnlyList<byte[]> images)
     {
         if (conversation == null || images.Count == 0) return;
+        var rejected = await AttachImagesAsync(conversation, images);
+        if (ReferenceEquals(conversation, _tracked)) ShowRejected(rejected == null ? null : Rejection.Of(rejected.Value));
+    }
+
+    /// <summary>Attaches the images in order; why the last one refused did not go in, null when all did.</summary>
+    private static async Task<AddImageResult?> AttachImagesAsync(ChatConversation conversation, IReadOnlyList<byte[]> images)
+    {
         AddImageResult? rejected = null;
         foreach (var bytes in images)
         {
             var result = ReferenceEquals(bytes, ImageFiles.TooBig) ? AddImageResult.TooBig : await conversation.AddImageAsync(bytes);
             if (result != AddImageResult.Added) rejected = result;
         }
-        if (ReferenceEquals(conversation, _tracked)) ShowRejected(rejected);
+        return rejected;
     }
 
-    private void ShowRejected(AddImageResult? result)
+    private void ShowRejected(Rejection? rejection)
     {
-        _rejected = result;
-        var strings = Strings;
-        AttachError.Text = result switch
+        _rejected = rejection;
+        AttachError.Text = rejection?.Text(Strings);
+        AttachError.IsVisible = rejection != null;
+    }
+
+    /// <summary>Why an image or a file did not go in, with the limits it broke (the text follows the language).</summary>
+    private sealed class Rejection
+    {
+        private readonly AddImageResult? _image;
+        private readonly AddFileResult _file;
+        private readonly long _maxFileBytes;
+        private readonly int _maxFiles;
+
+        private Rejection(AddImageResult? image, AddFileResult file, long maxFileBytes, int maxFiles)
         {
-            AddImageResult.TooMany => strings.TooManyImages,
-            AddImageResult.TooBig => strings.ImageTooBig,
-            AddImageResult.NotAnImage => strings.NotAnImage,
-            _ => null,
-        };
-        AttachError.IsVisible = result != null;
+            _image = image;
+            _file = file;
+            _maxFileBytes = maxFileBytes;
+            _maxFiles = maxFiles;
+        }
+
+        public static Rejection Of(AddImageResult image) => new Rejection(image, AddFileResult.Added, 0, 0);
+
+        public static Rejection Of(AddFileResult file, ChatConversation conversation) =>
+            new Rejection(null, file, conversation.MaxFileBytes, conversation.MaxFiles);
+
+        public string? Text(ChatStrings strings)
+        {
+            if (_image != null)
+            {
+                return _image switch
+                {
+                    AddImageResult.TooMany => strings.TooManyImages,
+                    AddImageResult.TooBig => strings.ImageTooBig,
+                    AddImageResult.NotAnImage => strings.NotAnImage,
+                    _ => null,
+                };
+            }
+            return _file switch
+            {
+                AddFileResult.TooMany => strings.FormatTooManyFiles(_maxFiles),
+                AddFileResult.TooBig => strings.FormatFileTooBig(_maxFileBytes),
+                AddFileResult.NotSupported => strings.FileNotSupported,
+                _ => null,
+            };
+        }
     }
 
     // ---- the mode ----
