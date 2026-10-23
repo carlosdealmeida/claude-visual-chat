@@ -26,6 +26,7 @@ internal sealed class AttachmentStrip : Border
 
     private readonly StackPanel _pills = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
     private ObservableCollection<ChatImage>? _images;
+    private bool _attached;
 
     public AttachmentStrip()
     {
@@ -44,21 +45,40 @@ internal sealed class AttachmentStrip : Border
     /// <summary>The user clicked a pill: the image and its name.</summary>
     public event EventHandler<(ChatImage Image, string Name)>? OpenRequested;
 
-    /// <summary>The images shown; the strip follows the collection's changes.</summary>
+    /// <summary>
+    /// The images shown; the strip follows the collection's changes while it is in a window, and draws them again
+    /// when it comes back to one.
+    /// </summary>
     public ObservableCollection<ChatImage>? Images
     {
         get => _images;
         set
         {
             if (ReferenceEquals(value, _images)) return;
-            if (_images != null) _images.CollectionChanged -= OnImagesChanged;
+            if (_attached && _images != null) _images.CollectionChanged -= OnImagesChanged;
             _images = value;
-            if (_images != null) _images.CollectionChanged += OnImagesChanged;
-            Rebuild();
+            if (_attached && _images != null) _images.CollectionChanged += OnImagesChanged;
+            if (_attached) Rebuild();
         }
     }
 
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _attached = true;
+        if (_images != null) _images.CollectionChanged += OnImagesChanged;
+        Rebuild();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _attached = false;
+        // the collection outlives the strip: let go of its events, and draw nothing while Avalonia takes the tree apart
+        if (_images != null) _images.CollectionChanged -= OnImagesChanged;
+    }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {

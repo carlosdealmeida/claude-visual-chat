@@ -159,6 +159,8 @@ internal partial class PermissionPrompt : UserControl
         _topLevel?.RemoveHandler(KeyUpEvent, _anyKeyUp);
         _topLevel = null;
         _heldKey = null;
+        // back in a window, the request comes on screen again: the pause starts over and the view hears of it
+        _request = null;
         Track(null); // the conversation outlives the view: let go of its events
     }
 
@@ -237,7 +239,8 @@ internal partial class PermissionPrompt : UserControl
                 _tracked.PendingPermissions.CollectionChanged += OnPendingChanged;
             }
         }
-        Update();
+        // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
+        if (_attached) Update();
     }
 
     private void OnConversationChanged(object? sender, PropertyChangedEventArgs e)

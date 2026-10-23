@@ -3,6 +3,16 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-10-23
+
+### Fixed
+
+- A view could leave its host blank when removed. When a host swapped the view out (a `ContentControl` whose
+  content is drawn by a template), Avalonia threw while the reply box rebuilt its mode list during the detach
+  ("Visual is atached to visual tree but root could not be found"), and the host's presenter never showed its new
+  content. Controls no longer touch the visual tree while being detached: they only let go of the conversation's
+  events and stop the cache clock's timer, and they draw the conversation as it is when they come back.
+
 ## [0.3.0] - 2026-10-22
 
 The reply box gets the bar of the Claude Code extension: attach images, a command palette, a model and effort chip,

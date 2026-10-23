@@ -96,7 +96,8 @@ internal abstract class ChatBanner : Border
             _tracked = conversation;
             if (_tracked != null) _tracked.PropertyChanged += OnConversationChanged;
         }
-        Update();
+        // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
+        if (_attached) Update();
     }
 
     private void OnConversationChanged(object? sender, PropertyChangedEventArgs e)

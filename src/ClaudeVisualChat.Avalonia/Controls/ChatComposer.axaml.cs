@@ -185,7 +185,7 @@ internal partial class ChatComposer : UserControl
     {
         base.OnDetachedFromVisualTree(e);
         _attached = false;
-        Track(null); // the conversation outlives the view: let go of its events
+        Track(null); // the conversation outlives the view: let go of its events (and draw nothing)
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -205,9 +205,15 @@ internal partial class ChatComposer : UserControl
         ModelMenu.IsOpen = false;
     }
 
+    /// <summary>
+    /// Follows the conversation's events and draws it. Out of the window (the view is being taken out), only the
+    /// events go: Avalonia is taking the tree apart, and a control drawn then (the mode list) throws; coming back
+    /// draws it all again. The strip lets go of the attachments by itself.
+    /// </summary>
     private void Track(ChatConversation? conversation)
     {
-        if (!ReferenceEquals(conversation, _tracked))
+        var changed = !ReferenceEquals(conversation, _tracked);
+        if (changed)
         {
             if (_tracked != null)
             {
@@ -222,6 +228,10 @@ internal partial class ChatComposer : UserControl
                 _tracked.SubmitUndone += OnSubmitUndone;
                 _tracked.Attachments.CollectionChanged += OnAttachmentsChanged;
             }
+        }
+        if (!_attached) return;
+        if (changed)
+        {
             Strip.Images = _tracked?.Attachments;
             ShowRejected(null);
         }

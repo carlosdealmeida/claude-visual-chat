@@ -91,7 +91,8 @@ internal partial class ToolCallView : UserControl
             _item.PropertyChanged += OnItemChanged;
             _item.Children.CollectionChanged += OnChildrenChanged;
         }
-        Refresh();
+        // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
+        if (_attached) Refresh();
     }
 
     private void OnItemChanged(object? sender, PropertyChangedEventArgs e)

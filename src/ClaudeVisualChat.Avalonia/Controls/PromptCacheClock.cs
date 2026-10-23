@@ -95,7 +95,10 @@ internal sealed class PromptCacheClock : Border
             _tracked = conversation;
             if (_tracked != null) _tracked.PropertyChanged += OnConversationChanged;
         }
-        Update();
+        // out of the window, only the events and the timer go: Avalonia is taking the tree apart, and coming back
+        // draws it again (and starts the timer)
+        if (_attached) Update();
+        else _timer.Stop();
     }
 
     private void OnConversationChanged(object? sender, PropertyChangedEventArgs e)
