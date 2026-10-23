@@ -1870,6 +1870,7 @@
   <Style Selector="TextBlock.ClaudeChatAgentRowMeta">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+    <Setter Property="LineHeight" Value="15" /> <!-- fixed like the title: the row stays 48 px with any system font -->
     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     <Setter Property="Margin" Value="14,0,0,0" />
   </Style>
