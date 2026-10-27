@@ -3,6 +3,14 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - unreleased
+
+### Added
+
+### Changed
+
+### Fixed
+
 ## [0.5.0] - 2026-10-27
 
 The touch layout: the view laid out for a finger on a phone, in the style of Anthropic's Claude app.
