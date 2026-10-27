@@ -18,7 +18,8 @@ namespace ClaudeVisualChat.Controls;
 /// reports: the offered model's name (<see cref="ChatConversation.CurrentModel"/>), else the raw id; a model or a
 /// level asked for and not yet confirmed marks it <c>pending</c>. Before the claude reports a model, the chip says
 /// "Model", as the extension's; with no list and no model it is hidden. Its tooltip is "Switch model". A click opens and closes the
-/// <see cref="ModelMenu"/>, whose keys it takes while the menu is open.
+/// <see cref="ModelMenu"/>, whose keys it takes while the menu is open; the touch layout's chip has an
+/// <see cref="OpenSheet"/> instead, which a click calls in place of the menu, and it <see cref="Ellipsize">ellipsizes</see> its texts.
 /// </summary>
 internal sealed class ModelChip : Button
 {
@@ -38,7 +39,11 @@ internal sealed class ModelChip : Button
         Classes.Add("ClaudeChatModelChip");
         _level.Classes.Add("ClaudeChatModelChipEffort");
         Content = new StackPanel { Orientation = Orientation.Horizontal, Children = { _name, _level } };
-        Click += (_, _) => Menu?.Toggle();
+        Click += (_, _) =>
+        {
+            if (OpenSheet != null) OpenSheet();
+            else Menu?.Toggle();
+        };
         // before the button's own keys: Enter and Space pick in the menu instead of clicking the chip
         AddHandler(KeyDownEvent, (_, e) =>
         {
@@ -61,6 +66,30 @@ internal sealed class ModelChip : Button
 
     /// <summary>The menu the chip opens.</summary>
     internal ModelMenu? Menu { get; set; }
+
+    /// <summary>What a click does in place of opening the <see cref="Menu"/>: the touch layout's chip opens its sheet.</summary>
+    internal Action? OpenSheet { get; set; }
+
+    /// <summary>
+    /// True for the touch layout's pill, which is as wide as its bar leaves it and no wider: the name takes the room it needs, the
+    /// level what is left of it (none, when the name does not fit whole), and a text that does not fit ends in an ellipsis instead of
+    /// being cut by the pill. The desktop chip is as wide as its texts and is not told.
+    /// </summary>
+    internal bool Ellipsize
+    {
+        get => Content is TrimmingRow;
+        set
+        {
+            if (value == Ellipsize) return;
+            ((Panel)Content!).Children.Clear(); // the same two texts, in the other row
+            Content = value
+                ? new TrimmingRow { Children = { _name, _level } }
+                : new StackPanel { Orientation = Orientation.Horizontal, Children = { _name, _level } };
+            var trimming = value ? Avalonia.Media.TextTrimming.CharacterEllipsis : Avalonia.Media.TextTrimming.None;
+            _name.TextTrimming = trimming;
+            _level.TextTrimming = trimming;
+        }
+    }
 
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
 
@@ -140,6 +169,46 @@ internal sealed class ModelChip : Button
         if (current == null) return conversation.Model;
         var suffix = conversation.ModelSuffix;
         return suffix == null ? current.DisplayName : current.DisplayName + " " + suffix;
+    }
+}
+
+/// <summary>
+/// The texts of the touch layout's model pill in one row, each as wide as it needs, side by side like a horizontal
+/// <see cref="StackPanel"/>, which hands each text all the room there is and leaves the last to be cut by whatever clips the row. Here
+/// a text is measured with the room the ones before it left, so one that trims itself (<c>TextTrimming</c>) ends in an ellipsis when the
+/// row has less room than the texts need. A text that does not fit whole ends the row: the ones after it get no room (a text with
+/// none draws nothing), so the row has one ellipsis, at its end, never two one after the other.
+/// </summary>
+internal sealed class TrimmingRow : Panel
+{
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        double width = 0, height = 0;
+        var fits = true; // every child so far was whole
+        foreach (var child in Children)
+        {
+            var left = fits ? Math.Max(0, availableSize.Width - width) : 0;
+            if (fits)
+            {
+                child.Measure(new Size(double.PositiveInfinity, availableSize.Height)); // its own width, to see whether it fits
+                fits = child.DesiredSize.Width <= left;
+            }
+            child.Measure(new Size(left, availableSize.Height));
+            width += child.DesiredSize.Width;
+            height = Math.Max(height, child.DesiredSize.Height);
+        }
+        return new Size(width, height);
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        double x = 0;
+        foreach (var child in Children)
+        {
+            child.Arrange(new Rect(x, 0, child.DesiredSize.Width, finalSize.Height));
+            x += child.DesiredSize.Width;
+        }
+        return finalSize;
     }
 }
 

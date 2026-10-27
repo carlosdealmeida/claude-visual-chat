@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
 
@@ -13,6 +14,9 @@ namespace ClaudeVisualChat;
 public sealed record ChatStrings
 {
     private const string Separator = " · ";
+
+    /// <summary>No model description to translate, shared so that two default texts are equal; before <see cref="English"/>, since static fields are set in the order they are written.</summary>
+    private static readonly IReadOnlyDictionary<string, string> NoModelDescriptions = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
     public static ChatStrings English { get; } = new ChatStrings();
 
@@ -28,11 +32,14 @@ public sealed record ChatStrings
         ToolRejected = "Recusado",
         InputPlaceholder = "Responder ao Claude…",
         InputPlaceholderBusy = "Pôr outra mensagem na fila…",
+        InputPlaceholderTouch = "Digite / para ver os comandos",
         ThoughtFor = "Pensou por {0} s",
         RunInBackground = "Rodando em segundo plano",
         Working = "Trabalhando…",
         Send = "Enviar",
         Stop = "Parar",
+        Dictate = "Ditar",
+        StopDictation = "Parar o ditado",
         TimeFormat = "HH:mm",
         EditModified = "Modificado",
         EditAdded = "Adicionou {0}",
@@ -51,6 +58,9 @@ public sealed record ChatStrings
         PermissionRunCommand = "O Claude quer rodar este comando:",
         PermissionEditFile = "O Claude quer editar este arquivo:",
         PermissionUseTool = "O Claude quer usar {0}:",
+        PermissionRunCommandQuestion = "Rodar este comando?",
+        PermissionEditFileQuestion = "Editar {0}?",
+        PermissionUseToolQuestion = "Usar {0}?",
         PermissionYes = "Sim",
         PermissionYesAlways = "Sim, e não perguntar de novo nesta conversa",
         PermissionYesAlwaysBeyondSession = "Sim, e não perguntar de novo",
@@ -58,6 +68,15 @@ public sealed record ChatStrings
         DenyPlaceholder = "Diga ao Claude o que fazer",
         MorePending = "+{0} na fila",
         AddAttachment = "Adicionar",
+        AttachPhotoOrFile = "Foto ou arquivo",
+        Commands = "Comandos",
+        ModeTitle = "Modo",
+        Browser = "Navegador",
+        StatusOff = "desligado",
+        StatusConnecting = "conectando…",
+        StatusOn = "ligado",
+        StatusError = "erro",
+        OpenRemoteControlLink = "Abrir claude.ai/code",
         RemoveAttachment = "Remover anexo",
         ShowCommands = "Mostrar o menu de comandos (/)",
         FilterCommands = "Filtrar comandos…",
@@ -80,6 +99,15 @@ public sealed record ChatStrings
         BrowserFailed = "Erro no navegador: {0}",
         DisconnectBrowser = "Desconectar o navegador",
         SelectModel = "Selecione um modelo",
+        SelectModelTitle = "Selecionar modelo",
+        OtherModels = "Outros modelos",
+        ModelDescriptions = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>
+        {
+            ["For complex work and everyday tasks"] = "Para trabalhos complexos e tarefas do dia a dia",
+            ["For your toughest challenges"] = "Para seus desafios mais difíceis",
+            ["Most efficient for simpler tasks"] = "Mais eficiente para tarefas mais simples",
+            ["Fastest for quick answers"] = "Mais rápido para respostas rápidas",
+        }),
         Model = "Modelo",
         SwitchModel = "Trocar o modelo",
         Effort = "Esforço",
@@ -104,17 +132,27 @@ public sealed record ChatStrings
         ContextUnavailable = "Ainda sem dados de contexto",
         UsageResets = "Renova {0}",
         ContextTotal = "{0} / {1} ({2} %)",
+        ContextSection = "Contexto",
+        ContextWindow = "Janela de contexto",
+        PercentUsed = "{0}% utilizado",
+        TokensOfWindow = "{0} de {1} tokens",
+        PlanUsage = "Uso do plano",
+        Refresh = "Atualizar",
         UsageFiveHour = "Sessão atual (5h)",
         UsageSevenDay = "Semanal (7 dias)",
         UsagePercent = "{0} %",
         DayNames = "dom seg ter qua qui sex sáb",
         AgentsChip = "{0} agentes",
         AgentsChipOne = "1 agente",
+        AgentsChipTouch = "Agentes · {0}",
+        AgentsChipTouchRunning = "Agentes · {0} rodando",
         ContextRingTip = "{0}% do contexto restante até o auto-compactar.",
         ContextRingHint = "Clique para ver o uso do contexto.",
         AgentMapTitle = "Mapa de agentes",
         AgentMapSubtitle = "{0} agentes · clique num agente para ver detalhes",
         AgentMapSubtitleOne = "1 agente · clique num agente para ver detalhes",
+        AgentMapSubtitleTouch = "{0} agentes · toque num agente para ver os detalhes",
+        AgentMapSubtitleTouchOne = "1 agente · toque num agente para ver os detalhes",
         AgentMain = "Agente principal",
         AgentSpawnedByMain = "Chamado pelo agente principal",
         AgentSpawnedBy = "Chamado por {0}",
@@ -129,6 +167,8 @@ public sealed record ChatStrings
         Back = "Voltar",
         Close = "Fechar",
         Dismiss = "Dispensar",
+        CopyAnswer = "Copiar",
+        Copied = "Copiado",
         ThousandsSeparator = ".",
         DecimalSeparator = ",",
     };
@@ -171,11 +211,20 @@ public sealed record ChatStrings
     /// <summary>The empty reply box while Claude works: what is sent now waits in line.</summary>
     public string InputPlaceholderBusy { get; init; } = "Queue another message…";
 
+    /// <summary>The empty reply box of the touch layout: a "/" typed in it opens the command palette.</summary>
+    public string InputPlaceholderTouch { get; init; } = "Type / for commands";
+
     /// <summary>The send button's name (it shows an arrow).</summary>
     public string Send { get; init; } = "Send";
 
     /// <summary>The name of the button that interrupts Claude while it works (it shows a square).</summary>
     public string Stop { get; init; } = "Stop";
+
+    /// <summary>The name of the touch layout's microphone, which starts the dictation (see <see cref="IChatDictation"/>).</summary>
+    public string Dictate { get; init; } = "Dictate";
+
+    /// <summary>The microphone's name while it listens: a tap ends the dictation.</summary>
+    public string StopDictation { get; init; } = "Stop dictation";
 
     /// <summary>
     /// The time over a message, in local time, as a .NET custom format read with the invariant culture
@@ -240,6 +289,15 @@ public sealed record ChatStrings
     /// <summary>Title of a permission request for any other tool; <c>{0}</c> is the tool's display name.</summary>
     public string PermissionUseTool { get; init; } = "Claude wants to use {0}:";
 
+    /// <summary>Title of a permission request for Bash or PowerShell in the touch layout, which asks in a few words; the command is under it.</summary>
+    public string PermissionRunCommandQuestion { get; init; } = "Run this command?";
+
+    /// <summary>The touch layout's title for Edit, Write, MultiEdit or NotebookEdit; <c>{0}</c> is the name of the file (the last part of its path).</summary>
+    public string PermissionEditFileQuestion { get; init; } = "Edit {0}?";
+
+    /// <summary>The touch layout's title for any other tool; <c>{0}</c> is the tool's display name.</summary>
+    public string PermissionUseToolQuestion { get; init; } = "Use {0}?";
+
     public string PermissionYes { get; init; } = "Yes";
 
     /// <summary>Option 2 when every rule it saves lasts only for this conversation (destination <c>session</c>).</summary>
@@ -259,8 +317,35 @@ public sealed record ChatStrings
     /// <summary>Requests waiting behind the one shown; <c>{0}</c> is the count.</summary>
     public string MorePending { get; init; } = "+{0} waiting";
 
-    /// <summary>The button that attaches a file or image to the message.</summary>
+    /// <summary>The button that attaches a file or image to the message; also the title of the touch layout's "+" sheet.</summary>
     public string AddAttachment { get; init; } = "Add";
+
+    /// <summary>The row of the touch layout's "+" sheet that opens the file dialog to attach a photo or a file.</summary>
+    public string AttachPhotoOrFile { get; init; } = "Photo or file";
+
+    /// <summary>The row of the "+" sheet that opens the command palette.</summary>
+    public string Commands { get; init; } = "Commands";
+
+    /// <summary>The row of the "+" sheet that opens the permission modes, and the title of that page.</summary>
+    public string ModeTitle { get; init; } = "Mode";
+
+    /// <summary>The row of the "+" sheet that connects or disconnects the browser.</summary>
+    public string Browser { get; init; } = "Browser";
+
+    /// <summary>What the "+" sheet's Browser and Remote Control rows say while the connection is off.</summary>
+    public string StatusOff { get; init; } = "Off";
+
+    /// <summary>What those rows say while the connection is being made.</summary>
+    public string StatusConnecting { get; init; } = "Connecting…";
+
+    /// <summary>What those rows say while the connection is up.</summary>
+    public string StatusOn { get; init; } = "On";
+
+    /// <summary>What those rows say when the connection failed (the Browser row also, when no browser answers).</summary>
+    public string StatusError { get; init; } = "Error";
+
+    /// <summary>The row of the "+" sheet, there while Remote Control is connected, that opens the session's link.</summary>
+    public string OpenRemoteControlLink { get; init; } = "Open claude.ai/code";
 
     /// <summary>The button that takes an attachment off the message.</summary>
     public string RemoveAttachment { get; init; } = "Remove attachment";
@@ -330,6 +415,19 @@ public sealed record ChatStrings
 
     /// <summary>The title of the model menu.</summary>
     public string SelectModel { get; init; } = "Select a model";
+
+    /// <summary>The title of the touch layout's model sheet.</summary>
+    public string SelectModelTitle { get; init; } = "Select model";
+
+    /// <summary>The label, in the touch layout's model sheet, over the models that are not among the main ones.</summary>
+    public string OtherModels { get; init; } = "Other models";
+
+    /// <summary>
+    /// The touch layout's model sheet writes a model's description as this has it: the description the claude sent is the
+    /// key, the text shown the value. A description it does not list is shown as it came. Empty in English, whose texts
+    /// are the claude's own; the Portuguese list has the four descriptions the claude sends today.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ModelDescriptions { get; init; } = NoModelDescriptions;
 
     /// <summary>The model chip before the claude reports a model.</summary>
     public string Model { get; init; } = "Model";
@@ -415,6 +513,24 @@ public sealed record ChatStrings
     /// <summary>The line of the context panel: <c>{0}</c> tokens used, <c>{1}</c> the window, <c>{2}</c> the percentage.</summary>
     public string ContextTotal { get; init; } = "{0} / {1} ({2}%)";
 
+    /// <summary>The label, in the touch layout's usage sheet, over the card with the context window.</summary>
+    public string ContextSection { get; init; } = "Context";
+
+    /// <summary>The name of the card, in the usage sheet, with the context window.</summary>
+    public string ContextWindow { get; init; } = "Context window";
+
+    /// <summary>How much of the context window or of a plan limit is used, in the usage sheet; <c>{0}</c> is the whole percentage.</summary>
+    public string PercentUsed { get; init; } = "{0}% used";
+
+    /// <summary>The line under the context bar of the usage sheet: <c>{0}</c> the tokens used and <c>{1}</c> the window, both short ("150.6k of 1M tokens").</summary>
+    public string TokensOfWindow { get; init; } = "{0} of {1} tokens";
+
+    /// <summary>The label, in the usage sheet, over the plan's limits (shown when the host puts nothing of its own there).</summary>
+    public string PlanUsage { get; init; } = "Plan usage";
+
+    /// <summary>The name of the usage sheet's button that asks for the data again.</summary>
+    public string Refresh { get; init; } = "Refresh";
+
     /// <summary>The usage panel when the claude has sent no rate limit data and the conversation is idle.</summary>
     public string UsageUnavailable { get; init; } = "No usage data yet";
 
@@ -436,6 +552,12 @@ public sealed record ChatStrings
     /// <summary>The chip with one agent at work.</summary>
     public string AgentsChipOne { get; init; } = "1 agent";
 
+    /// <summary>The touch layout's chip at the end of the list while no agent is at work: <c>{0}</c> is how many the conversation had.</summary>
+    public string AgentsChipTouch { get; init; } = "Agents · {0}";
+
+    /// <summary>The same chip while agents are at work: <c>{0}</c> is how many.</summary>
+    public string AgentsChipTouchRunning { get; init; } = "Agents · {0} running";
+
     /// <summary>The title of the Agent map.</summary>
     public string AgentMapTitle { get; init; } = "Agent map";
 
@@ -444,6 +566,12 @@ public sealed record ChatStrings
 
     /// <summary>The line under the Agent map's title with one agent.</summary>
     public string AgentMapSubtitleOne { get; init; } = "1 agent · click an agent for details";
+
+    /// <summary>The line under the Agent map's title in the touch layout: <c>{0}</c> is how many agents the conversation had.</summary>
+    public string AgentMapSubtitleTouch { get; init; } = "{0} agents · tap an agent for details";
+
+    /// <summary>The line under the Agent map's title in the touch layout, with one agent.</summary>
+    public string AgentMapSubtitleTouchOne { get; init; } = "1 agent · tap an agent for details";
 
     /// <summary>The main agent's card in the Agent map.</summary>
     public string AgentMain { get; init; } = "Main agent";
@@ -486,6 +614,12 @@ public sealed record ChatStrings
 
     /// <summary>The name of the button that dismisses a banner.</summary>
     public string Dismiss { get; init; } = "Dismiss";
+
+    /// <summary>The name of the button under a finished turn that copies Claude's answer (the touch layout's).</summary>
+    public string CopyAnswer { get; init; } = "Copy";
+
+    /// <summary>The same button's name for a moment after it copied.</summary>
+    public string Copied { get; init; } = "Copied";
 
     public string ThousandsSeparator { get; init; } = ",";
 
@@ -628,6 +762,28 @@ public sealed record ChatStrings
         _ => level,
     };
 
+    /// <summary>What the "+" sheet's Browser row says: the connection's state; a browser that does not answer is an error too.</summary>
+    internal string BrowserStatusLabel(ChatBrowserStatus status) => status switch
+    {
+        ChatBrowserStatus.Connecting => StatusConnecting,
+        ChatBrowserStatus.Connected => StatusOn,
+        ChatBrowserStatus.NoBrowser or ChatBrowserStatus.Error => StatusError,
+        _ => StatusOff,
+    };
+
+    /// <summary>What the "+" sheet's Remote Control row says: the connection's state.</summary>
+    internal string RemoteControlStatusLabel(ChatRemoteControlStatus status) => status switch
+    {
+        ChatRemoteControlStatus.Connecting => StatusConnecting,
+        ChatRemoteControlStatus.Connected => StatusOn,
+        ChatRemoteControlStatus.Error => StatusError,
+        _ => StatusOff,
+    };
+
+    /// <summary>A model's description as the touch layout's sheet shows it: <see cref="ModelDescriptions"/> has the text for it, else it stays as the claude sent it.</summary>
+    internal string ModelDescription(string description) =>
+        description != null && ModelDescriptions != null && ModelDescriptions.TryGetValue(description, out var text) ? text : description ?? "";
+
     /// <summary>Minutes left in the cache: 59 → "59m".</summary>
     internal string FormatCacheMinutes(int minutes) => Plain(Math.Max(0, minutes)) + "m";
 
@@ -655,6 +811,12 @@ public sealed record ChatStrings
 
     internal string FormatUseTool(string toolName) => PermissionUseTool.Replace("{0}", toolName ?? "");
 
+    /// <summary><see cref="PermissionEditFileQuestion"/> with the file's name: "Edit OrderService.cs?".</summary>
+    internal string FormatEditFileQuestion(string fileName) => PermissionEditFileQuestion.Replace("{0}", fileName ?? "");
+
+    /// <summary><see cref="PermissionUseToolQuestion"/> with the tool's name: "Use Fetch?".</summary>
+    internal string FormatUseToolQuestion(string toolName) => PermissionUseToolQuestion.Replace("{0}", toolName ?? "");
+
     internal string FormatMorePending(int count) => MorePending.Replace("{0}", FormatNumber(count));
 
     /// <summary><see cref="ContextTotal"/>: "36,174 / 200,000 (18%)".</summary>
@@ -671,9 +833,21 @@ public sealed record ChatStrings
     internal string FormatAgentsChip(int count) =>
         count == 1 ? AgentsChipOne : AgentsChip.Replace("{0}", FormatNumber(count));
 
-    /// <summary><see cref="AgentMapSubtitle"/>: "73 agents · click an agent for details".</summary>
-    internal string FormatAgentMapSubtitle(int count) =>
-        count == 1 ? AgentMapSubtitleOne : AgentMapSubtitle.Replace("{0}", FormatNumber(count));
+    /// <summary>
+    /// The touch layout's chip: <see cref="AgentsChipTouchRunning"/> with the agents at work while any is ("Agents · 2
+    /// running"), else <see cref="AgentsChipTouch"/> with all of them ("Agents · 5").
+    /// </summary>
+    internal string FormatAgentsChipTouch(int running, int total) => running > 0
+        ? AgentsChipTouchRunning.Replace("{0}", FormatNumber(running))
+        : AgentsChipTouch.Replace("{0}", FormatNumber(total));
+
+    /// <summary>
+    /// <see cref="AgentMapSubtitle"/>: "73 agents · click an agent for details"; in the touch layout
+    /// <see cref="AgentMapSubtitleTouch"/>: "73 agents · tap an agent for details".
+    /// </summary>
+    internal string FormatAgentMapSubtitle(int count, bool touch = false) => touch
+        ? count == 1 ? AgentMapSubtitleTouchOne : AgentMapSubtitleTouch.Replace("{0}", FormatNumber(count))
+        : count == 1 ? AgentMapSubtitleOne : AgentMapSubtitle.Replace("{0}", FormatNumber(count));
 
     /// <summary>
     /// A token count, short, like the extension's: as is below 1,000 ("800"), then thousands with one decimal up to
@@ -689,6 +863,37 @@ public sealed record ChatStrings
     }
 
     private static string Plain(long value) => value.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// <see cref="FormatShortTokens"/> without a decimal that is zero: "1.0M" is "1M", "150.0k" is "150k", "150.6k" stays; the
+    /// touch layout's usage sheet writes the window this way.
+    /// </summary>
+    internal string FormatShortTokensTrimmed(long tokens)
+    {
+        var text = FormatShortTokens(tokens);
+        if (string.IsNullOrEmpty(DecimalSeparator) || text.Length < 2) return text;
+        var unit = text[text.Length - 1];                       // k or M, none below 1,000
+        if (unit != 'k' && unit != 'M') return text;
+        var zero = DecimalSeparator + "0";
+        var cut = text.Length - 1 - zero.Length;
+        return cut > 0 && string.CompareOrdinal(text, cut, zero, 0, zero.Length) == 0 ? text.Substring(0, cut) + unit : text;
+    }
+
+    /// <summary><see cref="PercentUsed"/> of a share from 0 to 100, to the whole number: 15.06 → "15% used".</summary>
+    internal string FormatPercentUsed(double percent) =>
+        PercentUsed.Replace("{0}", Plain(percent > 0 ? (long)Math.Round(percent, MidpointRounding.AwayFromZero) : 0));
+
+    /// <summary><see cref="TokensOfWindow"/> with both counts short and trimmed: "150.6k of 1M tokens".</summary>
+    internal string FormatTokensOfWindow(long tokens, long max) => TokensOfWindow
+        .Replace("{0}", FormatShortTokensTrimmed(tokens))
+        .Replace("{1}", FormatShortTokensTrimmed(max));
+
+    /// <summary>A share of the window, from 0 to 1, as a percentage with one decimal: 0.1134 → "11.3%".</summary>
+    internal string FormatSharePercent(double share)
+    {
+        var tenths = share > 0 ? (long)Math.Round(share * 1000, MidpointRounding.AwayFromZero) : 0;
+        return Plain(tenths / 10) + DecimalSeparator + Plain(tenths % 10) + "%";
+    }
 
     /// <summary>How long an agent ran, like the extension's: "44s", "7m 14s" (whole seconds, cut down).</summary>
     internal static string FormatAgentTime(long milliseconds)

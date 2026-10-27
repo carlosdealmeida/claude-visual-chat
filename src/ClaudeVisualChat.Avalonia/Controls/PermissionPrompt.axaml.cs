@@ -27,6 +27,13 @@ internal interface IPromptClock
 /// <see cref="SettleTime"/> after a request comes on screen (a double tap, a fast second click), and a key held down
 /// answers once, until it is released (the keyboard's repeat).
 /// </para>
+/// <para>
+/// In the touch layout (pseudo-class <c>:touch</c>) the title is a short question ("Edit OrderService.cs?", "Run this
+/// command?", "Use Fetch?"), the command or the diff under it is as whole as ever, and the answers are not numbered and go
+/// across the block at 48 px, the first one always in the accent. The field of option 3 has a button under it that
+/// sends what is written, as Enter does, and while it is open the command or the diff shrinks to a peek, so that
+/// the field and the button stay above the on-screen keyboard.
+/// </para>
 /// </summary>
 internal partial class PermissionPrompt : UserControl
 {
@@ -36,6 +43,15 @@ internal partial class PermissionPrompt : UserControl
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<PermissionPrompt>();
 
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<PermissionPrompt>();
+
+    /// <summary>The resource that is the most the detail (the command or the diff) grows to before it scrolls; the XAML binds to it.</summary>
+    private const string DetailHeightKey = "ClaudeChat.PromptDetailMaxHeight";
+
+    /// <summary>The resource that is its height instead while the touch layout's field of option 3 is open.</summary>
+    private const string DetailPeekKey = "ClaudeChat.PromptDetailPeekHeight";
+
     private readonly EventHandler<KeyEventArgs> _anyKeyUp;
     private ChatConversation? _conversation;
     private ChatConversation? _tracked;
@@ -43,6 +59,9 @@ internal partial class PermissionPrompt : UserControl
     private TimeSpan _shownAt;
     private TopLevel? _topLevel;
     private bool _attached;
+
+    /// <summary>True while the detail's height is bound to <see cref="DetailPeekKey"/> (see <see cref="UpdateDenyField"/>).</summary>
+    private bool _peeking;
 
     /// <summary>The answer key that went down in the prompt and has not come up yet (the 11.0 events tell no repeat).</summary>
     private Key? _heldKey;
@@ -63,6 +82,11 @@ internal partial class PermissionPrompt : UserControl
         {
             if (Settled) OpenDenyField();
         };
+        DenySendButton.Click += (_, _) =>
+        {
+            // the field opens only after the pause, but the request may come back on screen with it open (the view leaves read-only)
+            if (Settled) SendDeny();
+        };
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         DenyBox.AddHandler(KeyDownEvent, OnDenyKeyDown, RoutingStrategies.Tunnel);
         foreach (var control in new Control[] { YesButton, AlwaysButton, NoButton, DenyBox })
@@ -76,17 +100,21 @@ internal partial class PermissionPrompt : UserControl
 
     /// <summary>
     /// Like the extension, one option shows in the accent: the one with the keyboard, else option 1; none while the
-    /// field of option 3 has it.
+    /// field of option 3 has it. Not in the touch layout, where the first answer is the accent whatever has the keyboard
+    /// (a finger that presses another answer must not move it), so none is selected.
     /// </summary>
     private void UpdateSelected()
     {
         var options = new[] { YesButton, AlwaysButton, NoButton };
         Button? selected = null;
-        foreach (var option in options)
+        if (!IsTouch)
         {
-            if (option.IsFocused) selected = option;
+            foreach (var option in options)
+            {
+                if (option.IsFocused) selected = option;
+            }
+            if (selected == null && !DenyBox.IsFocused) selected = YesButton;
         }
-        if (selected == null && !DenyBox.IsFocused) selected = YesButton;
         foreach (var option in options) option.Classes.Set("selected", ReferenceEquals(option, selected));
     }
 
@@ -112,6 +140,11 @@ internal partial class PermissionPrompt : UserControl
     internal IPromptClock Clock { get; set; } = StopwatchClock.Instance;
 
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
+
+    private bool IsTouch => GetValue(LayoutProperty) == ChatLayout.Touch;
+
+    /// <summary>The keyboard is in the field of option 3, or on the button under it: what is typed there is text, not an answer.</summary>
+    private bool InDenyField => DenyBox.IsKeyboardFocusWithin || DenySendButton.IsKeyboardFocusWithin;
 
     /// <summary>The request on screen has been there long enough to have been seen.</summary>
     private bool Settled => Clock.Now - _shownAt >= SettleTime;
@@ -169,7 +202,7 @@ internal partial class PermissionPrompt : UserControl
     {
         if (_request == null || e.KeyModifiers != KeyModifiers.None) return;
         var digit = OptionOf(e.Key) != 0;
-        if (digit && DenyBox.IsKeyboardFocusWithin) return; // text in the field, free to repeat
+        if (digit && InDenyField) return; // text in the field, free to repeat
         if (digit || e.Key == Key.Enter) _heldKey = e.Key; // Enter clicks the focused option
     }
 
@@ -188,13 +221,27 @@ internal partial class PermissionPrompt : UserControl
     {
         base.OnPropertyChanged(change);
         if (change.Property == StringsProperty) Refresh();
+        else if (change.Property == LayoutProperty) UpdateTouch();
+    }
+
+    /// <summary>
+    /// In the touch layout (pseudo-class <c>:touch</c>) the title asks (the layout changes what <see cref="Fill"/> writes), no
+    /// answer is "selected" (the first is the accent), and the field of option 3, when open, has its button and the detail a
+    /// peek (<see cref="UpdateDenyField"/>).
+    /// </summary>
+    private void UpdateTouch()
+    {
+        PseudoClasses.Set(":touch", IsTouch);
+        UpdateSelected();
+        Refresh();
+        UpdateDenyField();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
         // only plain digits: Ctrl+1 and the like belong to the app, and what is typed in the field is text
-        if (e.Handled || _request == null || e.KeyModifiers != KeyModifiers.None || DenyBox.IsKeyboardFocusWithin)
+        if (e.Handled || _request == null || e.KeyModifiers != KeyModifiers.None || InDenyField)
             return;
         var option = OptionOf(e.Key);
         if (option == 0 || (option == 2 && !AlwaysButton.IsVisible)) return;
@@ -275,6 +322,7 @@ internal partial class PermissionPrompt : UserControl
         YesText.Text = strings.PermissionYes;
         NoText.Text = strings.PermissionNo;
         DenyBox.Watermark = strings.DenyPlaceholder;
+        DenySendText.Text = strings.Send;
         Fill();
         UpdateWaiting();
     }
@@ -285,6 +333,7 @@ internal partial class PermissionPrompt : UserControl
         DiffPanel.Children.Clear();
         var request = _request;
         var strings = Strings;
+        var touch = IsTouch;
         // "this session" only when every rule it saves stays in the session: the claude may keep one in the settings
         AlwaysText.Text = request == null || request.AllowAlwaysStaysInSession
             ? strings.PermissionYesAlways
@@ -301,18 +350,18 @@ internal partial class PermissionPrompt : UserControl
         switch (KindOf(request.ToolName))
         {
             case ToolKind.Command:
-                TitleText.Text = strings.PermissionRunCommand;
+                TitleText.Text = touch ? strings.PermissionRunCommandQuestion : strings.PermissionRunCommand;
                 // the whole command, not its summary's first line: the user says yes to all of it
-                detail = Command(request) ?? detail;
+                detail = InputString(request, "command") ?? detail;
                 break;
             case ToolKind.File:
-                TitleText.Text = strings.PermissionEditFile;
+                TitleText.Text = touch ? EditFileQuestion(request, strings) : strings.PermissionEditFile;
                 // all of it, not the list's 20 lines a side: the user says yes to the whole change (Ruling 30)
                 var diff = ToolPresentation.Diff(request.ToolName, request.Input, maxLinesPerSide: null);
                 if (diff != null && diff.Count > 0) DiffPanel.Children.Add(ToolCallView.DiffBox(diff, strings, whole: true)); // all of it: the request scrolls
                 break;
             default:
-                TitleText.Text = strings.FormatUseTool(request.DisplayName);
+                TitleText.Text = touch ? strings.FormatUseToolQuestion(request.DisplayName) : strings.FormatUseTool(request.DisplayName);
                 break;
         }
         // never cut: the end of a command may be the part that matters; a long one scrolls inside the prompt
@@ -343,6 +392,7 @@ internal partial class PermissionPrompt : UserControl
         {
             DenyBox.Clear();
             DenyBox.IsVisible = true;
+            UpdateDenyField();
         }
         DenyBox.Focus(NavigationMethod.Tab);
     }
@@ -351,6 +401,38 @@ internal partial class PermissionPrompt : UserControl
     {
         DenyBox.IsVisible = false;
         DenyBox.Clear();
+        UpdateDenyField();
+    }
+
+    /// <summary>
+    /// The host's back button (<see cref="ClaudeChatView.CloseTopLayer"/>) closes the field of option 3 when it is open and on
+    /// screen (a request that is hidden, in a read-only view, keeps its field as it was), and the request stays. The keyboard
+    /// goes to "No", the answer that opened the field, if the field had it, as Esc in the field does it. False when there was no
+    /// field to close.
+    /// </summary>
+    internal bool CloseDenyFieldIfOpen()
+    {
+        if (!DenyBox.IsEffectivelyVisible) return false;
+        var hadKeyboard = InDenyField;
+        CloseDenyField();
+        if (hadKeyboard) NoButton.Focus(NavigationMethod.Tab);
+        return true;
+    }
+
+    /// <summary>
+    /// The field of option 3 is typed in, and in the touch layout that is with the on-screen keyboard up, which leaves the view
+    /// some 400 DIPs. So in that layout, while the field is open, the button under it is there and the detail (the command or the
+    /// diff) shrinks to a peek, for the title, the answers, the field and its button to stay above the keyboard; closing the
+    /// field gives the detail its room back. The detail's height is the resource <see cref="DetailPeekKey"/> then, the one of
+    /// <see cref="DetailHeightKey"/> otherwise.
+    /// </summary>
+    private void UpdateDenyField()
+    {
+        var touchField = IsTouch && DenyBox.IsVisible;
+        DenySendButton.IsVisible = touchField;
+        if (touchField == _peeking) return;
+        _peeking = touchField;
+        DetailScroller.Bind(MaxHeightProperty, DetailScroller.GetResourceObservable(touchField ? DetailPeekKey : DetailHeightKey));
     }
 
     private void OnDenyKeyDown(object? sender, KeyEventArgs e)
@@ -359,9 +441,7 @@ internal partial class PermissionPrompt : UserControl
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            var text = DenyBox.Text;
-            // nothing written: a plain no, and the host sends the claude its default text
-            Answer(PermissionDecision.Deny, string.IsNullOrWhiteSpace(text) ? null : text!.Trim());
+            SendDeny();
         }
         else if (e.Key == Key.Escape)
         {
@@ -371,11 +451,33 @@ internal partial class PermissionPrompt : UserControl
         }
     }
 
-    private static string? Command(PendingPermission request) =>
+    /// <summary>
+    /// Answers no with what is written in the field (Enter, or the touch layout's button): nothing written is a plain no, and the
+    /// host sends the claude its default text.
+    /// </summary>
+    private void SendDeny()
+    {
+        var text = DenyBox.Text;
+        Answer(PermissionDecision.Deny, string.IsNullOrWhiteSpace(text) ? null : text!.Trim());
+    }
+
+    /// <summary>
+    /// The touch layout's title for an edit: "Edit OrderService.cs?", the file named by the last part of its path (the
+    /// notebook's, for a NotebookEdit). A request that gives no path asks about the tool.
+    /// </summary>
+    private static string EditFileQuestion(PendingPermission request, ChatStrings strings)
+    {
+        var path = InputString(request, request.ToolName == "NotebookEdit" ? "notebook_path" : "file_path");
+        var name = string.IsNullOrEmpty(path) ? "" : ChatFile.LastSegment(path!);
+        return name.Length > 0 ? strings.FormatEditFileQuestion(name) : strings.FormatUseToolQuestion(request.DisplayName);
+    }
+
+    /// <summary>A text of the tool's input; null when the input has none by that name.</summary>
+    private static string? InputString(PendingPermission request, string name) =>
         request.Input.ValueKind == JsonValueKind.Object
-        && request.Input.TryGetProperty("command", out var command)
-        && command.ValueKind == JsonValueKind.String
-            ? command.GetString()
+        && request.Input.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
             : null;
 
     /// <summary>Real time, from a stopwatch.</summary>

@@ -69,6 +69,13 @@
   <!-- the context ring: the track is the foreground at 15 %; the fill is the same as the default theme -->
   <SolidColorBrush x:Key="ClaudeChat.ContextRingTrack" Color="#26CCCCCC" />
   <SolidColorBrush x:Key="ClaudeChat.ContextRingFill" Color="#C6613F" />
+  <!-- the touch layout: the user's bubble, and the sheets that rise from the bottom (the handle and the veil have the
+       same values as in the default theme) -->
+  <SolidColorBrush x:Key="ClaudeChat.UserBubble" Color="#252526" />
+  <SolidColorBrush x:Key="ClaudeChat.SheetBackground" Color="#181818" />
+  <SolidColorBrush x:Key="ClaudeChat.SheetGroupBackground" Color="#252526" />
+  <SolidColorBrush x:Key="ClaudeChat.SheetHandle" Color="#555555" />
+  <SolidColorBrush x:Key="ClaudeChat.SheetOverlay" Color="#66000000" />
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAcceptEdits">0 0 0 3 #1FCCCCCC</BoxShadows>
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowPlan">0 0 0 3 #1F0078D4</BoxShadows>
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAuto">0 0 0 3 #1FF85149</BoxShadows>

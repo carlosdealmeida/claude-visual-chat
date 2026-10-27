@@ -71,6 +71,79 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_touch_api_exists()
+    {
+        // the touch layout (0.5.0)
+        var layout = Library.GetExportedTypes().SingleOrDefault(t => t.FullName == "ClaudeVisualChat.ChatLayout");
+        Assert.NotNull(layout);
+        Assert.True(layout!.IsEnum);
+        Assert.Equal(new[] { "Desktop", "Touch" }, System.Enum.GetNames(layout));
+        var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
+        Assert.Equal(layout, view.GetProperty("Layout")?.PropertyType);
+        Assert.NotNull(view.GetField("LayoutProperty"));
+
+        // what the host puts in the usage sheet, under the context window; the sheet's texts
+        Assert.Equal(typeof(object), view.GetProperty("UsageSheetContent")?.PropertyType);
+        Assert.NotNull(view.GetField("UsageSheetContentProperty"));
+        foreach (var text in new[] { "ContextSection", "ContextWindow", "PercentUsed", "TokensOfWindow", "PlanUsage", "Refresh" })
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+
+        // the host's back button, which does not arrive as Esc on Android: it closes what is on top and says whether it did
+        var close = view.GetMethod("CloseTopLayer");
+        Assert.NotNull(close);
+        Assert.Equal(typeof(bool), close!.ReturnType);
+        Assert.Empty(close.GetParameters());
+
+        // a host that dims its own parts with the sheets: whether one is open (read only, for a binding), and the tap on its veil
+        Assert.Equal(typeof(bool), view.GetProperty("IsSheetOpen")?.PropertyType);
+        Assert.Null(view.GetProperty("IsSheetOpen")!.GetSetMethod());
+        Assert.Equal(typeof(Avalonia.DirectProperty<ClaudeVisualChat.Controls.ClaudeChatView, bool>), view.GetField("IsSheetOpenProperty")?.FieldType);
+        var dismiss = view.GetMethod("DismissSheet");
+        Assert.NotNull(dismiss);
+        Assert.Equal(typeof(bool), dismiss!.ReturnType);
+        Assert.Empty(dismiss.GetParameters());
+        foreach (var text in new[] { "AgentMapSubtitleTouch", "AgentMapSubtitleTouchOne" })
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+
+        // the speech to text a host offers to the reply box: the touch layout shows a microphone while it is available
+        var dictation = Library.GetExportedTypes().SingleOrDefault(t => t.FullName == "ClaudeVisualChat.IChatDictation");
+        Assert.NotNull(dictation);
+        Assert.True(dictation!.IsInterface);
+        Assert.Equal(typeof(bool), dictation.GetProperty("IsAvailable")?.PropertyType);
+        Assert.Equal(typeof(System.EventHandler), dictation.GetEvent("AvailabilityChanged")?.EventHandlerType);
+        var listen = dictation.GetMethod("ListenAsync");
+        Assert.NotNull(listen);
+        Assert.Equal(typeof(System.Threading.Tasks.Task<string>), listen!.ReturnType);
+        Assert.Equal(new[] { typeof(System.IProgress<string>), typeof(System.Threading.CancellationToken) }, listen.GetParameters().Select(p => p.ParameterType));
+        Assert.Equal(dictation, view.GetProperty("Dictation")?.PropertyType);
+        Assert.NotNull(view.GetField("DictationProperty"));
+        foreach (var text in new[] { "Dictate", "StopDictation" })
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+    }
+
+    [Fact]
+    public void The_dictation_interface_is_documented()
+    {
+        // the XML documentation travels in the package, beside the dll: a member without a summary shows nothing in the host's IntelliSense
+        var xml = System.IO.Path.ChangeExtension(Library.Location, ".xml");
+        Assert.True(System.IO.File.Exists(xml), xml);
+        var summarized = System.Xml.Linq.XDocument.Load(xml).Descendants("member")
+            .Where(m => !string.IsNullOrWhiteSpace((string?)m.Element("summary")))
+            .Select(m => (string)m.Attribute("name")!)
+            .ToHashSet();
+        foreach (var member in new[]
+        {
+            "T:ClaudeVisualChat.IChatDictation",
+            "P:ClaudeVisualChat.IChatDictation.IsAvailable",
+            "E:ClaudeVisualChat.IChatDictation.AvailabilityChanged",
+            "M:ClaudeVisualChat.IChatDictation.ListenAsync(System.IProgress{System.String},System.Threading.CancellationToken)",
+        })
+        {
+            Assert.True(summarized.Contains(member), member + " has no summary");
+        }
+    }
+
+    [Fact]
     public void The_bar_api_exists()
     {
         var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();

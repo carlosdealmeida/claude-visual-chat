@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Automation;
@@ -32,11 +33,28 @@ namespace ClaudeVisualChat.Controls;
 /// app. The mode picker and the model chip show what the claude reports; picking only asks for a change through the
 /// conversation's events. The box takes the mode's color: classes
 /// <c>plan</c>, <c>acceptEdits</c> and <c>auto</c> on its frame.
+/// In the touch layout (pseudo-class <c>:touch</c>) the bar is another, of 44 px targets: + and the model at the left;
+/// the context ring (from the first token), the microphone (while the host's dictation is available), send and, while
+/// Claude works, stop at the right. The + and the model ask
+/// the view for their sheets (<see cref="AddSheetRequested"/>, <see cref="ModelSheetRequested"/>); the "/", the cache
+/// clock, the Remote Control chip, the agents chip and the mode are not in it (the "+" sheet has the commands, the mode
+/// and Remote Control, and asks the box for the file dialog and the palette: <see cref="AttachFromPickerAsync"/>,
+/// <see cref="OpenCommands"/>). Enter breaks the line there, and Ctrl+Enter sends.
+/// The microphone (<see cref="IChatDictation"/>): a tap starts the listening, which locks the box and puts what is heard at the
+/// caret as it comes, a space on each side of the words; a second tap stops it and keeps what was heard. It sends nothing, and
+/// nothing is sent while it listens. It ends with the caret after the words and, only if the box had the keyboard when the finger
+/// came down, the keyboard back in the box (the soft keyboard does not come up by itself). Text put in the box while it listens (a
+/// message the host gives back, a command from the palette) stays, and the words go after it. The conversation or the layout
+/// changing, the view turning read-only, the box or the window going away, or the dictation going away or being no longer
+/// available, cut it short: the words already in the box stay (in its conversation's draft) and nothing heard after is added.
 /// </summary>
 internal partial class ChatComposer : UserControl
 {
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<ChatComposer>();
+
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<ChatComposer>();
 
     /// <summary>A mode: its icon on the extension's 26 px box, and its name.</summary>
     private static readonly FuncDataTemplate<Choice> ModeTemplate = new FuncDataTemplate<Choice>((choice, _) =>
@@ -57,6 +75,31 @@ internal partial class ChatComposer : UserControl
     private IReadOnlyList<string> _modes = Array.Empty<string>();
     private bool _attached;
 
+    /// <summary>What the touch bar holds; the bar has it only while the layout is touch.</summary>
+    private readonly Control? _touchBarContent;
+
+    /// <summary>The host's speech to text, if it offers one.</summary>
+    private IChatDictation? _dictation;
+
+    /// <summary>The dictation whose availability the box follows; it follows it only while in the window.</summary>
+    private IChatDictation? _trackedDictation;
+
+    /// <summary>The listening in progress, null when none. One that was cut short, or has ended, is no longer this one.</summary>
+    private Listening? _listening;
+
+    /// <summary>True while the dictation itself puts the words in the box: that text is not someone else's.</summary>
+    private bool _inserting;
+
+    /// <summary>True while the view is read-only: the box is hidden, and so is the microphone.</summary>
+    private bool _viewIsReadOnly;
+
+    /// <summary>
+    /// Whether the box had the keyboard when a finger came down on the microphone, null when no finger is down. A finger takes
+    /// the keyboard from the box before the click comes, so the box's own focus says nothing by then; a click with no finger
+    /// (the keyboard's Space, a screen reader) reads the box's focus as it is.
+    /// </summary>
+    private bool? _boxHadFocusAtPress;
+
     /// <summary>True while the mode picker is set from the conversation, so the change is not the user's.</summary>
     private bool _syncing;
 
@@ -72,38 +115,37 @@ internal partial class ChatComposer : UserControl
     public ChatComposer()
     {
         InitializeComponent();
+        _touchBarContent = TouchBar.Child; // the bar takes it back in the touch layout, and only then
+        TouchBar.Child = null;
         ModePicker.ItemTemplate = ModeTemplate;
         Input.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
         Input.PropertyChanged += (_, e) =>
         {
             if (e.Property != TextBox.TextProperty) return;
+            RebaseListening();
             UpdateSend();
             UpdateBusy(); // with text, the square sends; empty while Claude works, it stops
         };
-        SendButton.Click += (_, _) =>
-        {
-            Send();
-            Input.Focus();
-        };
-        StopButton.Click += (_, _) => _tracked?.Stop();
+        SendButton.Click += OnSendClick;
+        TouchSend.Click += OnSendClick;
+        StopButton.Click += OnStopClick;
+        TouchStop.Click += OnStopClick;
+        TouchAddButton.Click += (_, _) => AddSheetRequested?.Invoke(this, EventArgs.Empty);
+        TouchModelChip.OpenSheet = () => ModelSheetRequested?.Invoke(this, EventArgs.Empty);
+        // the finger takes the keyboard from the box as it comes down, before the tap lands: the box is asked first. A finger that
+        // does not end in a tap (it slides off, a gesture takes it) lets go of the button, which loses the pointer, and leaves nothing
+        MicButton.AddHandler(PointerPressedEvent, (_, _) => _boxHadFocusAtPress = Input.IsFocused, RoutingStrategies.Tunnel, true);
+        MicButton.AddHandler(PointerCaptureLostEvent, (_, _) => _boxHadFocusAtPress = null, RoutingStrategies.Direct, true);
+        MicButton.Click += OnMicClick;
         ModePicker.SelectionChanged += OnModePicked;
         Palette.PlacementTarget = Box;
         Palette.Opener = CommandsButton;
         Palette.Input = Input;
-        CommandsButton.Click += (_, _) => Palette.Toggle();
+        CommandsButton.Click += (_, _) => OpenCommands();
         ModelMenu.PlacementTarget = Box;
         ModelMenu.Opener = ModelChip;
         ModelChip.Menu = ModelMenu;
-        AddButton.Click += async (_, _) =>
-        {
-            var conversation = _tracked; // the one shown now, even if another is shown when the dialog closes
-            if (PickImagesOverride != null)
-            {
-                await AttachAsync(conversation, await PickImagesOverride());
-                return;
-            }
-            await AttachSourcesAsync(conversation, await PickAsync(conversation == null || conversation.MaxFiles > 0));
-        };
+        AddButton.Click += async (_, _) => await AttachFromPickerAsync();
         Input.PastingFromClipboard += OnPasting;
         Box.AddHandler(DragDrop.DragOverEvent, OnDragOver);
         Box.AddHandler(DragDrop.DropEvent, OnDrop);
@@ -125,6 +167,7 @@ internal partial class ChatComposer : UserControl
         {
             if (!ReferenceEquals(value, _conversation))
             {
+                CutDictation(); // the words heard so far are in the box: they go to the draft of the conversation that leaves
                 KeepDraft(_conversation);
                 _conversation = value;
                 ShowDraft(value);
@@ -133,11 +176,14 @@ internal partial class ChatComposer : UserControl
             RemoteControlChip.Conversation = value;
             AgentsChip.Conversation = value;
             ContextRing.Conversation = value;
+            TouchRing.Conversation = value;
             ModelChip.Conversation = value;
+            TouchModelChip.Conversation = value;
             ModelMenu.Conversation = value;
             Palette.Conversation = value;
             IsEnabled = value != null;
             if (_attached) Track(value);
+            UpdateMic();
         }
     }
 
@@ -173,6 +219,12 @@ internal partial class ChatComposer : UserControl
     /// <summary>The user clicked an attached image: the view shows it.</summary>
     internal event EventHandler<(ChatImage Image, string Name)>? PreviewRequested;
 
+    /// <summary>The user clicked the + of the touch bar: the view shows the sheet that adds to the message.</summary>
+    internal event EventHandler? AddSheetRequested;
+
+    /// <summary>The user clicked the model of the touch bar: the view shows the sheet that picks the model and the effort.</summary>
+    internal event EventHandler? ModelSheetRequested;
+
     /// <summary>Nothing written yet (spaces do not count).</summary>
     internal bool IsEmpty => string.IsNullOrWhiteSpace(Input.Text);
 
@@ -182,16 +234,26 @@ internal partial class ChatComposer : UserControl
 
     internal bool FocusInput() => Input.Focus();
 
+    /// <summary>
+    /// Opens the command palette with its filter field, or closes it: what the / button does, and what the "Commands" row of the
+    /// touch layout's "+" sheet asks for.
+    /// </summary>
+    internal void OpenCommands() => Palette.Toggle();
+
     /// <summary>The command palette or the model menu is open: they take Esc first.</summary>
     internal bool HasOpenPopup => Palette.IsOpen || ModelMenu.IsOpen;
 
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
+
+    private bool IsTouch => GetValue(LayoutProperty) == ChatLayout.Touch;
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         _attached = true;
         Track(_conversation);
+        TrackDictation(_dictation);
+        UpdateMic(); // it may have become available, or not, while the box was out of the window
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -199,13 +261,37 @@ internal partial class ChatComposer : UserControl
         base.OnDetachedFromVisualTree(e);
         _attached = false;
         Track(null); // the conversation outlives the view: let go of its events (and draw nothing)
+        TrackDictation(null); // so does the host's dictation
+        CutDictation(); // nothing listens for a box that is not on screen
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
         if (change.Property == StringsProperty) Refresh();
-        else if (change.Property == IsVisibleProperty && !IsVisible) ClosePopups();
+        else if (change.Property == LayoutProperty) UpdateTouch();
+        else if (change.Property == IsVisibleProperty && !IsVisible)
+        {
+            ClosePopups();
+            CutDictation();
+        }
+    }
+
+    /// <summary>
+    /// In the touch layout (pseudo-class <c>:touch</c>) the box shows the touch bar and not the desktop's, and the empty
+    /// text box says what the app's does. The touch bar's parts are in the tree only then, so that the desktop layout has
+    /// one of each (the ring, the model chip, send, stop) and its tree is the one it always was.
+    /// </summary>
+    private void UpdateTouch()
+    {
+        var touch = IsTouch;
+        ClosePopups(); // an open menu belongs to the layout that leaves: the desktop's model menu has no chip in the touch bar
+        PseudoClasses.Set(":touch", touch);
+        DesktopBar.IsVisible = !touch;
+        TouchBar.Child = touch ? _touchBarContent : null;
+        TouchBar.IsVisible = touch;
+        UpdateBusy();
+        UpdateMic(); // the desktop layout has no microphone, and a dictation under way has nothing to stop it with there
     }
 
     /// <summary>
@@ -270,7 +356,10 @@ internal partial class ChatComposer : UserControl
         }
     }
 
-    /// <summary>The message never left: it comes back to the box, unless something else was written since.</summary>
+    /// <summary>
+    /// The message never left: it comes back to the box, unless something else was written since. A dictation under way goes on
+    /// over it (<see cref="RebaseListening"/>), so that the words heard go after it and it stays when the dictation ends.
+    /// </summary>
     private void OnSubmitUndone(object? sender, MessageSubmittedEventArgs e)
     {
         if (!IsEmpty) return;
@@ -288,9 +377,13 @@ internal partial class ChatComposer : UserControl
     {
         var strings = Strings;
         Label(SendButton, strings.Send);
+        Label(TouchSend, strings.Send);
         Label(StopButton, strings.Stop);
+        Label(TouchStop, strings.Stop);
         Label(AddButton, strings.AddAttachment);
+        Label(TouchAddButton, strings.AddAttachment);
         Label(CommandsButton, strings.ShowCommands);
+        UpdateMicName();
         ShowRejected(_rejected);
         UpdateBusy();
         UpdateSend();
@@ -305,18 +398,20 @@ internal partial class ChatComposer : UserControl
 
     /// <summary>
     /// While Claude works, stop shows and what is sent waits in line; send shows next to it once something is written
-    /// or attached (alone, stop is the extension's square). Idle, only send.
+    /// or attached (alone, stop is the extension's square). Idle, only send. The same for both bars' buttons.
     /// </summary>
     private void UpdateBusy()
     {
         var busy = _tracked != null && _tracked.IsBusy;
         var strings = Strings;
-        Input.Watermark = busy ? strings.InputPlaceholderBusy : strings.InputPlaceholder;
-        StopButton.IsVisible = busy;
-        SendButton.IsVisible = !busy || HasSomethingToSend;
+        Input.Watermark = busy ? strings.InputPlaceholderBusy : IsTouch ? strings.InputPlaceholderTouch : strings.InputPlaceholder;
+        var send = !busy || HasSomethingToSend;
+        StopButton.IsVisible = TouchStop.IsVisible = busy;
+        SendButton.IsVisible = TouchSend.IsVisible = send;
     }
 
-    private void UpdateSend() => SendButton.IsEnabled = HasSomethingToSend;
+    /// <summary>Send is enabled when there is something to send, and the box is not taking dictation: what is in it is not all of the message yet.</summary>
+    private void UpdateSend() => SendButton.IsEnabled = TouchSend.IsEnabled = HasSomethingToSend && _listening == null;
 
     /// <summary>Text, or an image or a file attached.</summary>
     private bool HasSomethingToSend =>
@@ -324,10 +419,24 @@ internal partial class ChatComposer : UserControl
 
     // ---- keys and buttons ----
 
+    private void OnSendClick(object? sender, RoutedEventArgs e)
+    {
+        Send();
+        Input.Focus();
+    }
+
+    private void OnStopClick(object? sender, RoutedEventArgs e) => _tracked?.Stop();
+
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
     {
         // a hidden box (read-only, or an ancestor hidden) may keep the keyboard: its keys send and stop nothing
         if (!IsEffectivelyVisible) return;
+        if (IsTouch && e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.Control)
+        {
+            e.Handled = true; // the touch layout's send key: there Enter breaks the line
+            Send();
+            return;
+        }
         if (e.KeyModifiers != KeyModifiers.None) return; // Shift+Enter: the text box breaks the line
         if (Palette.HandleKey(e.Key))
         {
@@ -336,6 +445,7 @@ internal partial class ChatComposer : UserControl
         }
         if (e.Key == Key.Enter)
         {
+            if (IsTouch) return; // the text box breaks the line; the send button, or Ctrl+Enter, sends
             e.Handled = true; // Enter is the send key, never a line break
             Send();
         }
@@ -349,7 +459,7 @@ internal partial class ChatComposer : UserControl
     private void Send()
     {
         var conversation = _tracked;
-        if (conversation == null || !HasSomethingToSend || !IsEffectivelyVisible) return;
+        if (conversation == null || !HasSomethingToSend || !IsEffectivelyVisible || _listening != null) return;
         var text = Input.Text ?? "";
         // cleared first: a host that refuses the message at once (UndoSubmit inside MessageSubmitted) gets it back here
         Input.Clear();
@@ -358,6 +468,21 @@ internal partial class ChatComposer : UserControl
     }
 
     // ---- images and files ----
+
+    /// <summary>
+    /// What the + button does: the file dialog, and then what was picked is attached to the conversation shown when it opened,
+    /// even if another is shown when the dialog closes. The "Photo or file" row of the touch layout's "+" sheet asks for it too.
+    /// </summary>
+    internal async Task AttachFromPickerAsync()
+    {
+        var conversation = _tracked;
+        if (PickImagesOverride != null)
+        {
+            await AttachAsync(conversation, await PickImagesOverride());
+            return;
+        }
+        await AttachSourcesAsync(conversation, await PickAsync(conversation == null || conversation.MaxFiles > 0));
+    }
 
     /// <summary>The + button's dialog: images and PDF, text and CSV files together (images only when no file is taken).</summary>
     private async Task<IReadOnlyList<AttachSource>> PickAsync(bool files)
@@ -566,6 +691,261 @@ internal partial class ChatComposer : UserControl
         }
     }
 
+    // ---- dictation ----
+
+    /// <summary>
+    /// The host's speech to text. The touch layout's bar has a microphone while it is available, the box has a conversation to
+    /// write to and the view is not read-only. A listening in progress ends when the microphone goes.
+    /// </summary>
+    internal IChatDictation? Dictation
+    {
+        get => _dictation;
+        set
+        {
+            if (ReferenceEquals(value, _dictation)) return;
+            _dictation = value;
+            if (_attached) TrackDictation(value);
+            UpdateMic();
+        }
+    }
+
+    /// <summary>The view is read-only: the box is hidden, so the microphone goes, and a listening in progress ends.</summary>
+    internal bool ViewIsReadOnly
+    {
+        get => _viewIsReadOnly;
+        set
+        {
+            _viewIsReadOnly = value;
+            UpdateMic();
+        }
+    }
+
+    /// <summary>Follows the dictation's availability while the box is in the window: the host's object outlives the view.</summary>
+    private void TrackDictation(IChatDictation? dictation)
+    {
+        if (ReferenceEquals(dictation, _trackedDictation)) return;
+        if (_trackedDictation != null) _trackedDictation.AvailabilityChanged -= OnAvailabilityChanged;
+        _trackedDictation = dictation;
+        if (_trackedDictation != null) _trackedDictation.AvailabilityChanged += OnAvailabilityChanged;
+    }
+
+    /// <summary>The host raises it from any thread.</summary>
+    private void OnAvailabilityChanged(object? sender, EventArgs e) => OnUi(UpdateMic);
+
+    /// <summary>
+    /// Shows the microphone when the touch layout has it, and takes a listening in progress with it when it goes: the person
+    /// would have nothing left to stop it with.
+    /// </summary>
+    private void UpdateMic()
+    {
+        var show = IsTouch && _dictation is { IsAvailable: true } && _conversation != null && !_viewIsReadOnly;
+        MicButton.IsVisible = show;
+        if (!show) CutDictation();
+        UpdateMicName();
+    }
+
+    private void UpdateMicName() => Label(MicButton, _listening == null ? Strings.Dictate : Strings.StopDictation);
+
+    private void OnMicClick(object? sender, RoutedEventArgs e)
+    {
+        var boxHadFocus = _boxHadFocusAtPress ?? Input.IsFocused;
+        _boxHadFocusAtPress = null;
+        if (_listening == null) StartListening(boxHadFocus);
+        else Cancel(_listening); // the second tap: the host still gives back what it heard, and that is put in when it does
+    }
+
+    /// <summary>
+    /// The first tap. The text of the box is kept as it is, and the words go into it at the caret if the box had the keyboard (the
+    /// caret says where the person was), else at its end (it says nothing then). The box is locked while it listens.
+    /// </summary>
+    private void StartListening(bool boxHadFocus)
+    {
+        var dictation = _dictation;
+        if (dictation is not { IsAvailable: true } || _conversation == null) return;
+        var text = Input.Text ?? "";
+        var run = new Listening(text, boxHadFocus ? Input.CaretIndex : text.Length, boxHadFocus);
+        _listening = run;
+        ShowListening(true);
+        _ = RunListeningAsync(dictation, run);
+    }
+
+    /// <summary>
+    /// Asks the host to listen, and puts what it gives back in the box when it does (the await brings it back to the UI thread, as
+    /// everywhere in this control). Nothing escapes it.
+    /// </summary>
+    private async Task RunListeningAsync(IChatDictation dictation, Listening run)
+    {
+        string? heard = null;
+        var reports = new Partials(spoken => OnPartial(run, spoken));
+        run.Reports = reports;
+        try
+        {
+            heard = await dictation.ListenAsync(reports, run.Stop.Token);
+        }
+        catch (Exception)
+        {
+            // a dictation that fails (or throws when it is stopped, which it should not) leaves the words it reported in the box
+        }
+        EndListening(run, heard);
+    }
+
+    /// <summary>What was heard so far replaces what the last report put in.</summary>
+    private void OnPartial(Listening run, string? spoken)
+    {
+        if (!ReferenceEquals(run, _listening)) return; // cut short, or over: the host's late reports go nowhere
+        run.Heard = spoken;
+        Insert(run, spoken);
+    }
+
+    /// <summary>
+    /// The host gave back what it heard (or failed): the result goes in as the partials did, and the last partial stays when
+    /// there is no result (none, or only blanks). The box is free again, with the caret after the words, and the keyboard back
+    /// in it only if it had the keyboard when the person tapped and nobody has taken the keyboard since.
+    /// </summary>
+    private void EndListening(Listening run, string? heard)
+    {
+        run.Reports?.Detach();
+        run.Stop.Dispose();
+        if (!ReferenceEquals(run, _listening)) return; // cut short in the meantime: the box is free, and these words have nowhere to go
+        _listening = null;
+        Insert(run, string.IsNullOrWhiteSpace(heard) ? run.Heard : heard);
+        ShowListening(false);
+        if (run.BoxHadFocus && KeyboardIsFree()) Input.Focus();
+    }
+
+    /// <summary>
+    /// Cuts a listening short: the conversation or the layout changed, the box or the microphone went away. The box is free at once
+    /// with the words that are in it (they are the conversation's draft), and what the host gives back later is ignored.
+    /// </summary>
+    private void CutDictation()
+    {
+        var run = _listening;
+        if (run == null) return;
+        _listening = null;
+        run.Reports?.Detach(); // a host may keep its progress after the stop: it must not keep the view with it
+        ShowListening(false);
+        Cancel(run);
+    }
+
+    /// <summary>Asks the host to stop. A callback of the host's that throws is the host's: the listening is stopped all the same.</summary>
+    private static void Cancel(Listening run)
+    {
+        try
+        {
+            run.Stop.Cancel();
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    /// <summary>Puts the words in the box in place of the last ones, with the caret after them.</summary>
+    private void Insert(Listening run, string? spoken)
+    {
+        var (text, caret) = DictationText.Insert(run.Text, run.Caret, spoken);
+        _inserting = true;
+        try
+        {
+            Input.Text = text;
+        }
+        finally
+        {
+            _inserting = false;
+        }
+        Input.CaretIndex = caret;
+    }
+
+    /// <summary>
+    /// Text put in the box by anything but the dictation while it listens (the host gives a message back with
+    /// <see cref="ChatConversation.UndoSubmit"/>, the palette puts a command in) is the box's text from then on: the words heard
+    /// so far, and those still to come, go after it. Without this, the next report would put back the text of the tap.
+    /// </summary>
+    private void RebaseListening()
+    {
+        if (_inserting || _listening is not { } run) return;
+        var text = Input.Text ?? "";
+        run.Rebase(text, text.Length);
+    }
+
+    /// <summary>The box is locked while it listens (the words come in, nothing else does) and the microphone is the accent's.</summary>
+    private void ShowListening(bool listening)
+    {
+        Input.IsReadOnly = listening;
+        MicButton.Classes.Set("listening", listening);
+        UpdateMicName();
+        UpdateSend();
+    }
+
+    /// <summary>The keyboard is where the tap on the microphone left it, or nowhere: nobody has taken it since.</summary>
+    private bool KeyboardIsFree()
+    {
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+        return focused == null || focused is TopLevel || ReferenceEquals(focused, MicButton) || ReferenceEquals(focused, Input);
+    }
+
+    /// <summary>Runs <paramref name="action"/> on the UI thread: at once when already there, else posted. The host reports from any thread.</summary>
+    private static void OnUi(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess()) action();
+        else Dispatcher.UIThread.Post(action);
+    }
+
+    /// <summary>One listening: the box as it was when the person tapped, and the words heard since.</summary>
+    private sealed class Listening
+    {
+        public Listening(string text, int caret, bool boxHadFocus)
+        {
+            Text = text;
+            Caret = caret;
+            BoxHadFocus = boxHadFocus;
+        }
+
+        /// <summary>The text of the box before the words; each report puts them in it again, so that it replaces the last.</summary>
+        public string Text { get; private set; }
+
+        /// <summary>Where the words go in <see cref="Text"/>.</summary>
+        public int Caret { get; private set; }
+
+        /// <summary>What the host reports through; it lets go of the box when the listening is over.</summary>
+        public Partials? Reports { get; set; }
+
+        /// <summary>Someone else's text took the box: the words go after it from now on.</summary>
+        public void Rebase(string text, int caret)
+        {
+            Text = text;
+            Caret = caret;
+        }
+
+        /// <summary>The box had the keyboard when the person tapped.</summary>
+        public bool BoxHadFocus { get; }
+
+        /// <summary>The last report of the host's; what stays if it gives back nothing, or fails.</summary>
+        public string? Heard { get; set; }
+
+        /// <summary>Cancelled by a second tap, or when the listening is cut short.</summary>
+        public CancellationTokenSource Stop { get; } = new CancellationTokenSource();
+    }
+
+    /// <summary>
+    /// What the host reports through: each report reaches the box on the UI thread, whichever thread it comes from, until the
+    /// listening is over. The host may keep it after that, so it then holds nothing of the view's.
+    /// </summary>
+    private sealed class Partials : IProgress<string>
+    {
+        private volatile Action<string>? _apply;
+
+        public Partials(Action<string> apply) => _apply = apply;
+
+        /// <summary>The listening is over: later reports go nowhere.</summary>
+        public void Detach() => _apply = null;
+
+        public void Report(string value)
+        {
+            var apply = _apply;
+            if (apply != null) OnUi(() => apply(value));
+        }
+    }
+
     // ---- the mode ----
 
     private void RebuildModes()
@@ -614,7 +994,7 @@ internal partial class ChatComposer : UserControl
     }
 
     /// <summary>The resource with a mode's icon; a mode without one shows the default mode's.</summary>
-    private static string IconKey(string? mode) => mode switch
+    internal static string IconKey(string? mode) => mode switch
     {
         "plan" => "ClaudeChat.Icon.ModePlan",
         "acceptEdits" => "ClaudeChat.Icon.ModeAcceptEdits",

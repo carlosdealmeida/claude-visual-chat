@@ -108,10 +108,14 @@ internal abstract class ChatMenuPopup : Popup
 /// filtered by what follows the "/" until a space or the "/" goes. A command matches by its name (exactly, then at its
 /// start, then anywhere) and then by its description, in the claude's order within each. The arrows move the mark,
 /// Enter runs the marked command (<see cref="ChatConversation.Submit"/> with <c>/name</c>), Tab puts <c>/name </c>
-/// in the reply box, Esc closes and gives the keyboard back to the box.
+/// in the reply box, Esc closes and gives the keyboard back to the box. A press on a row runs its command; in the touch
+/// layout a tap does (the pointer let go where it was pressed), so that a finger that scrolls the list runs nothing.
 /// </summary>
 internal sealed class CommandPalette : ChatMenuPopup
 {
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<CommandPalette>();
+
     private readonly TextBox _filter = new TextBox();
     private readonly Border _spacer = new Border { Height = 4 };
     private readonly StackPanel _list = new StackPanel();
@@ -185,6 +189,8 @@ internal sealed class CommandPalette : ChatMenuPopup
             };
         }
     }
+
+    private bool IsTouch => GetValue(LayoutProperty) == ChatLayout.Touch;
 
     /// <summary>The / button: opens the palette with its filter field, or closes it.</summary>
     internal void Toggle()
@@ -297,9 +303,18 @@ internal sealed class CommandPalette : ChatMenuPopup
         var description = Describe(command, strings);
         if (description.Length > 0) ToolTip.SetTip(row, description);
         row.PointerEntered += (_, _) => Mark(index);
+        // the desktop runs the command at the press, as the extension's menu does. The touch layout waits for the tap (the
+        // pointer let go where it was pressed, within Avalonia's tap threshold), and leaves the press alone, so that a finger
+        // which starts to scroll the list scrolls it instead of running the command under it
         row.PointerPressed += (_, e) =>
         {
-            if (!e.GetCurrentPoint(row).Properties.IsLeftButtonPressed) return;
+            if (IsTouch || !e.GetCurrentPoint(row).Properties.IsLeftButtonPressed) return;
+            e.Handled = true;
+            Run(command);
+        };
+        row.Tapped += (_, e) =>
+        {
+            if (!IsTouch) return;
             e.Handled = true;
             Run(command);
         };

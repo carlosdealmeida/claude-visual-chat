@@ -3,6 +3,78 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-10-27
+
+The touch layout: the view laid out for a finger on a phone, in the style of Anthropic's Claude app.
+
+### Added
+
+- `ChatLayout` (`Desktop`, the default, and `Touch`) and `ClaudeChatView.Layout`, inherited by everything inside the
+  view; the view and each part that changes with it take the pseudo-class `:touch`. In the touch layout: text of 15 px
+  on a 22.5 px line and no timeline; the user's message in a bubble at the right, with no time; each tool call in a
+  block with a frame and its state dot at the start; a copy button (⧉) under a finished turn, in place of the line of
+  duration, tokens and cost; the "Agents · N" chip at the end of the list; a rounded reply box over a bar of targets
+  of 44 px (**+**, the model pill, the context ring from the first token, the microphone and send or stop), where Enter
+  breaks the line and Ctrl+Enter sends; the model pill ends in an ellipsis, the level first, when the bar leaves it less
+  room than its name and level need (on a phone 360 DIPs wide, with the ring, the microphone and send on the bar), where it
+  would cut a letter in half; and targets of 44 px in the banners, the image preview, the Agent map and the command
+  palette, whose rows run their command on a tap and not on the press, so a finger that scrolls the list runs nothing. The
+  desktop layout does not change: its tree has only the hidden, empty layers of the sheets more.
+- Sheets that rise from the bottom of the view in the touch layout: the model sheet (the models with their
+  descriptions, and the effort levels on a page of their own), the **+** sheet (photo or file, commands, the permission
+  mode on a page, browser, Remote Control and the link to open it) and the usage sheet, which takes the place of the
+  `/context` and `/usage` panels there (the context window by category and, under it, the host's own content or the
+  plan's limits; its ↻ asks for the data again). The ✕, Esc or a tap on the veil closes a sheet. A permission request
+  closes the open sheets and keeps new ones from opening while it waits.
+- `ClaudeChatView.UsageSheetContent`: what the host shows in the usage sheet under the context window, in place of the
+  plan's limits. A control is shown as it is; any other object through the host's data templates.
+- The permission request in the touch layout: a short question ("Edit OrderService.cs?", "Run this command?", "Use
+  Fetch?"), its answers across the block at 48 px with the first in the accent, a "Send" button under the field of
+  "No", and its command or diff scrolling inside a frame of 240 px, which shrinks to a peek of 56 px while that field is
+  open, so that the keyboard leaves it in sight. No keyboard is given to the reply box after an answer or when a layer
+  closes: on a phone that raises the on-screen keyboard.
+- `IChatDictation` and `ClaudeChatView.Dictation`: the host's speech to text. While it is available, the touch layout's
+  bar has a microphone: a tap listens, what is heard goes into the box at the caret and is never sent by itself, and a
+  second tap stops it. Text put in the box while it listens (a message the host gives back with `UndoSubmit`, a command
+  from the palette) stays, and the words go after it.
+- `ClaudeChatView.CloseTopLayer()`, for a host's back button, which does not reach the view as Esc: it closes one layer
+  per call, the top-most first, and returns whether it closed one.
+- `ClaudeChatView.IsSheetOpen` (a read-only `DirectProperty`, for a binding) and `ClaudeChatView.DismissSheet()`, for a host
+  that draws its own parts around the view (a top bar): while a sheet is on screen the host dims them with a veil of its own,
+  in the color `ClaudeChat.SheetOverlay`, and a tap on it calls `DismissSheet()`, which does what a tap on the sheet's veil
+  does and returns false, closing nothing, when no sheet is open.
+- The Agent map in the touch layout: when the tree does not fit the map's width (a phone), it goes down, the main agent's
+  card on top and the agents under it, as wide as the map, an agent another one called still 32 px in under its caller, and
+  the map scrolls only down; where it fits (a tablet), it is the desktop's. Its rows' lines are tall enough for the touch
+  layout's text, whose descenders the desktop's lines cut. Its subtitle wraps and speaks of a tap: new
+  `ChatStrings` texts `AgentMapSubtitleTouch` and `AgentMapSubtitleTouchOne`, in English and Portuguese.
+- `Themes/Touch.axaml`: the touch layout's sizes, the same `ClaudeChat.*` keys as the desktop's with the phone's values,
+  merged into the view's resources while the layout is `Touch`. New resources `ClaudeChat.UserBubble`,
+  `SheetBackground`, `SheetGroupBackground`, `SheetHandle` and `SheetOverlay` (in "Dark 2026" and "Dark Modern"),
+  `PermissionWarningBorder`, `PromptDetailMaxHeight` and `PromptDetailPeekHeight` (the heights of the request's command
+  or diff; the desktop's stay at 200), and the icons `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`,
+  `Icon.Globe`, `Icon.Remote` and `Icon.External`.
+- New `ChatStrings` texts, in English and Portuguese: `InputPlaceholderTouch`, `Dictate`, `StopDictation`,
+  `PermissionRunCommandQuestion`, `PermissionEditFileQuestion`, `PermissionUseToolQuestion`, `AttachPhotoOrFile`,
+  `Commands`, `ModeTitle`, `Browser`, `StatusOff`, `StatusConnecting`, `StatusOn`, `StatusError`,
+  `OpenRemoteControlLink`, `SelectModelTitle`, `OtherModels`, `ModelDescriptions` (the claude's descriptions of its
+  models, in the language of the strings), `ContextSection`, `ContextWindow`, `PercentUsed`, `TokensOfWindow`,
+  `PlanUsage`, `Refresh`, `AgentsChipTouch`, `AgentsChipTouchRunning`, `CopyAnswer` and `Copied`.
+- The sample app takes `--touch`: a window the size of a phone's screen (412 × 892) with the view alone in it, in the
+  touch layout; with `--screenshot` too, which makes the screenshots of the README's new section.
+
+### Changed
+
+- Nothing changes in the desktop layout. Its context ring still shows once more than half of the window is used and
+  draws the extension's three steps; the touch layout's shows from the first token and draws the share used as it is
+  (15 % used is 15 % of the circle).
+
+### Fixed
+
+- A host that takes the view's data context away (a page drawn by a template, its content set to null) no longer gets a
+  binding warning on the panel of the reply box (`StackPanel.IsVisible`): the view hides that panel from code while it is
+  read-only, and coming into the window or leaving it logs nothing.
+
 ## [0.4.0] - 2026-10-23
 
 The Agent map, the context ring and attached files, as the Claude Code extension 2.1.309 has them.

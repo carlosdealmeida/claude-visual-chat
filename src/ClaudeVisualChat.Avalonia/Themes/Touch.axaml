@@ -1,0 +1,32 @@
+<!--
+  The sizes of the touch layout (ChatLayout.Touch), for a phone: the same ClaudeChat.* keys as the sizes in
+  ClaudeChatTheme.axaml, with the phone's values. ClaudeChatView merges this file into its own resources while its
+  Layout is Touch and takes it out when the layout goes back, so the app does nothing; an app that wants another value
+  for one of these keys redefines it in the view's resources, which wins. Colors and fonts are not here: they are the
+  theme's.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- text: 15 px on a 1.5 line, the app's reading size; the small text (times, paths, the line under a tool) at .85em -->
+  <x:Double x:Key="ClaudeChat.FontSize">15</x:Double>
+  <x:Double x:Key="ClaudeChat.LineHeight">22.5</x:Double>
+  <x:Double x:Key="ClaudeChat.SmallFontSize">12.75</x:Double>
+  <x:Double x:Key="ClaudeChat.SmallLineHeight">19</x:Double>
+  <x:Double x:Key="ClaudeChat.CodeFontSize">13.5</x:Double>               <!-- .9em: inline code and code blocks -->
+  <x:Double x:Key="ClaudeChat.EditorFontSize">13</x:Double>               <!-- the diff -->
+  <x:Double x:Key="ClaudeChat.EditorLineHeight">18</x:Double>
+  <x:Double x:Key="ClaudeChat.PromptFontSize">15</x:Double>               <!-- the permission request -->
+  <x:Double x:Key="ClaudeChat.PromptLineHeight">22.5</x:Double>
+  <x:Double x:Key="ClaudeChat.PromptCodeFontSize">13</x:Double>
+
+  <!-- places: the list has less room at the sides; the reply box and the panels have no ceiling, and the scroll bar,
+       which a finger does not need, takes no room; the command or the diff of a permission request goes 40 px higher
+       before it scrolls, and is a peek of 56 px while the field of option 3 is open: with the on-screen keyboard up the view
+       is some 400 px, and the frame (26), the title (27), the three answers (168) and the field with its button (112) take
+       333 of them already -->
+  <Thickness x:Key="ClaudeChat.ListPadding">16,12,16,16</Thickness>
+  <x:Double x:Key="ClaudeChat.ComposerMaxWidth">100000</x:Double>
+  <x:Double x:Key="ClaudeChat.ScrollBarGutter">0</x:Double>
+  <x:Double x:Key="ClaudeChat.PromptDetailMaxHeight">240</x:Double>
+  <x:Double x:Key="ClaudeChat.PromptDetailPeekHeight">56</x:Double>
+</ResourceDictionary>

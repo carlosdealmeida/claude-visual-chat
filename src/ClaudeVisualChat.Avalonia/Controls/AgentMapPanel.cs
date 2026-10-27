@@ -13,6 +13,7 @@ using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace ClaudeVisualChat.Controls;
 
@@ -32,14 +33,33 @@ namespace ClaudeVisualChat.Controls;
 /// out of the window it only lets go of the conversation and stops the timer. A view narrower than the tree scrolls it
 /// sideways, and the card is never wider than the view less 32 px. It takes the keyboard when it opens and, when it closes with
 /// the keyboard in it, <see cref="FocusReleased"/> lets the view put the keyboard back.
+/// <para>
+/// In the touch layout the subtitle speaks of a tap and wraps, and a tree that does not fit the map's width goes down instead
+/// (<see cref="IsNarrow"/>): the main agent's card on top, as wide as the map, and the agents under it, as wide as the map too,
+/// with the line coming down from the card's left; an agent another one called is still 32 px in, under its caller. The map then
+/// scrolls only down. A tree that fits (a tablet) is laid out as on the desktop, whose layout never goes down.
+/// </para>
 /// </summary>
 internal sealed class AgentMapPanel : Border
 {
     /// <summary>How far in a level of the tree goes: the extension's 32 px before a column of agents.</summary>
     private const double Indent = 32;
 
+    /// <summary>The main agent's card beside the agents: the tree's first column.</summary>
+    private const double MainWidth = 320;
+
+    /// <summary>An agent's row beside the main card: the theme's width of <c>ClaudeChatAgentRow</c>.</summary>
+    private const double RowWidth = 300;
+
+    /// <summary>The tree's columns beside each other: the main card's <see cref="MainWidth"/>, then the agents.</summary>
+    private static ColumnDefinitions WideColumns() =>
+        new ColumnDefinitions { new ColumnDefinition(new GridLength(MainWidth)), new ColumnDefinition(GridLength.Auto) };
+
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<AgentMapPanel>();
+
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<AgentMapPanel>();
 
     // the map
     private readonly Border _dialog = new Border();
@@ -47,13 +67,17 @@ internal sealed class AgentMapPanel : Border
     private readonly TextBlock _subtitle = new TextBlock();
     private readonly Button _close;
     private readonly ScrollViewer _scroller;
-    private readonly Grid _tree = new Grid { ColumnDefinitions = new ColumnDefinitions("320,Auto") }; // the main card's 320 px, then the agents
+    private readonly Grid _tree = new Grid { ColumnDefinitions = WideColumns() };
     private readonly Grid _mainNode = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto") };
     private readonly Ellipse _mainDot = new Ellipse();
     private readonly TextBlock _mainTitle = new TextBlock();
     private readonly TextBlock _mainMeta = new TextBlock();
     private readonly Border _mainStub = new Border();
+    private readonly Border _mainRow;
     private readonly StackPanel _agents = new StackPanel();
+
+    /// <summary>The line from the bottom of the main card to the agents, while the tree goes down.</summary>
+    private readonly Border _mainDown = Line(vertical: true);
 
     // the card of an agent
     private readonly Border _cardLayer = new Border();
@@ -94,6 +118,11 @@ internal sealed class AgentMapPanel : Border
     /// <summary>The <see cref="AgentInfo.Id"/> of the agent whose card is open; null on the list.</summary>
     private string? _cardId;
 
+    /// <summary>How wide the tree is beside the main card, for the agents it was last laid out for (the tree's margins left out).</summary>
+    private double _wideWidth = MainWidth;
+
+    private bool _narrow;
+
     public AgentMapPanel()
     {
         // ---- the map ----
@@ -111,14 +140,14 @@ internal sealed class AgentMapPanel : Border
         _mainDot.Classes.Add("ClaudeChatAgentDot");
         _mainTitle.Classes.Add("ClaudeChatAgentRowTitle");
         _mainMeta.Classes.Add("ClaudeChatAgentRowMeta");
-        var mainRow = new Border { Child = RowBody(_mainDot, _mainTitle, _mainMeta) };
-        mainRow.Classes.Add("ClaudeChatAgentRow");
-        mainRow.Classes.Add("main");
+        _mainRow = new Border { Child = RowBody(_mainDot, _mainTitle, _mainMeta) };
+        _mainRow.Classes.Add("ClaudeChatAgentRow");
+        _mainRow.Classes.Add("main");
         _mainStub.Classes.Add("ClaudeChatAgentLine");
         _mainStub.Classes.Add("stub");
         _mainStub.Classes.Add("main");
         Grid.SetColumn(_mainStub, 1);
-        _mainNode.Children.Add(mainRow);
+        _mainNode.Children.Add(_mainRow);
         _mainNode.Children.Add(_mainStub);
         _mainNode.VerticalAlignment = VerticalAlignment.Center;
         _mainNode.HorizontalAlignment = HorizontalAlignment.Left;
@@ -126,7 +155,11 @@ internal sealed class AgentMapPanel : Border
         _agents.Classes.Add("ClaudeChatAgentColumn");
         _agents.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(_agents, 1);
+        _mainDown.Classes.Add("down");
+        _mainDown.IsVisible = false;
+        Grid.SetRow(_mainDown, 1);
         _tree.Classes.Add("ClaudeChatAgentTree");
+        _tree.Children.Add(_mainDown);
         _tree.Children.Add(_agents);
         _tree.Children.Add(_mainNode); // drawn over the lines, as the extension's card (z-index 1)
         _scroller = new ScrollViewer
@@ -203,6 +236,12 @@ internal sealed class AgentMapPanel : Border
     /// <summary>True while an agent's card is open over the map.</summary>
     internal bool ShowsCard => _cardId != null && IsVisible;
 
+    /// <summary>
+    /// True while the tree goes down, the agents under the main card: in the touch layout, when the tree laid out as on the desktop
+    /// would be wider than the map.
+    /// </summary>
+    internal bool IsNarrow => _narrow;
+
     /// <summary>The timer's second: the running agents' time, from the conversation's clock, while it can be seen.</summary>
     internal void Tick()
     {
@@ -247,11 +286,80 @@ internal sealed class AgentMapPanel : Border
         {
             if (_attached) Update();
         }
+        else if (change.Property == LayoutProperty)
+        {
+            if (GetValue(LayoutProperty) == ChatLayout.Touch) _subtitle.TextWrapping = TextWrapping.Wrap;
+            else _subtitle.ClearValue(TextBlock.TextWrappingProperty);
+            if (_attached) Update(); // the subtitle's words, and the tree that may go down or come back up
+        }
         else if (change.Property == BoundsProperty)
         {
             // the card: the extension's min(420px, 100vw - 32px) wide and 100vh - 64px high at most
             _card.MaxWidth = Math.Max(0, Bounds.Width - 32);
             _card.MaxHeight = Math.Max(0, Bounds.Height - 64);
+            if (IsVisible && _tracked != null && SetNarrow(ShouldBeNarrow())) Build(_tracked);
+        }
+    }
+
+    /// <summary>
+    /// True in the touch layout when the tree, laid out as on the desktop, would not fit in the map: the view's width less the
+    /// dialog's margin, border and padding (and 1200 px at most, the dialog's widest) and less the tree's margins.
+    /// </summary>
+    private bool ShouldBeNarrow()
+    {
+        if (GetValue(LayoutProperty) != ChatLayout.Touch) return false;
+        // the map is arranged only while it shows: before its first showing, the view's width (the map covers all of it)
+        var width = Bounds.Width > 0 ? Bounds.Width : (this.GetVisualParent()?.Bounds.Width ?? 0);
+        if (width <= 0) return false;
+        var dialog = Math.Min(width - _dialog.Margin.Left - _dialog.Margin.Right, _dialog.MaxWidth);
+        var room = dialog - _dialog.BorderThickness.Left - _dialog.BorderThickness.Right - _dialog.Padding.Left - _dialog.Padding.Right
+                   - _tree.Margin.Left - _tree.Margin.Right;
+        return _wideWidth > room + 0.5;
+    }
+
+    /// <summary>
+    /// Lays the tree out down (the main card on top, the agents under it, all as wide as the map) or as on the desktop. True when
+    /// it changed: the rows are laid out again.
+    /// </summary>
+    private bool SetNarrow(bool narrow)
+    {
+        if (narrow == _narrow) return false;
+        _narrow = narrow;
+        _tree.Classes.Set("narrow", narrow);
+        _tree.ColumnDefinitions = narrow ? new ColumnDefinitions("*") : WideColumns();
+        _tree.RowDefinitions = narrow ? new RowDefinitions("Auto,Auto") : new RowDefinitions();
+        Grid.SetColumn(_agents, narrow ? 0 : 1);
+        Grid.SetRow(_agents, narrow ? 1 : 0);
+        Grid.SetColumnSpan(_mainNode, narrow ? 1 : 2);
+        _agents.VerticalAlignment = narrow ? VerticalAlignment.Top : VerticalAlignment.Center;
+        if (narrow) _agents.Margin = new Thickness(0, 8, 0, 0);
+        else _agents.ClearValue(MarginProperty); // back to what it was: a theme's style may set it
+        _mainNode.ColumnDefinitions = new ColumnDefinitions(narrow ? "*,Auto" : "Auto,Auto");
+        _mainNode.HorizontalAlignment = narrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        _mainNode.VerticalAlignment = narrow ? VerticalAlignment.Top : VerticalAlignment.Center;
+        Stretch(_mainRow, narrow);
+        // the dialog as wide as the map, which scrolls only down
+        if (narrow) _dialog.HorizontalAlignment = HorizontalAlignment.Stretch;
+        else _dialog.ClearValue(HorizontalAlignmentProperty);
+        _scroller.HorizontalScrollBarVisibility = narrow ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
+        _scroller.Offset = default;
+        _mainNode.RenderTransform = null;
+        _shape.Clear(); // the rows again, in the other shape
+        return true;
+    }
+
+    /// <summary>A row as wide as its column, while the tree goes down; else the theme's width.</summary>
+    private static void Stretch(Control row, bool narrow)
+    {
+        if (narrow)
+        {
+            row.Width = double.NaN;
+            row.HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
+        else
+        {
+            row.ClearValue(WidthProperty);
+            row.ClearValue(HorizontalAlignmentProperty);
         }
     }
 
@@ -382,7 +490,7 @@ internal sealed class AgentMapPanel : Border
         _clocks.Clear();
 
         _title.Text = strings.AgentMapTitle;
-        _subtitle.Text = strings.FormatAgentMapSubtitle(conversation.Agents.Count);
+        _subtitle.Text = strings.FormatAgentMapSubtitle(conversation.Agents.Count, GetValue(LayoutProperty) == ChatLayout.Touch);
         Label(_close, strings.Close);
         Label(_back, strings.Back);
 
@@ -390,9 +498,11 @@ internal sealed class AgentMapPanel : Border
         _mainDot.Classes.Set("running", conversation.IsBusy);
         SetLine(_mainMeta, Join(ModelChip.NameOf(conversation),
             conversation.ContextUsage is { } usage ? strings.FormatAgentContextTokens(usage.TotalTokens) : null));
-        _mainStub.IsVisible = conversation.Agents.Count > 0;
-
         var tree = new Tree(conversation.Agents);
+        _wideWidth = WideWidth(tree);
+        SetNarrow(ShouldBeNarrow());
+        _mainStub.IsVisible = conversation.Agents.Count > 0 && !_narrow;
+        _mainDown.IsVisible = conversation.Agents.Count > 0 && _narrow;
         if (!SameShape(conversation.Agents)) LayOut(tree, conversation.Agents);
         foreach (var agent in conversation.Agents)
         {
@@ -464,21 +574,49 @@ internal sealed class AgentMapPanel : Border
                 down.Classes.Add("down");
                 nested = new Panel { Children = { down, inner } };
             }
-            column.Children.Add(Branch(AgentRow(agent), nested, indent,
-                first: i == 0 && !linkedUp, last: i == agents.Count - 1));
+            var row = AgentRow(agent);
+            Stretch(row, _narrow);
+            // down, the top level's spine starts at the main card above it, and not at the first row's middle
+            column.Children.Add(Branch(row, nested, indent,
+                first: i == 0 && !linkedUp && !_narrow, last: i == agents.Count - 1, _narrow));
         }
+    }
+
+    /// <summary>
+    /// How wide the tree is laid out as on the desktop, its margins left out: the main card and, with agents, the widest of
+    /// them, each 32 px further in than its caller (or kept at its depth's place).
+    /// </summary>
+    private static double WideWidth(Tree tree)
+    {
+        double agents = 0;
+        void Level(List<AgentInfo> level, double before, bool linkedUp)
+        {
+            foreach (var agent in level)
+            {
+                var start = before + Indent + (linkedUp ? 0 : Math.Max(0, agent.Depth - 1) * Indent);
+                agents = Math.Max(agents, start + RowWidth);
+                Level(tree.CalledBy(agent), start, linkedUp: true);
+            }
+        }
+        Level(tree.Roots, 0, linkedUp: false);
+        return MainWidth + agents;
     }
 
     /// <summary>
     /// An agent in its column, like the extension's: 32 px before the row (more for an agent kept at its depth), a
     /// 16 px line from the spine to the row, and the spine (16 px in) from the first row's middle to the last one's,
-    /// beside the agents called in between.
+    /// beside the agents called in between. While the tree goes down (<paramref name="narrow"/>) the row and the agents it
+    /// called take the rest of the column's width.
     /// </summary>
-    private static Control Branch(Control row, Control? nested, double indent, bool first, bool last)
+    private static Control Branch(Control row, Control? nested, double indent, bool first, bool last, bool narrow)
     {
         var grid = new Grid
         {
-            ColumnDefinitions = { new ColumnDefinition(Indent + indent, GridUnitType.Pixel), new ColumnDefinition(GridLength.Auto) },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(Indent + indent, GridUnitType.Pixel),
+                new ColumnDefinition(narrow ? new GridLength(1, GridUnitType.Star) : GridLength.Auto),
+            },
             RowDefinitions = new RowDefinitions("Auto,Auto"),
         };
         var stub = Line(vertical: false);
@@ -679,10 +817,12 @@ internal sealed class AgentMapPanel : Border
 
     /// <summary>
     /// The main agent's card stays in sight, as the extension's sticky one: centered beside the agents, but pushed back
-    /// in at the top or the bottom when the list scrolls it out (a move of the drawing, not of the layout).
+    /// in at the top or the bottom when the list scrolls it out (a move of the drawing, not of the layout). Not while the tree
+    /// goes down.
     /// </summary>
     private void KeepMainInSight()
     {
+        if (_narrow) return; // down, the card is over the agents and scrolls away with them: nothing at its side to keep it company
         var natural = _tree.Margin.Top + _mainNode.Bounds.Top - _scroller.Offset.Y;
         var room = _scroller.Viewport.Height - _mainNode.Bounds.Height;
         var wanted = Math.Max(0, Math.Min(natural, room));
@@ -742,7 +882,7 @@ internal sealed class AgentMapPanel : Border
         ToolTip.SetTip(control, name);
     }
 
-    /// <summary>A 28 px icon button, like the extension's: the icon (on a 20 px box) with 4 px around it.</summary>
+    /// <summary>A 28 px icon button, like the extension's: the icon (on a 20 px box) with 4 px around it. The touch layout's styles make it 44 px.</summary>
     private static Button IconButton(string iconClass, double iconSize)
     {
         var icon = new Path();

@@ -26,6 +26,33 @@ internal static class ChatConverters
 
     public static readonly IValueConverter IsTurnFailed = new FuncValueConverter<NoticeKind, bool>(kind => kind == NoticeKind.TurnFailed);
 
+    /// <summary>
+    /// <see cref="ChatLayout"/> → whether it is <see cref="ChatLayout.Touch"/>. The templates bind it to the view's
+    /// layout (<c>$parent[controls:ClaudeChatView].Layout</c>) to mark an element with the class <c>touch</c>, which
+    /// the touch styles select.
+    /// </summary>
+    public static readonly IValueConverter IsTouch = new FuncValueConverter<ChatLayout, bool>(layout => layout == ChatLayout.Touch);
+
+    /// <summary>How much of the list's width the user's bubble takes at most in the touch layout.</summary>
+    public const double BubbleShare = 0.85;
+
+    /// <summary>
+    /// The list's width → the widest the user's bubble gets in the touch layout, <see cref="BubbleShare"/> of it, down
+    /// to the pixel. No ceiling while the list has no width yet (before its first layout).
+    /// </summary>
+    public static readonly IValueConverter BubbleMaxWidth = new FuncValueConverter<double, double>(width =>
+        width > 0 && !double.IsInfinity(width) ? Math.Floor(width * BubbleShare) : double.PositiveInfinity);
+
+    /// <summary>How many lines the touch layout's reply box grows to; past them its text scrolls.</summary>
+    public const int InputMaxLines = 6;
+
+    /// <summary>
+    /// The text box's line height → the tallest it grows in the touch layout, <see cref="InputMaxLines"/> lines of it; no
+    /// ceiling without a line height.
+    /// </summary>
+    public static readonly IValueConverter InputMaxHeight = new FuncValueConverter<double, double>(lineHeight =>
+        lineHeight > 0 && !double.IsInfinity(lineHeight) ? lineHeight * InputMaxLines : double.PositiveInfinity);
+
     public static readonly IValueConverter Clip = new FuncValueConverter<string?, string?>(text => ChatText.Clip(text, MaxTextChars));
 
     /// <summary>A tool's summary as its tooltip: none when empty, else cut like the texts of the list.</summary>

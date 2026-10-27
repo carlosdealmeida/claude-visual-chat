@@ -18,6 +18,9 @@ mensagem, um sim ou não a um pedido de permissão, uma troca de modo, de modelo
   "Dark Modern" vem junto, pronto para ligar (veja [Cores](#cores)).
 - **Stream ou histórico.** A saída ao vivo do `claude -p --output-format stream-json`, ou um arquivo de sessão inteiro
   (`~/.claude/projects/<pasta>/<id da sessão>.jsonl`).
+- **Desktop ou celular.** O layout da extensão por padrão, e um layout de toque para o celular
+  (`Layout = ChatLayout.Touch`): texto maior, sem linha do tempo, a mensagem do usuário num balão, folhas para o
+  modelo, o **+** e o uso, e um microfone para o seu próprio ditado (veja [Layout de toque](#layout-de-toque)).
 - **Textos em inglês e em português do Brasil** já prontos; qualquer texto pode ser trocado.
 - **Nada escondido.** A biblioteca não abre links, não baixa imagens, não roda processo e não toca em arquivo. O seu
   app sobe o `claude` e leva as linhas de um lado para o outro.
@@ -344,7 +347,8 @@ arquivos e afins) são puladas.
 
 Todas as cores, as duas fontes, os tamanhos de texto e alguns lugares vêm de recursos chamados `ClaudeChat.*` (as
 chaves estão na tabela abaixo). O resto é fixo no tema: os títulos do Markdown (26, 19,5 e 15,2 px), algumas alturas
-de linha e os espaçamentos, cantos e alturas medidos da extensão. Redefina qualquer chave nos recursos da view:
+de linha e os espaçamentos, cantos e alturas medidos da extensão. No [layout de toque](#layout-de-toque) os tamanhos e
+os lugares têm os valores do celular. Redefina qualquer chave nos recursos da view:
 
 ```xml
 <cvc:ClaudeChatView>
@@ -379,13 +383,14 @@ As chaves, todas com o prefixo `ClaudeChat.`:
 | Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade` |
 | Fontes | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |
 | Tamanhos | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize` |
-| Lugares | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter` |
-| Ícones (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table` |
+| Lugares | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (o comando ou o diff de um pedido de permissão: um mais alto rola), `PromptDetailPeekHeight` (o mesmo enquanto o campo do "Não" está aberto) |
+| Ícones (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External` |
 | Menus e paleta de comandos | `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`, `ListActiveForeground`, `EffortThumbShadow` |
 | Anexos | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |
 | Mapa de agentes e anel de contexto | `ModalOverlay`, `AgentRunning`, `ContextRingTrack`, `ContextRingFill` |
 | Faixas e Remote Control | `BannerBackground`, `BannerForeground`, `BannerTint`, `BannerErrorBackground`, `BannerErrorForeground`, `RemoteControlForeground`, `RemoteControlHoverBackground`, `RemoteControlHoverForeground` |
 | Painéis `/context` e `/usage` | `ContextColor1` a `ContextColor6` (as cores de gráfico da barra de contexto), `PanelShadow` |
+| Layout de toque (veja [Layout de toque](#layout-de-toque)) | `UserBubble`, `SheetBackground`, `SheetGroupBackground`, `SheetHandle`, `SheetOverlay`, `PermissionWarningBorder` |
 
 O `ScrollBarGutter` é o espaço que a lista deixa à direita para uma barra de rolagem desenhada por cima dela, como a do
 Fluent. Uma barra com coluna própria, como a do Simple, já tem o seu espaço, e a lista fica com a largura toda.
@@ -416,12 +421,178 @@ A caixa de resposta e o pedido de permissão ficam ocultos; a lista continua sen
 selecionar o texto. Os pedidos pendentes continuam em `ChatConversation.PendingPermissions` e a caixa de resposta
 guarda o rascunho, então voltar `IsReadOnly` para `false` mostra tudo de novo.
 
+## Layout de toque
+
+![O app de exemplo no layout de toque, tocando uma sessão gravada: uma edição e um arquivo novo. A mensagem do usuário é um balão à direita, a resposta não tem linha do tempo, cada chamada de ferramenta é um bloco, e a caixa de resposta tem a sua barra](docs/screenshot-touch-pt.png)
+
+Defina `Layout` como `ChatLayout.Touch` para montar a view para um dedo no celular, no estilo do app Claude da
+Anthropic, em vez do layout da extensão. `Desktop` é o padrão e não muda. Tudo dentro da view segue o `Layout`; cada
+parte que muda com ele ganha a pseudoclasse `:touch`.
+
+```xml
+<cvc:ClaudeChatView Conversation="{Binding Chat}"
+                    Layout="Touch"
+                    Dictation="{Binding Dictation}"
+                    UsageSheetContent="{Binding Medidores}" />
+```
+
+O que muda:
+
+- **A lista.** Texto de 15 px numa linha de 22,5 px e nenhuma linha do tempo: tudo começa na margem. A mensagem do
+  usuário é um balão à direita, com no máximo 85 % da largura da lista e sem hora. Uma chamada de ferramenta é um
+  bloco com moldura e a bolinha de estado no começo do cabeçalho. Um turno terminado acaba com um botão de copiar (⧉)
+  que põe na área de transferência o que o Claude escreveu no turno, no lugar da linha de duração, tokens e custo. O
+  chip de agentes fica no fim da lista ("Agentes · 2 rodando") e abre o mapa de agentes.
+- **A caixa de resposta.** Uma caixa arredondada com o texto sobre uma barra de alvos de 44 px: **+**, a pílula do
+  modelo, o anel de contexto (desde o primeiro token, com o arco na parte usada e não nos degraus da extensão), o microfone (veja abaixo) e enviar, ou parar enquanto o Claude
+  trabalha. Enter quebra a linha e Ctrl+Enter envia. O botão **/**, o chip do Remote Control e o seletor de modo não
+  estão na barra: a folha do **+** tem os três. O layout de toque não desenha o relógio do cache. A pílula do modelo
+  termina em reticências, o nível primeiro, quando a barra deixa menos espaço do que o nome e o nível pedem.
+- **Folhas.** A pílula do modelo, o **+** e o anel de contexto abrem, cada um, uma folha que sobe da base da view. O ✕,
+  o Esc ou um toque no véu sobre o resto da view a fecha, e uma página dentro da folha tem uma seta de voltar.
+  - *Selecionar modelo*: os modelos, cada um com a sua descrição (o `ChatStrings.ModelDescriptions` traduz as do
+    claude) e o atual marcado; para um modelo que aceita effort, uma linha "Esforço" que abre os níveis dele.
+  - *Adicionar* (o **+**): "Foto ou arquivo" (o diálogo de arquivos), "Comandos" (a paleta de comandos), "Modo" (os
+    modos de permissão), "Navegador" e "Remote Control" com o estado deles e, enquanto o Remote Control está conectado
+    e tem um link, "Abrir claude.ai/code", que dispara `RemoteControlLinkRequested`.
+  - *Uso* (o anel): a janela de contexto por categoria e, embaixo dela, o que o seu app põe em `UsageSheetContent` ou
+    os limites do plano que o claude informou. Ela toma o lugar dos painéis `/context` e `/usage`, que não são
+    desenhados neste layout; `ShownPanel` e `CommandInvoked` funcionam como antes, e o ↻ pede os dados de novo.
+- **O pedido de permissão** faz uma pergunta curta ("Editar OrderService.cs?", "Rodar este comando?") com o comando ou
+  o diff embaixo, e as respostas atravessam o bloco com 48 px. Enquanto um espera, nenhuma folha abre (a que estiver
+  aberta fecha quando ele chega) e o teclado não vai para ninguém: uma caixa de resposta que o pegasse de volta depois
+  de uma resposta faria subir o teclado da tela.
+- **O mapa de agentes.** O subtítulo quebra a linha e fala em toque. Quando a árvore não cabe na largura do mapa (um
+  celular em pé), ela desce: o cartão do agente principal em cima e os agentes embaixo dele, todos na largura do mapa, e
+  quem foi chamado por outro agente continua 32 px para dentro, embaixo de quem chamou; o mapa rola só para baixo. Onde
+  ela cabe (um tablet), é a do desktop.
+- **Alvos.** O que o dedo toca tem 44 px no mínimo: os botões da barra, as linhas das folhas e da paleta de comandos, o
+  ✕ das faixas, da prévia de imagem e do mapa de agentes, e a seta de voltar dele. Uma linha da paleta roda o comando
+  no toque, não no pressionar, então um dedo que rola a lista não roda nada.
+
+### O que o seu app acrescenta à folha de uso
+
+`UsageSheetContent` é o que a folha de uso mostra embaixo da janela de contexto, no lugar dos limites do plano: os
+medidores do seu app, por exemplo. Um controle aparece como é; qualquer outro objeto vira um controle pelos modelos de
+dados que o seu app tem (os da view, os da janela dela ou os da aplicação), como num `ContentControl`. Só é desenhado
+no layout de toque e só enquanto a folha está aberta.
+
+```xml
+<cvc:ClaudeChatView Layout="Touch" UsageSheetContent="{Binding Medidores}">
+  <cvc:ClaudeChatView.DataTemplates>
+    <DataTemplate DataType="vm:Medidores">
+      <ProgressBar Value="{Binding PorcentagemDaSessao}" Maximum="100" />
+    </DataTemplate>
+  </cvc:ClaudeChatView.DataTemplates>
+</cvc:ClaudeChatView>
+```
+
+### Ditado
+
+O microfone é do seu app: o componente não tem reconhecimento de voz. Entregue à view um `IChatDictation` e a barra do
+layout de toque ganha um microfone enquanto o `IsAvailable` dele for verdadeiro. O layout desktop nunca tem um.
+
+```csharp
+public interface IChatDictation
+{
+    bool IsAvailable { get; }                  // por exemplo, o modelo do idioma está no aparelho
+    event EventHandler? AvailabilityChanged;   // disparado quando o IsAvailable muda; pode vir de qualquer thread
+    Task<string?> ListenAsync(IProgress<string>? partial, CancellationToken stop);
+}
+
+Chat.Dictation = new MeuDitado(); // o seu
+```
+
+Um toque no microfone pede uma escuta, na thread da UI. A caixa fica travada enquanto ela dura: o que foi ouvido até
+agora (`partial`) entra nela na posição do cursor, com um espaço de cada lado das palavras, e o que o `ListenAsync`
+devolve é o texto final. Um segundo toque cancela o `stop`: o `ListenAsync` encerra a escuta antes da hora e devolve o
+que ouviu (null para nada); não lança exceção. O que foi ouvido nunca é enviado sozinho. O cursor termina depois das
+palavras, e o teclado só volta para a caixa se ela o tinha quando o dedo desceu: o componente nunca faz subir o teclado
+da tela por conta própria. A escuta é cortada, e o que voltar depois é ignorado, quando outra conversa é mostrada, o
+layout muda, a view vira somente leitura ou sai da janela, ou o ditado some ou deixa de estar disponível; as palavras
+que já estão na caixa ficam. Um texto posto na caixa durante a escuta (uma mensagem que o seu app devolve com
+`UndoSubmit`, um comando da paleta) também fica, e as palavras vão depois dele.
+
+### O botão de voltar
+
+O botão de voltar do celular não chega à view como Esc. Chame `CloseTopLayer()` a partir dele: ele fecha uma camada por
+chamada, a de cima primeiro, e devolve se fechou alguma.
+
+```csharp
+void OnBackPressed()
+{
+    if (!Chat.CloseTopLayer()) Voltar(); // o seu: nada da view estava aberto
+}
+```
+
+As camadas, a de cima primeiro: a prévia de imagem; um menu da caixa de resposta (os comandos ou os modelos); uma
+folha (a de uso antes das outras, e uma página dentro de uma folha volta para a primeira antes de a folha fechar); a
+ficha de um agente no mapa de agentes, que volta para o mapa; o painel que estiver aberto (o mapa de agentes ou os
+painéis `/context` e `/usage` do layout desktop); e o campo onde o usuário escreve por que recusou um pedido. Um pedido
+de permissão não é camada: tem de ser respondido.
+
+### As suas partes embaixo de uma folha
+
+Uma folha escurece a view com o véu dela, e um toque no véu a fecha. O que o seu app desenha fora da view (uma barra no
+topo com um botão de voltar e um título, por exemplo) fica aceso, a não ser que o seu app o escureça também. `IsSheetOpen`
+é verdadeira enquanto uma folha está na tela (a de modelo, a do **+** ou a de uso); é uma propriedade só de leitura que um
+binding acompanha, e ela acompanha todo jeito de uma folha fechar, inclusive os que a view faz sozinha (outra conversa, o
+layout de volta a `Desktop`, a view somente leitura, um pedido de permissão). A folha de uso é só informação, então fica
+aberta quando a view vira somente leitura, e a `IsSheetOpen` continua verdadeira com ela. `DismissSheet()` faz o que um toque no véu da
+folha de cima faz e devolve true, ou devolve false e não fecha nada quando não há folha aberta. A cor do véu é o recurso
+`ClaudeChat.SheetOverlay`.
+
+```xml
+<Grid RowDefinitions="56,*">
+  <local:BarraDoTopo />
+  <cvc:ClaudeChatView Name="Chat" Grid.Row="1" Layout="Touch" />
+  <!-- sobre a barra do topo, enquanto uma folha escurece a view -->
+  <Border Background="{DynamicResource ClaudeChat.SheetOverlay}" Focusable="False"
+          IsVisible="{Binding #Chat.IsSheetOpen}" PointerPressed="OnVeuPressionado" />
+</Grid>
+```
+
+```csharp
+void OnVeuPressionado(object? sender, PointerPressedEventArgs e)
+{
+    e.Handled = true;          // nada embaixo do véu recebe o toque
+    Chat.DismissSheet();
+}
+```
+
+O tema da view define `ClaudeChat.SheetOverlay` dentro da view, então uma parte de fora só acha a chave onde o seu app também
+a tem: junte `Themes/DarkModern.axaml` aos recursos do pai das duas (ou defina a chave ali, com a cor que você dá à view).
+Diferente do `CloseTopLayer()`, o `DismissSheet()` fecha a folha inteira de qualquer página dela, como o véu, e não mexe em
+nenhuma outra camada.
+
+### Cores e tamanhos
+
+As cores do layout de toque são chaves do tema como as outras, também com o prefixo `ClaudeChat.`. `UserBubble` (o balão do usuário),
+`SheetBackground`, `SheetGroupBackground` (os blocos de linhas de uma folha e os botões da barra), `SheetHandle` (a alça de
+uma folha) e `SheetOverlay` (o véu sobre o resto da view) estão no "Dark 2026" e no "Dark Modern". `PermissionWarningBorder`
+(a moldura de um pedido) está só no "Dark 2026": o "Dark Modern" não a define, então ela fica com a cor do "Dark 2026".
+Os tamanhos são as mesmas chaves `ClaudeChat.*` do desktop, com os valores do celular, em `Themes/Touch.axaml`; a view
+junta esse arquivo aos seus recursos enquanto o `Layout` é `Touch` e o tira quando o layout volta, então o seu app não faz
+nada. Uma chave que o seu app redefine nos recursos da view continua valendo:
+
+```xml
+<cvc:ClaudeChatView Layout="Touch">
+  <cvc:ClaudeChatView.Resources>
+    <x:Double x:Key="ClaudeChat.FontSize">16</x:Double>
+  </cvc:ClaudeChatView.Resources>
+</cvc:ClaudeChatView>
+```
+
+O exemplo toca uma gravação numa janela do tamanho de um celular:
+`dotnet run --project samples/ClaudeVisualChat.Sample -- --touch` (veja [App de exemplo](#app-de-exemplo)).
+
 ## Limitações
 
 - O formato stream-json não é uma API estável e pode mudar entre versões do `claude`. O controle foi feito com o
   `claude` 2.1.286 e ignora o que não conhece; assim, um tipo novo de linha fica de fora em vez de quebrar a view.
-- Alguns botões da extensão não estão aqui, porque dependem de recursos do host: o microfone e, na ficha de um
-  agente, a transcrição dele e o "Stop agent".
+- Alguns botões da extensão não estão aqui, porque dependem de recursos do host: na ficha de um agente, a transcrição
+  dele e o "Stop agent". O microfone existe no layout de toque, quando o seu app entrega à view o ditado dele (veja
+  [Ditado](#ditado)); o layout desktop não tem.
 
 ## App de exemplo
 
@@ -437,14 +608,24 @@ marcadora.
 dotnet run --project samples/ClaudeVisualChat.Sample
 ```
 
+Com `--touch` a janela é a tela de um celular (412×892) com a view sozinha dentro, no layout de toque. A barra e o log
+do exemplo não têm lugar ao lado dela; por isso a gravação e o idioma vêm da linha de comando (`--scenario`, `--lang`),
+e ela toca quando a janela abre.
+
+```sh
+dotnet run --project samples/ClaudeVisualChat.Sample -- --touch
+```
+
 Ele também tira os prints desta página sem abrir nada na tela: toca uma gravação até o fim, responde sim a cada
-pedido, salva a janela em 1280×800 e sai.
+pedido, salva a janela em 1280×800 (412×892 com `--touch`) e sai.
 
 ```sh
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot.png --scenario edit
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot-pt.png --scenario edit --lang pt
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot-agents.png --scenario agents
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot-agents-pt.png --scenario agents --lang pt
+dotnet run --project samples/ClaudeVisualChat.Sample -- --touch --screenshot docs/screenshot-touch.png --scenario edit
+dotnet run --project samples/ClaudeVisualChat.Sample -- --touch --screenshot docs/screenshot-touch-pt.png --scenario edit --lang pt
 ```
 
 Com `--history`, o print mostra o arquivo de sessão da gravação em vez do stream. O print da `agents` também manda o

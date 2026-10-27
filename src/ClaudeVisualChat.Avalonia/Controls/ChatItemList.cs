@@ -13,6 +13,15 @@ internal sealed class ChatItemList : ItemsControl
     public static readonly StyledProperty<object?> FooterProperty =
         AvaloniaProperty.Register<ChatItemList, object?>(nameof(Footer));
 
+    /// <summary>
+    /// The list's width (<c>Bounds.Width</c>) as a property of its own, for the touch layout's user bubble to take its share
+    /// of (<c>$parent[ChatItemList].ListWidth</c>). A binding through <c>Bounds.Width</c> holds the boxed <c>Rect</c> only
+    /// by a weak reference, which a collection drops while the bubble's style is off (the layout going back and forth): the
+    /// binding then starts again with a "Null value" error.
+    /// </summary>
+    public static readonly StyledProperty<double> ListWidthProperty =
+        AvaloniaProperty.Register<ChatItemList, double>(nameof(ListWidth));
+
     /// <summary>What shows under the items, shown by the template's <c>PART_Footer</c>.</summary>
     public object? Footer
     {
@@ -20,7 +29,16 @@ internal sealed class ChatItemList : ItemsControl
         set => SetValue(FooterProperty, value);
     }
 
+    /// <summary>The list's width, 0 before its first layout.</summary>
+    public double ListWidth => GetValue(ListWidthProperty);
+
     protected override Type StyleKeyOverride => typeof(ChatItemList);
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == BoundsProperty) SetValue(ListWidthProperty, Bounds.Width);
+    }
 }
 
 /// <summary>

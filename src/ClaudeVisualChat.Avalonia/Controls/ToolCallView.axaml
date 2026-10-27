@@ -6,26 +6,33 @@
              x:DataType="cvc:ToolCallItem"
              x:CompileBindings="True">
   <controls:ChatTimelineRow Name="Row">
-    <StackPanel>
-      <!-- the name, bold; then the path, the description or the summary; the lines read; the arrow of a subagent -->
-      <ToggleButton Name="Header" Classes="ClaudeChatDisclosure" HorizontalAlignment="Stretch"
-                    IsChecked="{Binding IsExpanded, Mode=TwoWay}">
-        <controls:ToolHeaderPanel Name="HeaderLine">
-          <TextBlock Name="ToolName" Classes="ClaudeChatToolName" />
-          <TextBlock Name="DetailText" Classes="ClaudeChatToolDetail"
-                     ToolTip.Tip="{Binding Summary, Converter={x:Static controls:ChatConverters.ToolTipText}}" />
-          <TextBlock Name="RangeText" Classes="ClaudeChatToolRange" />
-          <Path Name="Arrow" Classes="ClaudeChatChevron" Margin="4,0,0,0" />
-          <TextBlock Name="RejectedText" Classes="ClaudeChatRejected" />
-        </controls:ToolHeaderPanel>
-      </ToggleButton>
+    <!-- the call's block: draws nothing on the desktop; the touch layout makes it a rounded block with a frame -->
+    <Border Classes="ClaudeChatToolBlock">
+      <StackPanel>
+        <!-- the status dot, in the touch layout (the timeline's dot is not drawn then); the name, bold; then the path,
+             the description or the summary; the lines read; the arrow of a subagent -->
+        <ToggleButton Name="Header" Classes="ClaudeChatDisclosure" HorizontalAlignment="Stretch"
+                      IsChecked="{Binding IsExpanded, Mode=TwoWay}">
+          <Grid ColumnDefinitions="Auto,*">
+            <Ellipse Name="StatusDot" Classes="ClaudeChatToolDot" IsVisible="False" />
+            <controls:ToolHeaderPanel Name="HeaderLine" Grid.Column="1">
+              <TextBlock Name="ToolName" Classes="ClaudeChatToolName" />
+              <TextBlock Name="DetailText" Classes="ClaudeChatToolDetail"
+                         ToolTip.Tip="{Binding Summary, Converter={x:Static controls:ChatConverters.ToolTipText}}" />
+              <TextBlock Name="RangeText" Classes="ClaudeChatToolRange" />
+              <Path Name="Arrow" Classes="ClaudeChatChevron" Margin="4,0,0,0" />
+              <TextBlock Name="RejectedText" Classes="ClaudeChatRejected" />
+            </controls:ToolHeaderPanel>
+          </Grid>
+        </ToggleButton>
 
-      <!-- the line under the name, then the box: the diff, the file written, the command and its output -->
-      <StackPanel Name="Body" />
+        <!-- the line under the name, then the box: the diff, the file written, the command and its output -->
+        <StackPanel Name="Body" />
 
-      <!-- what the subagent did, behind the arrow -->
-      <ItemsControl Name="ChildList" Classes="ClaudeChatItems" Margin="0,4,0,0"
-                    ItemsSource="{Binding Children}" IsVisible="{Binding IsExpanded}" />
-    </StackPanel>
+        <!-- what the subagent did, behind the arrow -->
+        <ItemsControl Name="ChildList" Classes="ClaudeChatItems" Margin="0,4,0,0"
+                      ItemsSource="{Binding Children}" IsVisible="{Binding IsExpanded}" />
+      </StackPanel>
+    </Border>
   </controls:ChatTimelineRow>
 </UserControl>

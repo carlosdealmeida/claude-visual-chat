@@ -18,6 +18,9 @@ permission request, a mode, model or effort change, a slash command, an image or
   VS Code. "Dark Modern" ships too, ready to switch on (see [Colors](#colors)).
 - **Streams or history.** Live output from `claude -p --output-format stream-json`, or a whole session file
   (`~/.claude/projects/<folder>/<session id>.jsonl`).
+- **Desktop or phone.** The extension's layout by default, and a touch layout for a phone (`Layout = ChatLayout.Touch`):
+  larger text, no timeline, the user's message in a bubble, sheets for the model, the **+** and the usage, and a
+  microphone for your own speech to text (see [Touch layout](#touch-layout)).
 - **English and Brazilian Portuguese** texts built in; every text can be replaced.
 - **Nothing hidden.** The library opens no links, downloads no images, runs no process and touches no file. Your app
   starts `claude` and passes the lines in and out.
@@ -339,7 +342,8 @@ history and the like) are skipped.
 
 Every color, both fonts, the text sizes and a few places come from resources named `ClaudeChat.*` (the keys are in
 the table below). The rest is fixed in the theme: the Markdown headings (26, 19.5 and 15.2 px), a few line heights,
-and the spacing, corners and heights measured from the extension. Redefine any key in the view's resources:
+and the spacing, corners and heights measured from the extension. In the [touch layout](#touch-layout) the sizes and
+places have the phone's values. Redefine any key in the view's resources:
 
 ```xml
 <cvc:ClaudeChatView>
@@ -374,13 +378,14 @@ The keys, all prefixed with `ClaudeChat.`:
 | Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade` |
 | Fonts | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |
 | Sizes | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize` |
-| Places | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter` |
-| Icons (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table` |
+| Places | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (the command or the diff of a permission request: a taller one scrolls), `PromptDetailPeekHeight` (the same while the field of "No" is open) |
+| Icons (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External` |
 | Menus and the command palette | `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`, `ListActiveForeground`, `EffortThumbShadow` |
 | Attachments | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |
 | Agent map and context ring | `ModalOverlay`, `AgentRunning`, `ContextRingTrack`, `ContextRingFill` |
 | Banners and Remote Control | `BannerBackground`, `BannerForeground`, `BannerTint`, `BannerErrorBackground`, `BannerErrorForeground`, `RemoteControlForeground`, `RemoteControlHoverBackground`, `RemoteControlHoverForeground` |
 | `/context` and `/usage` panels | `ContextColor1` to `ContextColor6` (the chart colors of the context bar), `PanelShadow` |
+| Touch layout (see [Touch layout](#touch-layout)) | `UserBubble`, `SheetBackground`, `SheetGroupBackground`, `SheetHandle`, `SheetOverlay`, `PermissionWarningBorder` |
 
 `ScrollBarGutter` is the room the list leaves on its right for a scroll bar drawn over it, like Fluent's. A scroll bar
 with a column of its own, like Simple's, already has its room, and the list keeps all of its width.
@@ -410,13 +415,178 @@ The reply box and the permission request are hidden; the list still draws, scrol
 Pending requests stay in `ChatConversation.PendingPermissions`, and the reply box keeps its draft, so setting
 `IsReadOnly` back to `false` shows everything again.
 
+## Touch layout
+
+![The sample app in the touch layout, playing a recorded session: an edit and a new file. The user's message is a bubble at the right, the reply has no timeline, each tool call is a block, and the reply box has its bar](https://raw.githubusercontent.com/carlosdealmeida/claude-visual-chat/main/docs/screenshot-touch.png)
+
+Set `Layout` to `ChatLayout.Touch` to lay the view out for a finger on a phone, in the style of Anthropic's Claude app,
+instead of the extension's layout. `Desktop` is the default, and it does not change. Everything inside the view follows
+`Layout`; each part that changes with it takes the pseudo-class `:touch`.
+
+```xml
+<cvc:ClaudeChatView Conversation="{Binding Chat}"
+                    Layout="Touch"
+                    Dictation="{Binding Dictation}"
+                    UsageSheetContent="{Binding Meters}" />
+```
+
+What changes:
+
+- **The list.** Text of 15 px on a 22.5 px line, and no timeline: everything starts at the margin. The user's message is
+  a bubble at the right, at most 85 % of the list wide, with no time. A tool call is a block with a frame and its state
+  dot at the start of its header. A finished turn ends with a copy button (⧉) that puts what Claude wrote in the turn on
+  the clipboard, in place of the line of duration, tokens and cost. The agents chip is at the end of the list ("Agents · 2
+  running") and opens the Agent map.
+- **The reply box.** A rounded box with its text over a bar of targets of 44 px: **+**, the model pill, the context ring
+  (from the first token, its arc the share used rather than the extension's steps), the microphone (see below) and send, or stop while Claude works. Enter breaks the line, and
+  Ctrl+Enter sends. The **/** button, the Remote Control chip and the mode picker are not in the bar: the **+** sheet
+  has them. The touch layout does not draw the cache clock. The model pill ends in an ellipsis, the level first, when
+  the bar leaves it less room than its name and level need.
+- **Sheets.** The model pill, the **+** and the context ring each open a sheet that rises from the bottom of the view.
+  The ✕, Esc or a tap on the veil over the rest of the view closes it, and a page inside a sheet has a back arrow.
+  - *Select model*: the models, each with its description (`ChatStrings.ModelDescriptions` translates the claude's) and
+    the current one checked; for a model that takes an effort, an "Effort" row that opens its levels.
+  - *Add* (the **+**): "Photo or file" (the file dialog), "Commands" (the command palette), "Mode" (the permission
+    modes), "Browser" and "Remote Control" with their state, and, while Remote Control is connected and has a link,
+    "Open claude.ai/code", which raises `RemoteControlLinkRequested`.
+  - *Usage* (the ring): the context window by category and, under it, what your app puts in `UsageSheetContent`, or the
+    limits of the plan the claude reported. It takes the place of the `/context` and `/usage` panels, which are not
+    drawn in this layout; `ShownPanel` and `CommandInvoked` work as before, and its ↻ asks for the data again.
+- **The permission request** asks a short question ("Edit OrderService.cs?", "Run this command?") with the command or
+  the diff under it, and its answers go across the block at 48 px. While one waits no sheet opens (an open one closes
+  when it comes), and the keyboard goes to no one: a reply box that took it back after an answer would raise the
+  on-screen keyboard.
+- **The Agent map.** Its subtitle wraps and speaks of a tap. When the tree does not fit the map's width (a phone held
+  upright), it goes down: the main agent's card on top and the agents under it, all as wide as the map, an agent another
+  one called still 32 px in under its caller, so the map scrolls only down. Where it fits (a tablet), it is the desktop's.
+- **Targets.** What a finger taps is 44 px at least: the buttons of the bar, the rows of the sheets and of the command
+  palette, the ✕ of the banners, of the image preview and of the Agent map, and its back arrow. A row of the palette
+  runs its command on a tap, not on the press, so a finger that scrolls the list runs nothing.
+
+### What your app adds to the usage sheet
+
+`UsageSheetContent` is what the usage sheet shows under the context window, in place of the plan's limits: your app's
+own meters, say. A control is shown as it is; any other object is made into one by the data templates your app has
+(the view's, its window's or the application's), as in a `ContentControl`. It is drawn only in the touch layout, and
+only while the sheet is open.
+
+```xml
+<cvc:ClaudeChatView Layout="Touch" UsageSheetContent="{Binding Meters}">
+  <cvc:ClaudeChatView.DataTemplates>
+    <DataTemplate DataType="vm:Meters">
+      <ProgressBar Value="{Binding SessionShare}" Maximum="100" />
+    </DataTemplate>
+  </cvc:ClaudeChatView.DataTemplates>
+</cvc:ClaudeChatView>
+```
+
+### Dictation
+
+The microphone is your app's: the component has no speech recognizer. Give the view an `IChatDictation`, and the touch
+layout's bar has a microphone while its `IsAvailable` is true. The desktop layout never has one.
+
+```csharp
+public interface IChatDictation
+{
+    bool IsAvailable { get; }                  // for example, the language's model is on the device
+    event EventHandler? AvailabilityChanged;   // raised when IsAvailable changes; may be from any thread
+    Task<string?> ListenAsync(IProgress<string>? partial, CancellationToken stop);
+}
+
+Chat.Dictation = new MyDictation(); // yours
+```
+
+A tap on the microphone asks for one listening, on the UI thread. The box is locked while it lasts: what is heard so far
+(`partial`) goes into it at the caret, with a space on each side of the words, and what `ListenAsync` returns is the
+final text. A second tap cancels `stop`: `ListenAsync` ends the listening early and returns what it heard (null for
+nothing); it does not throw. What is heard is never sent by itself. The caret ends after the words, and the keyboard
+goes back to the box only if the box had it when the finger came down: the component never raises the on-screen
+keyboard on its own. The listening is cut short, and what comes back after is ignored, when another conversation is
+shown, the layout changes, the view turns read-only or leaves the window, or the dictation goes away or stops being
+available; the words already in the box stay. Text put in the box while it listens (a message your app gives back with
+`UndoSubmit`, a command from the palette) stays too, and the words go after it.
+
+### The back button
+
+A phone's back button does not reach the view as Esc. Call `CloseTopLayer()` from it: it closes one layer per call, the
+top-most first, and returns whether it closed one.
+
+```csharp
+void OnBackPressed()
+{
+    if (!Chat.CloseTopLayer()) GoBack(); // yours: nothing of the view was open
+}
+```
+
+The layers, top-most first: the image preview; a menu of the reply box (the commands or the models); a sheet (the usage
+sheet before the others, and a page inside a sheet goes back to the first page before the sheet closes); an agent's card
+in the Agent map, which goes back to the map; the panel that is open (the Agent map, or the `/context` and `/usage`
+panels of the desktop layout); and the field where the user writes why a request is refused. A permission request is no
+layer: it has to be answered.
+
+### Your own parts under a sheet
+
+A sheet dims the view with its veil, and a tap on the veil closes it. What your app draws outside the view (a top bar with
+a back button and a title, say) stays lit unless your app dims it too. `IsSheetOpen` is true while a sheet is on screen
+(the model sheet, the **+** sheet or the usage sheet); it is a read-only property that a binding follows, and it follows
+every way a sheet closes, the ones the view does by itself included (another conversation, the layout going back to
+`Desktop`, the view becoming read-only, a permission request). The usage sheet is information only, so it stays open
+when the view becomes read-only, and `IsSheetOpen` stays true with it. `DismissSheet()` does what a tap on the veil of the sheet on
+top does and returns true, or returns false and closes nothing when no sheet is open. The veil's color is the resource
+`ClaudeChat.SheetOverlay`.
+
+```xml
+<Grid RowDefinitions="56,*">
+  <local:TopBar />
+  <cvc:ClaudeChatView Name="Chat" Grid.Row="1" Layout="Touch" />
+  <!-- over the top bar, while a sheet dims the view -->
+  <Border Background="{DynamicResource ClaudeChat.SheetOverlay}" Focusable="False"
+          IsVisible="{Binding #Chat.IsSheetOpen}" PointerPressed="OnVeilPressed" />
+</Grid>
+```
+
+```csharp
+void OnVeilPressed(object? sender, PointerPressedEventArgs e)
+{
+    e.Handled = true;          // nothing under the veil gets the tap
+    Chat.DismissSheet();
+}
+```
+
+The view's theme defines `ClaudeChat.SheetOverlay` inside the view, so a part outside it finds the key only where your app
+has it too: merge `Themes/DarkModern.axaml` into the resources of the parent of both (or define the key there, with the
+color you give the view). Unlike `CloseTopLayer()`, `DismissSheet()` closes the whole sheet from any of its pages, as the veil
+does, and touches no other layer.
+
+### Colors and sizes
+
+The touch layout's colors are keys of the theme like the others, prefixed with `ClaudeChat.` too. `UserBubble` (the user's bubble),
+`SheetBackground`, `SheetGroupBackground` (the blocks of rows in a sheet, and the buttons of the bar), `SheetHandle` (the
+grab handle of a sheet) and `SheetOverlay` (the veil over the rest of the view) are in "Dark 2026" and in "Dark Modern".
+`PermissionWarningBorder` (the frame of a request) is in "Dark 2026" only. "Dark Modern" does not define it, so it keeps
+the "Dark 2026" color. The touch layout's sizes are the same `ClaudeChat.*` keys as the desktop's, with the phone's
+values, in `Themes/Touch.axaml`; the view merges that file into its resources while `Layout` is `Touch` and takes it out
+when the layout goes back, so your app does nothing. A key your app redefines in the view's resources still wins:
+
+```xml
+<cvc:ClaudeChatView Layout="Touch">
+  <cvc:ClaudeChatView.Resources>
+    <x:Double x:Key="ClaudeChat.FontSize">16</x:Double>
+  </cvc:ClaudeChatView.Resources>
+</cvc:ClaudeChatView>
+```
+
+The sample plays a recording in a phone-sized window: `dotnet run --project samples/ClaudeVisualChat.Sample -- --touch`
+(see [Sample app](#sample-app)).
+
 ## Limitations
 
 - The stream-json format is not a stable API, and it can change between versions of `claude`. The control was built
   against `claude` 2.1.286 and ignores what it does not know, so a new kind of line is left out rather than breaking
   the view.
-- Some buttons of the extension are not here, because they need features of the host: the microphone, and on an
-  agent's card, its transcript and "Stop agent".
+- Some buttons of the extension are not here, because they need features of the host: on an agent's card, its
+  transcript and "Stop agent". The microphone is there in the touch layout, once your app gives the view its speech to
+  text (see [Dictation](#dictation)); the desktop layout has none.
 
 ## Sample app
 
@@ -431,14 +601,24 @@ box. Sending it shows a made-up upload, its progress and the message with its ma
 dotnet run --project samples/ClaudeVisualChat.Sample
 ```
 
+With `--touch` the window is a phone's screen (412×892) with the view alone in it, in the touch layout. The sample's
+bar and log have no room next to it, so the recording and its language come from the command line (`--scenario`,
+`--lang`), and it plays when the window opens.
+
+```sh
+dotnet run --project samples/ClaudeVisualChat.Sample -- --touch
+```
+
 It also makes the screenshots of this page without opening anything on the screen: it plays a recording to the end,
-says yes to every request, saves the 1280×800 window and exits.
+says yes to every request, saves the 1280×800 window (412×892 with `--touch`) and exits.
 
 ```sh
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot.png --scenario edit
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot-pt.png --scenario edit --lang pt
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot-agents.png --scenario agents
 dotnet run --project samples/ClaudeVisualChat.Sample -- --screenshot docs/screenshot-agents-pt.png --scenario agents --lang pt
+dotnet run --project samples/ClaudeVisualChat.Sample -- --touch --screenshot docs/screenshot-touch.png --scenario edit
+dotnet run --project samples/ClaudeVisualChat.Sample -- --touch --screenshot docs/screenshot-touch-pt.png --scenario edit --lang pt
 ```
 
 With `--history`, the screenshot shows the recording's session file instead of its stream. The `agents` screenshot

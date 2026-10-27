@@ -1,0 +1,647 @@
+<!--
+  The styles of the touch layout (ChatLayout.Touch), after ClaudeChatTheme.axaml: the message list and the reply box in
+  the style of Anthropic's Claude app. ClaudeChatView includes this file in its own Styles, after the theme, so what it
+  sets wins. Every selector goes through the pseudo-class :touch (set by the view, the reply box, the permission
+  request, the timeline rows, the tool calls and the agents chip from their layout), the class touch (put by the item
+  templates, from the view's layout), the touch bar (Border.ClaudeChatTouchBar), which is in the tree only in the touch
+  layout, or a class of the sheets (ClaudeChatSheet…), which are hidden and empty outside it, so the desktop layout does
+  not change. (The usage sheet also draws with the classes of the /context and /usage panels that give its bars and dots
+  their colors, which the theme has.)
+  The sizes (text, list padding) are not here: they are the ClaudeChat.* keys of Touch.axaml, merged into the view's resources.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:ClaudeVisualChat.Controls"
+        x:CompileBindings="True">
+
+  <Styles.Resources>
+    <!-- the touch buttons (the touch bar's, and the agents chip at the end of the list): a transparent target of 44 px,
+         which is what the finger finds, around the face of 38 px that is drawn, a circle or a pill: the button's own
+         background, border, corner radius and padding are the face's -->
+    <ControlTemplate x:Key="ClaudeChat.TouchButtonTemplate" TargetType="Button">
+      <Border Name="PART_TouchTarget" Background="Transparent">
+        <Border Name="PART_TouchFace"
+                MinWidth="38" Height="38" ClipToBounds="True"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <ContentPresenter Name="PART_ChatButtonContent"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+        </Border>
+      </Border>
+    </ControlTemplate>
+  </Styles.Resources>
+
+  <!-- ===== the user's message: a bubble at the right, no time ===== -->
+
+  <Style Selector="StackPanel.ClaudeChatUserTurn.touch">
+    <Setter Property="Margin" Value="0,12,0,8" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatUserTurn.touch > Panel.ClaudeChatUserStamp">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <!-- the bubble takes the width of its text, at most 85 % of the list's -->
+  <Style Selector="StackPanel.ClaudeChatUserTurn.touch > Border.ClaudeChatUser">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.UserBubble}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="18" />
+    <Setter Property="Padding" Value="12,9" />
+    <Setter Property="MaxWidth"
+            Value="{Binding $parent[controls:ChatItemList].ListWidth, Converter={x:Static controls:ChatConverters.BubbleMaxWidth}}" />
+  </Style>
+
+  <!-- ===== the timeline: none; the content starts at the margin ===== -->
+
+  <Style Selector="controls|ChatTimelineRow:touch /template/ Ellipse#PART_Dot, controls|ChatTimelineRow:touch /template/ Rectangle#PART_Line, controls|ChatTimelineRow:touch /template/ TextBlock#PART_Stamp">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="controls|ChatTimelineRow:touch /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Margin" Value="0,6" />
+  </Style>
+  <Style Selector="controls|ChatTimelineRow:touch:first /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Margin" Value="0,0,0,6" />
+  </Style>
+  <!-- a thought that opens, and a subagent's call: a finger's height -->
+  <Style Selector="controls|ChatTimelineRow:touch ToggleButton.ClaudeChatDisclosure.interactive">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <!-- ===== a tool call: a block with a frame, its state dot at the start of the header ===== -->
+
+  <Style Selector="controls|ToolCallView:touch Border.ClaudeChatToolBlock">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ToolBackground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="10,8" />
+  </Style>
+  <Style Selector="controls|ToolCallView:touch Ellipse.ClaudeChatToolDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Margin" Value="0,0,8,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.Dot}" />
+  </Style>
+  <Style Selector="controls|ToolCallView:touch Ellipse.ClaudeChatToolDot.succeeded">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DotSucceeded}" />
+  </Style>
+  <Style Selector="controls|ToolCallView:touch Ellipse.ClaudeChatToolDot.failed">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DotFailed}" />
+  </Style>
+  <Style Selector="controls|ToolCallView:touch Ellipse.ClaudeChatToolDot.rejected">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DotRejected}" />
+  </Style>
+  <!-- a tool still running blinks, once a second, like the timeline's dot -->
+  <Style Selector="controls|ToolCallView:touch Ellipse.ClaudeChatToolDot.running">
+    <Style.Animations>
+      <Animation Duration="0:0:1" IterationCount="Infinite">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        <KeyFrame Cue="50%"><Setter Property="Opacity" Value="0" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- ===== the end of a turn: the copy button instead of the line of duration, tokens and cost ===== -->
+
+  <Style Selector="Panel.ClaudeChatTurnEnd.touch">
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <Style Selector="Panel.ClaudeChatTurnEnd.touch > Panel.ClaudeChatFooterLine">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Panel.ClaudeChatTurnEnd.touch > Panel.ClaudeChatFooterCopy">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+
+  <!-- ===== "Working…" at the end of the list: no timeline column to make room for ===== -->
+
+  <Style Selector="Panel.ClaudeChatWorking.touch Ellipse.ClaudeChatWorkingDot">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <Style Selector="Panel.ClaudeChatWorking.touch TextBlock.ClaudeChatWorkingText">
+    <Setter Property="Margin" Value="16,0,0,0" />
+  </Style>
+
+  <!-- ===== the reply box: a box of 24 px corners, the text over a bar of 44 px targets ===== -->
+
+  <!-- 12 px at the left of the text, 10 at the right and over it, 8 under the bar; the frame in the strong border, and
+       with the focus the clay ring, without the colored shadow of the desktop's (whatever the mode) -->
+  <Style Selector="controls|ChatComposer:touch Border.ClaudeChatComposer">
+    <Setter Property="CornerRadius" Value="24" />
+    <Setter Property="Padding" Value="12,10,10,8" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.BorderStrong}" />
+  </Style>
+  <Style Selector="controls|ChatComposer:touch Border.ClaudeChatComposer:focus-within">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusRing}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.ComposerShadow}" />
+  </Style>
+
+  <!-- the text: the box's padding is its own, 8 px over the bar; the lines are the text's 22.5 px and up to 6 of them show
+       before it scrolls -->
+  <Style Selector="controls|ChatComposer:touch TextBox.ClaudeChatInput">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="0,0,0,8" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="MaxHeight" Value="{Binding $self.LineHeight, Converter={x:Static controls:ChatConverters.InputMaxHeight}}" />
+  </Style>
+
+  <!-- the bar: + and the model at the left; the ring, the microphone and send at the right. Each button is a target of
+       44 px with a face of 38 inside it (ClaudeChat.TouchButtonTemplate): a circle of the sheet groups' color, the send in
+       the send color, the model a pill with its padding of 14 -->
+  <Style Selector="Border.ClaudeChatTouchBar Button">
+    <Setter Property="Template" Value="{StaticResource ClaudeChat.TouchButtonTemplate}" />
+    <Setter Property="MinWidth" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="19" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SheetGroupBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar Button:pressed /template/ Border#PART_TouchFace">
+    <Setter Property="Opacity" Value="0.7" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar Button:focus-visible">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar Button.ClaudeChatTouchSend">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SendBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.SendForeground}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar Button.ClaudeChatTouchSend:disabled">
+    <Setter Property="Opacity" Value="0.4" />
+    <Setter Property="Cursor" Value="Arrow" />
+  </Style>
+  <!-- the microphone while it listens: the accent's fill (its icon follows the button's color), as the first answer of a request -->
+  <Style Selector="Border.ClaudeChatTouchBar Button.listening">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.AccentFill}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.AccentForeground}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar Button.ClaudeChatModelChip">
+    <Setter Property="Padding" Value="14,0" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
+  </Style>
+  <!-- the ring has no face: the arc, larger than the desktop's, sits on the 44 px -->
+  <Style Selector="Border.ClaudeChatTouchBar Button.ClaudeChatContextRing">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar controls|ContextRingArc">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Radius" Value="9" />
+    <Setter Property="StrokeThickness" Value="2.5" />
+  </Style>
+
+  <!-- the icons, the same drawings as the desktop bar's stretched to their size on the face: the + is 16 px, the arrow
+       18 px high, the microphone 20 px, the stop square 14 -->
+  <Style Selector="Border.ClaudeChatTouchBar Path">
+    <Setter Property="Stretch" Value="Uniform" />
+    <Setter Property="StrokeThickness" Value="1.8" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar Path.ClaudeChatAddIcon">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar Path.ClaudeChatSendIcon">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar Path.ClaudeChatMicIcon">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Mic}" />
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+  </Style>
+  <Style Selector="Border.ClaudeChatTouchBar Border.ClaudeChatStopIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="CornerRadius" Value="3" />
+  </Style>
+
+  <!-- ===== the agents chip at the end of the list: an outlined pill, a finger's height ===== -->
+
+  <Style Selector="Button.ClaudeChatAgentsChip:touch">
+    <Setter Property="Template" Value="{StaticResource ClaudeChat.TouchButtonTemplate}" />
+    <Setter Property="MinWidth" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Padding" Value="14,0" />
+    <Setter Property="CornerRadius" Value="19" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.BorderStrong}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip:touch:pressed /template/ Border#PART_TouchFace">
+    <Setter Property="Opacity" Value="0.7" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip:touch:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip:touch StackPanel">
+    <Setter Property="Spacing" Value="8" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip:touch Ellipse.ClaudeChatAgentsChipDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+  </Style>
+
+  <!-- ===== the sheets: a layer over the view with a veil, and the panel risen from the bottom ===== -->
+
+  <!-- the layer (ChatSheet) is hidden and empty until a sheet opens, which only the touch layout does; the panel is at the
+       bottom, rounded on top, and the code keeps it under 92 % of the view's height -->
+  <Style Selector="Border.ClaudeChatSheet">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SheetOverlay}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatSheetPanel">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SheetBackground}" />
+    <Setter Property="CornerRadius" Value="18,18,0,0" />
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.ClaudeChatSheetHandle">
+    <Setter Property="Width" Value="36" />
+    <Setter Property="Height" Value="4" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SheetHandle}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,8,0,2" />
+  </Style>
+
+  <!-- the header: 48 px, the ✕ (or the back arrow) and the action in targets of 44 px, the title between them -->
+  <Style Selector="Grid.ClaudeChatSheetHeader">
+    <Setter Property="Height" Value="48" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatSheetTitle">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.ClaudeChatSheetButton">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="22" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.ClaudeChatSheetButton:pressed /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ListActiveBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatSheetButton:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <!-- the ✕ and the "‹" (the chevron turned round): drawn to 14 px in the button's color -->
+  <Style Selector="Path.ClaudeChatSheetCloseIcon, Path.ClaudeChatSheetBackIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="Stretch" Value="Uniform" />
+    <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}" />
+    <Setter Property="StrokeThickness" Value="1.8" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+  </Style>
+  <Style Selector="Path.ClaudeChatSheetCloseIcon">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Close}" />
+  </Style>
+  <Style Selector="Path.ClaudeChatSheetBackIcon">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Chevron}" />
+    <Setter Property="RenderTransform" Value="scale(-1, 1)" />
+  </Style>
+
+  <!-- the body: 12 px at the sides, 4 over and 16 under, its blocks 8 px apart -->
+  <Style Selector="Border.ClaudeChatSheetBody">
+    <Setter Property="Padding" Value="12,4,12,16" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatSheetStack">
+    <Setter Property="Spacing" Value="8" />
+  </Style>
+  <!-- a block of rows, in the color of the sheet's groups, 14 px corners; a line of the sheet's color between the rows -->
+  <Style Selector="Border.ClaudeChatSheetGroup">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SheetGroupBackground}" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.ClaudeChatSheetSeparator">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SheetBackground}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatSheetLabel">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Margin" Value="4,4,4,0" />
+  </Style>
+
+  <!-- a row: across the block, 16 px inside; the touch and the pointer light it up -->
+  <Style Selector="Button.ClaudeChatSheetRow">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="16,0" />
+  </Style>
+  <Style Selector="Button.ClaudeChatSheetRow:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ListHoverBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatSheetRow:pressed /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ListActiveBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatSheetRow:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatSheetRowText">
+    <Setter Property="Spacing" Value="2" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- the name at 16 px; under it the description at 13 px, and at the right the value, in the secondary color -->
+  <Style Selector="TextBlock.ClaudeChatSheetName">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatSheetDescription">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatSheetValue">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="Margin" Value="12,0,0,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- the check: the model menu's, in the accent color, on a 20 px box after the value -->
+  <Style Selector="Viewbox.ClaudeChatSheetCheck">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Margin" Value="12,0,0,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Viewbox.ClaudeChatSheetCheck Path.ClaudeChatMenuCheck">
+    <Setter Property="Stroke" Value="{DynamicResource ClaudeChat.Accent}" />
+    <Setter Property="StrokeThickness" Value="2" />
+  </Style>
+  <!-- a row's icon: a drawing fitted into 18 px (centered there, whatever its proportions), 14 px before the name, in the
+       name's color -->
+  <Style Selector="Path.ClaudeChatSheetIcon">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Stretch" Value="Uniform" />
+    <Setter Property="Stroke" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+    <Setter Property="Margin" Value="0,0,14,0" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- ===== the usage sheet: the context window as a card, and the plan's limits as cards under it ===== -->
+
+  <!-- the ↻ of the header, drawn at 16 px in the button's color like the ✕ -->
+  <Style Selector="Path.ClaudeChatSheetRefreshIcon">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Refresh}" />
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Stretch" Value="Uniform" />
+    <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}" />
+    <Setter Property="StrokeThickness" Value="1.6" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+  </Style>
+
+  <!-- a card: the head (the name, and the share used at the right), the bar and the caption under it, 8 px apart, 16 px from the
+       sides and 12 over and under; the context window's card is a row of the sheet (a button), a limit's is not -->
+  <Style Selector="Button.ClaudeChatSheetCard">
+    <Setter Property="Padding" Value="16,12" />
+  </Style>
+  <Style Selector="Border.ClaudeChatSheetBlock">
+    <Setter Property="Padding" Value="16,12" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatSheetCardBody">
+    <Setter Property="Spacing" Value="8" />
+  </Style>
+  <!-- the bar: 6 px high, round, on the track's color (the /context panel's); its pieces are the panel's too -->
+  <Style Selector="Border.ClaudeChatSheetBar">
+    <Setter Property="Height" Value="6" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.PillHoverBackground}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatSheetCaption">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <!-- what the sheet says in place of a card, when there is nothing to draw it from -->
+  <Style Selector="TextBlock.ClaudeChatSheetNote">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Margin" Value="16,14" />
+  </Style>
+  <!-- the chevron at the right of the card's head: the thinking arrow's drawing, larger, pointing down; up once the lines are open -->
+  <Style Selector="Path.ClaudeChatSheetChevron">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Chevron}" />
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Margin" Value="6,0,0,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Stroke" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="StrokeThickness" Value="1.2" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+    <Setter Property="RenderTransform" Value="rotate(90deg) scale(1.5)" />
+  </Style>
+  <Style Selector="Path.ClaudeChatSheetChevron.expanded">
+    <Setter Property="RenderTransform" Value="rotate(-90deg) scale(1.5)" />
+  </Style>
+
+  <!-- the lines under the card, a category each: a dot of 8 px, the name, the tokens and the share, the last two muted and
+       lined up from one line to the next (one grid); a deferred category is muted all along -->
+  <Style Selector="Grid.ClaudeChatSheetCategories">
+    <Setter Property="Margin" Value="16,0,16,12" />
+  </Style>
+  <Style Selector="Border.ClaudeChatContextSwatch.ClaudeChatSheetDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Margin" Value="0,0,10,0" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatSheetCategory">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,5" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatSheetCategory.muted">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatSheetAmount">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="14,5,0,5" />
+  </Style>
+
+  <!-- ===== what the "+" sheet makes reachable in touch: the command palette's rows and the attachments' × ===== -->
+
+  <!-- the palette, opened by the sheet's "Commands" row or by a "/" typed in the empty box: rows of 44 px, one against the next
+       (they have no margin above or below), and the filter field that the "Commands" row brings up as tall -->
+  <Style Selector="controls|ChatComposer:touch controls|CommandPalette Border.ClaudeChatMenuItem">
+    <Setter Property="MinHeight" Value="44" />
+  </Style>
+  <Style Selector="controls|ChatComposer:touch controls|CommandPalette TextBox.ClaudeChatMenuFilter">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <!-- an attachment of the reply box: a pill of 48 px, which is 46 px inside its frame, for a × of 44 by 44 across its end with
+       room to spare, since the layout rounds to the device's pixels (at a phone's density of 2.625 a space of exactly 44 can come
+       out as 43.8); no pointer comes to hover on a screen, so the × is always there, and the text stops where it starts -->
+  <Style Selector="controls|ChatComposer:touch Button.ClaudeChatAttachment">
+    <Setter Property="Height" Value="48" />
+  </Style>
+  <Style Selector="controls|ChatComposer:touch Grid.ClaudeChatAttachmentContent">
+    <Setter Property="Margin" Value="4,4,44,4" />
+  </Style>
+  <Style Selector="controls|ChatComposer:touch Button.ClaudeChatAttachmentRemove">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <!-- ===== the permission request: the sheets' frame, the answers across the block, the field of "No" with its button ===== -->
+
+  <!-- the frame: Warning at 60 % (kept with the keyboard inside, where the desktop's turns to its active border), 14 px corners,
+       12 px inside, on the sheets' background -->
+  <Style Selector="controls|PermissionPrompt:touch Border.ClaudeChatPermission">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SheetBackground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.PermissionWarningBorder}" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="Padding" Value="12" />
+  </Style>
+  <Style Selector="controls|PermissionPrompt:touch Border.ClaudeChatPermission:focus-within">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.PermissionWarningBorder}" />
+  </Style>
+
+  <!-- the answers: 48 px high, across the block, 10 px corners, 15 px text and no numbers. The first ("primary") is the accent,
+       SemiBold, whatever has the keyboard (the code selects none here); the others are the sheets' group color -->
+  <Style Selector="controls|PermissionPrompt:touch TextBlock.ClaudeChatOptionNumber">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="controls|PermissionPrompt:touch Button.ClaudeChatOption">
+    <Setter Property="MinHeight" Value="48" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="14,10" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SheetGroupBackground}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="controls|PermissionPrompt:touch Button.ClaudeChatOption.primary">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.AccentFill}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.AccentForeground}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <!-- a finger on an answer dims it; under the pointer the first keeps the accent, which the desktop's hover (a gray) would take -->
+  <Style Selector="controls|PermissionPrompt:touch Button.ClaudeChatOption:pressed, controls|PermissionPrompt:touch Button.ClaudeChatDenySend:pressed">
+    <Setter Property="Opacity" Value="0.7" />
+  </Style>
+  <Style Selector="controls|PermissionPrompt:touch Button.ClaudeChatOption.primary:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.AccentFill}" />
+  </Style>
+  <!-- the keyboard shows by a ring, except on the first answer: it is the accent already, and the request puts the keyboard
+       there by itself when it comes -->
+  <Style Selector="controls|PermissionPrompt:touch Button.ClaudeChatOption:not(.primary):focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+
+  <!-- what to tell Claude: a field of 48 px like the answers, and under it "Send", across the block, in the send color -->
+  <Style Selector="controls|PermissionPrompt:touch TextBox.ClaudeChatField">
+    <Setter Property="MinHeight" Value="48" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="14,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="controls|PermissionPrompt:touch Button.ClaudeChatDenySend">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="MinHeight" Value="48" />
+    <Setter Property="Margin" Value="0,8,0,0" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SendBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.SendForeground}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="controls|PermissionPrompt:touch Button.ClaudeChatDenySend:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+
+  <!-- ===== the ✕ of the banners over the reply box, of the image preview and of the Agent map (with its back arrow): targets of 44 px
+       (the desktop's are 20, 28 and 28) ===== -->
+
+  <!-- a banner: the ✕ is 44 by 44 at the end of the line, its icon 14 px. The reply box is drawn over the last 8 px of the banner, so
+       the target must stay above them: no padding over it and 8 under it, so that with the 1 px frame the banner is 54 px high, 46
+       of them in sight -->
+  <Style Selector="controls|ClaudeChatView:touch :is(Border).ClaudeChatBanner">
+    <Setter Property="Padding" Value="16,0,0,8" />
+  </Style>
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatBannerClose">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="22" />
+    <Setter Property="Margin" Value="4,0,0,0" />
+  </Style>
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatBannerClose Viewbox.ClaudeChatRemoveIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+  </Style>
+
+  <!-- the preview: the ✕ is a circle of 44 px; its margins are the desktop's, so 12 px of it stick out of the image's corner -->
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatPreviewClose">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="CornerRadius" Value="22" />
+  </Style>
+
+  <!-- the Agent map's ✕ and the arrow that goes back from an agent's card: 44 by 44, a circle when the pointer or the keyboard is on
+       it, the icon as large as ever in the middle -->
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatAgentMapButton">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="CornerRadius" Value="22" />
+  </Style>
+
+  <!-- the rows of the Agent map: the desktop's fixed lines (17 and 15 px) are for its 13 px text, and would cut the descenders of the
+       phone's 15 px; these keep them whole -->
+  <Style Selector="controls|ClaudeChatView:touch TextBlock.ClaudeChatAgentRowTitle">
+    <Setter Property="LineHeight" Value="20" />
+  </Style>
+  <Style Selector="controls|ClaudeChatView:touch TextBlock.ClaudeChatAgentRowMeta">
+    <Setter Property="LineHeight" Value="17" />
+  </Style>
+</Styles>

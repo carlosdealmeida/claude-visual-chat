@@ -14,7 +14,9 @@ namespace ClaudeVisualChat.Controls;
 /// Like the extension's, it shows only once more than half of the window is used. The tooltip says how much is left until
 /// auto-compact (the extension's words); a click opens the Context panel (<c>InvokeCommand("context")</c>, so the host
 /// asks for the data). The extension compacts on a click; a stray click here must not compact the conversation.
-/// Hidden, taking no room, below that or while the claude has reported no usage with a window.
+/// Hidden, taking no room, below that or while the claude has reported no usage with a window. The touch layout's ring
+/// shows from the first token on: its <see cref="MinimumPercent"/> is 0, and its arc draws the share used as it is, not in the
+/// steps (15 % used is 15 % of the circle); and it asks for nothing while a permission request waits.
 /// </summary>
 internal sealed class ContextRing : Button
 {
@@ -24,11 +26,15 @@ internal sealed class ContextRing : Button
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<ContextRing>();
 
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<ContextRing>();
+
     private readonly ContextRingArc _arc = new ContextRingArc();
 
     private ChatConversation? _conversation;
     private ChatConversation? _tracked;
     private bool _attached;
+    private int _minimumPercent = ShownAbove;
 
     public ContextRing()
     {
@@ -36,8 +42,20 @@ internal sealed class ContextRing : Button
         Classes.Add("ClaudeChatBarButton");
         Classes.Add("ClaudeChatContextRing");
         Content = _arc;
-        Click += (_, _) => _tracked?.InvokeCommand("context", "");
+        Click += (_, _) => Ask();
         IsVisible = false;
+    }
+
+    /// <summary>
+    /// What a click does: asks for the context. Not in the touch layout while a permission request waits: the panel is the usage sheet
+    /// there, which would cover the request, and does not open then (the ring stays on screen under the request).
+    /// </summary>
+    private void Ask()
+    {
+        var conversation = _tracked;
+        if (conversation == null) return;
+        if (GetValue(LayoutProperty) == ChatLayout.Touch && conversation.CurrentPermission != null) return;
+        conversation.InvokeCommand("context", "");
     }
 
     /// <summary>The conversation whose context it shows.</summary>
@@ -48,6 +66,20 @@ internal sealed class ContextRing : Button
         {
             _conversation = value;
             if (_attached) Track(value);
+        }
+    }
+
+    /// <summary>
+    /// The ring shows once more than this much of the window is used: <see cref="ShownAbove"/>, the extension's, unless
+    /// set (the touch layout's ring is set to 0).
+    /// </summary>
+    internal int MinimumPercent
+    {
+        get => _minimumPercent;
+        set
+        {
+            _minimumPercent = value;
+            if (_attached) Update();
         }
     }
 
@@ -96,7 +128,7 @@ internal sealed class ContextRing : Button
         if (e.PropertyName == nameof(ChatConversation.ContextUsage)) Update();
     }
 
-    /// <summary>The share the arc draws for a percentage: the extension's three steps.</summary>
+    /// <summary>The share the arc draws for a percentage: the extension's three steps (the ring that shows only above half).</summary>
     internal static int StepOf(double percent) => percent < 62.5 ? 50 : percent < 87 ? 75 : 99;
 
     /// <summary>The extension's share used: <c>min(100 * tokens / window, 100)</c>; the integer percentage without a window.</summary>
@@ -108,17 +140,21 @@ internal sealed class ContextRing : Button
     {
         var usage = _tracked?.ContextUsage;
         var percent = usage == null ? 0 : UsedOf(usage);
-        IsVisible = usage != null && usage.MaxTokens > 0 && percent > ShownAbove;
+        IsVisible = usage != null && usage.MaxTokens > 0 && percent > _minimumPercent;
         if (usage == null) return;
         Percent = percent;
-        _arc.Percent = StepOf(percent);
+        // the extension's steps start at half, where its ring shows; a ring that shows from lower down draws the share itself
+        _arc.Percent = _minimumPercent < ShownAbove ? percent : StepOf(percent);
         var tip = Strings.FormatContextRingTip(percent);
         ToolTip.SetTip(this, tip);
         AutomationProperties.SetName(this, tip);
     }
 }
 
-/// <summary>The ring's drawing: the track circle and, over it, the arc; the colors come from the theme's styles.</summary>
+/// <summary>
+/// The ring's drawing: the track circle and, over it, the arc; the colors come from the theme's styles. The circle is the
+/// extension's 5 px radius with a 1.5 px stroke on its 20 px drawing; the touch layout's is larger (9 and 2.5).
+/// </summary>
 internal sealed class ContextRingArc : Control
 {
     public static readonly StyledProperty<double> PercentProperty =
@@ -130,12 +166,16 @@ internal sealed class ContextRingArc : Control
     public static readonly StyledProperty<IBrush?> FillProperty =
         AvaloniaProperty.Register<ContextRingArc, IBrush?>(nameof(Fill));
 
-    private const double Stroke = 1.5;
-    private const double Radius = 5; // of the extension's 20 px drawing
+    /// <summary>The circle's radius, the middle of its stroke.</summary>
+    public static readonly StyledProperty<double> RadiusProperty =
+        AvaloniaProperty.Register<ContextRingArc, double>(nameof(Radius), 5);
+
+    public static readonly StyledProperty<double> StrokeThicknessProperty =
+        AvaloniaProperty.Register<ContextRingArc, double>(nameof(StrokeThickness), 1.5);
 
     static ContextRingArc()
     {
-        AffectsRender<ContextRingArc>(PercentProperty, TrackProperty, FillProperty);
+        AffectsRender<ContextRingArc>(PercentProperty, TrackProperty, FillProperty, RadiusProperty, StrokeThicknessProperty);
     }
 
     public double Percent { get => GetValue(PercentProperty); set => SetValue(PercentProperty, value); }
@@ -144,14 +184,19 @@ internal sealed class ContextRingArc : Control
 
     public IBrush? Fill { get => GetValue(FillProperty); set => SetValue(FillProperty, value); }
 
+    public double Radius { get => GetValue(RadiusProperty); set => SetValue(RadiusProperty, value); }
+
+    public double StrokeThickness { get => GetValue(StrokeThicknessProperty); set => SetValue(StrokeThicknessProperty, value); }
+
     public override void Render(DrawingContext context)
     {
         var center = new Point(Bounds.Width / 2, Bounds.Height / 2);
         var radius = Radius;
+        var stroke = StrokeThickness;
         if (Track != null)
-            context.DrawEllipse(null, new Pen(Track, Stroke), center, radius, radius);
+            context.DrawEllipse(null, new Pen(Track, stroke), center, radius, radius);
         if (Fill == null || Percent <= 0) return;
-        var pen = new Pen(Fill, Stroke, lineCap: PenLineCap.Round);
+        var pen = new Pen(Fill, stroke, lineCap: PenLineCap.Round);
         if (Percent >= 100)
         {
             context.DrawEllipse(null, pen, center, radius, radius);

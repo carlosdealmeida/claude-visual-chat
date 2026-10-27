@@ -10,6 +10,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
+using SkiaSharp;
 
 namespace ClaudeVisualChat.Tests.Ui;
 
@@ -17,6 +18,9 @@ internal static class UiHelpers
 {
     public const double Width = 1000;
     public const double Height = 700;
+
+    /// <summary>A phone's screen in device-independent pixels (a 412 × 892 window).</summary>
+    public const double PhoneWidth = 412, PhoneHeight = 892;
 
     /// <summary>Shows the control in a 1000×700 window and lets layout and bindings settle.</summary>
     public static Window Show(Control content, double width = Width, double height = Height)
@@ -27,7 +31,47 @@ internal static class UiHelpers
         return window;
     }
 
+    /// <summary>Shows the control in a window the size of a phone's screen.</summary>
+    public static Window ShowPhone(Control content) => Show(content, PhoneWidth, PhoneHeight);
+
+    /// <summary>A view in the touch layout, with the Portuguese texts.</summary>
+    public static ClaudeChatView TouchView(ChatConversation? c) =>
+        new ClaudeChatView { Conversation = c, Layout = ChatLayout.Touch, Strings = ChatStrings.PortugueseBrazil };
+
     public static void Pump() => Dispatcher.UIThread.RunJobs();
+
+    /// <summary>
+    /// Draws the frames that bring the screen up to the tree. What is under a point is found in the last frame drawn, and the
+    /// headless window draws one only when its render timer ticks: a timer of 60 Hz that the dispatcher fires between the jobs it
+    /// runs, so a point asked about right after a layer opened or closed (or a list moved) is often still in the frame before it, and
+    /// how often depends on how fast the machine runs. Each tick is followed by the jobs it leaves: the first sends what changed to the
+    /// renderer, the next draws it.
+    /// </summary>
+    public static void DrawFrames(int count = 3)
+    {
+        for (var frame = 0; frame < count; frame++)
+        {
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Pump();
+        }
+    }
+
+    /// <summary>What is under <paramref name="point"/> of the window, in a frame drawn after everything that happened before the call.</summary>
+    public static IInputElement? HitTest(Window window, Point point)
+    {
+        DrawFrames();
+        return window.InputHitTest(point);
+    }
+
+    /// <summary>A PNG of <paramref name="w"/> by <paramref name="h"/> pixels in one color: what a picked or pasted image is to the conversation.</summary>
+    public static byte[] Png(int w, int h)
+    {
+        using var bmp = new SKBitmap(w, h, SKColorType.Rgba8888, SKAlphaType.Premul);
+        bmp.Erase(new SKColor(30, 120, 200));
+        using var img = SKImage.FromBitmap(bmp);
+        using var data = img.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
 
     /// <summary>Runs the UI jobs until <paramref name="done"/>, for work that ends on another thread (10 s at most).</summary>
     public static void PumpUntil(System.Func<bool> done)

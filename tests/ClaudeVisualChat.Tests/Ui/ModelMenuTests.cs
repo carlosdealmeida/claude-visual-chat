@@ -168,6 +168,19 @@ public class ModelMenuTests
     }
 
     [AvaloniaFact]
+    public void Model_menu_closes_when_the_view_turns_to_the_touch_layout()
+    {
+        var ui = Open();
+        UiHelpers.Click(ui.Window, ui.Chip);
+        Assert.True(ui.Menu.IsOpen);
+
+        ui.View.Layout = ChatLayout.Touch;                                // its chip is not in the touch bar: nothing would close it there
+        UiHelpers.Pump();
+        Assert.False(ui.Menu.IsOpen);
+        Assert.False(ui.Composer.HasOpenPopup);
+    }
+
+    [AvaloniaFact]
     public void Model_menu_lists_models_and_effort_levels()
     {
         var ui = Open();

@@ -293,6 +293,59 @@ public class DetachTests
         m.Window.Close();
     }
 
+    // ---- in and out without a word in the log ----
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop, false)]
+    [InlineData(ChatLayout.Desktop, true)]
+    [InlineData(ChatLayout.Touch, false)]
+    [InlineData(ChatLayout.Touch, true)]
+    public void Coming_in_and_going_out_logs_no_binding_warning(ChatLayout layout, bool readOnly)
+    {
+        TestLog.Instance.Clear();
+        var view = new ClaudeChatView { Conversation = Busy(), Layout = layout, IsReadOnly = readOnly };
+        var host = new ContentControl { Content = view };
+        var window = UiHelpers.Show(host);
+        Assert.Equal(!readOnly, UiHelpers.Composer(view).IsEffectivelyVisible);
+
+        host.Content = new TextBlock { Text = "Tokens" };                   // the host takes the view out…
+        UiHelpers.Pump();
+        host.Content = view;                                                 // …puts it back…
+        UiHelpers.Pump();
+        Assert.Equal(!readOnly, UiHelpers.Composer(view).IsEffectivelyVisible);
+        view.IsReadOnly = !readOnly;                                         // …it follows its property as before…
+        UiHelpers.Pump();
+        Assert.Equal(readOnly, UiHelpers.Composer(view).IsEffectivelyVisible);
+        window.Close();                                                      // …and the window goes with the view in it
+        UiHelpers.Pump();
+        Assert.Empty(TestLog.Instance.Entries);
+
+        // a host that draws its page with a template and binds the view to it: the page going away takes the data context too
+        var page = new ChatPage(Busy());
+        var shell = new ContentControl
+        {
+            DataTemplates =
+            {
+                new FuncDataTemplate<ChatPage>((_, _) =>
+                {
+                    var templated = new ClaudeChatView { Layout = layout, IsReadOnly = readOnly };
+                    templated[!ClaudeChatView.ConversationProperty] = new Avalonia.Data.Binding(nameof(ChatPage.Conversation));
+                    return templated;
+                }),
+            },
+            Content = page,
+        };
+        window = UiHelpers.Show(shell);
+        Assert.Same(page.Conversation, Assert.IsType<ClaudeChatView>(Presenter(shell).Child).Conversation);
+        shell.Content = null;
+        UiHelpers.Pump();
+        shell.Content = page;
+        UiHelpers.Pump();
+        window.Close();
+        UiHelpers.Pump();
+        Assert.Empty(TestLog.Instance.Entries);
+    }
+
     // ---- out, the conversation no longer reaches the view ----
 
     /// <summary>

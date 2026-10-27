@@ -4,6 +4,8 @@
              x:Class="ClaudeVisualChat.Controls.ClaudeChatView">
   <UserControl.Styles>
     <StyleInclude Source="avares://ClaudeVisualChat.Avalonia/Themes/ClaudeChatTheme.axaml" />
+    <!-- after the theme, so its styles win; all of them go through :touch or the class touch -->
+    <StyleInclude Source="avares://ClaudeVisualChat.Avalonia/Themes/ClaudeChatTouch.axaml" />
   </UserControl.Styles>
 
   <Border Name="Root" Background="{DynamicResource ClaudeChat.Background}">
@@ -16,24 +18,29 @@
               <VirtualizingStackPanel />
             </ItemsPanelTemplate>
           </controls:ChatItemList.ItemsPanel>
-          <!-- while Claude works and nothing is arriving: a blinking dot and "Working…" -->
+          <!-- while Claude works and nothing is arriving: a blinking dot and "Working…"; under it, in the touch layout, the
+               chip of the agents (in the tree only then: the desktop layout has it in the reply box's bar) -->
           <controls:ChatItemList.Footer>
-            <Panel Name="WorkingRow" Classes="ClaudeChatWorking" IsVisible="False">
-              <Ellipse Name="WorkingDot" Classes="ClaudeChatWorkingDot" />
-              <TextBlock Name="WorkingText" Classes="ClaudeChatWorkingText" />
-            </Panel>
+            <StackPanel Name="FooterPanel">
+              <Panel Name="WorkingRow" Classes="ClaudeChatWorking" IsVisible="False">
+                <Ellipse Name="WorkingDot" Classes="ClaudeChatWorkingDot" />
+                <TextBlock Name="WorkingText" Classes="ClaudeChatWorkingText" />
+              </Panel>
+              <controls:AgentsChip Name="TouchAgentsChip" HorizontalAlignment="Left" />
+            </StackPanel>
           </controls:ChatItemList.Footer>
         </controls:ChatItemList>
       </ScrollViewer>
-      <!-- /context and /usage: over the end of the list, as wide as the reply box at most; also while read-only -->
+      <!-- /context and /usage: over the end of the list, as wide as the reply box at most; also while read-only. Not in the
+           touch layout, where the usage sheet shows them -->
       <controls:ContextPanel Name="ContextPanel" Classes="ClaudeChatPanelPlace"
                              MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
       <controls:UsagePanel Name="UsagePanel" Classes="ClaudeChatPanelPlace"
                            MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
       <!-- under the list, centered, 680 px at most: the request Claude waits on, the banners, then the reply box; all
-           go away while the view is read-only (each shows and hides itself, so the one binding is on their parent) -->
-      <StackPanel Grid.Row="1" Grid.RowSpan="2"
-                  IsVisible="{Binding !IsReadOnly, RelativeSource={RelativeSource AncestorType=controls:ClaudeChatView}}">
+           go away while the view is read-only (each shows and hides itself, so the code hides their parent: a binding to the
+           view would log a warning whenever the host takes the view's data context away) -->
+      <StackPanel Name="BottomPanel" Grid.Row="1" Grid.RowSpan="2">
         <controls:PermissionPrompt Name="Prompt" Margin="16,0,16,6"
                                    MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
         <!-- the banners, their last 8 px under the reply box (drawn after them, so over them); one at a time -->
@@ -46,6 +53,13 @@
       </StackPanel>
       <!-- the Agent map, over the whole view; also while read-only -->
       <controls:AgentMapPanel Name="AgentMap" Grid.RowSpan="3" />
+      <!-- the touch layout's sheets, which rise from the bottom over the whole view and the Agent map; closed, each one is an
+           empty hidden layer that draws nothing and takes no input, which is all the desktop layout has of them. The usage
+           sheet is the last: it opens by itself when
+           the conversation's panel does, so it is the one that may come up with another sheet open -->
+      <controls:ModelSheet Name="ModelSheet" Grid.RowSpan="3" />
+      <controls:AddSheet Name="AddSheet" Grid.RowSpan="3" />
+      <controls:UsageSheet Name="UsageSheet" Grid.RowSpan="3" />
       <!-- an attached image, over the whole view -->
       <controls:ImagePreview Name="Preview" Grid.RowSpan="3" />
     </Grid>

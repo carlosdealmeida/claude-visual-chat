@@ -13,12 +13,17 @@ namespace ClaudeVisualChat.Controls;
 /// before how many agents are at work (<see cref="ChatConversation.RunningAgents"/>, as the extension counts them:
 /// "0 agents" while none is). The dot lights up (class <c>running</c>) while one is. A click opens the Agent map
 /// (<see cref="ChatConversation.ShowAgents"/>). As the extension's (2.1.309), it shows once the conversation has an agent
-/// (<see cref="ChatConversation.Agents"/>, running or not); hidden, taking no room, before.
+/// (<see cref="ChatConversation.Agents"/>, running or not); hidden, taking no room, before. In the touch layout (pseudo-class
+/// <c>:touch</c>) it says "Agents · 2 running" while any is at work, else "Agents · 5" (all of them), and sits at the end of
+/// the list instead of in the bar.
 /// </summary>
 internal sealed class AgentsChip : Button
 {
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<AgentsChip>();
+
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<AgentsChip>();
 
     private readonly TextBlock _label = new TextBlock();
 
@@ -70,7 +75,8 @@ internal sealed class AgentsChip : Button
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == StringsProperty && _attached) Update(); // out of the window, nothing is drawn
+        if (change.Property == LayoutProperty) PseudoClasses.Set(":touch", GetValue(LayoutProperty) == ChatLayout.Touch);
+        if ((change.Property == StringsProperty || change.Property == LayoutProperty) && _attached) Update(); // out of the window, nothing is drawn
     }
 
     private void Track(ChatConversation? conversation)
@@ -105,7 +111,9 @@ internal sealed class AgentsChip : Button
         var strings = Strings;
         var running = _tracked?.RunningAgents ?? 0;
         IsVisible = _tracked != null && _tracked.Agents.Count > 0;
-        _label.Text = strings.FormatAgentsChip(running);
+        _label.Text = GetValue(LayoutProperty) == ChatLayout.Touch
+            ? strings.FormatAgentsChipTouch(running, _tracked?.Agents.Count ?? 0)
+            : strings.FormatAgentsChip(running);
         Classes.Set("running", running > 0);
         ToolTip.SetTip(this, strings.AgentMapTitle);
         AutomationProperties.SetName(this, _label.Text + " · " + strings.AgentMapTitle);

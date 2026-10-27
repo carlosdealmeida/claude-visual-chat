@@ -27,7 +27,10 @@ public partial class MainWindow : Window
 {
     private static readonly TimeSpan PerStreamEvent = TimeSpan.FromMilliseconds(25);
     private static readonly TimeSpan PerOtherLine = TimeSpan.FromMilliseconds(250);
-    private static readonly PixelSize ScreenshotSize = new PixelSize(1280, 800);
+    private static readonly PixelSize DesktopSize = new PixelSize(1280, 800);
+
+    /// <summary>A phone's screen in device-independent pixels, which the touch layout is made for.</summary>
+    private static readonly PixelSize PhoneSize = new PixelSize(412, 892);
     private static readonly string[] EffortLevels = { "low", "medium", "high", "xhigh", "max" };
 
     /// <summary>The models the sample offers, as the claude lists them in its <c>initialize</c> answer.</summary>
@@ -43,6 +46,7 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<LogEntry> _log = new ObservableCollection<LogEntry>();
     private readonly DispatcherTimer _statusTimer;
+    private readonly PixelSize _screenshotSize;
     private SampleTexts _texts = SampleTexts.English;
     private ChatConversation? _conversation;
     private FixturePlayer? _player;
@@ -59,6 +63,8 @@ public partial class MainWindow : Window
     internal MainWindow(SampleOptions options)
     {
         InitializeComponent();
+        _screenshotSize = options.Touch ? PhoneSize : DesktopSize;
+        if (options.Touch) ShowAsPhone();
         Log.ItemsSource = _log;
         ScenarioPicker.ItemsSource = Recordings.Scenarios;
         ScenarioPicker.SelectedItem = options.Scenario;
@@ -69,6 +75,25 @@ public partial class MainWindow : Window
         SourcePicker.SelectedIndex = 0;
         _statusTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background, (_, _) => UpdateStatus());
         if (options.Screenshot == null) Opened += (_, _) => _ = PlayAsync(PerStreamEvent, PerOtherLine);
+    }
+
+    /// <summary>
+    /// <c>--touch</c>: the window is a phone's screen with the view alone in it, in the touch layout. The sample's bar and the log have
+    /// no room next to it, so the recording and its language are the ones of the command line (<c>--scenario</c>, <c>--lang</c>), and
+    /// it plays when the window opens.
+    /// </summary>
+    private void ShowAsPhone()
+    {
+        Title += " (touch)";
+        MinWidth = PhoneSize.Width;
+        MinHeight = 480;
+        Width = PhoneSize.Width;
+        Height = PhoneSize.Height;
+        SampleBar.IsVisible = false;
+        LogSeparator.IsVisible = false;
+        LogPanel.IsVisible = false;
+        Body.ColumnDefinitions = new ColumnDefinitions("*");
+        Chat.Layout = ChatLayout.Touch;
     }
 
     // ---- the bar ----
@@ -363,7 +388,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Plays the chosen recording to the end at once, saying yes to every request (or loads its session file), and
-    /// saves the 1280×800 window as a PNG. Used by <c>--screenshot</c>; nothing is clicked.
+    /// saves the window as a PNG (1280×800, or 412×892 with <c>--touch</c>). Used by <c>--screenshot</c>; nothing is clicked.
     /// </summary>
     internal async Task SaveScreenshotAsync(string path, bool history)
     {
@@ -380,12 +405,12 @@ public partial class MainWindow : Window
 
         // the last texts are drawn (markdown is redrawn at most every 100 ms) and the list reaches its end
         await Task.Delay(TimeSpan.FromMilliseconds(800));
-        if (ClientSize != ScreenshotSize.ToSize(1))
-            throw new InvalidOperationException("the window is " + ClientSize + ", not " + ScreenshotSize);
+        if (ClientSize != _screenshotSize.ToSize(1))
+            throw new InvalidOperationException("the window is " + ClientSize + ", not " + _screenshotSize);
 
         var file = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        using var bitmap = new RenderTargetBitmap(ScreenshotSize, new Vector(96, 96));
+        using var bitmap = new RenderTargetBitmap(_screenshotSize, new Vector(96, 96));
         bitmap.Render(this);
         bitmap.Save(file);
     }

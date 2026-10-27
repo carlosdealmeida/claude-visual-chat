@@ -16,7 +16,7 @@
 
   <DockPanel>
     <!-- the sample's bar: which recording, how, and the language of the view -->
-    <Border DockPanel.Dock="Top" Background="#121314" BorderBrush="#2A2B2C" BorderThickness="0,0,0,1" Padding="12,8">
+    <Border Name="SampleBar" DockPanel.Dock="Top" Background="#121314" BorderBrush="#2A2B2C" BorderThickness="0,0,0,1" Padding="12,8">
       <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
         <TextBlock Name="RecordingLabel" Classes="label" Margin="0,0,8,0" />
         <ComboBox Name="ScenarioPicker" Grid.Column="1" MinWidth="170" />
@@ -30,12 +30,12 @@
       </Grid>
     </Border>
 
-    <Grid ColumnDefinitions="*,1,360">
+    <Grid Name="Body" ColumnDefinitions="*,1,360">
       <cvc:ClaudeChatView Name="Chat" />
-      <Border Grid.Column="1" Background="#2A2B2C" />
+      <Border Name="LogSeparator" Grid.Column="1" Background="#2A2B2C" />
 
       <!-- what the view sent back, and the line the host would write to the claude's stdin for it -->
-      <DockPanel Grid.Column="2" Background="#121314">
+      <DockPanel Name="LogPanel" Grid.Column="2" Background="#121314">
         <StackPanel DockPanel.Dock="Top" Margin="14,12,14,8" Spacing="2">
           <TextBlock Name="LogTitle" Foreground="#BFBFBF" FontWeight="SemiBold" />
           <TextBlock Name="LogHint" Classes="label" FontSize="12" TextWrapping="Wrap" />

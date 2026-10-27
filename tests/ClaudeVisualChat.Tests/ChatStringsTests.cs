@@ -153,6 +153,27 @@ public class ChatStringsTests
     }
 
     [Fact]
+    public void Touch_questions_fill_their_templates()
+    {
+        // the touch layout's request asks in a few words: the title is the question
+        Assert.Equal("Run this command?", En.PermissionRunCommandQuestion);
+        Assert.Equal("Rodar este comando?", Pt.PermissionRunCommandQuestion);
+        Assert.Equal("Edit {0}?", En.PermissionEditFileQuestion);
+        Assert.Equal("Editar {0}?", Pt.PermissionEditFileQuestion);
+        Assert.Equal("Use {0}?", En.PermissionUseToolQuestion);
+        Assert.Equal("Usar {0}?", Pt.PermissionUseToolQuestion);
+        Assert.Equal("Edit OrderService.cs?", En.FormatEditFileQuestion("OrderService.cs"));
+        Assert.Equal("Editar OrderService.cs?", Pt.FormatEditFileQuestion("OrderService.cs"));
+        Assert.Equal("Use Fetch?", En.FormatUseToolQuestion("Fetch"));
+        Assert.Equal("Usar Fetch?", Pt.FormatUseToolQuestion("Fetch"));
+        var odd = new ChatStrings { PermissionEditFileQuestion = "{1} {0} {", PermissionUseToolQuestion = "{x}" };
+        Assert.Equal("{1} a.cs {", odd.FormatEditFileQuestion("a.cs"));
+        Assert.Equal("{x}", odd.FormatUseToolQuestion("Fetch"));
+        Assert.Equal("Edit ?", En.FormatEditFileQuestion(null!));                        // never throws
+        Assert.Equal("Use ?", En.FormatUseToolQuestion(null!));
+    }
+
+    [Fact]
     public void Times_show_in_local_time_in_each_language_format()
     {
         var at = new DateTimeOffset(2026, 10, 19, 22, 27, 0, TimeSpan.Zero);
@@ -347,6 +368,78 @@ public class ChatStringsTests
     {
         Assert.Equal(english, En.FormatShortTokens(tokens));
         Assert.Equal(portuguese, Pt.FormatShortTokens(tokens));
+    }
+
+    [Theory]
+    [InlineData(0, "0", "0")]
+    [InlineData(800, "800", "800")]
+    [InlineData(1_000, "1k", "1k")]
+    [InlineData(150_000, "150k", "150k")]
+    [InlineData(150_600, "150.6k", "150,6k")]
+    [InlineData(999_949, "999.9k", "999,9k")]
+    [InlineData(999_950, "1M", "1M")]                  // 1.0M once rounded
+    [InlineData(1_000_000, "1M", "1M")]
+    [InlineData(1_250_000, "1.3M", "1,3M")]
+    [InlineData(10_000_000, "10M", "10M")]
+    [InlineData(1_000_000_000, "1,000M", "1.000M")]    // a separator in the whole part does not stand for the decimal one
+    public void Short_tokens_trimmed_drop_the_trailing_zero(long tokens, string english, string portuguese)
+    {
+        Assert.Equal(english, En.FormatShortTokensTrimmed(tokens));
+        Assert.Equal(portuguese, Pt.FormatShortTokensTrimmed(tokens));
+    }
+
+    [Theory]
+    [InlineData(0, "0% used", "0% utilizado")]
+    [InlineData(14.49, "14% used", "14% utilizado")]
+    [InlineData(14.5, "15% used", "15% utilizado")]
+    [InlineData(15.06, "15% used", "15% utilizado")]
+    [InlineData(34.00000000000001, "34% used", "34% utilizado")]   // 0.34 * 100
+    [InlineData(100, "100% used", "100% utilizado")]
+    [InlineData(-3, "0% used", "0% utilizado")]
+    [InlineData(double.NaN, "0% used", "0% utilizado")]
+    public void Percent_used_is_a_whole_number(double percent, string english, string portuguese)
+    {
+        Assert.Equal(english, En.FormatPercentUsed(percent));
+        Assert.Equal(portuguese, Pt.FormatPercentUsed(percent));
+    }
+
+    [Theory]
+    [InlineData(0.1134, "11.3%", "11,3%")]
+    [InlineData(0.0204, "2.0%", "2,0%")]
+    [InlineData(0.0099, "1.0%", "1,0%")]
+    [InlineData(0.8164, "81.6%", "81,6%")]
+    [InlineData(0, "0.0%", "0,0%")]
+    [InlineData(1, "100.0%", "100,0%")]
+    [InlineData(-0.5, "0.0%", "0,0%")]
+    [InlineData(double.NaN, "0.0%", "0,0%")]
+    public void A_share_of_the_window_has_one_decimal(double share, string english, string portuguese)
+    {
+        Assert.Equal(english, En.FormatSharePercent(share));
+        Assert.Equal(portuguese, Pt.FormatSharePercent(share));
+    }
+
+    [Fact]
+    public void Usage_sheet_texts_in_both_languages()
+    {
+        Assert.Equal(("Context", "Contexto"), (En.ContextSection, Pt.ContextSection));
+        Assert.Equal(("Context window", "Janela de contexto"), (En.ContextWindow, Pt.ContextWindow));
+        Assert.Equal(("{0}% used", "{0}% utilizado"), (En.PercentUsed, Pt.PercentUsed));
+        Assert.Equal(("{0} of {1} tokens", "{0} de {1} tokens"), (En.TokensOfWindow, Pt.TokensOfWindow));
+        Assert.Equal(("Plan usage", "Uso do plano"), (En.PlanUsage, Pt.PlanUsage));
+        Assert.Equal(("Refresh", "Atualizar"), (En.Refresh, Pt.Refresh));
+        Assert.Equal(("Usage", "Uso"), (En.UsageTitle, Pt.UsageTitle));     // the sheet's title is the /usage panel's
+
+        Assert.Equal("150.6k of 1M tokens", En.FormatTokensOfWindow(150_600, 1_000_000));
+        Assert.Equal("150,6k de 1M tokens", Pt.FormatTokensOfWindow(150_600, 1_000_000));
+        Assert.Equal("40k of 200k tokens", En.FormatTokensOfWindow(40_000, 200_000));
+
+        // a text of the app's own is filled all the same, and an odd template never throws
+        var own = En with { PercentUsed = "used: {0} %", TokensOfWindow = "{1} / {0}" };
+        Assert.Equal("used: 15 %", own.FormatPercentUsed(15.2));
+        Assert.Equal("1M / 150.6k", own.FormatTokensOfWindow(150_600, 1_000_000));
+        var odd = new ChatStrings { PercentUsed = "{x}", TokensOfWindow = "{2} {" };
+        Assert.Equal("{x}", odd.FormatPercentUsed(15));
+        Assert.Equal("{2} {", odd.FormatTokensOfWindow(1, 2));
     }
 
     [Theory]

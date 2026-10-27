@@ -12,12 +12,16 @@ namespace ClaudeVisualChat.Controls;
 /// entries around this one, read from the list that holds it, so the row keeps watching that list. Pseudo-classes:
 /// <c>:first</c> (first entry of its list), <c>:runStart</c>, <c>:runEnd</c> (no entry of the timeline before or
 /// after) and <c>:stamped</c> (it shows a time). The dot takes its color from the classes <c>running</c>,
-/// <c>succeeded</c>, <c>failed</c> and <c>rejected</c>.
+/// <c>succeeded</c>, <c>failed</c> and <c>rejected</c>. In the touch layout it takes <c>:touch</c> too, and the theme
+/// draws no timeline then.
 /// </summary>
 internal sealed class ChatTimelineRow : ContentControl
 {
     public static readonly StyledProperty<string?> StampProperty =
         AvaloniaProperty.Register<ChatTimelineRow, string?>(nameof(Stamp));
+
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<ChatTimelineRow>();
 
     private ItemsControl? _owner;
     private INotifyCollectionChanged? _items;
@@ -47,6 +51,7 @@ internal sealed class ChatTimelineRow : ContentControl
     {
         base.OnPropertyChanged(change);
         if (change.Property == StampProperty) PseudoClasses.Set(":stamped", !string.IsNullOrEmpty(Stamp));
+        else if (change.Property == LayoutProperty) PseudoClasses.Set(":touch", GetValue(LayoutProperty) == ChatLayout.Touch);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

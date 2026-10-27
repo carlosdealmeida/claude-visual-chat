@@ -15,6 +15,8 @@ namespace ClaudeVisualChat.Controls;
 /// or "47 lines", and a box with the diff, the start of the file written, or the command (IN) and its output (OUT,
 /// wrapped); "Run in background" under a command started so; for a subagent, its items behind an arrow. The dot of a
 /// running call blinks only while the conversation works. Long texts are cut so a huge result never slows the list.
+/// In the touch layout (pseudo-class <c>:touch</c>) the call is a block with a frame and its dot is the header's first
+/// piece.
 /// </summary>
 internal partial class ToolCallView : UserControl
 {
@@ -38,6 +40,9 @@ internal partial class ToolCallView : UserControl
 
     private static readonly StyledProperty<bool> IsWorkingProperty =
         ClaudeChatView.IsWorkingProperty.AddOwner<ToolCallView>();
+
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<ToolCallView>();
 
     private ToolCallItem? _item;
     private bool _attached;
@@ -75,6 +80,18 @@ internal partial class ToolCallView : UserControl
         base.OnPropertyChanged(change);
         if (change.Property == StringsProperty) Refresh();
         else if (change.Property == IsWorkingProperty) UpdateStatus();
+        else if (change.Property == LayoutProperty) UpdateTouch();
+    }
+
+    /// <summary>
+    /// In the touch layout (pseudo-class <c>:touch</c>) the call is a block of its own and the timeline's dot is not
+    /// drawn: the header has a dot of its own, at its start.
+    /// </summary>
+    private void UpdateTouch()
+    {
+        var touch = GetValue(LayoutProperty) == ChatLayout.Touch;
+        PseudoClasses.Set(":touch", touch);
+        StatusDot.IsVisible = touch;
     }
 
     private void Track(ToolCallItem? item)
@@ -163,12 +180,20 @@ internal partial class ToolCallView : UserControl
         var status = _item?.Status ?? ToolStatus.Running;
         // blinks only while the conversation works: a call left without a result in a history, or in a subagent the
         // turn ended without, keeps a still gray dot
-        Row.Classes.Set("running", status == ToolStatus.Running && GetValue(IsWorkingProperty));
-        Row.Classes.Set("succeeded", status == ToolStatus.Succeeded);
-        Row.Classes.Set("failed", status == ToolStatus.Failed);
-        Row.Classes.Set("rejected", status == ToolStatus.Rejected);
+        var blinks = status == ToolStatus.Running && GetValue(IsWorkingProperty);
+        SetState(Row, status, blinks); // the timeline's dot
+        SetState(StatusDot, status, blinks); // the touch layout's, in the header
         RejectedText.Text = Strings.ToolRejected;
         RejectedText.IsVisible = status == ToolStatus.Rejected;
+    }
+
+    /// <summary>The classes the dots take their color (and their blinking) from.</summary>
+    private static void SetState(Control dot, ToolStatus status, bool blinks)
+    {
+        dot.Classes.Set("running", blinks);
+        dot.Classes.Set("succeeded", status == ToolStatus.Succeeded);
+        dot.Classes.Set("failed", status == ToolStatus.Failed);
+        dot.Classes.Set("rejected", status == ToolStatus.Rejected);
     }
 
     private void UpdateChildren()
@@ -177,6 +202,7 @@ internal partial class ToolCallView : UserControl
         Arrow.IsVisible = hasChildren;
         Header.IsHitTestVisible = hasChildren;
         Header.Focusable = hasChildren;
+        Header.Classes.Set("interactive", hasChildren); // the touch layout gives it a finger's height
     }
 
     // ---- the body ----

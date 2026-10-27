@@ -17,12 +17,15 @@ namespace ClaudeVisualChat.Controls;
 /// (<see cref="ChatConversation.ClosePanel"/>) over the body, which scrolls when it is taller than the list. "…" while the conversation is busy and until
 /// the claude sends the data. It never takes the keyboard by itself; when it closes with the keyboard in it,
 /// <see cref="FocusReleased"/> lets the view put the keyboard back. Read-only information: it shows in a read-only
-/// view too.
+/// view too. In the touch layout it never shows: the usage sheet (<see cref="UsageSheet"/>) shows the same panels there.
 /// </summary>
 internal abstract class ChatInfoPanel : Border
 {
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<ChatInfoPanel>();
+
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<ChatInfoPanel>();
 
     private readonly TextBlock _title = new TextBlock();
     private readonly Button _close;
@@ -105,7 +108,7 @@ internal abstract class ChatInfoPanel : Border
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == StringsProperty) Update();
+        if (change.Property == StringsProperty || change.Property == LayoutProperty) Update();
     }
 
     private void Track(ChatConversation? conversation)
@@ -128,7 +131,7 @@ internal abstract class ChatInfoPanel : Border
     private void Update()
     {
         var conversation = _tracked;
-        var shown = conversation != null && conversation.ShownPanel == Kind;
+        var shown = conversation != null && conversation.ShownPanel == Kind && GetValue(LayoutProperty) != ChatLayout.Touch;
         var hadFocus = IsKeyboardFocusWithin;
         if (shown)
         {
@@ -177,7 +180,7 @@ internal abstract class ChatInfoPanel : Border
     }
 
     /// <summary>A bar split in pieces as long as their weights; a piece without a class is the bare track.</summary>
-    protected static Border Bar(string barClass, IEnumerable<(double Weight, string? PieceClass, string? Color)> pieces)
+    internal static Border Bar(string barClass, IEnumerable<(double Weight, string? PieceClass, string? Color)> pieces)
     {
         var grid = new Grid();
         foreach (var (weight, pieceClass, color) in pieces)
@@ -196,7 +199,7 @@ internal abstract class ChatInfoPanel : Border
         return bar;
     }
 
-    protected static TextBlock Text(string text, string textClass)
+    internal static TextBlock Text(string text, string textClass)
     {
         var block = new TextBlock { Text = text };
         block.Classes.Add(textClass);
@@ -222,25 +225,45 @@ internal sealed class ContextPanel : ChatInfoPanel
 
     protected override bool Shows(string? propertyName) => propertyName == nameof(ChatConversation.ContextUsage);
 
+    /// <summary>
+    /// The style class (<c>color1</c> to <c>color6</c>, round again after the sixth) of the used category that comes
+    /// <paramref name="index"/>th among the used ones: the color of its piece in the bar and of its dot.
+    /// </summary>
+    internal static string ColorOf(int index) => "color" + (index % Colors + 1);
+
+    /// <summary>
+    /// The pieces of the bar of <see cref="ChatInfoPanel.Bar"/>: one per used category, in order, as long as its tokens and in its
+    /// color, then the rest of the window, the bare track. The deferred and the free categories are not in the bar.
+    /// </summary>
+    internal static List<(double, string?, string?)> BarPieces(ContextUsage usage)
+    {
+        var pieces = new List<(double, string?, string?)>();
+        long usedTokens = 0;
+        foreach (var category in usage.Categories)
+        {
+            if (category.Kind != "used") continue;
+            var tokens = Math.Max(0, category.Tokens);
+            pieces.Add((tokens, "ClaudeChatContextSegment", ColorOf(pieces.Count)));
+            usedTokens += tokens;
+        }
+        pieces.Add((Math.Max(0, usage.MaxTokens - usedTokens), null, null)); // the rest of the window: the track
+        return pieces;
+    }
+
     protected override Control? Build(ChatConversation conversation, ChatStrings strings)
     {
         var usage = conversation.ContextUsage;
         if (usage == null) return null;
-        var pieces = new List<(double, string?, string?)>();
         var used = new List<Control>();
         var free = new List<Control>();
         var muted = new List<Control>();
-        long usedTokens = 0;
         foreach (var category in usage.Categories)
         {
             var tokens = strings.FormatNumber(category.Tokens);
             switch (category.Kind)
             {
                 case "used":
-                    var color = "color" + (used.Count % Colors + 1);
-                    pieces.Add((Math.Max(0, category.Tokens), "ClaudeChatContextSegment", color));
-                    used.Add(Row(category.Name, tokens, color, muted: false));
-                    usedTokens += Math.Max(0, category.Tokens);
+                    used.Add(Row(category.Name, tokens, ColorOf(used.Count), muted: false));
                     break;
                 case "free":
                     free.Add(Row(category.Name, tokens, "free", muted: false));
@@ -250,7 +273,6 @@ internal sealed class ContextPanel : ChatInfoPanel
                     break;
             }
         }
-        pieces.Add((Math.Max(0, usage.MaxTokens - usedTokens), null, null)); // the rest of the window: the track
         var rows = new StackPanel();
         rows.Classes.Add("ClaudeChatPanelRows");
         rows.Children.AddRange(used);
@@ -261,7 +283,7 @@ internal sealed class ContextPanel : ChatInfoPanel
             Children =
             {
                 Text(strings.FormatContextTotal(usage), "ClaudeChatContextTotal"),
-                Bar("ClaudeChatContextBar", pieces),
+                Bar("ClaudeChatContextBar", BarPieces(usage)),
                 rows,
             },
         };

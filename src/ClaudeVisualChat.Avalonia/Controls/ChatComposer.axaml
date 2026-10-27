@@ -8,11 +8,12 @@
       <!-- the images attached, above the text, and why the last one did not go in -->
       <controls:AttachmentStrip Name="Strip" />
       <TextBlock Name="AttachError" Classes="ClaudeChatAttachmentError" IsVisible="False" />
-      <!-- Enter sends, Shift+Enter breaks the line -->
+      <!-- Enter sends, Shift+Enter breaks the line (in the touch layout, Enter breaks it and Ctrl+Enter sends) -->
       <TextBox Name="Input" Classes="ClaudeChatInput" AcceptsReturn="True" TextWrapping="Wrap" />
       <!-- the bar, in the extension's (2.1.309) order: +, /, the context ring, the cache clock, the Remote Control chip,
-           the agents chip, the model chip; at the right the mode, then send or stop -->
-      <Border Classes="ClaudeChatComposerBar">
+           the agents chip, the model chip; at the right the mode, then send or stop. The touch layout has the bar below
+           instead -->
+      <Border Name="DesktopBar" Classes="ClaudeChatComposerBar">
         <DockPanel>
           <!-- send, and stop while Claude works: alone when nothing is written, next to send when something is -->
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" Margin="4,0,0,0">
@@ -39,6 +40,33 @@
             <controls:ModelChip Name="ModelChip" />
           </StackPanel>
         </DockPanel>
+      </Border>
+      <!-- the touch layout's bar: + and the model at the left, the context ring, the microphone and send (stop, while
+           Claude works) at the right, each one a target of 44 px. Its parts are separate instances that answer to the
+           same rules as the bar above (send, stop), and they are in the tree only while the layout is Touch: the code
+           takes them out in the desktop layout, so the desktop's tree stays as it was -->
+      <Border Name="TouchBar" Classes="ClaudeChatTouchBar" IsVisible="False">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Button Name="TouchAddButton" Grid.Column="0" Classes="ClaudeChatButton">
+            <Path Classes="ClaudeChatBarIcon ClaudeChatAddIcon" />
+          </Button>
+          <!-- as wide as the bar leaves it: the name and the level end in an ellipsis when they do not fit -->
+          <controls:ModelChip Name="TouchModelChip" Grid.Column="1" Ellipsize="True" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <controls:ContextRing Name="TouchRing" MinimumPercent="0" />
+            <!-- the microphone (dictation): shown by the code while the host's dictation is available; the class listening is its
+                 accent fill, while it listens -->
+            <Button Name="MicButton" Classes="ClaudeChatButton" IsVisible="False">
+              <Path Classes="ClaudeChatMicIcon" />
+            </Button>
+            <Button Name="TouchSend" Classes="ClaudeChatButton ClaudeChatTouchSend">
+              <Path Classes="ClaudeChatSendIcon" />
+            </Button>
+            <Button Name="TouchStop" Classes="ClaudeChatButton ClaudeChatTouchSend" IsVisible="False">
+              <Border Classes="ClaudeChatStopIcon" />
+            </Button>
+          </StackPanel>
+        </Grid>
       </Border>
       <!-- the command palette and the model menu open over the box, as wide as it -->
       <controls:CommandPalette Name="Palette" />
