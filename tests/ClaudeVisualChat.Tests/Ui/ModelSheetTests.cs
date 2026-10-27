@@ -289,7 +289,8 @@ public class ModelSheetTests
         Assert.Equal("Selecionar modelo", title.Text);
         Assert.Equal(16, title.FontSize);
         Assert.Equal(FontWeight.SemiBold, title.FontWeight);
-        Assert.Equal(UiHelpers.PhoneWidth / 2, title.TranslatePoint(new Point(title.Bounds.Width / 2, 0), header)!.Value.X, 1);
+        // centered within a pixel: the text's width, and so its rounding, depends on the platform's fonts
+        Assert.InRange(title.TranslatePoint(new Point(title.Bounds.Width / 2, 0), header)!.Value.X, UiHelpers.PhoneWidth / 2 - 1, UiHelpers.PhoneWidth / 2 + 1);
 
         // the groups: blocks with 14 px corners, a line of the sheet's color between the rows
         var groups = panel.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ClaudeChatSheetGroup")).ToList();
