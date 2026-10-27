@@ -324,6 +324,61 @@ def test_re_extrair_historico_reads_only_the_recording_session():
     assert "alice" not in texto.lower() and "cvc-demo" not in texto and "another" not in texto
 
 
+def test_localizar_claude_prefere_a_opcao():
+    achado = gravar.localizar_claude("C:/x/claude.exe", which=lambda n: "C:/path/claude.exe",
+                                     isfile=lambda p: p == "C:/x/claude.exe")
+    assert achado == "C:/x/claude.exe"
+
+
+def test_localizar_claude_cai_no_path():
+    assert gravar.localizar_claude(None, which=lambda n: "C:/path/claude.exe",
+                                   isfile=lambda p: True) == "C:/path/claude.exe"
+
+
+def test_localizar_claude_recusa_opcao_que_nao_e_arquivo_mesmo_com_claude_no_path():
+    try:
+        gravar.localizar_claude("C:/nao/existe.exe", which=lambda n: "C:/path/claude.exe",
+                                isfile=lambda p: False)
+        assert False, "should have refused"
+    except SystemExit as e:
+        assert "C:/nao/existe.exe" in str(e)
+
+
+def test_localizar_claude_recusa_quando_nao_ha_opcao_nem_claude_no_path():
+    try:
+        gravar.localizar_claude(None, which=lambda n: None, isfile=lambda p: False)
+        assert False, "should have refused"
+    except SystemExit as e:
+        assert "claude nao encontrado" in str(e)
+
+
+def test_resposta_modo_e_allow_manda_o_modo_antes():
+    pedido = {"request_id": "r1", "request": {"input": {"plan": "x"}}}
+    linhas = gravar.linhas_da_resposta("modo:acceptEdits+allow", pedido, lambda: "c9")
+    assert len(linhas) == 2
+    assert linhas[0]["type"] == "control_request"
+    assert linhas[0]["request_id"] == "c9"
+    assert linhas[0]["request"] == {"subtype": "set_permission_mode", "mode": "acceptEdits"}
+    assert linhas[1]["response"]["response"] == {"behavior": "allow", "updatedInput": {"plan": "x"}}
+    assert linhas[1]["response"]["request_id"] == "r1"
+
+
+def test_resposta_deny_leva_a_mensagem():
+    pedido = {"request_id": "r1", "request": {"input": {}}}
+    linhas = gravar.linhas_da_resposta("deny:fica no plano", pedido, lambda: "c9")
+    assert linhas == [{"type": "control_response", "response": {
+        "subtype": "success", "request_id": "r1",
+        "response": {"behavior": "deny", "message": "fica no plano"}}}]
+
+
+def test_resposta_allow_always_leva_as_sugestoes():
+    sug = [{"type": "addRules"}]
+    pedido = {"request_id": "r1", "request": {"input": {"a": 1}, "permission_suggestions": sug}}
+    linhas = gravar.linhas_da_resposta("allow_always", pedido, lambda: "c9")
+    assert linhas[0]["response"]["response"] == {"behavior": "allow", "updatedInput": {"a": 1},
+                                                 "updatedPermissions": sug}
+
+
 if __name__ == "__main__":
     falhas = 0
     for nome, fn in sorted(globals().items()):

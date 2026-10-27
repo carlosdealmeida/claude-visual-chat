@@ -9,6 +9,7 @@ original `system/init` content is never printed.
 import argparse
 import base64
 import glob
+import itertools
 import json
 import os
 import queue
@@ -238,6 +239,45 @@ def gerar_png(largura, altura):
             _bloco_png(b"IDAT", zlib.compress(linhas)) + _bloco_png(b"IEND", b""))
 
 
+def localizar_claude(opcao, which=shutil.which, isfile=os.path.isfile):
+    """The executable to record with: the `--claude` option when given, else `claude` on the PATH."""
+    if opcao:
+        if not isfile(opcao):
+            raise SystemExit("claude nao encontrado: " + opcao)
+        return opcao
+    achado = which("claude")
+    if not achado:
+        raise SystemExit("claude nao encontrado: claude (PATH)")
+    return achado
+
+
+def linhas_da_resposta(resposta, pedido, novo_id):
+    """The stdin lines that answer one `can_use_tool` request, in the order they must be written.
+
+    Forms: `allow`, `allow_always`, `deny:<message>` and `modo:<mode>+allow`, which first asks
+    for `set_permission_mode` (not awaited, so the reader thread never blocks) and then allows.
+    """
+    req = pedido.get("request") or {}
+    entrada = req.get("input", {})
+    antes = []
+    if resposta.startswith("modo:") and resposta.endswith("+allow"):
+        modo = resposta[len("modo:"):-len("+allow")]
+        antes.append({"type": "control_request", "request_id": novo_id(),
+                      "request": {"subtype": "set_permission_mode", "mode": modo}})
+        resposta = "allow"
+    if resposta == "allow":
+        corpo = {"behavior": "allow", "updatedInput": entrada}
+    elif resposta == "allow_always":
+        corpo = {"behavior": "allow", "updatedInput": entrada,
+                 "updatedPermissions": req.get("permission_suggestions", [])}
+    elif resposta.startswith("deny:"):
+        corpo = {"behavior": "deny", "message": resposta[5:]}
+    else:
+        raise ValueError("resposta desconhecida: " + resposta)
+    return antes + [{"type": "control_response", "response": {
+        "subtype": "success", "request_id": pedido.get("request_id"), "response": corpo}}]
+
+
 class Gravacao:
     def __init__(self, cenario, pasta):
         self.cenario = cenario
@@ -251,6 +291,7 @@ class Gravacao:
         self.respostas = list(cenario.get("respostas", []))
         self.proc = None
         self.erros_resposta = []
+        self._ids_de_modo = itertools.count(1)
 
     def enviar(self, obj):
         dados = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
@@ -302,19 +343,9 @@ class Gravacao:
             resposta = self.respostas[-1]
         else:
             resposta = "allow"
-        entrada = req.get("input", {})
-        if resposta == "allow":
-            corpo = {"behavior": "allow", "updatedInput": entrada}
-        elif resposta == "allow_always":
-            corpo = {"behavior": "allow", "updatedInput": entrada,
-                     "updatedPermissions": req.get("permission_suggestions", [])}
-        elif resposta.startswith("deny:"):
-            corpo = {"behavior": "deny", "message": resposta[5:]}
-        else:
-            raise ValueError("resposta desconhecida: " + resposta)
         log("pedido %s -> %s" % (req.get("tool_name"), resposta.split(":")[0]))
-        self.enviar({"type": "control_response", "response": {
-            "subtype": "success", "request_id": obj.get("request_id"), "response": corpo}})
+        for linha in linhas_da_resposta(resposta, obj, lambda: "mode-resp-%d" % next(self._ids_de_modo)):
+            self.enviar(linha)
 
     def _esperar(self, predicado, prazo=PRAZO_S):
         fim = time.time() + prazo
@@ -379,6 +410,8 @@ class Gravacao:
             if "enviar" in passo:
                 self._mensagem(passo["enviar"])
                 enviadas += 1
+                if passo.get("sem_esperar"):
+                    continue  # the next waiting step counts the result of every message sent
                 proximo = passos[i + 1] if i + 1 < len(passos) else {}
                 if "interromper_apos_s" in proximo:
                     continue
@@ -527,8 +560,9 @@ def localizar_transcript(session_id):
     return achados[0] if achados else None
 
 
-def gravar_cenario(cenario, saida):
+def gravar_cenario(cenario, saida, claude=None):
     cid = cenario["id"]
+    executavel = localizar_claude(claude)  # before the recording folder exists, so a refusal leaves nothing behind
     carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
     temp = os.environ.get("TEMP") or os.path.expanduser("~")
     pasta = os.path.join(temp, "cvc-demo", "%s-%s" % (cid, carimbo))
@@ -538,11 +572,7 @@ def gravar_cenario(cenario, saida):
         os.makedirs(os.path.dirname(destino), exist_ok=True)
         with open(destino, "w", encoding="utf-8", newline="\n") as f:
             f.write(conteudo)
-    claude = shutil.which("claude")
-    if not claude:
-        log("claude nao encontrado no PATH")
-        return False
-    comando = [claude, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
+    comando = [executavel, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
                "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio",
                "--model", "haiku", "--setting-sources", "project", "--strict-mcp-config"]
     log("[%s] gravando em %s" % (cid, pasta))
@@ -711,6 +741,7 @@ def main(argv=None):
                     help="apply the current replacements to the recordings already in --saida")
     ap.add_argument("--re-extrair-historico", action="store_true",
                     help="extract the histories in --saida again from the original Claude Code sessions")
+    ap.add_argument("--claude", help="path of the claude executable (default: `claude` on the PATH)")
     ap.add_argument("--saida", default=os.path.join(RAIZ, "tests", "fixtures"))
     args = ap.parse_args(argv)
     if args.re_higienizar:
@@ -732,7 +763,7 @@ def main(argv=None):
         ap.error("informe um cenario ou --todos")
     falhou = False
     for c in escolhidos:
-        if not gravar_cenario(c, args.saida):
+        if not gravar_cenario(c, args.saida, claude=args.claude):
             falhou = True
     return 1 if falhou else 0
 
