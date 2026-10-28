@@ -481,6 +481,43 @@ public class PermissionTouchTests
     }
 
     [AvaloniaFact]
+    public void Touch_option_two_says_this_session_only_when_every_rule_stays_in_it()
+    {
+        // the 0.5.0 rule, kept by the touch layout: a rule that outlives the conversation (or does not say where it goes) cannot say "this session"
+        const string Saved = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"npm test\"}],\"behavior\":\"allow\",\"destination\":\"localSettings\"}]";
+        const string Mixed = "[{\"type\":\"setMode\",\"mode\":\"acceptEdits\",\"destination\":\"session\"},{\"type\":\"addRules\",\"rules\":[],\"behavior\":\"allow\",\"destination\":\"userSettings\"}]";
+        const string Unsaid = "[{\"type\":\"setMode\",\"mode\":\"acceptEdits\"}]";
+        var c = new ChatConversation();
+        c.Apply(Bash("r0", "npm test", Suggestions));
+        c.Apply(Bash("r1", "npm test", Saved));
+        c.Apply(Bash("r2", "npm test", Mixed));
+        c.Apply(Bash("r3", "npm test", Unsaid));
+        var ui = new Opened(c);
+
+        // all in the session: the conversation's label, in both languages
+        Assert.Contains(YesAlways, ui.Texts);
+        ui.View.Strings = ChatStrings.English;
+        UiHelpers.Pump();
+        Assert.Contains("Yes, and don't ask again this session", ui.Texts);
+
+        // r1 saved in the settings, r2 one rule out of the session, r3 a mode that does not say where it goes: none says "this session"
+        foreach (var id in new[] { "r0", "r1", "r2" })
+        {
+            c.DismissPermission(id);
+            UiHelpers.Pump();
+            Assert.Contains("Yes, and don't ask again", ui.Texts);
+            Assert.DoesNotContain("Yes, and don't ask again this session", ui.Texts);
+            ui.View.Strings = ChatStrings.PortugueseBrazil;
+            UiHelpers.Pump();
+            Assert.Contains("Sim, e não perguntar de novo", ui.Texts);
+            Assert.DoesNotContain(YesAlways, ui.Texts);
+            ui.View.Strings = ChatStrings.English;
+            UiHelpers.Pump();
+        }
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void Touch_questions_follow_the_language()
     {
         var c = new ChatConversation();

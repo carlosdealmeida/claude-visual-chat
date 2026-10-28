@@ -50,6 +50,14 @@ public class AllowAlwaysLabelTests
     }
 
     [Fact]
+    public void A_rule_is_never_cut_in_the_middle_of_a_surrogate_pair()
+    {
+        // 16 letters and an emoji (two chars): the cut would fall between the halves
+        var label = Of(Rules("session", new string('a', 16) + "😀 and the rest"));
+        Assert.Equal("Yes, allow " + new string('a', 16) + "… for this session", label.Text);
+    }
+
+    [Fact]
     public void A_rule_without_content_names_its_tool_and_line_breaks_show_as_a_symbol()
     {
         Assert.Equal("Yes, allow Bash for all projects", Of(Rules("userSettings", (string?)null)).Text);
@@ -155,7 +163,7 @@ public class AllowAlwaysLabelTests
     [Fact]
     public void The_recorded_request_of_the_claude_2_1_310_reads_the_rule()
     {
-        // permission_suggestions as the claude 2.1.310 sent them (gravacoes §1): a rule kept for the user, and a folder for the session
+        // permission_suggestions as the claude 2.1.310 sent them (gravacoes §1): a rule kept in the local settings, and a folder for the session
         var label = Of(Rules("localSettings", "sleep 5 && echo done > done.txt"),
             "{\"type\":\"addDirectories\",\"directories\":[\"C:\\\\demo\\\\app\"],\"destination\":\"session\"}");
         Assert.Equal("Yes, allow sleep 5 && echo d… for this project (just you)", label.Text);

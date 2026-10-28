@@ -100,7 +100,7 @@ internal static class AllowAlwaysLabels
         {
             Whole = whole;
             Cut = cuttable && whole.Length > RuleLimit;
-            Short = Cut ? whole.Substring(0, RuleKept) + "…" : whole;
+            Short = Cut ? whole.Substring(0, char.IsHighSurrogate(whole[RuleKept - 1]) ? RuleKept - 1 : RuleKept) + "…" : whole; // not in the middle of a pair
         }
 
         public string Whole { get; }
