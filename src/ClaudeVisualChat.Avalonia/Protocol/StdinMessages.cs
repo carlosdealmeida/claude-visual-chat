@@ -30,7 +30,9 @@ namespace ClaudeVisualChat.Protocol
         /// with its <see cref="MessageSubmittedEventArgs.Uuid"/>: the claude then tells what became of it (<c>command_lifecycle</c>),
         /// and a message held in <see cref="ChatConversation.QueuedMessages"/> goes into the list as soon as the claude takes it.
         /// Each of its files that landed (<see cref="ChatFile.RemotePath"/>) is named by a line of its own after the text
-        /// (<see cref="AttachedFileLine.Format"/>), so write it once they all have.
+        /// (<see cref="AttachedFileLine.Format"/>), so write it once they all have. A host that uses it should use it for every
+        /// message: once the claude tells of one, a request to the API no longer releases the held ones, so a message written
+        /// without its uuid stays held until the turn's end.
         /// </summary>
         public static string UserMessage(MessageSubmittedEventArgs e)
         {

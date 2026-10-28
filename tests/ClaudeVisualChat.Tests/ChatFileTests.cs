@@ -203,7 +203,7 @@ public sealed class ChatFileTests : IDisposable
         // a message without files has an empty list, never null
         c.Submit("hi");
         Assert.Empty(sent[1].Files);
-        Assert.Empty(((UserMessageItem)c.Items[1]).Files);
+        Assert.Empty(Assert.Single(c.QueuedMessages).Files); // sent while busy: held (0.6.0)
         Assert.Empty(new MessageSubmittedEventArgs("x").Files);
         Assert.Empty(new UserMessageItem("x").Files);
     }

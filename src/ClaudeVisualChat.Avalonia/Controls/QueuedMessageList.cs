@@ -74,7 +74,12 @@ internal sealed class QueuedMessageList : StackPanel
         if (_attached) Update();
     }
 
-    private void OnQueueChanged(object? sender, NotifyCollectionChangedEventArgs e) => Update();
+    private void OnQueueChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        // each message held anew is told again: the name goes and comes back, a change for the live region
+        if (e.Action == NotifyCollectionChangedAction.Add) AutomationProperties.SetName(this, null);
+        Update();
+    }
 
     /// <summary>The rows again, from the queue as it is: a few messages at most, and a held message's notice comes as a change of the queue.</summary>
     private void Update()

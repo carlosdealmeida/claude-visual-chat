@@ -1075,9 +1075,10 @@ public class ChatConversationTests
         c.AppendLine(UserOi); // the claude repeating the message does not duplicate it
         Assert.Single(c.Items);
 
-        Assert.True(c.Submit("again")); // works while busy: the claude queues it
+        Assert.True(c.Submit("again")); // works while busy: the claude queues it, and so does the conversation (0.6.0)
         Assert.Equal(new[] { "oi", "again" }, submitted);
-        Assert.Equal(2, c.Items.Count);
+        Assert.Single(c.Items);
+        Assert.Equal("again", Assert.Single(c.QueuedMessages).Text);
 
         var twice = new ChatConversation();
         twice.Submit("first");
@@ -1142,7 +1143,8 @@ public class ChatConversationTests
         twice.Submit("second");
         twice.UndoSubmit(all[0]);
         Assert.True(twice.IsBusy);
-        Assert.Equal("second", Assert.IsType<UserMessageItem>(Assert.Single(twice.Items)).Text);
+        Assert.Empty(twice.Items);
+        Assert.Equal("second", Assert.Single(twice.QueuedMessages).Text); // sent while busy: held (0.6.0)
         twice.UndoSubmit(all[1]);
         Assert.False(twice.IsBusy);
 
@@ -2148,12 +2150,12 @@ public class ChatConversationTests
         Assert.Equal(2, sent.Count);                                   // it goes to the host at once all the same
         Assert.True(c.IsBusy);
 
-        // sent from idle, or while the claude has not answered yet (the rule of the unanswered messages): to the list at once
+        // sent from idle: to the list at once; sent while busy, even before the claude answered anything: held
         var idle = new ChatConversation();
         idle.Submit("one");
         idle.Submit("two");
-        Assert.Empty(idle.QueuedMessages);
-        Assert.Equal(new[] { "user:one", "user:two" }, idle.Items.Select(Describe));
+        Assert.Equal(new[] { "two" }, Texts(idle.QueuedMessages));
+        Assert.Equal(new[] { "user:one" }, idle.Items.Select(Describe));
 
         // a conversation that shows no sent message holds none either
         var quiet = new ChatConversation { EchoSubmittedMessages = false };
@@ -2196,6 +2198,51 @@ public class ChatConversationTests
             },
             c.Items.Select(Describe));
         Assert.False(c.IsBusy);
+    }
+
+    [Fact]
+    public void A_message_sent_at_the_start_of_a_turn_waits_for_the_answer_to_the_one_before()
+    {
+        // between the turn's first request to the API and Claude's first block the conversation is busy with nothing answered yet:
+        // what is sent then waits, and goes in after the answer to the one before, not above it
+        var c = new ChatConversation();
+        c.Submit("first");
+        c.AppendLine(Requesting);
+        c.Submit("second");
+        Assert.Equal(new[] { "second" }, Texts(c.QueuedMessages));
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("answer to first")));
+        c.AppendLine(Requesting);
+        Assert.Empty(c.QueuedMessages);
+        Assert.Equal(new[] { "user:first", "text:answer to first", "user:second" }, c.Items.Select(Describe));
+
+        // the unanswered rule still holds: two sent before the claude started, both taken back, and it is idle again
+        var sent = new List<MessageSubmittedEventArgs>();
+        var twice = new ChatConversation();
+        twice.MessageSubmitted += (_, e) => sent.Add(e);
+        twice.Submit("a");
+        twice.Submit("b");
+        twice.UndoSubmit(sent[0]);
+        Assert.True(twice.IsBusy);
+        twice.UndoSubmit(sent[1]);
+        Assert.False(twice.IsBusy);
+        Assert.Empty(twice.QueuedMessages);
+        Assert.Empty(twice.Items);
+    }
+
+    [Fact]
+    public void Clearing_forgets_that_the_claude_told_of_its_messages()
+    {
+        var sent = new List<MessageSubmittedEventArgs>();
+        var c = Working(sent);
+        c.Submit("a");
+        c.AppendLine(Lifecycle(sent[1].Uuid, "started"));
+        c.Clear();                                                      // a new session: its claude may not tell
+        c.Submit("first");
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("working")));
+        c.Submit("b");
+        c.AppendLine(Requesting);                                       // so a request releases again
+        Assert.Empty(c.QueuedMessages);
+        Assert.Equal("b", c.Items.OfType<UserMessageItem>().Last().Text);
     }
 
     [Fact]

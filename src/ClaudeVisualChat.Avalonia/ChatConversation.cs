@@ -284,7 +284,7 @@ public sealed class ChatConversation : ChatObservableObject
     public ObservableCollection<ChatItem> Items { get; } = new ObservableCollection<ChatItem>();
 
     /// <summary>
-    /// The messages sent while Claude works on a turn (<see cref="Submit"/>), oldest first: the host sent them at once, and the
+    /// The messages sent while <see cref="IsBusy"/> (<see cref="Submit"/>), oldest first: the host sent them at once, and the
     /// claude has not taken them yet. The view shows them at the end of the list, under "Working…". Each one moves to
     /// <see cref="Items"/> when the claude takes it: when it says so for the message's uuid (<c>command_lifecycle</c>: "started"
     /// takes it and every earlier one; "completed", "cancelled", "discarded" or "refused" that one alone), when it repeats the
@@ -743,6 +743,7 @@ public sealed class ChatConversation : ChatObservableObject
         Items.Clear();
         _held.Clear();
         if (QueuedMessages.Count > 0) QueuedMessages.Clear();
+        _claudeTellsLifecycle = false; // a claude of the next session may not tell: the requests release again until one does
         _bookmarks.Clear(); // they were items of the list
         _pendingCopy = null;
         Agents.Clear();
@@ -770,9 +771,8 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>
     /// Sends a message with the <see cref="Attachments"/> and the <see cref="Files"/>, which it empties; blank text is
-    /// ignored unless there is an image or a file. Works while busy: the claude queues it. Sent while Claude works on a turn, the
-    /// message waits in <see cref="QueuedMessages"/> until the claude takes it; sent while idle, or before the claude answered the
-    /// message that made it busy, it goes to <see cref="Items"/> at once.
+    /// ignored unless there is an image or a file. Works while busy: the claude queues it. Sent while <see cref="IsBusy"/>, the
+    /// message waits in <see cref="QueuedMessages"/> until the claude takes it; sent while idle, it goes to <see cref="Items"/> at once.
     /// </summary>
     public bool Submit(string text)
     {
@@ -790,24 +790,23 @@ public sealed class ChatConversation : ChatObservableObject
         Files.Clear();
         var submitted = new MessageSubmittedEventArgs(text, images, files) { Owner = this };
         _cacheAnchor = _clock();
-        // the messages that alone keep the conversation busy are the ones the claude has not started on: those show at once
-        var unanswered = !IsBusy || _unanswered.Count > 0;
         if (EchoSubmittedMessages)
         {
             submitted.Item = new UserMessageItem(text, images, files) { Timestamp = _clock() };
-            if (unanswered)
+            if (IsBusy)
             {
-                Items.Add(submitted.Item);
-            }
-            else
-            {
-                // Claude works on a turn: the message waits until the claude takes it
+                // busy: the message waits until the claude takes it, so it never lands above the answer to the one before
                 _held.Add(submitted);
                 QueuedMessages.Add(submitted.Item);
             }
+            else
+            {
+                Items.Add(submitted.Item);
+            }
             _echoes.Add(submitted);
         }
-        if (unanswered) _unanswered.Add(submitted);
+        // the messages that alone keep the conversation busy are the ones sent before the claude started on them
+        if (!IsBusy || _unanswered.Count > 0) _unanswered.Add(submitted);
         IsBusy = true;
         MessageSubmitted?.Invoke(this, submitted);
         return true;
@@ -964,7 +963,7 @@ public sealed class ChatConversation : ChatObservableObject
         if (held >= 0)
         {
             _held.RemoveAt(held);
-            QueuedMessages.RemoveAt(held);
+            QueuedMessages.Remove(submitted.Item!);
         }
         else if (submitted.Item != null)
         {
@@ -1539,7 +1538,9 @@ public sealed class ChatConversation : ChatObservableObject
     {
         var item = _held[index].Item!;
         _held.RemoveAt(index);
-        QueuedMessages.RemoveAt(index);
+        // the queue is read-only by contract; one a host changed anyway still loses this item, wherever it is
+        if (index < QueuedMessages.Count && ReferenceEquals(QueuedMessages[index], item)) QueuedMessages.RemoveAt(index);
+        else QueuedMessages.Remove(item);
         Items.Add(item);
         if (item.QueuedNotice != null) Items.Add(new MetaLineItem(item.QueuedNotice));
     }
