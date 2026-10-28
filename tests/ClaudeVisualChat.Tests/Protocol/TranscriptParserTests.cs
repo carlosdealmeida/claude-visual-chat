@@ -194,6 +194,31 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void The_origin_of_a_user_line_is_read_when_the_line_has_one()
+        {
+            var line = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"user\",\"origin\":{\"kind\":\"peer\",\"name\":\"Maria\",\"senderTaskId\":\"a1\",\"subkind\":\"x\",\"producer\":\"p\"}," +
+                "\"message\":{\"role\":\"user\",\"content\":\"hi\"}}")));
+            Assert.Equal("peer", line.Origin!.Kind);
+            Assert.Equal("Maria", line.Origin.Name);
+            Assert.Equal("a1", line.Origin.SenderTaskId);
+            Assert.Equal("x", line.Origin.Subkind);
+
+            var channel = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"user\",\"origin\":{\"kind\":\"channel\"},\"message\":{\"role\":\"user\",\"content\":\"hi\"}}")));
+            Assert.Equal("channel", channel.Origin!.Kind);
+            Assert.Null(channel.Origin.Name);
+
+            // no origin, an origin that is no object, or one without a kind: none
+            foreach (var origin in new[] { "", "\"origin\":null,", "\"origin\":\"peer\",", "\"origin\":{\"name\":\"x\"}," })
+            {
+                var plain = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(
+                    "{\"type\":\"user\"," + origin + "\"message\":{\"role\":\"user\",\"content\":\"hi\"}}")));
+                Assert.Null(plain.Origin);
+            }
+        }
+
+        [Fact]
         public void All_fixtures_parse_without_throwing()
         {
             var total = 0;

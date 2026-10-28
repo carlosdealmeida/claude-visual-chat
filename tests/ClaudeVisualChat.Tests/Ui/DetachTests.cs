@@ -1423,4 +1423,44 @@ public class DetachTests
         Assert.True(card.Summary.IsVisible);
         m.Window.Close();
     }
+
+    [AvaloniaFact]
+    public void An_external_message_card_lets_go_of_its_item_out_of_the_window_and_comes_back_as_it_is()
+    {
+        var item = new ExternalMessageItem("cross-session")
+        {
+            Sender = "maria", SenderName = "Maria Souza", Preview = "run the tests", Body = "run the tests\nplease",
+        };
+        var c = Conversation();
+        c.Items.Add(item);
+        var own = ItemHandlers(item);
+        var m = new Mounted(c);
+        ExternalMessageCard Card() => m.View.GetVisualDescendants().OfType<ExternalMessageCard>().Single();
+        var card = Card();
+        Assert.True(card.IsTracking);
+        Assert.True(ItemHandlers(item) > own);
+        UiHelpers.Click(m.Window, card.Head);                              // opened
+        Assert.True(item.IsExpanded);
+        Assert.Contains("run the tests\nplease", UiHelpers.Texts(card));
+
+        m.Out();                                                           // taken out open: nothing throws, and the item is let go
+        Assert.False(card.IsTracking);
+        Assert.Equal(own, ItemHandlers(item));
+        m.View.Strings = ChatStrings.PortugueseBrazil;                     // changed while out
+        UiHelpers.Pump();
+
+        m.In();                                                            // back: drawn as the item is now
+        card = Card();                                                     // (the list built its rows again)
+        Assert.True(card.IsTracking);
+        Assert.True(ItemHandlers(item) > own);
+        Assert.Equal("Mensagem de @maria:", card.Label.Text);
+        Assert.Contains("De Maria Souza", UiHelpers.Texts(card));
+        Assert.Contains("run the tests\nplease", UiHelpers.Texts(card));
+        UiHelpers.Click(m.Window, card.Head);                              // and it closes, and follows its item again
+        Assert.False(item.IsExpanded);
+        item.IsExpanded = true;
+        UiHelpers.Pump();
+        Assert.Contains("run the tests\nplease", UiHelpers.Texts(card));
+        m.Window.Close();
+    }
 }

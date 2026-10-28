@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Xunit;
@@ -658,5 +659,56 @@ public class PublicApiTests
         foreach (var text in new[] { "CompactingLine", "CompactingAnnouncement", "StartupHooksLine", "WorkingAnnouncement", "Working" })
             Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
         Assert.DoesNotContain("ClaudeVisualChat.Controls.WorkingIndicator", Library.GetExportedTypes().Select(t => t.FullName)); // drawn by the view
+    }
+
+    [Fact]
+    public void The_external_message_api()
+    {
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.Contains("ClaudeVisualChat.ExternalMessageItem", names);
+        Assert.Contains("ClaudeVisualChat.Protocol.MessageOrigin", names);
+        Assert.True(typeof(ExternalMessageItem).IsSealed && typeof(ChatItem).IsAssignableFrom(typeof(ExternalMessageItem)));
+        Assert.False(typeof(UserMessageItem).IsAssignableFrom(typeof(ExternalMessageItem)));   // it is no prompt
+        // the reader and the card are the library's own
+        Assert.DoesNotContain("ClaudeVisualChat.Protocol.TaggedMessage", names);
+        Assert.DoesNotContain("ClaudeVisualChat.Protocol.TaggedSection", names);
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.ExternalMessageCard", names);
+
+        foreach (var (name, kind) in new[]
+        {
+            ("Kind", typeof(string)), ("Sender", typeof(string)), ("SenderName", typeof(string)), ("Preview", typeof(string)),
+            ("Body", typeof(string)), ("Attributes", typeof(IReadOnlyList<KeyValuePair<string, string>>)), ("IsExpanded", typeof(bool)),
+        })
+            Assert.Equal(kind, typeof(ExternalMessageItem).GetProperty(name)?.PropertyType);
+        Assert.Null(typeof(ExternalMessageItem).GetProperty("Kind")!.SetMethod);
+        foreach (var name in new[] { "Sender", "SenderName", "Preview", "Body", "Attributes" })
+            Assert.Contains(typeof(ExternalMessageItem).GetProperty(name)!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+        Assert.NotNull(typeof(ExternalMessageItem).GetConstructor(new[] { typeof(string) }));
+
+        var origin = typeof(ClaudeVisualChat.Protocol.MessageOrigin);
+        Assert.Equal(typeof(string), origin.GetProperty("Kind")?.PropertyType);
+        foreach (var name in new[] { "Name", "SenderTaskId", "Subkind" })
+        {
+            Assert.Equal(typeof(string), origin.GetProperty(name)?.PropertyType);
+            Assert.Contains(origin.GetProperty(name)!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+        }
+        var userBlock = typeof(ClaudeVisualChat.Protocol.UserBlock).GetProperty("Origin");
+        Assert.Equal(origin, userBlock?.PropertyType);
+        Assert.Contains(userBlock!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");   // the record grew by an init property
+        Assert.Equal(5, typeof(ClaudeVisualChat.Protocol.UserBlock).GetConstructors().Single().GetParameters().Length);          // and not by a parameter
+
+        foreach (var text in new[]
+        {
+            "MessageFromPeer", "MessageFromChannel", "MessageFromSender", "SenderNotRecorded", "TaggedNothing", "TaggedTaskId", "TaggedToolUseId",
+            "TaggedTaskType", "TaggedOutputFile", "TaggedStatus", "TaggedSummary", "TaggedNote", "TaggedEvent", "TaggedResult", "TaggedUsage",
+            "TaggedWorktree", "TaggedTokens", "TaggedToolUses", "TaggedDuration", "TaggedPath", "TaggedBranch", "TaggedOtherText",
+            "TaggedAfterNotification", "TaggedOutput", "TaggedErrorOutput", "TaggedExitCode", "TaggedTeammateMessage", "TaggedTerminalOutput",
+            "TaggedTerminalError", "TaggedAutonomousPrompt", "TaggedMcpResourceUpdate", "TaggedMcpPollingUpdate", "TaggedCommandCaveat",
+        })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
     }
 }

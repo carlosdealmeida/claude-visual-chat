@@ -3568,4 +3568,254 @@ public class ChatViewTests
         Assert.True(card.Summary.IsVisible);
         window.Close();
     }
+
+    // ---- a message from another session, an agent or a channel ----
+
+    private const string PeerText =
+        "<cross-session-message from=\"sess-a\" from-session=\"abc123\">\nrun the tests\nplease\n</cross-session-message>";
+
+    private const string TaskText =
+        "<task-notification>\n<task-id>adb1f0b70b0f95ff6</task-id>\n<status>completed</status>\n" +
+        "<summary>Agent \"Read three files\" finished</summary>\n<result>a.txt: a cat</result>\n" +
+        "<usage><subagent_tokens>26316</subagent_tokens><tool_uses>3</tool_uses><duration_ms>5850</duration_ms></usage>\n</task-notification>";
+
+    private static ExternalMessageItem ExternalItem(ChatConversation c, string text, string? origin = null)
+    {
+        c.AppendLine(
+            "{\"type\":\"user\"," + (origin == null ? "" : "\"origin\":" + origin + ",") +
+            "\"message\":{\"role\":\"user\",\"content\":" + JsonSerializer.Serialize(text) + "},\"parent_tool_use_id\":null}");
+        return c.Items.OfType<ExternalMessageItem>().Last();
+    }
+
+    private static ExternalMessageCard ExternalOf(ClaudeChatView view, ExternalMessageItem item) =>
+        view.GetVisualDescendants().OfType<ExternalMessageCard>().Single(card => ReferenceEquals(card.DataContext, item));
+
+    [AvaloniaFact]
+    public void Without_origin_the_card_reads_sender_not_recorded()
+    {
+        var c = new ChatConversation();
+        var item = ExternalItem(c, PeerText);
+        var (view, window) = Open(c);
+        var card = ExternalOf(view, item);
+
+        Assert.Equal("Sender not recorded: run the tests", card.Label.Text);
+        Assert.False(card.PreviewText.IsVisible);                              // the text is in the label
+        Assert.False(item.IsExpanded);
+        Assert.DoesNotContain(UiHelpers.Texts(card), t => t.Contains("sess-a"));   // closed: nothing but the line
+
+        UiHelpers.Click(window, card.Head);                                    // open: the raw attributes, then the text
+        Assert.True(item.IsExpanded);
+        var texts = UiHelpers.Texts(card);
+        Assert.Contains("from=\"sess-a\" from-session=\"abc123\"", texts);
+        Assert.Contains("run the tests\nplease", texts);
+
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal("Remetente não registrado: run the tests", card.Label.Text);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_card_with_a_sender_says_message_from_and_opens_to_the_name_and_the_body()
+    {
+        var c = new ChatConversation();
+        var item = ExternalItem(c, PeerText, "{\"kind\":\"peer\",\"name\":\"Maria Souza\"}");
+        var (view, window) = Open(c);
+        var card = ExternalOf(view, item);
+
+        Assert.Equal("Message from @Maria-Souza:", card.Label.Text);
+        Assert.True(card.PreviewText.IsVisible);
+        Assert.Equal("run the tests", card.PreviewText.Text);          // one line
+        Assert.DoesNotContain("From Maria Souza", UiHelpers.Texts(card));      // closed
+
+        UiHelpers.Click(window, card.Head);
+        var texts = UiHelpers.Texts(card);
+        Assert.Contains("From Maria Souza", texts);                            // the full name, since it differs
+        Assert.Contains("run the tests\nplease", texts);                       // the line breaks stay
+        // the line reads label, preview, chevron from left to right, and the body is under it
+        var chevron = card.Head.GetVisualDescendants().OfType<Path>().Single();
+        double X(Visual v) => v.TranslatePoint(default, card)!.Value.X;
+        Assert.True(X(card.Label) < X(card.PreviewText) && X(card.PreviewText) < X(chevron));
+        var body = card.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "run the tests\nplease");
+        Assert.True(body.TranslatePoint(default, card)!.Value.Y >= card.Head.Bounds.Bottom);
+        Assert.Equal(FontStyle.Normal, body.FontStyle);                        // only the line is italic
+
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal("Mensagem de @Maria-Souza:", card.Label.Text);
+        Assert.Contains("De Maria Souza", UiHelpers.Texts(card));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_channel_card_says_the_channel_and_a_sender_with_no_other_name_has_no_from_line()
+    {
+        var c = new ChatConversation();
+        var channel = ExternalItem(
+            c, "A message arrived from slack:\n<channel source=\"slack\" chat_id=\"7\">\nhi\n</channel>\n\nIMPORTANT: This is NOT from your user — it came from an external channel.",
+            "{\"kind\":\"channel\"}");
+        var agent = ExternalItem(c, "<agent-message from=\"reviewer\">\nlooks good\n</agent-message>", "{\"kind\":\"peer\",\"senderTaskId\":\"a1\"}");
+        var (view, window) = Open(c);
+        var channelCard = ExternalOf(view, channel);
+        var agentCard = ExternalOf(view, agent);
+
+        Assert.Equal("Message from channel @slack:", channelCard.Label.Text);
+        Assert.Equal("Message from @reviewer:", agentCard.Label.Text);
+        channel.IsExpanded = true;
+        agent.IsExpanded = true;
+        UiHelpers.Pump();
+        Assert.Contains("chat_id=\"7\"", UiHelpers.Texts(channelCard));        // the attributes beyond the source
+        Assert.DoesNotContain(UiHelpers.Texts(channelCard), t => t.Contains("source="));
+        Assert.DoesNotContain(UiHelpers.Texts(agentCard), t => t.StartsWith("From ", StringComparison.Ordinal));
+        Assert.Contains("looks good", UiHelpers.Texts(agentCard));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_task_notice_opens_to_a_list_of_two_columns_with_italic_names()
+    {
+        var c = new ChatConversation();
+        var item = ExternalItem(c, TaskText);
+        var (view, window) = Open(c);
+        var card = ExternalOf(view, item);
+        Assert.Equal("Sender not recorded: Agent \"Read three files\" finished", card.Label.Text);
+
+        UiHelpers.Click(window, card.Head);
+        var grid = card.GetVisualDescendants().OfType<Grid>().First(g => g.Classes.Contains("ClaudeChatExternalColumns"));
+        Assert.Equal(12, grid.ColumnDefinitions[1].Width.Value);               // gaps of 4 × 12: 12 between the columns
+        var texts = UiHelpers.Texts(card);
+        foreach (var expected in new[] { "Task ID:", "adb1f0b70b0f95ff6", "Status:", "completed", "Result:", "a.txt: a cat", "Usage:", "Tokens:", "26316", "Tool uses:" })
+            Assert.Contains(expected, texts);
+        var names = card.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Text == "Task ID:" || t.Text == "Tokens:").ToList();
+        Assert.Equal(2, names.Count);
+        Assert.All(names, n => Assert.Equal(FontStyle.Italic, n.FontStyle));
+        var value = card.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "adb1f0b70b0f95ff6");
+        Assert.Equal(FontStyle.Normal, value.FontStyle);
+        // the names are in one column, the values in another
+        double X(Visual v) => v.TranslatePoint(default, card)!.Value.X;
+        Assert.True(X(names[0]) < X(value));
+        Assert.True(X(value) - (X(names[0]) + names[0].Bounds.Width) >= 12 - 1);
+        // and 4 between the rows
+        double Y(Visual v) => v.TranslatePoint(default, card)!.Value.Y;
+        var status = card.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Status:");
+        Assert.True(Y(status) - (Y(names[0]) + names[0].Bounds.Height) >= 4 - 1);
+
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Contains("ID da tarefa:", UiHelpers.Texts(card));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_wrapped_notice_says_what_it_is_in_the_line()
+    {
+        var c = new ChatConversation();
+        var item = ExternalItem(c, "<teammate-message teammate_id=\"alice\">\nplease review\n</teammate-message>");
+        var (view, window) = Open(c);
+        var card = ExternalOf(view, item);
+
+        Assert.Equal("Teammate message", card.Label.Text);
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal("Mensagem de colega", card.Label.Text);
+        UiHelpers.Click(window, card.Head);
+        Assert.Contains("teammate_id=\"alice\"", UiHelpers.Texts(card));
+        Assert.Contains("please review", string.Join("\n", UiHelpers.Texts(card)));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_external_card_is_drawn_as_measured()
+    {
+        var c = new ChatConversation();
+        var item = ExternalItem(c, PeerText, "{\"kind\":\"peer\",\"name\":\"Maria Souza\"}");
+        var (view, window) = Open(c);
+        var card = ExternalOf(view, item);
+
+        Assert.Equal(new Thickness(0, 4), card.Margin);                        // 4 px over and under
+        Assert.Equal(new Thickness(8), card.Padding);
+        Assert.Equal(FontStyle.Italic, card.Label.FontStyle);
+        Assert.Equal(FontStyle.Italic, card.PreviewText.FontStyle);
+        Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), card.Label.Foreground);
+        Assert.Equal(TextWrapping.NoWrap, card.Label.TextWrapping);
+        Assert.Equal(TextTrimming.CharacterEllipsis, card.PreviewText.TextTrimming);   // the preview is cut by the width, not wrapped
+        Assert.Equal(TextWrapping.NoWrap, card.PreviewText.TextWrapping);
+        var chevron = card.Head.GetVisualDescendants().OfType<Path>().Single();
+        Assert.Equal(16, chevron.Width);
+        Assert.Equal(16, chevron.Height);
+        var line = card.Head.GetVisualDescendants().OfType<Grid>().First();
+        Assert.Equal(0.8, line.Opacity);                                       // 1 when open or hovered
+        var other = ExternalItem(c, PeerText, "{\"kind\":\"peer\",\"name\":\"Ana\"}");
+        other.IsExpanded = true;
+        UiHelpers.Pump();
+        Assert.Equal(1, ExternalOf(view, other).Head.GetVisualDescendants().OfType<Grid>().First().Opacity);
+        item.IsExpanded = true;
+        UiHelpers.Pump();
+        // 4 px between the line and what opens under it, and between its parts
+        var from = card.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "From Maria Souza");
+        var body = card.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "run the tests\nplease");
+        Assert.Equal(4, from.Margin.Top);
+        Assert.Equal(4, body.Margin.Top);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_long_preview_is_cut_at_the_width_of_a_narrow_view()
+    {
+        var c = new ChatConversation();
+        var item = ExternalItem(c, "<agent-message from=\"a\">\n" + new string('w', 400) + "\n</agent-message>", "{\"kind\":\"peer\",\"senderTaskId\":\"t\"}");
+        var (view, window) = Open(c);
+        var card = ExternalOf(view, item);
+        Assert.True(card.Head.Bounds.Width <= card.Bounds.Width);              // nothing pushes the card wider than its row
+        var chevron = card.Head.GetVisualDescendants().OfType<Path>().Single();
+        Assert.True(chevron.TranslatePoint(new Point(chevron.Bounds.Width, 0), card)!.Value.X <= card.Bounds.Width + 1);   // the chevron stays in view
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_external_head_is_a_finger_tall_in_the_touch_layout_only()
+    {
+        var desktopConversation = new ChatConversation();
+        var desktopItem = ExternalItem(desktopConversation, PeerText, "{\"kind\":\"peer\",\"name\":\"Maria\"}");
+        var (desktop, desktopWindow) = Open(desktopConversation);
+        var desktopCard = ExternalOf(desktop, desktopItem);
+        Assert.True(desktopCard.Head.Bounds.Height < 44);
+        Assert.Equal("Message from @Maria:", desktopCard.Label.Text);
+        desktopWindow.Close();
+
+        var touchConversation = new ChatConversation();
+        var touchItem = ExternalItem(touchConversation, PeerText, "{\"kind\":\"peer\",\"name\":\"Maria\"}");
+        var touch = UiHelpers.TouchView(touchConversation);
+        var touchWindow = UiHelpers.ShowPhone(touch);
+        var touchCard = ExternalOf(touch, touchItem);
+        Assert.True(touchCard.Head.Bounds.Height >= 44);
+        Assert.Equal("Mensagem de @Maria:", touchCard.Label.Text);
+        UiHelpers.Click(touchWindow, touchCard.Head);                          // and a tap opens it
+        Assert.True(touchItem.IsExpanded);
+        Assert.Contains("run the tests\nplease", UiHelpers.Texts(touchCard));
+        touchWindow.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_reused_external_card_shows_the_state_of_the_item_it_is_given()
+    {
+        var c = new ChatConversation();
+        var open = ExternalItem(c, PeerText, "{\"kind\":\"peer\",\"name\":\"Maria\"}");
+        var closed = ExternalItem(c, "<agent-message from=\"bob\">\nhello\n</agent-message>", "{\"kind\":\"peer\",\"senderTaskId\":\"t\"}");
+        open.IsExpanded = true;
+        var (view, window) = Open(c);
+        var card = ExternalOf(view, open);
+        Assert.Contains("run the tests\nplease", UiHelpers.Texts(card));
+
+        card.DataContext = closed;                                             // the list reuses the card for another item
+        UiHelpers.Pump();
+        Assert.Equal("Message from @bob:", card.Label.Text);
+        Assert.False(card.Head.IsChecked);
+        Assert.DoesNotContain("run the tests\nplease", UiHelpers.Texts(card));
+        card.DataContext = open;
+        UiHelpers.Pump();
+        Assert.True(card.Head.IsChecked);
+        Assert.Contains("run the tests\nplease", UiHelpers.Texts(card));
+        window.Close();
+    }
 }

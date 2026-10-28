@@ -2748,4 +2748,157 @@ public class ChatConversationTests
         c.Clear();
         Assert.False(c.IsRunningStartupHooks);
     }
+
+    // ---- messages from another session, an agent, a channel ----
+
+    private static string UserLineWith(string content, string? origin = null, string extra = "") =>
+        "{\"type\":\"user\"," + (origin == null ? "" : "\"origin\":" + origin + ",") + extra +
+        "\"message\":{\"role\":\"user\",\"content\":" + JsonSerializer.Serialize(content) + "},\"parent_tool_use_id\":null}";
+
+    private const string CrossSession =
+        "<cross-session-message from=\"sess-a\" from-session=\"abc123\">\nrun the tests\nplease\n</cross-session-message>";
+
+    [Fact]
+    public void A_history_task_notification_feeds_the_map_and_becomes_a_card()
+    {
+        var c = Load("subagent");
+
+        // the map still reads it
+        var agent = Assert.Single(c.Agents);
+        Assert.Equal(AgentStatus.Completed, agent.Status);
+        Assert.Equal(26316, agent.Tokens);
+        Assert.Equal(3, agent.ToolUses);
+        Assert.Equal(5850, agent.DurationMs);
+        // and now the conversation shows it, as a message of unknown sender (the file keeps no origin)
+        var card = Assert.Single(All(c.Items).OfType<ExternalMessageItem>());
+        Assert.Equal("task-notification", card.Kind);
+        Assert.Null(card.Sender);
+        Assert.Equal("Agent \"Read and summarize three text files\" finished", card.Body);
+        Assert.Equal(card.Body, card.Preview);
+        Assert.True(card.UsesColumns);
+        Assert.Contains(card.Sections, s => s.Label == "result" && s.Text.StartsWith("a.txt: Simple sentence", StringComparison.Ordinal));
+        Assert.False(card.IsExpanded);
+        Assert.DoesNotContain(All(c.Items).OfType<UserMessageItem>(), u => u.Text.Contains("task-notification"));   // still no prompt
+    }
+
+    [Fact]
+    public void A_message_from_another_session_with_its_origin_is_a_card_that_names_the_sender()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith(CrossSession, "{\"kind\":\"peer\",\"name\":\"Maria Souza\"}"));
+
+        var card = Assert.IsType<ExternalMessageItem>(Assert.Single(c.Items));
+        Assert.Equal("cross-session", card.Kind);
+        Assert.Equal("Maria-Souza", card.Sender);
+        Assert.Equal("Maria Souza", card.SenderName);
+        Assert.Equal("run the tests", card.Preview);
+        Assert.Equal("run the tests\nplease", card.Body);
+        Assert.Equal(new[] { "from", "from-session" }, card.Attributes.Select(a => a.Key).ToArray());
+        Assert.Empty(c.Items.OfType<UserMessageItem>());
+    }
+
+    [Fact]
+    public void A_channel_message_takes_its_sender_from_the_tag_and_an_agent_message_from_its_task()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith(
+            "A message arrived from slack:\n<channel source=\"slack\" chat_id=\"7\">\nhi\n</channel>\n\nIMPORTANT: This is NOT from your user — it came from an external channel.",
+            "{\"kind\":\"channel\"}"));
+        c.AppendLine(UserLineWith(
+            "<agent-message from=\"reviewer\">\nlooks good\n</agent-message>", "{\"kind\":\"peer\",\"senderTaskId\":\"a1\",\"name\":\"reviewer\"}"));
+
+        var channel = Assert.IsType<ExternalMessageItem>(c.Items[0]);
+        Assert.Equal("channel", channel.Kind);
+        Assert.Equal("slack", channel.Sender);
+        Assert.Equal(new[] { "source", "chat_id" }, channel.Attributes.Select(x => x.Key).ToArray());
+        var agent = Assert.IsType<ExternalMessageItem>(c.Items[1]);
+        Assert.Equal("agent", agent.Kind);
+        Assert.Equal("reviewer", agent.Sender);
+        Assert.Null(agent.SenderName);                                // the same as the short name
+    }
+
+    [Fact]
+    public void Without_an_origin_the_message_is_a_card_of_unknown_sender()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith(CrossSession));
+
+        var card = Assert.IsType<ExternalMessageItem>(Assert.Single(c.Items));
+        Assert.Null(card.Sender);
+        Assert.Equal("run the tests", card.Preview);
+        Assert.Equal("run the tests\nplease", Assert.Single(card.Sections).Text);
+    }
+
+    [Fact]
+    public void A_message_whose_origin_does_not_fit_stays_the_text_it_was()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith(CrossSession, "{\"kind\":\"human\"}"));
+        c.AppendLine(UserLineWith(CrossSession, "{\"kind\":\"peer\",\"senderTaskId\":\"a1\"}"));   // a task sends agent messages, not this
+        c.AppendLine(UserLineWith(CrossSession + "\n" + CrossSession));                           // two blocks
+        c.AppendLine(UserLineWith("<teammate-message>hi</teammate-message>", "{\"kind\":\"human\"}"));
+
+        Assert.Equal(4, c.Items.Count);
+        Assert.All(c.Items, i => Assert.IsType<UserMessageItem>(i));
+    }
+
+    [Fact]
+    public void A_wrapped_notice_is_a_card_only_without_an_origin()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith("<teammate-message teammate_id=\"alice\">\nplease review\n</teammate-message>"));
+        c.AppendLine(UserLineWith("<local-command-caveat>Caveat: do not answer</local-command-caveat>", extra: "\"isMeta\":true,"));
+
+        var card = Assert.IsType<ExternalMessageItem>(Assert.Single(c.Items));      // the meta line stays out, as it did
+        Assert.Equal("teammate-message", card.Kind);
+        Assert.Equal("teammate_id", Assert.Single(card.Attributes).Key);
+        Assert.Null(card.Sender);
+    }
+
+    [Fact]
+    public void A_live_background_task_notification_adds_a_meta_line_with_its_summary()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(
+            "{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"t2\",\"tool_use_id\":\"toolu_bg\"," +
+            "\"description\":\"Background look\",\"subagent_type\":\"general-purpose\",\"is_backgrounded\":true,\"spawn_depth\":1," +
+            "\"task_type\":\"local_agent\"}");
+        Assert.Empty(c.Items.OfType<MetaLineItem>());
+
+        c.AppendLine(
+            "{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"t2\",\"tool_use_id\":\"toolu_bg\"," +
+            "\"status\":\"completed\",\"summary\":\"Agent finished: 3 files read\",\"usage\":{\"total_tokens\":10,\"tool_uses\":1,\"duration_ms\":20}}");
+
+        var line = Assert.Single(c.Items.OfType<MetaLineItem>());
+        Assert.Equal("Agent finished: 3 files read", line.Text);
+        Assert.Equal(AgentStatus.Completed, Assert.Single(c.Agents).Status);        // the map reads the same event
+        Assert.Empty(c.Items.OfType<ExternalMessageItem>());
+    }
+
+    [Fact]
+    public void A_notification_of_a_foreground_agent_or_without_a_summary_adds_no_meta_line()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(
+            "{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"t1\",\"tool_use_id\":\"toolu_fg\"," +
+            "\"description\":\"Look\",\"is_backgrounded\":false,\"spawn_depth\":1,\"task_type\":\"local_agent\"}");
+        c.AppendLine(
+            "{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"t2\",\"tool_use_id\":\"toolu_bg\"," +
+            "\"description\":\"Background look\",\"is_backgrounded\":true,\"spawn_depth\":1,\"task_type\":\"local_agent\"}");
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"t1\",\"tool_use_id\":\"toolu_fg\",\"status\":\"completed\",\"summary\":\"done\"}");
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"t2\",\"tool_use_id\":\"toolu_bg\",\"status\":\"completed\"}");
+
+        Assert.Empty(c.Items.OfType<MetaLineItem>());
+    }
+
+    [Fact]
+    public void A_replayed_task_notification_with_an_origin_adds_no_second_line_to_the_live_one()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith(
+            "<task-notification>\n<task-id>t9</task-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n</task-notification>",
+            "{\"kind\":\"task-notification\",\"producer\":\"session-task\"}"));
+
+        Assert.Empty(c.Items);                                         // the live notice of the task says it, once
+    }
 }

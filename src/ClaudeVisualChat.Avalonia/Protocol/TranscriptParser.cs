@@ -120,6 +120,7 @@ namespace ClaudeVisualChat.Protocol
             var meta = JsonHelpers.Prop(root, "tool_result_meta"); // stream
             var denialKind = JsonHelpers.Str(root, "toolDenialKind"); // session file
             var timestamp = JsonHelpers.Time(root, "timestamp");
+            var origin = ReadOrigin(root);
             var events = new List<ClaudeEvent>(blocks.Count);
             for (var i = 0; i < blocks.Count; i++)
             {
@@ -132,10 +133,23 @@ namespace ClaudeVisualChat.Protocol
                 if (b is ToolResultBlock toolResult
                     && (NonExecutionKind(meta, toolResult.ToolUseId) ?? denialKind) is { } kind)
                     b = toolResult with { NonExecutionKind = kind };
-                var user = new UserBlock(parent, b, result, isMeta, isCompact) { Timestamp = timestamp, IsSynthetic = isSynthetic };
+                var user = new UserBlock(parent, b, result, isMeta, isCompact) { Timestamp = timestamp, IsSynthetic = isSynthetic, Origin = origin };
                 events.Add(i == carrier && images.Count > 0 ? user with { Images = images } : user);
             }
             return events;
+        }
+
+        /// <summary>Where the line says it came from (<c>origin</c>); null when it says nothing, or no kind.</summary>
+        private static MessageOrigin? ReadOrigin(JsonElement root)
+        {
+            var origin = JsonHelpers.Obj(root, "origin");
+            if (origin == null || !(JsonHelpers.Str(origin.Value, "kind") is { Length: > 0 } kind)) return null;
+            return new MessageOrigin(kind)
+            {
+                Name = JsonHelpers.Str(origin.Value, "name"),
+                SenderTaskId = JsonHelpers.Str(origin.Value, "senderTaskId") ?? JsonHelpers.Str(origin.Value, "sender_task_id"),
+                Subkind = JsonHelpers.Str(origin.Value, "subkind"),
+            };
         }
 
         /// <summary>

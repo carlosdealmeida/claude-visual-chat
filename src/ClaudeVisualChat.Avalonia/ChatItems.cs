@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using ClaudeVisualChat.Protocol;
 
 namespace ClaudeVisualChat;
 
@@ -482,6 +483,59 @@ public sealed class CompactionItem : ChatItem
         get => _isExpanded;
         set => SetField(ref _isExpanded, value);
     }
+}
+
+/// <summary>
+/// A message that came from somewhere other than the user: an agent, another session, a channel, or the notice of a background task. It is
+/// a line that opens: "Message from @maria: the first words…". It is not a <see cref="UserMessageItem"/>, so it is no prompt: it does not
+/// pin to the top of the view, does not count as one in the prompt history, and has no part in a turn's copy.
+/// </summary>
+public sealed class ExternalMessageItem : ChatItem
+{
+    private bool _isExpanded;
+
+    /// <param name="kind">
+    /// <c>agent</c>, <c>cross-session</c>, <c>channel</c> or <c>task-notification</c>, or the name of the tag of a wrapped notice
+    /// (<c>teammate-message</c>, <c>bash-stdout</c>…).
+    /// </param>
+    public ExternalMessageItem(string kind)
+    {
+        Kind = kind ?? "";
+    }
+
+    /// <summary>What sort of message it is (see the constructor).</summary>
+    public string Kind { get; }
+
+    /// <summary>
+    /// The short name of the sender, with every character that is no letter, digit, dot, dash or underscore turned into "-", and cut at
+    /// 20 characters with "…". Null when the line did not record who sent it: the card then says so ("Sender not recorded").
+    /// </summary>
+    public string? Sender { get; init; }
+
+    /// <summary>The sender's name as it came, when it differs from <see cref="Sender"/> (shown as "From …" when open); else null.</summary>
+    public string? SenderName { get; init; }
+
+    /// <summary>The first line of the body, whitespace collapsed, up to 512 characters and then "…"; empty when the body has no text.</summary>
+    public string Preview { get; init; } = "";
+
+    /// <summary>The attributes of the tag, in order (<c>from</c>, <c>source</c>…), as they were written.</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> Attributes { get; init; } = Array.Empty<KeyValuePair<string, string>>();
+
+    /// <summary>The message itself, line breaks kept. For the notice of a task, its summary.</summary>
+    public string Body { get; init; } = "";
+
+    /// <summary>Whether the card is open. It lives here because the list recycles its rows.</summary>
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetField(ref _isExpanded, value);
+    }
+
+    /// <summary>The parts of the message, for the card that does not know the sender (and for the notice of a task).</summary>
+    internal IReadOnlyList<TaggedSection> Sections { get; init; } = Array.Empty<TaggedSection>();
+
+    /// <summary>Whether <see cref="Sections"/> are drawn as a list of two columns (a notice of a task).</summary>
+    internal bool UsesColumns { get; init; }
 }
 
 /// <summary>What a slash command the claude ran locally printed (<c>/compact</c>, <c>/context</c>…).</summary>

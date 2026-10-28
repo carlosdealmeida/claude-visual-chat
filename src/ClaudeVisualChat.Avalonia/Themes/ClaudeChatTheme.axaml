@@ -373,6 +373,11 @@
         <controls:CompactionCard />
       </DataTemplate>
 
+      <!-- a message from an agent, another session or a channel: a line that opens to the message -->
+      <DataTemplate DataType="cvc:ExternalMessageItem">
+        <controls:ExternalMessageCard />
+      </DataTemplate>
+
       <DataTemplate DataType="cvc:NoticeItem">
         <TextBlock Classes="ClaudeChatNotice"
                    Classes.failed="{Binding Kind, Converter={x:Static controls:ChatConverters.IsTurnFailed}}">
@@ -954,6 +959,46 @@
   </Style>
   <Style Selector="controls|MarkdownBlock.ClaudeChatCompactionSummary">
     <Setter Property="Margin" Value="0,8,0,0" />
+  </Style>
+  <!-- the card of a message from another session: 4 px over and under, 8 px of padding; its line is italic, in the secondary color at 80 %
+       (1 when open or under the pointer), with a chevron of 16 px 4 px after the first words; what opens is not italic, 4 px under the line
+       and between its parts. The names of a list are italic, with 4 px between the rows and 12 between the columns, and a list inside
+       a value has a rule of 1 px to its left and 8 px of padding -->
+  <Style Selector="Border.ClaudeChatExternal">
+    <Setter Property="Margin" Value="0,4" />
+    <Setter Property="Padding" Value="8" />
+  </Style>
+  <Style Selector="Grid.ClaudeChatExternalLine">
+    <Setter Property="Opacity" Value="0.8" />
+  </Style>
+  <Style Selector="ToggleButton.ClaudeChatExternalHead:pointerover Grid.ClaudeChatExternalLine, ToggleButton.ClaudeChatExternalHead:checked Grid.ClaudeChatExternalLine">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatExternalText, SelectableTextBlock.ClaudeChatExternalText">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatExternalLabel, TextBlock.ClaudeChatExternalPreview, TextBlock.ClaudeChatExternalName">
+    <Setter Property="FontStyle" Value="Italic" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatExternalLabel, TextBlock.ClaudeChatExternalPreview">
+    <Setter Property="TextWrapping" Value="NoWrap" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatExternalPreview">
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="SelectableTextBlock.ClaudeChatExternalSender, SelectableTextBlock.ClaudeChatExternalBody">
+    <Setter Property="Margin" Value="0,4,0,0" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="SelectableTextBlock.ClaudeChatExternalValue">
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="Border.ClaudeChatExternalNested">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.BorderStrong}" />
+    <Setter Property="BorderThickness" Value="1,0,0,0" />
+    <Setter Property="Padding" Value="8,0,0,0" />
   </Style>
   <!-- a meta line: italic, the secondary color at 80%, 8 px of padding, 4 px over and under, selectable -->
   <Style Selector="SelectableTextBlock.ClaudeChatMetaLine">

@@ -342,7 +342,7 @@ public class ChatStringsTests
         nameof(ChatStrings.UsageResetsDay), nameof(ChatStrings.PanelLoading),
         nameof(ChatStrings.AgentTokens), nameof(ChatStrings.ThinkingTokensEstimate),
         nameof(ChatStrings.AgentToolTitle), nameof(ChatStrings.WebFetchToolTitle), nameof(ChatStrings.WebSearchToolTitle),
-        nameof(ChatStrings.ChromeToolTitle),
+        nameof(ChatStrings.ChromeToolTitle), nameof(ChatStrings.TaggedTokens),
     };
 
     [Fact]
@@ -665,5 +665,43 @@ public class ChatStringsTests
             Pt.FormatBackgroundAgent(AgentStatus.Completed, false, null, null, "x", AgentNesting.Failed));
         Assert.Equal("Falhou: Disco cheio · digite /tasks para ver a transcrição dele",
             Pt.FormatBackgroundAgent(AgentStatus.Failed, false, null, "Disco cheio", "x", AgentNesting.None));
+    }
+
+    [Fact]
+    public void The_external_message_texts_in_both_languages()
+    {
+        Assert.Equal("Message from @maria:", En.FormatMessageFrom("cross-session", "maria", true));
+        Assert.Equal("Message from @maria", En.FormatMessageFrom("agent", "maria", false));
+        Assert.Equal("Message from channel @slack:", En.FormatMessageFrom("channel", "slack", true));
+        Assert.Equal("Mensagem de @maria:", Pt.FormatMessageFrom("cross-session", "maria", true));
+        Assert.Equal("Mensagem do canal @slack:", Pt.FormatMessageFrom("channel", "slack", true));
+        Assert.Equal("From Maria Souza", En.FormatMessageFromSender("Maria Souza"));
+        Assert.Equal("De Maria Souza", Pt.FormatMessageFromSender("Maria Souza"));
+        Assert.Equal("Sender not recorded: hello", En.FormatSenderNotRecorded("hello"));
+        Assert.Equal("Sender not recorded", En.FormatSenderNotRecorded(""));
+        Assert.Equal("Remetente não registrado: olá", Pt.FormatSenderNotRecorded("olá"));
+        Assert.Equal("(none)", En.TaggedNothing);
+        Assert.Equal("(nenhum)", Pt.TaggedNothing);
+
+        Assert.Equal("Task ID", En.TaggedLabel("task-id"));
+        Assert.Equal("ID da tarefa", Pt.TaggedLabel("task-id"));
+        Assert.Equal("Duration (ms)", En.TaggedLabel("duration_ms"));
+        Assert.Equal("Teammate message", En.TaggedLabel("teammate-message"));
+        Assert.Equal("Terminal command output", En.TaggedLabel("bash-stdout"));
+        Assert.Equal("Mensagem de colega", Pt.TaggedLabel("teammate-message"));
+        Assert.Null(En.TaggedLabel("something-else"));
+        Assert.Null(En.TaggedLabel(null));
+        // every section name a tagged message gives has a text
+        foreach (var key in new[]
+        {
+            "task-id", "tool-use-id", "task-type", "output-file", "status", "summary", "note", "event", "result", "usage", "worktree",
+            "subagent_tokens", "tool_uses", "duration_ms", "worktreePath", "worktreeBranch", "other-text", "after-notification",
+            "output", "error-output", "exit-code", "teammate-message", "bash-stdout", "bash-stderr", "tick", "mcp-resource-update",
+            "mcp-polling-update", "local-command-caveat",
+        })
+        {
+            Assert.False(string.IsNullOrEmpty(En.TaggedLabel(key)), key);
+            Assert.False(string.IsNullOrEmpty(Pt.TaggedLabel(key)), key);
+        }
     }
 }

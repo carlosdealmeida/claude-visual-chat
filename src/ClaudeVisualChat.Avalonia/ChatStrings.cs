@@ -34,6 +34,39 @@ public sealed record ChatStrings
         CompactedChat = "Conversa compactada · {0} · {1}k tokens liberados",
         CompactedChatShort = "Conversa compactada",
         CompactionNoSummary = "A conversa foi compactada para liberar contexto.",
+        MessageFromPeer = "Mensagem de @{0}",
+        MessageFromChannel = "Mensagem do canal @{0}",
+        MessageFromSender = "De {0}",
+        SenderNotRecorded = "Remetente não registrado",
+        TaggedNothing = "(nenhum)",
+        TaggedTaskId = "ID da tarefa",
+        TaggedToolUseId = "ID do uso da ferramenta",
+        TaggedTaskType = "Tipo da tarefa",
+        TaggedOutputFile = "Arquivo de saída",
+        TaggedStatus = "Situação",
+        TaggedSummary = "Resumo",
+        TaggedNote = "Observação",
+        TaggedEvent = "Evento",
+        TaggedResult = "Resultado",
+        TaggedUsage = "Uso",
+        TaggedWorktree = "Árvore de trabalho",
+        TaggedTokens = "Tokens",
+        TaggedToolUses = "Usos de ferramenta",
+        TaggedDuration = "Duração (ms)",
+        TaggedPath = "Caminho",
+        TaggedBranch = "Ramo",
+        TaggedOtherText = "Outro texto",
+        TaggedAfterNotification = "Depois do aviso",
+        TaggedOutput = "Saída",
+        TaggedErrorOutput = "Saída de erro",
+        TaggedExitCode = "Código de saída",
+        TaggedTeammateMessage = "Mensagem de colega",
+        TaggedTerminalOutput = "Saída do comando no terminal",
+        TaggedTerminalError = "Saída de erro do comando no terminal",
+        TaggedAutonomousPrompt = "Prompt autônomo",
+        TaggedMcpResourceUpdate = "Atualização de recurso MCP",
+        TaggedMcpPollingUpdate = "Atualização por consulta MCP",
+        TaggedCommandCaveat = "Aviso do comando",
         SwitchedTo = "Modelo trocado para {0}",
         SwitchedModel = "Modelo trocado",
         MoreLines = "+{0} linhas",
@@ -348,6 +381,105 @@ public sealed record ChatStrings
 
     /// <summary>In the open card of a compaction whose summary the claude did not send.</summary>
     public string CompactionNoSummary { get; init; } = "Conversation was compacted to free up context.";
+
+    /// <summary>The line of a message from an agent or another session; <c>{0}</c> is the short name of the sender.</summary>
+    public string MessageFromPeer { get; init; } = "Message from @{0}";
+
+    /// <summary>The line of a message from a channel; <c>{0}</c> is the name of the channel.</summary>
+    public string MessageFromChannel { get; init; } = "Message from channel @{0}";
+
+    /// <summary>In the open card of a message: the full name of the sender, when it differs from the short one.</summary>
+    public string MessageFromSender { get; init; } = "From {0}";
+
+    /// <summary>The line of a message whose sender the claude did not record; the first words of it follow.</summary>
+    public string SenderNotRecorded { get; init; } = "Sender not recorded";
+
+    /// <summary>In the open card, for a part of the message that has no text.</summary>
+    public string TaggedNothing { get; init; } = "(none)";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedTaskId { get; init; } = "Task ID";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedToolUseId { get; init; } = "Tool use ID";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedTaskType { get; init; } = "Task type";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedOutputFile { get; init; } = "Output file";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedStatus { get; init; } = "Status";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedSummary { get; init; } = "Summary";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedNote { get; init; } = "Note";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedEvent { get; init; } = "Event";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedResult { get; init; } = "Result";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedUsage { get; init; } = "Usage";
+
+    /// <summary>A name in the open notice of a task.</summary>
+    public string TaggedWorktree { get; init; } = "Worktree";
+
+    /// <summary>A name under the usage of a task.</summary>
+    public string TaggedTokens { get; init; } = "Tokens";
+
+    /// <summary>A name under the usage of a task.</summary>
+    public string TaggedToolUses { get; init; } = "Tool uses";
+
+    /// <summary>A name under the usage of a task.</summary>
+    public string TaggedDuration { get; init; } = "Duration (ms)";
+
+    /// <summary>A name under the worktree of a task.</summary>
+    public string TaggedPath { get; init; } = "Path";
+
+    /// <summary>A name under the worktree of a task.</summary>
+    public string TaggedBranch { get; init; } = "Branch";
+
+    /// <summary>A name in the open notice of a task, for text that is none of its parts.</summary>
+    public string TaggedOtherText { get; init; } = "Other text";
+
+    /// <summary>A name in the open notice of a task, for the text that follows it.</summary>
+    public string TaggedAfterNotification { get; init; } = "After the notification";
+
+    /// <summary>A name in the open notice of a command the user ran in the terminal.</summary>
+    public string TaggedOutput { get; init; } = "Output";
+
+    /// <summary>A name in the open notice of a command the user ran in the terminal.</summary>
+    public string TaggedErrorOutput { get; init; } = "Error output";
+
+    /// <summary>A name in the open notice of a command the user ran in the terminal.</summary>
+    public string TaggedExitCode { get; init; } = "Exit code";
+
+    /// <summary>The line of a message from a teammate.</summary>
+    public string TaggedTeammateMessage { get; init; } = "Teammate message";
+
+    /// <summary>The line of the output of a command the user ran in the terminal.</summary>
+    public string TaggedTerminalOutput { get; init; } = "Terminal command output";
+
+    /// <summary>The line of the error output of a command the user ran in the terminal.</summary>
+    public string TaggedTerminalError { get; init; } = "Terminal command error output";
+
+    /// <summary>The line of a prompt the claude gave itself.</summary>
+    public string TaggedAutonomousPrompt { get; init; } = "Autonomous prompt";
+
+    /// <summary>The line of the notice that an MCP resource changed.</summary>
+    public string TaggedMcpResourceUpdate { get; init; } = "MCP resource update";
+
+    /// <summary>The line of a notice from the polling of an MCP server.</summary>
+    public string TaggedMcpPollingUpdate { get; init; } = "MCP polling update";
+
+    /// <summary>The line of the caveat the claude keeps for a local command.</summary>
+    public string TaggedCommandCaveat { get; init; } = "Command caveat";
 
     /// <summary>The divider of <c>/model</c> typed as a command; <c>{0}</c> is the model.</summary>
     public string SwitchedTo { get; init; } = "Switched to {0}";
@@ -1367,6 +1499,63 @@ public sealed record ChatStrings
 
     /// <summary>"Switched to Opus 5.5".</summary>
     internal string FormatSwitchedTo(string model) => SwitchedTo.Replace("{0}", model);
+
+    /// <summary>
+    /// The line of a message from another agent, session or channel: "Message from @maria", with a colon after it when the first words of the
+    /// message follow ("Message from channel @slack:" for <c>channel</c>).
+    /// </summary>
+    internal string FormatMessageFrom(string kind, string sender, bool hasPreview)
+    {
+        var line = (kind == "channel" ? MessageFromChannel : MessageFromPeer).Replace("{0}", sender);
+        return hasPreview ? line + ":" : line;
+    }
+
+    /// <summary>"From Maria Souza": the sender's name in the open card.</summary>
+    internal string FormatMessageFromSender(string name) => MessageFromSender.Replace("{0}", name);
+
+    /// <summary>"Sender not recorded: first words…"; just "Sender not recorded" when the message has no text.</summary>
+    internal string FormatSenderNotRecorded(string preview) =>
+        string.IsNullOrEmpty(preview) ? SenderNotRecorded : SenderNotRecorded + ": " + preview;
+
+    /// <summary>
+    /// The text of a part of a tagged message: a name in the notice of a task (<c>task-id</c>, <c>usage</c>, <c>duration_ms</c>…) or the line of a wrapped
+    /// notice (<c>teammate-message</c>, <c>bash-stdout</c>…); null for a key it does not know.
+    /// </summary>
+    internal string? TaggedLabel(string? key)
+    {
+        switch (key)
+        {
+            case "task-id": return TaggedTaskId;
+            case "tool-use-id": return TaggedToolUseId;
+            case "task-type": return TaggedTaskType;
+            case "output-file": return TaggedOutputFile;
+            case "status": return TaggedStatus;
+            case "summary": return TaggedSummary;
+            case "note": return TaggedNote;
+            case "event": return TaggedEvent;
+            case "result": return TaggedResult;
+            case "usage": return TaggedUsage;
+            case "worktree": return TaggedWorktree;
+            case "subagent_tokens": return TaggedTokens;
+            case "tool_uses": return TaggedToolUses;
+            case "duration_ms": return TaggedDuration;
+            case "worktreePath": return TaggedPath;
+            case "worktreeBranch": return TaggedBranch;
+            case "other-text": return TaggedOtherText;
+            case "after-notification": return TaggedAfterNotification;
+            case "output": return TaggedOutput;
+            case "error-output": return TaggedErrorOutput;
+            case "exit-code": return TaggedExitCode;
+            case "teammate-message": return TaggedTeammateMessage;
+            case "bash-stdout": return TaggedTerminalOutput;
+            case "bash-stderr": return TaggedTerminalError;
+            case "tick": return TaggedAutonomousPrompt;
+            case "mcp-resource-update": return TaggedMcpResourceUpdate;
+            case "mcp-polling-update": return TaggedMcpPollingUpdate;
+            case "local-command-caveat": return TaggedCommandCaveat;
+            default: return null;
+        }
+    }
 
     /// <summary>"47 lines", "1 line".</summary>
     internal string FormatLines(int lines) => lines == 1 ? OneLine : Lines.Replace("{0}", FormatNumber(lines));

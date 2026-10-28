@@ -126,6 +126,12 @@
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
 
+  <!-- the line of a message from another session, which a tap opens: a finger tall -->
+  <Style Selector="controls|ClaudeChatView:touch ToggleButton.ClaudeChatExternalHead">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
   <!-- ===== a tool call: a block with a frame, its state dot at the start of the header ===== -->
 
   <Style Selector="controls|ToolCallView:touch Border.ClaudeChatToolBlock">

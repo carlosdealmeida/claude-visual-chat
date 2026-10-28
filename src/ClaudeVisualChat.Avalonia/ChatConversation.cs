@@ -732,6 +732,7 @@ public sealed class ChatConversation : ChatObservableObject
                 break;
             case AgentTaskFinished finished:
                 OnAgentTaskFinished(finished);
+                AddBackgroundTaskLine(finished);
                 break;
         }
         UpdateStreaming();
@@ -1519,11 +1520,14 @@ public sealed class ChatConversation : ChatObservableObject
             AddNotice(text == InterruptedText ? NoticeKind.Interrupted : NoticeKind.ToolInterrupted, e.ParentToolUseId);
             return;
         }
-        // a task notification is the claude telling itself that a background subagent finished: it ends the agent and
-        // stays out of the conversation
-        if (text.StartsWith(TaskNotificationPrefix, StringComparison.Ordinal))
+        // a task notification is the claude telling itself that a background subagent finished: it ends the agent. A session file
+        // keeps it as a user line with no origin, and it shows as a message of unknown sender; a line that says where it came from
+        // (a replay) adds nothing, since the notice of the task already told it
+        if (text.TrimStart().StartsWith(TaskNotificationPrefix, StringComparison.Ordinal))
         {
             if (TaskNotificationText.Read(text) is { } finished) OnAgentTaskFinished(finished);
+            if (e.Origin == null && !e.IsMeta && TaggedMessage.Read(text) is { } notice)
+                Place(ExternalMessage(notice, null, null), e.ParentToolUseId);
             return;
         }
         if (e.IsMeta) return;
@@ -1532,6 +1536,12 @@ public sealed class ChatConversation : ChatObservableObject
         if (e.IsCompactSummary || (e.IsSynthetic && _compaction != null))
         {
             AddCompactionSummary(text, e.ParentToolUseId);
+            return;
+        }
+        // a message that is exactly one tagged block came from an agent, another session or a channel: a card, not the user's text
+        if (TaggedMessage.Read(text) is { } tagged && ExternalCardFor(e, tagged) is { } card)
+        {
+            Place(card, e.ParentToolUseId);
             return;
         }
         // the files the host sent are named by lines at the end of the text: chips, not text
@@ -1547,6 +1557,62 @@ public sealed class ChatConversation : ChatObservableObject
         List<ChatFile>? files = null;
         foreach (var path in paths) (files ??= new List<ChatFile>()).Add(ChatFile.FromRemotePath(path));
         Place(new UserMessageItem(shown, images, files) { Timestamp = e.Timestamp }, e.ParentToolUseId);
+    }
+
+    /// <summary>
+    /// The card for a tagged message. A wrapped notice, and a message that nothing says the origin of, are cards that do not know their
+    /// sender ("Sender not recorded"); a message whose origin fits what it says is a card that names the sender; one whose origin does
+    /// not (a human's, say) is left to be the text it was.
+    /// </summary>
+    private static ExternalMessageItem? ExternalCardFor(UserBlock e, TaggedMessage message)
+    {
+        var origin = e.Origin;
+        if (origin == null) return ExternalMessage(message, null, null);
+        if (message.IsWrappedNotice || message.Kind == TaggedMessage.TaskKind || !OriginFits(origin, message)) return null;
+        // a message from another session says its sender's name in the origin, a channel's in the tag
+        return ExternalMessage(message, origin.Kind == "peer" ? origin.Name : null, origin);
+    }
+
+    /// <summary>The origin of a line is the sort of sender the message says: a channel's, an agent's of this session (it has a task), another session's.</summary>
+    private static bool OriginFits(MessageOrigin origin, TaggedMessage message)
+    {
+        if (message.Kind == TaggedMessage.ChannelKind) return origin.Kind == "channel";
+        if (origin.Kind != "peer") return false;
+        var fromTask = origin.SenderTaskId != null;
+        if (message.Kind == TaggedMessage.AgentKind ? !fromTask : fromTask) return false;
+        return message.Tail != "descendant" || fromTask;
+    }
+
+    /// <summary>The item for a tagged message; with <paramref name="origin"/> null it does not know the sender.</summary>
+    private static ExternalMessageItem ExternalMessage(TaggedMessage message, string? originName, MessageOrigin? origin)
+    {
+        string? sender = null;
+        string? senderName = null;
+        if (origin != null)
+        {
+            var name = originName ?? message.FromName ?? "";
+            var handle = TaggedMessage.Handle(name);
+            sender = handle.Length > 0 ? handle : message.Kind == TaggedMessage.AgentKind ? "agent" : "peer";
+            var full = TaggedMessage.PlainName(name);
+            senderName = full.Length > 0 && full != sender ? full : null;
+        }
+        return new ExternalMessageItem(message.Kind)
+        {
+            Sender = sender,
+            SenderName = senderName,
+            Preview = TaggedMessage.Preview(message.Body),
+            Attributes = message.Attributes,
+            Body = message.Body,
+            Sections = message.Sections,
+            UsesColumns = message.Columns,
+        };
+    }
+
+    /// <summary>The notice of a task that ended (<c>system/task_notification</c>) says in a line what the agent did, when the agent ran in the background.</summary>
+    private void AddBackgroundTaskLine(AgentTaskFinished e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Summary) || FindAgent(e.ToolUseId, e.TaskId) is not { IsBackground: true }) return;
+        Items.Add(new MetaLineItem(e.Summary!));
     }
 
     /// <summary>What <c>/model</c> prints when typed as a command; a <c>set_model</c> request (<see cref="SetModel"/>) prints nothing.</summary>

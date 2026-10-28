@@ -67,6 +67,28 @@ namespace ClaudeVisualChat.Protocol
 
         /// <summary>The line is the claude's own (<c>isSynthetic</c>), not something the user wrote: after a compaction, the summary comes so.</summary>
         public bool IsSynthetic { get; init; }
+
+        /// <summary>
+        /// Where the line says it came from (<c>origin</c>, which the claude writes when it replays a message): another session, a channel,
+        /// a task. Null when the line says nothing, as in a session file and in a live stream.
+        /// </summary>
+        public MessageOrigin? Origin { get; init; }
+    }
+
+    /// <summary>
+    /// The <c>origin</c> of a user line: <paramref name="Kind"/> is <c>human</c>, <c>peer</c>, <c>channel</c>, <c>task-notification</c>,
+    /// <c>coordinator</c>, <c>plugin</c>…
+    /// </summary>
+    public sealed record MessageOrigin(string Kind)
+    {
+        /// <summary>The sender's name (<c>name</c>), for a message from another session; null when not told.</summary>
+        public string? Name { get; init; }
+
+        /// <summary>The task of the sender (<c>senderTaskId</c>), when the sender is an agent of this same session; null otherwise.</summary>
+        public string? SenderTaskId { get; init; }
+
+        /// <summary>A narrower kind (<c>subkind</c>); null when not told.</summary>
+        public string? Subkind { get; init; }
     }
 
     /// <summary>A streamed block opened. A <c>tool_use</c> starts with an empty <c>{}</c> input.</summary>
