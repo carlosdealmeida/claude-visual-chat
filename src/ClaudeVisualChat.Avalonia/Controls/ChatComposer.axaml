@@ -22,7 +22,12 @@
       <controls:AttachmentStrip Name="Strip" />
       <TextBlock Name="AttachError" Classes="ClaudeChatAttachmentError" IsVisible="False" />
       <!-- Enter sends, Shift+Enter breaks the line (in the touch layout, Enter breaks it and Ctrl+Enter sends) -->
-      <TextBox Name="Input" Classes="ClaudeChatInput" AcceptsReturn="True" TextWrapping="Wrap" />
+      <Grid>
+        <TextBox Name="Input" Classes="ClaudeChatInput" AcceptsReturn="True" TextWrapping="Wrap" />
+        <!-- after "/name " and nothing else, the hint of the command's arguments: the text itself, clear, then the hint in the
+             placeholder's color, over the box, so that it starts where the text ends and wraps as it does -->
+        <TextBlock Name="ArgumentHint" Classes="ClaudeChatArgumentHint" IsHitTestVisible="False" IsVisible="False" />
+      </Grid>
       <!-- the bar, in the extension's (2.1.309) order: +, /, the context ring, the cache clock, the Remote Control chip,
            the agents chip, the model chip; at the right the mode, then send or stop. The touch layout has the bar below
            instead -->

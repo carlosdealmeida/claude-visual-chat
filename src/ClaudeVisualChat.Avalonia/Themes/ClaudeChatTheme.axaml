@@ -2227,6 +2227,65 @@
     <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.EffortThumbShadow}" />
   </Style>
 
+  <!-- the palette's rows that are not commands: the value at the right (the model, the level) in the secondary color, 12 px
+       after the label; and the switch, a track of 32 x 18 with 9 px corners in the input's border color, in the accent when on, and
+       a thumb of 14 px in the text's color that slides from 2 px to 16 px in 0.15 s -->
+  <Style Selector="Border.ClaudeChatMenu TextBlock.ClaudeChatMenuValue">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="Margin" Value="12,0,0,0" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Panel.ClaudeChatSwitchHost">
+    <Setter Property="Margin" Value="12,0,0,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.ClaudeChatSwitch">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBorder}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatSwitch.on">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.AccentFill}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatSwitch > Border.ClaudeChatSwitchThumb">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="2,0,0,0" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <ThicknessTransition Property="Margin" Duration="0:0:0.15" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.ClaudeChatSwitch.on > Border.ClaudeChatSwitchThumb">
+    <Setter Property="Margin" Value="16,0,0,0" />
+  </Style>
+  <!-- the divider that opens a group of the palette (not the first): 1 px in the input's border color, 4 px over and under -->
+  <Style Selector="Border.ClaudeChatMenuDivider">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Margin" Value="0,4" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBorder}" />
+  </Style>
+
+  <!-- the hint of a command's arguments, after "/name " in the reply box: the text's own font and lines, over the box where the
+       text is (the box's padding), in the placeholder's color; the words before the hint are the text, drawn clear -->
+  <Style Selector="TextBlock.ClaudeChatArgumentHint">
+    <Setter Property="Margin" Value="14,10,36,10" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.InputPlaceholder}" />
+  </Style>
+
   <!-- ===== a thumbnail of a message's image, as the extension's (2.1.309): a button without padding, a 1 px frame in
        the input's border color with 8 px corners, the picture's 7 px corners inside it, 4 px after it; the frame at
        70 % of the secondary color under the pointer, in the focus color with the keyboard ===== -->

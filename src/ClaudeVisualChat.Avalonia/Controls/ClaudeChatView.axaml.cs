@@ -325,6 +325,9 @@ public partial class ClaudeChatView : UserControl
         set => SetValue(ConversationProperty, value);
     }
 
+    /// <summary>The reply box, which the palette's rows act on (attaching, the model menu).</summary>
+    internal ChatComposer ReplyBox => Composer;
+
     public ChatStrings Strings
     {
         get => GetValue(StringsProperty);

@@ -1493,4 +1493,54 @@ public class DetachTests
         Assert.False(notice.IsVisible);
         m.Window.Close();
     }
+
+    [AvaloniaFact]
+    public void The_argument_hint_and_the_open_palette_come_back_right_after_the_view_returns()
+    {
+        var m = new Mounted(Conversation());
+        m.Conversation.Commands = new[] { new ChatCommand("review", "Review a pull request", "<pr>") };
+        var input = UiHelpers.Input(m.View);
+        var hint = m.Composer.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "ArgumentHint");
+        input.Text = "/review ";
+        UiHelpers.Pump();
+        Assert.True(hint.IsVisible);
+
+        // the commands change while the view is away: nothing follows them there, and the hint is right when the view is back
+        m.Out();
+        m.Conversation.Commands = new[] { new ChatCommand("review", "Review a pull request", "") };
+        m.In();
+        Assert.False(hint.IsVisible);
+        m.Out();
+        m.Conversation.Commands = new[] { new ChatCommand("review", "Review a pull request", "<pull request>") };
+        m.In();
+        Assert.True(hint.IsVisible);
+        Assert.Equal("/review <pull request>", string.Concat(hint.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Select(r => r.Text)));
+        m.Conversation.Commands = new ChatCommand[0];     // and it follows them again
+        UiHelpers.Pump();
+        Assert.False(hint.IsVisible);
+
+        // the palette open when the view leaves is closed, with a row that keeps it open too; back, it opens again as it did
+        input.Text = "";
+        var palette = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(m.Composer).OfType<CommandPalette>().Single();
+        var kept = new PaletteAction(PaletteSection.Settings, "Detach switch", _ => { }, _ => true);
+        CommandPalette.Actions.Add(kept);
+        try
+        {
+            m.Composer.OpenCommands();
+            Assert.True(palette.IsOpen);
+            m.Out();
+            Assert.False(palette.IsOpen);
+            m.In();
+            Assert.False(palette.IsOpen);
+            m.Composer.OpenCommands();
+            UiHelpers.Pump();
+            Assert.True(palette.IsOpen);
+            Assert.Contains("Detach switch", UiHelpers.Texts(palette.Child!));
+        }
+        finally
+        {
+            CommandPalette.Actions.Remove(kept);
+        }
+        m.Window.Close();
+    }
 }

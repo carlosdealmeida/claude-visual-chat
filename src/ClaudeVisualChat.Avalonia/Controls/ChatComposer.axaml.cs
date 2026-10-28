@@ -161,6 +161,7 @@ internal partial class ChatComposer : UserControl
             RebaseListening();
             UpdateSend();
             UpdateBusy(); // with text, the square sends; empty while Claude works, it stops
+            UpdateHint();
         };
         SendButton.Click += OnSendClick;
         TouchSend.Click += OnSendClick;
@@ -313,6 +314,21 @@ internal partial class ChatComposer : UserControl
     /// </summary>
     internal void OpenCommands() => Palette.Toggle();
 
+    /// <summary>
+    /// Opens the model menu with the keyboard on the model chip (the desktop layout), or the view's model sheet (the touch layout):
+    /// what the palette's "Switch model…" does. With no model on offer there is nothing to open.
+    /// </summary>
+    internal void OpenModelPicker()
+    {
+        if (IsTouch)
+        {
+            ModelSheetRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        ModelChip.Focus(); // the menu's keys are the chip's
+        ModelMenu.Toggle();
+    }
+
     /// <summary>The command palette or the model menu is open: they take Esc first.</summary>
     internal bool HasOpenPopup => Palette.IsOpen || ModelMenu.IsOpen;
 
@@ -424,6 +440,9 @@ internal partial class ChatComposer : UserControl
             case nameof(ChatConversation.PermissionMode):
                 SelectMode();
                 break;
+            case nameof(ChatConversation.PaletteCommands):
+                UpdateHint(); // the command's hint may have come, or gone
+                break;
             case nameof(ChatConversation.CurrentPermission):
                 if (_tracked?.CurrentPermission != null) ClosePopups(); // the request comes first, the menus would cover it
                 UpdateNotice(); // and a banner is hidden under a request
@@ -466,6 +485,40 @@ internal partial class ChatComposer : UserControl
         UpdateBusy();
         UpdateSend();
         RebuildModes();
+        UpdateHint();
+    }
+
+    /// <summary>
+    /// The hint of a command's arguments (<see cref="ChatCommand.ArgumentHint"/>) as a ghost after the text, while the box holds
+    /// exactly <c>/name </c> with one space at its end and the conversation has that command with a hint. The ghost is the text
+    /// itself, clear, then the hint, so that it starts where the text ends and wraps with it.
+    /// </summary>
+    private void UpdateHint()
+    {
+        var text = Input.Text;
+        var hint = text == null ? null : ArgumentHintOf(text, _conversation);
+        ArgumentHint.IsVisible = hint != null;
+        var inlines = ArgumentHint.Inlines!;
+        inlines.Clear();
+        if (hint == null) return;
+        inlines.Add(new Avalonia.Controls.Documents.Run(text) { Foreground = Avalonia.Media.Brushes.Transparent });
+        inlines.Add(new Avalonia.Controls.Documents.Run(hint));
+    }
+
+    /// <summary>The hint to show after <paramref name="text"/>: it is <c>/name </c> and nothing more, and the command has one.</summary>
+    internal static string? ArgumentHintOf(string text, ChatConversation? conversation)
+    {
+        if (conversation == null || text.Length < 3 || text[0] != '/' || text[text.Length - 1] != ' ') return null;
+        var name = text.Substring(1, text.Length - 2);
+        foreach (var c in name)
+        {
+            if (char.IsWhiteSpace(c)) return null;
+        }
+        foreach (var command in conversation.PaletteCommands)
+        {
+            if (string.Equals(command.Name, name, StringComparison.Ordinal)) return command.ArgumentHint.Length > 0 ? command.ArgumentHint : null;
+        }
+        return null;
     }
 
     private static void Label(Button button, string name)

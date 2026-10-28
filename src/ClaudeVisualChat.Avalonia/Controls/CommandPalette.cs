@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
@@ -101,28 +102,74 @@ internal abstract class ChatMenuPopup : Popup
     }
 }
 
+/// <summary>The groups of the command palette, in the order they show; <see cref="PaletteAction.Section"/> is one of these.</summary>
+internal static class PaletteSection
+{
+    internal const string Context = "Context";
+    internal const string Model = "Model";
+    internal const string Customize = "Customize";
+    internal const string Settings = "Settings";
+    internal const string SlashCommands = "Slash Commands";
+    internal const string Support = "Support";
+
+    /// <summary>The groups in the order they show.</summary>
+    internal static readonly string[] Order = { Context, Model, Customize, Settings, SlashCommands, Support };
+}
+
 /// <summary>
-/// The command palette, like the extension's: "Slash Commands" and the conversation's
-/// <see cref="ChatConversation.PaletteCommands"/>, each as <c>/name</c> with its description in the tooltip. The /
-/// button opens it with a filter field that takes the keyboard; a "/" typed in the empty reply box opens it without one,
-/// filtered by what follows the "/" until a space or the "/" goes. A command matches by its name (exactly, then at its
-/// start, then anywhere) and then by its description, in the claude's order within each. The arrows move the mark,
-/// Enter runs the marked command (<see cref="ChatConversation.Submit"/> with <c>/name</c>), Tab puts <c>/name </c>
-/// in the reply box, Esc closes and gives the keyboard back to the box. A press on a row runs its command; in the touch
-/// layout a tap does (the pointer let go where it was pressed), so that a finger that scrolls the list runs nothing.
+/// A row of the command palette that is not a slash command: it acts on the view (which gives it the conversation and the reply
+/// box). <see cref="Label"/> is the row's name, in English; <see cref="Text"/> gives it in the language of the strings. A row with
+/// <see cref="IsOn"/> is a switch, and one that <see cref="KeepsOpen"/> leaves the palette open; the others close it.
+/// </summary>
+internal sealed record PaletteAction(string Section, string Label, Action<ClaudeChatView> Run, Func<ClaudeChatView, bool>? IsOn = null)
+{
+    /// <summary>The row's name in the strings' language; the <see cref="Label"/> when null.</summary>
+    internal Func<ChatStrings, string>? Text { get; init; }
+
+    /// <summary>Whether the row shows now; always, when null.</summary>
+    internal Func<ClaudeChatView, bool>? IsShown { get; init; }
+
+    /// <summary>What shows at the right of the row (the model, the level); nothing when null or when it gives null.</summary>
+    internal Func<ClaudeChatView, ChatStrings, string?>? Value { get; init; }
+
+    /// <summary>The palette stays open after the row acts (a switch always does).</summary>
+    internal bool KeepsOpen { get; init; }
+}
+
+/// <summary>
+/// The command palette, like the extension's, in groups (<see cref="PaletteSection"/>): the <see cref="Actions"/> (attach a file, the
+/// model, the effort, the usage, the docs) and "Slash Commands", the conversation's
+/// <see cref="ChatConversation.PaletteCommands"/>, each as <c>/name</c> with its description in the tooltip. A group with nothing
+/// to show is not there, and a divider of 1 px opens each one after the first. The / button opens it with a filter field that takes
+/// the keyboard, and without a filter it lists the actions only; a "/" typed in the empty reply box opens it with the slash commands
+/// alone and without the field, filtered by what follows the "/" until a space or the "/" goes. A row matches by its name (exactly, then
+/// at its start, then anywhere) and then by its description, in the claude's order within each, inside its group. The arrows move the
+/// mark, Enter runs the marked row (a command is <see cref="ChatConversation.Submit"/> with <c>/name</c>), Tab puts <c>/name </c>
+/// in the reply box, Esc closes and gives the keyboard back to the box. A press on a row runs it; in the touch layout a tap does
+/// (the pointer let go where it was pressed), so that a finger that scrolls the list runs nothing. The touch layout has the same
+/// groups, the rows at the height they had.
 /// </summary>
 internal sealed class CommandPalette : ChatMenuPopup
 {
+    /// <summary>Where "View help docs" goes.</summary>
+    internal const string HelpDocsUrl = "https://code.claude.com/docs/en/overview";
+
     private static readonly StyledProperty<ChatLayout> LayoutProperty =
         ClaudeChatView.LayoutProperty.AddOwner<CommandPalette>();
+
+    private sealed class Entry
+    {
+        internal ChatCommand? Command;
+        internal PaletteAction? Action;
+    }
 
     private readonly TextBox _filter = new TextBox();
     private readonly Border _spacer = new Border { Height = 4 };
     private readonly StackPanel _list = new StackPanel();
-    private readonly TextBlock _header = new TextBlock();
     private readonly TextBlock _empty = new TextBlock();
     private readonly List<Border> _rows = new List<Border>();
-    private List<ChatCommand> _shown = new List<ChatCommand>();
+    private readonly List<Action> _refreshers = new List<Action>();
+    private List<Entry> _shown = new List<Entry>();
     private ChatConversation? _conversation;
     private TextBox? _input;
     private bool _typed;
@@ -139,11 +186,8 @@ internal sealed class CommandPalette : ChatMenuPopup
         {
             if (e.Property == TextBox.TextProperty && IsOpen && !_typed) Filter(_filter.Text ?? "");
         };
-        _header.Classes.Add("ClaudeChatMenuHeader");
         _empty.Classes.Add("ClaudeChatMenuEmpty");
         _list.Classes.Add("ClaudeChatMenuList");
-        _list.Children.Add(_header);
-        _list.Children.Add(_empty);
         Frame.Child = new StackPanel
         {
             Children =
@@ -160,6 +204,42 @@ internal sealed class CommandPalette : ChatMenuPopup
         };
         Closed += (_, _) => _active = -1;
     }
+
+    /// <summary>
+    /// The rows that are not slash commands. The other tasks that add to the palette (the Focus view, the bookmarks) add theirs here;
+    /// a row shows when its group has the room, in the order they were added.
+    /// </summary>
+    internal static IList<PaletteAction> Actions { get; } = new List<PaletteAction>
+    {
+        new PaletteAction(PaletteSection.Context, "Attach file…", view => _ = view.ReplyBox.AttachFromPickerAsync())
+        {
+            Text = strings => strings.PaletteAttachFile,
+        },
+        new PaletteAction(PaletteSection.Model, "Switch model…", view => view.ReplyBox.OpenModelPicker())
+        {
+            Text = strings => strings.PaletteSwitchModel,
+            IsShown = view => view.Conversation?.AvailableModels is { Count: > 0 },
+            Value = (view, _) => view.Conversation == null ? null : ModelChip.NameOf(view.Conversation),
+        },
+        // the model's levels, one at a time round the end, as the model menu's row does; only for a model that takes an effort
+        new PaletteAction(PaletteSection.Model, "Effort", view => ModelMenu.CycleEffort(view.Conversation!))
+        {
+            Text = strings => strings.Effort,
+            KeepsOpen = true,
+            IsShown = view => view.Conversation?.CurrentModel?.EffortLevels is { Count: > 0 },
+            Value = (view, strings) => strings.EffortLabel(ModelMenu.LevelShown(view.Conversation!)),
+        },
+        new PaletteAction(PaletteSection.Model, "Account & usage…", view => view.Conversation?.Submit("/usage"))
+        {
+            Text = strings => strings.PaletteAccountUsage,
+        },
+        // only where the host opens links
+        new PaletteAction(PaletteSection.Support, "View help docs", view => view.Conversation?.RequestLink(HelpDocsUrl))
+        {
+            Text = strings => strings.PaletteHelpDocs,
+            IsShown = view => view.Conversation?.CanOpenLinks == true,
+        },
+    };
 
     /// <summary>The conversation whose commands it lists and runs; another one closes the palette.</summary>
     internal ChatConversation? Conversation
@@ -191,6 +271,9 @@ internal sealed class CommandPalette : ChatMenuPopup
     }
 
     private bool IsTouch => GetValue(LayoutProperty) == ChatLayout.Touch;
+
+    /// <summary>The view the palette is in, whose conversation and reply box the <see cref="Actions"/> act on.</summary>
+    private ClaudeChatView? View => this.FindLogicalAncestorOfType<ClaudeChatView>();
 
     /// <summary>The / button: opens the palette with its filter field, or closes it.</summary>
     internal void Toggle()
@@ -230,14 +313,16 @@ internal sealed class CommandPalette : ChatMenuPopup
             case Key.Enter:
                 if (_active >= 0)
                 {
-                    Run(_shown[_active]);
+                    var entry = _shown[_active];
+                    if (entry.Action != null) Run(entry.Action);
+                    else Run(entry.Command!);
                     return true;
                 }
                 if (!_typed) return true;
                 IsOpen = false; // nothing marked: the reply box sends what was typed
                 return false;
             case Key.Tab:
-                if (_active >= 0) Insert(_shown[_active]);
+                if (_active >= 0 && _shown[_active].Command is { } command) Insert(command);
                 return true;
             default:
                 return false;
@@ -281,18 +366,85 @@ internal sealed class CommandPalette : ChatMenuPopup
         _filter.Watermark = strings.FilterCommands;
         _filter.IsVisible = !_typed;
         _spacer.IsVisible = _typed;
-        _header.Text = strings.SlashCommands;
         _empty.Text = strings.NoMatchingCommands;
-        _shown = Rank(_conversation?.PaletteCommands ?? Array.Empty<ChatCommand>(), query, strings);
-        foreach (var row in _rows) _list.Children.Remove(row);
+        _shown = new List<Entry>();
         _rows.Clear();
-        for (var i = 0; i < _shown.Count; i++) _rows.Add(Row(_shown[i], i, strings));
-        _list.Children.InsertRange(1, _rows);
-        _header.IsVisible = _shown.Count > 0;
+        _refreshers.Clear();
+        _list.Children.Clear();
+
+        // the actions are for the button's menu; a "/" typed in the box is looking for a command. The commands are not listed by the
+        // button before something is typed in its field
+        var view = _typed ? null : View;
+        var actions = new List<PaletteAction>();
+        if (view != null)
+        {
+            foreach (var action in Actions)
+            {
+                if (action.IsShown == null || action.IsShown(view)) actions.Add(action);
+            }
+        }
+        var commands = _typed || query.Length > 0
+            ? Rank(_conversation?.PaletteCommands ?? Array.Empty<ChatCommand>(), query, strings)
+            : new List<ChatCommand>();
+        var sections = new List<string>(PaletteSection.Order);
+        foreach (var action in actions)
+        {
+            if (!sections.Contains(action.Section)) sections.Add(action.Section);
+        }
+        var first = true;
+        foreach (var section in sections)
+        {
+            var entries = new List<Entry>();
+            var ofSection = actions.FindAll(a => a.Section == section);
+            foreach (var action in RankBy(ofSection, query, a => LabelOf(a, strings), _ => "")) entries.Add(new Entry { Action = action });
+            if (section == PaletteSection.SlashCommands)
+            {
+                foreach (var command in commands) entries.Add(new Entry { Command = command });
+            }
+            if (entries.Count == 0) continue;
+            if (!first) _list.Children.Add(Divider());
+            first = false;
+            _list.Children.Add(Header(HeaderOf(section, strings)));
+            foreach (var entry in entries)
+            {
+                var row = entry.Action != null ? ActionRow(entry.Action, _shown.Count, strings, view!) : Row(entry.Command!, _shown.Count, strings);
+                _shown.Add(entry);
+                _rows.Add(row);
+                _list.Children.Add(row);
+            }
+        }
         _empty.IsVisible = _shown.Count == 0;
+        _list.Children.Add(_empty);
         // the first one is marked once something is typed, as in the extension
         Mark(query.Length > 0 && _shown.Count > 0 ? 0 : -1);
     }
+
+    private static TextBlock Header(string text)
+    {
+        var header = new TextBlock { Text = text };
+        header.Classes.Add("ClaudeChatMenuHeader");
+        return header;
+    }
+
+    private static Border Divider()
+    {
+        var divider = new Border();
+        divider.Classes.Add("ClaudeChatMenuDivider");
+        return divider;
+    }
+
+    private static string HeaderOf(string section, ChatStrings strings) => section switch
+    {
+        PaletteSection.Context => strings.PaletteContext,
+        PaletteSection.Model => strings.Model,
+        PaletteSection.Customize => strings.PaletteCustomize,
+        PaletteSection.Settings => strings.PaletteSettings,
+        PaletteSection.SlashCommands => strings.SlashCommands,
+        PaletteSection.Support => strings.PaletteSupport,
+        _ => section,
+    };
+
+    private static string LabelOf(PaletteAction action, ChatStrings strings) => action.Text?.Invoke(strings) ?? action.Label;
 
     private Border Row(ChatCommand command, int index, ChatStrings strings)
     {
@@ -302,23 +454,75 @@ internal sealed class CommandPalette : ChatMenuPopup
         row.Classes.Add("ClaudeChatMenuItem");
         var description = Describe(command, strings);
         if (description.Length > 0) ToolTip.SetTip(row, description);
+        Wire(row, index, () => Run(command));
+        return row;
+    }
+
+    /// <summary>
+    /// A row of an action: its name, and at the right the value it shows or its switch. A switch (and the others that keep the
+    /// palette open) is drawn again after the action acts, so that the thumb slides.
+    /// </summary>
+    private Border ActionRow(PaletteAction action, int index, ChatStrings strings, ClaudeChatView view)
+    {
+        var label = new TextBlock { Text = LabelOf(action, strings) };
+        label.Classes.Add("ClaudeChatMenuLabel");
+        var dock = new DockPanel();
+        if (action.IsOn != null)
+        {
+            var thumb = new Border();
+            thumb.Classes.Add("ClaudeChatSwitchThumb");
+            var track = new Border { Child = thumb };
+            track.Classes.Add("ClaudeChatSwitch");
+            var host = new Panel { Children = { track } };
+            host.Classes.Add("ClaudeChatSwitchHost");
+            DockPanel.SetDock(host, Dock.Right);
+            dock.Children.Add(host);
+            void Refresh() => track.Classes.Set("on", action.IsOn(view));
+            Refresh();
+            _refreshers.Add(Refresh);
+        }
+        else if (action.Value != null)
+        {
+            var value = new TextBlock();
+            value.Classes.Add("ClaudeChatMenuValue");
+            DockPanel.SetDock(value, Dock.Right);
+            dock.Children.Add(value);
+            void Refresh()
+            {
+                var text = action.Value(view, strings);
+                value.Text = text;
+                value.IsVisible = !string.IsNullOrEmpty(text);
+            }
+            Refresh();
+            _refreshers.Add(Refresh);
+        }
+        dock.Children.Add(label);
+        var row = new Border { Child = dock };
+        row.Classes.Add("ClaudeChatMenuItem");
+        Wire(row, index, () => Run(action));
+        return row;
+    }
+
+    /// <summary>
+    /// The pointer marks the row it is over. The desktop runs it at the press, as the extension's menu does. The touch layout waits
+    /// for the tap (the pointer let go where it was pressed, within Avalonia's tap threshold), and leaves the press alone, so that a
+    /// finger which starts to scroll the list scrolls it instead of running the row under it.
+    /// </summary>
+    private void Wire(Border row, int index, Action run)
+    {
         row.PointerEntered += (_, _) => Mark(index);
-        // the desktop runs the command at the press, as the extension's menu does. The touch layout waits for the tap (the
-        // pointer let go where it was pressed, within Avalonia's tap threshold), and leaves the press alone, so that a finger
-        // which starts to scroll the list scrolls it instead of running the command under it
         row.PointerPressed += (_, e) =>
         {
             if (IsTouch || !e.GetCurrentPoint(row).Properties.IsLeftButtonPressed) return;
             e.Handled = true;
-            Run(command);
+            run();
         };
         row.Tapped += (_, e) =>
         {
             if (!IsTouch) return;
             e.Handled = true;
-            Run(command);
+            run();
         };
-        return row;
     }
 
     private void Mark(int index)
@@ -343,6 +547,23 @@ internal sealed class CommandPalette : ChatMenuPopup
         _input?.Focus();
     }
 
+    /// <summary>
+    /// Does what the row does, with the view. The palette closes first, and the keyboard goes back to the box, which the action may
+    /// take (the model menu takes it for the model chip); a switch and the rows that keep the palette open stay open, and show what
+    /// they are now.
+    /// </summary>
+    private void Run(PaletteAction action)
+    {
+        var view = View;
+        var keeps = action.IsOn != null || action.KeepsOpen;
+        if (!keeps || !CanAct(_conversation) || view == null) IsOpen = false;
+        if (!CanAct(_conversation) || view == null) return;
+        if (!keeps) _input?.Focus();
+        action.Run(view);
+        if (!keeps) return;
+        foreach (var refresh in _refreshers) refresh();
+    }
+
     /// <summary>Puts <c>/name </c> in the reply box, for the arguments.</summary>
     private void Insert(ChatCommand command)
     {
@@ -358,22 +579,26 @@ internal sealed class CommandPalette : ChatMenuPopup
     /// The commands that match, best first: the name equal to the query, then starting with it, then having it, then
     /// the description having it; in the claude's order within each. An empty query keeps them all, in that order.
     /// </summary>
-    internal static List<ChatCommand> Rank(IReadOnlyList<ChatCommand> commands, string query, ChatStrings strings)
+    internal static List<ChatCommand> Rank(IReadOnlyList<ChatCommand> commands, string query, ChatStrings strings) =>
+        RankBy(commands, query, command => command.Name, command => Describe(command, strings));
+
+    /// <summary>The same four buckets for anything with a name and a description.</summary>
+    private static List<T> RankBy<T>(IReadOnlyList<T> items, string query, Func<T, string> nameOf, Func<T, string> descriptionOf)
     {
-        var ranked = new List<ChatCommand>(commands.Count);
+        var ranked = new List<T>(items.Count);
         if (query.Length == 0)
         {
-            ranked.AddRange(commands);
+            ranked.AddRange(items);
             return ranked;
         }
-        var buckets = new[] { new List<ChatCommand>(), new List<ChatCommand>(), new List<ChatCommand>(), new List<ChatCommand>() };
-        foreach (var command in commands)
+        var buckets = new[] { new List<T>(), new List<T>(), new List<T>(), new List<T>() };
+        foreach (var item in items)
         {
-            var name = command.Name;
-            if (string.Equals(name, query, StringComparison.OrdinalIgnoreCase)) buckets[0].Add(command);
-            else if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase)) buckets[1].Add(command);
-            else if (name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) buckets[2].Add(command);
-            else if (Describe(command, strings).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) buckets[3].Add(command);
+            var name = nameOf(item);
+            if (string.Equals(name, query, StringComparison.OrdinalIgnoreCase)) buckets[0].Add(item);
+            else if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase)) buckets[1].Add(item);
+            else if (name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) buckets[2].Add(item);
+            else if (descriptionOf(item).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) buckets[3].Add(item);
         }
         foreach (var bucket in buckets) ranked.AddRange(bucket);
         return ranked;

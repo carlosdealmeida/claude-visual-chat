@@ -94,12 +94,19 @@ public class PublicApiTests
         {
             "MessageInput", "InvisibleRemovedOne", "InvisibleRemoved", "InvisibleReview", "InvisibleReviewCtrl", "InvisibleEmpty",
             "InvisiblePasted", "DismissNotice",
+            // the command palette's groups and rows (Task 32)
+            "PaletteContext", "PaletteCustomize", "PaletteSettings", "PaletteSupport", "PaletteAttachFile", "PaletteSwitchModel",
+            "PaletteAccountUsage", "PaletteHelpDocs",
         })
         {
             var property = typeof(ChatStrings).GetProperty(text);
             Assert.Equal(typeof(string), property?.PropertyType);
             Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
         }
+
+        // the palette's rows are the component's own: the action the other tasks add rows with is not public
+        Assert.False(Library.GetType("ClaudeVisualChat.Controls.PaletteAction")!.IsPublic);
+        Assert.False(Library.GetType("ClaudeVisualChat.Controls.CommandPalette")!.IsPublic);
 
         // the host's back button, which does not arrive as Esc on Android: it closes what is on top and says whether it did
         var close = view.GetMethod("CloseTopLayer");

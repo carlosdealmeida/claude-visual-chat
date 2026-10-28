@@ -1514,4 +1514,108 @@ public class ComposerTests
         Assert.True(ui.Input.Bounds.Height < 60, ui.Input.Bounds.Height.ToString());
         ui.Window.Close();
     }
+
+    // ---- the hint of a command's arguments (Task 32) ----
+
+    private static ChatConversation WithHints() => new ChatConversation
+    {
+        Commands = new[]
+        {
+            new ChatCommand("review", "Review a pull request", "<pr>"),
+            new ChatCommand("hello", "Say hello", "[name]"),
+            new ChatCommand("help", "Show help", ""),
+        },
+    };
+
+    private static TextBlock Ghost(ChatComposer composer) =>
+        composer.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "ArgumentHint");
+
+    /// <summary>The ghost's text as a whole: the words of the box, clear, then the hint.</summary>
+    private static string GhostText(TextBlock ghost) =>
+        string.Concat(ghost.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Select(r => r.Text));
+
+    private static void CheckTheHint(ClaudeChatView view, Window window, ChatConversation conversation)
+    {
+        var composer = UiHelpers.Composer(view);
+        var input = UiHelpers.Input(view);
+        var ghost = Ghost(composer);
+        void Write(string text)
+        {
+            input.Text = text;
+            input.CaretIndex = text.Length;
+            UiHelpers.Pump();
+        }
+        Assert.False(ghost.IsVisible);
+
+        // only "/name " with one space at its end: a ghost after the caret, in the placeholder's color, from `argumentHint`
+        input.Focus();
+        UiHelpers.Type(window, "/review");
+        Assert.False(ghost.IsVisible);
+        UiHelpers.Type(window, " ");
+        Assert.True(ghost.IsVisible);
+        Assert.False(ghost.IsHitTestVisible);
+        Assert.Equal("/review <pr>", GhostText(ghost));
+        var runs = ghost.Inlines!.OfType<Avalonia.Controls.Documents.Run>().ToList();
+        Assert.Equal(Avalonia.Media.Brushes.Transparent, runs[0].Foreground);   // the words themselves are the box's: they are not drawn twice
+        Assert.Same(ghost.Foreground, runs[1].Foreground);                          // the hint takes the ghost's, the placeholder's
+        Assert.Same(view.FindResource("ClaudeChat.InputPlaceholder"), ghost.Foreground);
+
+        // it starts where the text ends: the ghost's first line is on the box's first line, and its text at the box's own left
+        var presenter = input.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.TextPresenter>().Single();
+        var at = presenter.TranslatePoint(default, window)!.Value;
+        var ghostAt = ghost.TranslatePoint(default, window)!.Value;
+        Assert.Equal(at.X, ghostAt.X, 1);
+        Assert.Equal(at.Y, ghostAt.Y, 1);
+
+        // any other text: no hint
+        UiHelpers.Type(window, "x");
+        Assert.False(ghost.IsVisible);
+        UiHelpers.Press(window, Key.Back);
+        Assert.True(ghost.IsVisible);
+        UiHelpers.Press(window, Key.Back);
+        Assert.False(ghost.IsVisible);
+        foreach (var text in new[] { "/review  ", " /review ", "/review a ", "/ ", "/nope ", "/help ", "review " })
+        {
+            Write(text);
+            Assert.False(ghost.IsVisible, "[" + text + "]");
+        }
+
+        // each command has its own, and the conversation's own /copy has "[N]"
+        Write("/hello ");
+        Assert.Equal("/hello [name]", GhostText(ghost));
+        Write("/copy ");
+        Assert.Equal("/copy [N]", GhostText(ghost));
+
+        // the box emptied or the command's hint gone: the ghost goes
+        Write("");
+        Assert.False(ghost.IsVisible);
+        Write("/review ");
+        Assert.True(ghost.IsVisible);
+        conversation.Commands = new[] { new ChatCommand("review", "Review a pull request", "") };
+        UiHelpers.Pump();
+        Assert.False(ghost.IsVisible);
+        conversation.Commands = new[] { new ChatCommand("review", "Review a pull request", "<pull request>") };
+        UiHelpers.Pump();
+        Assert.Equal("/review <pull request>", GhostText(ghost));
+    }
+
+    [AvaloniaFact]
+    public void The_argument_hint_shows_after_slash_name_and_one_space()
+    {
+        var conversation = WithHints();
+        var view = new ClaudeChatView { Conversation = conversation };
+        var window = UiHelpers.Show(view);
+        CheckTheHint(view, window, conversation);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_argument_hint_shows_after_slash_name_and_one_space_in_the_touch_layout_too()
+    {
+        var conversation = WithHints();
+        var view = UiHelpers.TouchView(conversation);
+        var window = UiHelpers.ShowPhone(view);
+        CheckTheHint(view, window, conversation);
+        window.Close();
+    }
 }

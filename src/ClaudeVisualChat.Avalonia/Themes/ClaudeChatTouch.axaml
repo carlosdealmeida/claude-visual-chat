@@ -278,6 +278,9 @@
 
   <!-- the text: the box's padding is its own, 8 px over the bar; the lines are the text's 22.5 px and up to 6 of them show
        before it scrolls -->
+  <Style Selector="controls|ChatComposer:touch TextBlock.ClaudeChatArgumentHint">
+    <Setter Property="Margin" Value="0" />
+  </Style>
   <Style Selector="controls|ChatComposer:touch TextBox.ClaudeChatInput">
     <Setter Property="Padding" Value="0" />
     <Setter Property="Margin" Value="0,0,0,8" />
@@ -641,6 +644,12 @@
        (they have no margin above or below), and the filter field that the "Commands" row brings up as tall -->
   <Style Selector="controls|ChatComposer:touch controls|CommandPalette Border.ClaudeChatMenuItem">
     <Setter Property="MinHeight" Value="44" />
+  </Style>
+  <!-- a switch in a row has its target of 44 px (its track is 32 by 18 and does not change); the rows keep their height -->
+  <Style Selector="controls|ChatComposer:touch controls|CommandPalette Panel.ClaudeChatSwitchHost">
+    <Setter Property="MinWidth" Value="44" />
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="Margin" Value="4,-4,-8,-4" />
   </Style>
   <Style Selector="controls|ChatComposer:touch controls|CommandPalette TextBox.ClaudeChatMenuFilter">
     <Setter Property="MinHeight" Value="44" />

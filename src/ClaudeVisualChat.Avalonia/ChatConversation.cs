@@ -488,7 +488,7 @@ public sealed class ChatConversation : ChatObservableObject
             }
             foreach (var name in LocalCommandNames)
             {
-                if (names.Add(name)) list.Add(new ChatCommand(name, "", ""));
+                if (names.Add(name)) list.Add(new ChatCommand(name, "", name == "copy" ? "[N]" : ""));
             }
             return list;
         }

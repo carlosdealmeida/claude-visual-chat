@@ -171,7 +171,8 @@ public class CommandPaletteTouchTests
         ui.Conversation.Commands = new[] { new ChatCommand("cmd2", "Command number 2", "") };   // a short list: every row in sight
         ui.Composer.OpenCommands();                                      // the "Commands" row of the "+" sheet opens it with a filter field
         UiHelpers.Pump();
-        var at = ui.At(ui.Row("/cmd2"));
+        UiHelpers.Type(ui.Window, "cmd2");                              // the slash commands come once something is typed in the field
+        var at = ui.DrawFramesUntilUnder(ui.Row("/cmd2"));
         ui.Press(at);
         Assert.Empty(ui.Sent);
         Assert.True(ui.Palette.IsOpen);
@@ -181,7 +182,9 @@ public class CommandPaletteTouchTests
 
         ui.Composer.OpenCommands();                                      // the conversation's own commands are run, not sent
         UiHelpers.Pump();
-        var usage = ui.At(ui.Row("/context"));
+        UiHelpers.Type(ui.Window, "context");
+        ui.DrawFramesUntilUnder(ui.Row("/context"));
+        var usage = ui.At(ui.Row("/context"), 12);                       // a little lower than the tap before: at the same point so soon it would be a double click
         ui.Press(usage);
         Assert.Empty(ui.Invoked);
         ui.Release(usage);

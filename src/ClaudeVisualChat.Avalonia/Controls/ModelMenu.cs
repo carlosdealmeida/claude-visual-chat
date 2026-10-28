@@ -455,7 +455,7 @@ internal sealed class ModelMenu : ChatMenuPopup
         _effortRow.Classes.Set("active", index == _shown.Count);
     }
 
-    private string? ShownEffort => _tracked?.RequestedEffort ?? _tracked?.Effort;
+    private string? ShownEffort => _tracked == null ? null : LevelShown(_tracked);
 
     private void Pick(ChatModel model)
     {
@@ -474,12 +474,21 @@ internal sealed class ModelMenu : ChatMenuPopup
             IsOpen = false;
             return;
         }
-        var levels = _tracked!.CurrentModel?.EffortLevels;
-        if (levels == null || levels.Count == 0) return;
-        var level = ShownEffort;
-        var index = level == null ? -1 : IndexOf(levels, level);
-        _tracked.SetEffort(levels[(index + 1) % levels.Count]);
+        CycleEffort(_tracked!);
     }
+
+    /// <summary>Asks for the model's next level, round the end (from none, the first); the palette's "Effort" row does it too.</summary>
+    internal static void CycleEffort(ChatConversation conversation)
+    {
+        var levels = conversation.CurrentModel?.EffortLevels;
+        if (levels == null || levels.Count == 0) return;
+        var level = LevelShown(conversation);
+        var index = level == null ? -1 : IndexOf(levels, level);
+        conversation.SetEffort(levels[(index + 1) % levels.Count]);
+    }
+
+    /// <summary>The level the chip and the menus show: the one asked for while it waits, else the one the claude reports.</summary>
+    internal static string? LevelShown(ChatConversation conversation) => conversation.RequestedEffort ?? conversation.Effort;
 
     internal static int IndexOf(IReadOnlyList<string> levels, string level)
     {

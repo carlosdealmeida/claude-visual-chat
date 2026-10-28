@@ -768,9 +768,12 @@ public class ComposerTouchTests
         composer.OpenCommands();                                          // opened as the "+" sheet's Commands row opens it…
         UiHelpers.Pump();
         var rows = PaletteRows(palette);
-        Assert.Equal(c.PaletteCommands.Count, rows.Count);
+        Assert.Equal(4, rows.Count);                                      // from the button, the actions (attach, model, effort, usage), in their groups
         Assert.All(rows, r => Assert.True(r.Bounds.Height >= 44, r.Bounds.Height.ToString()));
         Assert.True(PaletteFilter(palette).Bounds.Height >= 44);          // with its filter field, a finger's height too
+        UiHelpers.Type(window, "re");                                     // and the slash commands once something is typed in it
+        Assert.Contains("/review", PaletteRows(palette).Select(r => UiHelpers.Texts(r).First()));
+        Assert.All(PaletteRows(palette), r => Assert.True(r.Bounds.Height >= 44, r.Bounds.Height.ToString()));          // with its filter field, a finger's height too
         composer.ClosePopups();
 
         UiHelpers.Input(view).Focus();
@@ -792,7 +795,7 @@ public class ComposerTouchTests
         UiHelpers.Pump();
         var desktopPalette = desktopComposer.GetLogicalDescendants().OfType<CommandPalette>().Single();
         var desktopRows = PaletteRows(desktopPalette);
-        Assert.Equal(c.PaletteCommands.Count, desktopRows.Count);
+        Assert.Equal(4, desktopRows.Count);
         Assert.All(desktopRows, r => Assert.True(r.Bounds.Height < 44, r.Bounds.Height.ToString()));
         Assert.True(PaletteFilter(desktopPalette).Bounds.Height < 44);
     }

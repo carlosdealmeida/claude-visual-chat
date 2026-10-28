@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using System.Text.Json;
@@ -56,7 +57,7 @@ public class CommandPaletteTests
         /// <summary>The row the keys act on, or null.</summary>
         public string? Active => Menu.GetVisualDescendants().OfType<Border>()
             .Where(b => b.IsEffectivelyVisible && b.Classes.Contains("ClaudeChatMenuItem") && b.Classes.Contains("active"))
-            .Select(b => b.GetVisualDescendants().OfType<TextBlock>().First().Text).SingleOrDefault();
+            .Select(b => b.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatMenuLabel")).Text).SingleOrDefault();
 
         public TextBox? Filter => Menu.GetVisualDescendants().OfType<TextBox>().SingleOrDefault(t => t.IsEffectivelyVisible);
 
@@ -98,12 +99,12 @@ public class CommandPaletteTests
         Assert.NotNull(ui.Filter);
         Assert.Equal("Filter actions…", ui.Filter!.Watermark);
         Assert.True(ui.Filter.IsFocused);
+        // with no filter the button lists the actions only; the slash commands come once something is typed in the field
+        Assert.DoesNotContain("Slash Commands", UiHelpers.Texts(ui.Menu));
+        Assert.Equal(new[] { "Attach file…", "Account & usage…" }, ui.Labels);
+        UiHelpers.Type(ui.Window, "hel");
         Assert.Contains("Slash Commands", UiHelpers.Texts(ui.Menu));
-        // all of them, in the claude's order, then the conversation's own with their descriptions
-        Assert.Equal(new[] { "/compact", "/hello", "/help", "/context", "/usage", "/remote-control", "/rc", "/chrome", "/copy" }, ui.Labels);
-        Assert.Equal("Show context usage", ToolTip.GetTip(Row(ui, "/context")));
-        Assert.Equal("Say hello", ToolTip.GetTip(Row(ui, "/hello")));
-        Assert.Equal("Copy Claude's last response to clipboard (or /copy N for the Nth-latest)", ToolTip.GetTip(Row(ui, "/copy")));
+        Assert.Equal(new[] { "/hello", "/help" }, ui.Labels);
         UiHelpers.Click(ui.Window, ui.SlashButton);
         Assert.False(ui.Palette.IsOpen);
 
@@ -113,6 +114,11 @@ public class CommandPaletteTests
         Assert.Null(ui.Filter);
         Assert.True(ui.Input.IsFocused);
         Assert.Equal(9, ui.Labels.Count);
+        // all of them, in the claude's order, then the conversation's own with their descriptions; the actions are not in this list
+        Assert.Equal(new[] { "/compact", "/hello", "/help", "/context", "/usage", "/remote-control", "/rc", "/chrome", "/copy" }, ui.Labels);
+        Assert.Equal("Show context usage", ToolTip.GetTip(Row(ui, "/context")));
+        Assert.Equal("Say hello", ToolTip.GetTip(Row(ui, "/hello")));
+        Assert.Equal("Copy Claude's last response to clipboard (or /copy N for the Nth-latest)", ToolTip.GetTip(Row(ui, "/copy")));
         UiHelpers.Type(ui.Window, "hel");
         Assert.Equal("/hello", ui.Labels[0]);
         Assert.Equal(new[] { "/hello", "/help" }, ui.Labels);
@@ -223,6 +229,7 @@ public class CommandPaletteTests
         // a click on a row runs it
         ui.Input.Clear();
         UiHelpers.Click(ui.Window, ui.SlashButton);
+        UiHelpers.Type(ui.Window, "usa");
         UiHelpers.Click(ui.Window, Row(ui, "/usage"));
         Assert.Equal(new[] { "context", "usage" }, ui.Invoked);
         Assert.False(ui.Palette.IsOpen);
@@ -314,6 +321,10 @@ public class CommandPaletteTests
         UiHelpers.Pump();
         UiHelpers.Click(ui.Window, UiHelpers.ButtonWithText(ui.Composer, "Mostrar o menu de comandos (/)"));
         Assert.Equal("Filtrar comandos…", ui.Filter!.Watermark);
+        Assert.Equal(new[] { "Anexar arquivo…", "Conta e uso…" }, ui.Labels);
+        Assert.Contains("Contexto", UiHelpers.Texts(ui.Menu));
+        Assert.Contains("Modelo", UiHelpers.Texts(ui.Menu));
+        UiHelpers.Type(ui.Window, "cont");
         Assert.Contains("Comandos com barra", UiHelpers.Texts(ui.Menu));
         Assert.Equal("Mostrar o uso do contexto", ToolTip.GetTip(Row(ui, "/context")));
         UiHelpers.Type(ui.Window, "zzz");
@@ -359,6 +370,7 @@ public class CommandPaletteTests
         // or Enter in its filter field sends nothing, and closes it
         ui.Input.Clear();
         UiHelpers.Click(ui.Window, ui.SlashButton);
+        UiHelpers.Type(ui.Window, "hel");
         var row = Row(ui, "/hello");
         ui.View.IsVisible = false;
         UiHelpers.Pump();
@@ -457,11 +469,246 @@ public class CommandPaletteTests
         ui.Window.Close();
     }
 
+    // ---- the groups and the rows that are not commands (0.6.0) ----
+
+    private static List<string> Headers(Opened ui) =>
+        ui.Menu.GetVisualDescendants().OfType<TextBlock>()
+            .Where(t => t.IsEffectivelyVisible && t.Classes.Contains("ClaudeChatMenuHeader")).Select(t => t.Text ?? "").ToList();
+
+    private static List<Border> Dividers(Opened ui) =>
+        ui.Menu.GetVisualDescendants().OfType<Border>().Where(b => b.IsEffectivelyVisible && b.Classes.Contains("ClaudeChatMenuDivider")).ToList();
+
+    /// <summary>A conversation that has models with an effort, and a host that opens links: every group of this task has a row.</summary>
+    private static ChatConversation Complete()
+    {
+        var c = TouchSamples.Opus();
+        c.Commands = new[] { new ChatCommand("review", "Review a pull request", "<pr>") };
+        c.LinkRequested += (_, _) => { };
+        return c;
+    }
+
+    private static string? Value(Border row) =>
+        row.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(t => t.Classes.Contains("ClaudeChatMenuValue"))?.Text;
+
+    [AvaloniaFact]
+    public void The_palette_lists_context_model_and_slash_commands_sections_in_order()
+    {
+        var ui = Open(Complete());
+        UiHelpers.Click(ui.Window, ui.SlashButton);
+        UiHelpers.Type(ui.Window, "e");   // the filter keeps the rows with an "e": a row of each group has one
+
+        // the groups in their order, the empty ones (Customize, Settings) not there, a divider of 1 px with 4 px around it between them
+        Assert.Equal(new[] { "Context", "Model", "Slash Commands", "Support" }, Headers(ui));
+        var dividers = Dividers(ui);
+        Assert.Equal(3, dividers.Count);
+        Assert.All(dividers, d =>
+        {
+            Assert.Equal(1, d.Bounds.Height, 1);
+            Assert.Equal(new Thickness(0, 4), d.Margin);
+            Assert.Same(Resource(ui.View, "ClaudeChat.InputBorder"), d.Background);
+        });
+        var labels = ui.Labels;
+        Assert.Equal("Attach file…", labels.First());
+        Assert.Equal("View help docs", labels.Last());
+        Assert.True(labels.IndexOf("Switch model…") < labels.IndexOf("/review"));
+        Assert.True(labels.IndexOf("Account & usage…") < labels.IndexOf("/review"));
+
+        // inside a group the order is the filter's: the name that starts with it, then the ones that have it, in the list's order
+        Assert.Equal(new[] { "Effort", "Switch model…", "Account & usage…" },
+            labels.Where(l => l != "Attach file…" && l != "View help docs" && !l.StartsWith("/", StringComparison.Ordinal)));
+
+        // the model on the right of its row, the level on the right of the effort's
+        Assert.Equal("Opus 5.5", Value(Row(ui, "Switch model…")));
+        Assert.Equal("High", Value(Row(ui, "Effort")));
+        ui.Window.Close();
+
+        // without models neither the model nor the effort has a row; what is left of the group stays
+        var bare = Open();
+        UiHelpers.Click(bare.Window, bare.SlashButton);
+        Assert.Equal(new[] { "Attach file…", "Account & usage…" }, bare.Labels);
+        Assert.Equal(new[] { "Context", "Model" }, Headers(bare));
+        Assert.Single(Dividers(bare));
+        bare.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Slash_commands_hide_when_opened_by_the_button_without_a_filter()
+    {
+        var ui = Open(Complete());
+        UiHelpers.Click(ui.Window, ui.SlashButton);
+        Assert.DoesNotContain("Slash Commands", Headers(ui));
+        Assert.DoesNotContain(ui.Labels, l => l.StartsWith("/", StringComparison.Ordinal));
+
+        // they come with the first letter of the filter, and go with the last
+        UiHelpers.Type(ui.Window, "r");
+        Assert.Contains("Slash Commands", Headers(ui));
+        Assert.Contains("/review", ui.Labels);
+        ui.Press(Key.Back);
+        Assert.DoesNotContain("Slash Commands", Headers(ui));
+        Assert.DoesNotContain(ui.Labels, l => l.StartsWith("/", StringComparison.Ordinal));
+        ui.Press(Key.Escape);
+
+        // a "/" typed in the box is looking for a command: the commands alone, without the groups of actions
+        ui.Type("/");
+        Assert.Equal(new[] { "Slash Commands" }, Headers(ui));
+        Assert.Contains("/review", ui.Labels);
+        Assert.DoesNotContain("Attach file…", ui.Labels);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void View_help_docs_shows_only_with_a_link_subscriber()
+    {
+        var c = new ChatConversation();
+        var ui = Open(c);
+        UiHelpers.Click(ui.Window, ui.SlashButton);
+        Assert.DoesNotContain("View help docs", ui.Labels);   // no host that opens links: nothing to offer
+        Assert.DoesNotContain("Support", Headers(ui));
+        UiHelpers.Click(ui.Window, ui.SlashButton);
+
+        var links = new List<string>();
+        EventHandler<LinkRequestedEventArgs> onLink = (_, e) => links.Add(e.Url);
+        c.LinkRequested += onLink;
+        UiHelpers.Click(ui.Window, ui.SlashButton);
+        Assert.Equal("Support", Headers(ui).Last());
+        UiHelpers.Click(ui.Window, Row(ui, "View help docs"));
+        Assert.Equal(new[] { CommandPalette.HelpDocsUrl }, links);
+        Assert.False(ui.Palette.IsOpen);
+        Assert.True(ui.Input.IsFocused);
+
+        // the host that stops listening takes the row away again
+        c.LinkRequested -= onLink;
+        UiHelpers.Click(ui.Window, ui.SlashButton);
+        Assert.DoesNotContain("View help docs", ui.Labels);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_model_row_opens_the_model_menu_and_the_effort_row_changes_the_level_and_stays()
+    {
+        var c = Complete();
+        var asked = new List<string?>();
+        c.EffortRequested += (_, e) => asked.Add(e.Effort);
+        var ui = Open(c);
+        UiHelpers.Click(ui.Window, ui.SlashButton);
+
+        // the effort goes to the next level, round the end, as the model menu's row does; the palette stays and shows the level asked for
+        UiHelpers.Click(ui.Window, Row(ui, "Effort"));
+        Assert.Equal(new[] { "xhigh" }, asked);
+        Assert.True(ui.Palette.IsOpen);
+        Assert.Equal("Extra high", Value(Row(ui, "Effort")));
+
+        // "Switch model…" closes the palette and opens the model menu, whose keys the model chip takes
+        var menu = ui.Composer.GetLogicalDescendants().OfType<ModelMenu>().Single();
+        UiHelpers.Click(ui.Window, Row(ui, "Switch model…"));
+        Assert.False(ui.Palette.IsOpen);
+        Assert.True(menu.IsOpen);
+        ui.Press(Key.Escape);
+        Assert.False(menu.IsOpen);
+
+        // "Account & usage…" is the /usage that runs here
+        UiHelpers.Click(ui.Window, ui.SlashButton);
+        UiHelpers.Click(ui.Window, Row(ui, "Account & usage…"));
+        Assert.Equal(new[] { "usage" }, ui.Invoked);
+        Assert.Equal(ChatPanel.Usage, c.ShownPanel);
+        Assert.False(ui.Palette.IsOpen);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_switch_keeps_the_palette_open()
+    {
+        var on = false;
+        var tested = new PaletteAction(PaletteSection.Settings, "Test switch", _ => on = !on, _ => on);
+        CommandPalette.Actions.Add(tested);
+        try
+        {
+            var ui = Open();
+            UiHelpers.Click(ui.Window, ui.SlashButton);
+            Assert.Contains("Settings", Headers(ui));
+            var row = Row(ui, "Test switch");
+            Border Track() => row.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatSwitch"));
+            Border Thumb() => row.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatSwitchThumb"));
+
+            // 32 x 18 with 9 px corners, in the input's border color; the thumb is 14 px, 2 px from the start
+            Assert.Equal(new Size(32, 18), Track().Bounds.Size);
+            Assert.Equal(new CornerRadius(9), Track().CornerRadius);
+            Assert.Same(Resource(ui.View, "ClaudeChat.InputBorder"), Track().Background);
+            Assert.Equal(new Size(14, 14), Thumb().Bounds.Size);
+            Assert.Equal(new CornerRadius(7), Thumb().CornerRadius);
+            Assert.Equal(2, Thumb().Margin.Left);
+            var slide = Assert.IsType<Avalonia.Animation.ThicknessTransition>(Assert.Single(Thumb().Transitions!));
+            Assert.Equal(Layoutable.MarginProperty, slide.Property);
+            Assert.Equal(TimeSpan.FromSeconds(0.15), slide.Duration);
+
+            // the press turns it on and the palette stays open, with the filter field still holding the keyboard; the track takes the accent
+            // and the thumb goes to 16 px
+            UiHelpers.Click(ui.Window, row);
+            Assert.True(on);
+            Assert.True(ui.Palette.IsOpen);
+            Assert.True(ui.Filter!.IsFocused);
+            Assert.Empty(ui.Sent);
+            Assert.Contains("on", Track().Classes);
+            Assert.Same(Resource(ui.View, "ClaudeChat.AccentFill"), Track().Background);
+            UiHelpers.PumpUntil(() => { UiHelpers.DrawFrames(1); return Thumb().Margin.Left == 16; });   // the transition runs on the frames
+
+            // and off again, by Enter on the marked row
+            ui.Press(Key.Down);
+            for (var i = 0; i < 20 && ui.Active != "Test switch"; i++) ui.Press(Key.Down);
+            ui.Press(Key.Enter);
+            Assert.False(on);
+            Assert.True(ui.Palette.IsOpen);
+            Assert.DoesNotContain("on", Track().Classes);
+            ui.Window.Close();
+        }
+        finally
+        {
+            CommandPalette.Actions.Remove(tested);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Touch_has_the_groups_and_a_switch_with_a_target_of_44_in_rows_of_the_height_they_had()
+    {
+        var on = false;
+        var tested = new PaletteAction(PaletteSection.Settings, "Test switch", _ => on = !on, _ => on);
+        CommandPalette.Actions.Add(tested);
+        try
+        {
+            var view = UiHelpers.TouchView(Complete());
+            var window = UiHelpers.ShowPhone(view);
+            var composer = UiHelpers.Composer(view);
+            var palette = composer.GetLogicalDescendants().OfType<CommandPalette>().Single();
+            composer.OpenCommands();
+            UiHelpers.Pump();
+            var all = palette.Child!.GetVisualDescendants().ToList();
+            var headers = all.OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.Classes.Contains("ClaudeChatMenuHeader")).Select(t => t.Text).ToList();
+            Assert.Equal(new[] { "Contexto", "Modelo", "Configurações", "Suporte" }, headers);
+            var rows = all.OfType<Border>().Where(b => b.IsEffectivelyVisible && b.Classes.Contains("ClaudeChatMenuItem")).ToList();
+            Assert.All(rows, r => Assert.InRange(r.Bounds.Height, 43.5, 46));   // the rows of the 0.5.0: 44 px, the switch's target inside them
+
+            var host = all.OfType<Panel>().Single(p => p.IsEffectivelyVisible && p.Classes.Contains("ClaudeChatSwitchHost"));
+            Assert.True(host.Bounds.Width >= 43.5 && host.Bounds.Height >= 43.5, host.Bounds.ToString());
+            var track = all.OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatSwitch"));
+            Assert.Equal(new Size(32, 18), track.Bounds.Size);                // the track is the same
+            UiHelpers.Click(window, host);
+            Assert.True(on);
+            Assert.True(palette.IsOpen);
+            Assert.Contains("on", track.Classes);
+            window.Close();
+        }
+        finally
+        {
+            CommandPalette.Actions.Remove(tested);
+        }
+    }
+
     private static Border Row(Opened ui, string label) =>
         ui.Menu.GetVisualDescendants().OfType<Border>()
             .Single(b => b.IsEffectivelyVisible && b.Classes.Contains("ClaudeChatMenuItem") && Label(b).Text == label);
 
-    private static TextBlock Label(Border row) => row.GetVisualDescendants().OfType<TextBlock>().First();
+    private static TextBlock Label(Border row) =>
+        row.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatMenuLabel"));
 
     private static object? Resource(Control view, string key) =>
         view.TryFindResource(key, out var value) ? value : null;

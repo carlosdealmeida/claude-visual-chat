@@ -241,6 +241,14 @@ public sealed record ChatStrings
         FilterCommands = "Filtrar comandos…",
         NoMatchingCommands = "Nenhum comando encontrado",
         SlashCommands = "Comandos com barra",
+        PaletteContext = "Contexto",
+        PaletteCustomize = "Personalizar",
+        PaletteSettings = "Configurações",
+        PaletteSupport = "Suporte",
+        PaletteAttachFile = "Anexar arquivo…",
+        PaletteSwitchModel = "Trocar de modelo…",
+        PaletteAccountUsage = "Conta e uso…",
+        PaletteHelpDocs = "Ver a documentação de ajuda",
         CommandContextDescription = "Mostrar o uso do contexto",
         CommandUsageDescription = "Mostrar os limites de uso do plano",
         CommandRemoteControlDescription = "Ligar ou desligar o Remote Control",
@@ -1033,6 +1041,30 @@ public sealed record ChatStrings
 
     /// <summary>The title of the command group in the menu.</summary>
     public string SlashCommands { get; init; } = "Slash Commands";
+
+    /// <summary>The title of the group of the command menu with what concerns the context (attaching).</summary>
+    public string PaletteContext { get; init; } = "Context";
+
+    /// <summary>The title of the group of the command menu with what customizes Claude; empty until the host offers something.</summary>
+    public string PaletteCustomize { get; init; } = "Customize";
+
+    /// <summary>The title of the group of the command menu with the settings.</summary>
+    public string PaletteSettings { get; init; } = "Settings";
+
+    /// <summary>The title of the group of the command menu with the help.</summary>
+    public string PaletteSupport { get; init; } = "Support";
+
+    /// <summary>The command menu's row that attaches a file.</summary>
+    public string PaletteAttachFile { get; init; } = "Attach file…";
+
+    /// <summary>The command menu's row that opens the model menu.</summary>
+    public string PaletteSwitchModel { get; init; } = "Switch model…";
+
+    /// <summary>The command menu's row that shows the plan usage.</summary>
+    public string PaletteAccountUsage { get; init; } = "Account & usage…";
+
+    /// <summary>The command menu's row that opens the documentation, when the host opens links.</summary>
+    public string PaletteHelpDocs { get; init; } = "View help docs";
 
     /// <summary>What the context command does, in the menu.</summary>
     public string CommandContextDescription { get; init; } = "Show context usage";
