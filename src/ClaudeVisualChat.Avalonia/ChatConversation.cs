@@ -763,6 +763,7 @@ public sealed class ChatConversation : ChatObservableObject
         EndStreaming();
         // the history holds no turn ends: what it marked belongs to past turns, not to the next live one
         _turnTools.Clear();
+        ForgetStatus(); // a start-up hook the file never answered is not running now
         _interruptedThisTurn = false;
         IsBusy = false;
         SettleAgentsLeftRunning();

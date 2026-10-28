@@ -90,7 +90,7 @@ internal sealed class WorkingIndicator : Grid
         _wordTimer.Tick += (_, _) => Tick();
     }
 
-    /// <summary>What the line says; set by the view.</summary>
+    /// <summary>What the line says; set by the view. A change of state (Compacting back to the verbs, say) draws a new verb and starts the count of 2 s, 3 s and 5 s over.</summary>
     internal WorkingState State
     {
         get => _state;

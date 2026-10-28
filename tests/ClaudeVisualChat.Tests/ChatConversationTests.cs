@@ -2637,6 +2637,21 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void A_loaded_file_with_an_unanswered_start_up_hook_does_not_leave_the_line_running()
+    {
+        var c = new ChatConversation();
+        c.Apply(new StatusChanged("compacting", null));
+        c.LoadTranscript(new[]
+        {
+            "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_id\":\"h1\",\"hook_event\":\"SessionStart\"}",
+            "{\"type\":\"user\",\"uuid\":\"u1\",\"timestamp\":\"2026-10-23T10:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}",
+        });
+        Assert.False(c.IsRunningStartupHooks);
+        Assert.Null(c.Status);
+        Assert.NotEmpty(c.Items);
+    }
+
+    [Fact]
     public void Start_up_hooks_run_from_their_start_to_their_response()
     {
         var c = new ChatConversation();

@@ -287,10 +287,12 @@ public class TouchLayoutTests
         UiHelpers.ShowPhone(view);
         var glyph = view.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatWorkingGlyph"));
         Assert.True(glyph.IsEffectivelyVisible);
-        Assert.Equal(0, glyph.TranslatePoint(default, view)!.Value.X - view.GetVisualDescendants().OfType<WorkingIndicator>().Single().TranslatePoint(default, view)!.Value.X);
+        var words = view.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatWorkingText"));
         var touchColumn = glyph.Bounds.Width;
+        var touchWordsX = words.TranslatePoint(default, view)!.Value.X;
         view.Layout = ChatLayout.Desktop;
         UiHelpers.Pump();
+        Assert.True(words.TranslatePoint(default, view)!.Value.X > touchWordsX); // the words start further right
         Assert.True(glyph.Bounds.Width > touchColumn); // the desktop's makes room for the timeline's icon column
     }
 

@@ -15,7 +15,6 @@ public sealed record ChatStrings
 {
     private const string Separator = " · ";
 
-    /// <summary>No model description to translate, shared so that two default texts are equal; before <see cref="English"/>, since static fields are set in the order they are written.</summary>
     // shared, so that the default texts stay equal to each other
     private static readonly IReadOnlyList<string> EnglishWorkingVerbs = new ReadOnlyCollection<string>(new[]
     {
@@ -23,6 +22,7 @@ public sealed record ChatStrings
         "Connecting dots", "Checking", "Following the thread", "Mapping", "Drafting", "Polishing", "Piecing it together", "Testing ideas",
     });
 
+    /// <summary>No model description to translate, shared so that two default texts are equal; before <see cref="English"/>, since static fields are set in the order they are written.</summary>
     private static readonly IReadOnlyDictionary<string, string> NoModelDescriptions = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
     public static ChatStrings English { get; } = new ChatStrings();
