@@ -607,6 +607,30 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void Only_the_chrome_computer_action_keeps_the_images_of_its_result()
+    {
+        // the row of no other call draws them: a Read of an image, an MCP tool, another Chrome action keep nothing of them
+        var c = new ChatConversation();
+        var read = StartTool(c, "t1", "Read", "{\"file_path\":\"a.png\"}");
+        var mcp = StartTool(c, "t2", "mcp__claude_ai_Gmail__get_message", "{\"id\":\"1\"}");
+        var tabs = StartTool(c, "t3", "mcp__claude-in-chrome__tabs_context_mcp", "{}");
+        var shot = StartTool(c, "t4", "mcp__claude-in-chrome__computer", "{\"action\":\"screenshot\"}");
+        foreach (var id in new[] { "t1", "t2", "t3", "t4" })
+        {
+            c.Apply(new UserBlock(null, new ToolResultBlock(id, "ok", false)
+            {
+                Images = new[] { new ImageBlock("image/png", Convert.ToBase64String(Png(4, 3, false))) },
+            }, null, false, false));
+        }
+
+        Assert.Null(read.ResultImages);
+        Assert.Null(mcp.ResultImages);
+        Assert.Null(tabs.ResultImages);
+        Assert.Single(shot.ResultImages!);
+        Assert.Equal("ok", read.FullResultText);                         // the text is kept as ever
+    }
+
+    [Fact]
     public void A_result_that_is_a_list_of_tool_references_has_an_empty_full_result()
     {
         // ToolSearch answers with [{"type":"tool_reference",...}], not with text; any call could get such a list

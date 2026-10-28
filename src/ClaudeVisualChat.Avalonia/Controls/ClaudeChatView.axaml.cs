@@ -162,8 +162,11 @@ public partial class ClaudeChatView : UserControl
         // the rows that hand over to the reply box: the sheet has closed by the time the box is asked
         AddSheet.AttachRequested += (_, _) => _ = Composer.AttachFromPickerAsync();
         AddSheet.CommandsRequested += (_, _) => Composer.OpenCommands();
-        // a request that came while the preview was open was waiting for the keyboard
-        Preview.Closed += (_, _) => GiveBackKeyboard();
+        // a request that came while the preview was open was waiting for the keyboard; under the Diff View it waits on
+        Preview.Closed += (_, _) =>
+        {
+            if (!DiffViewer.IsOpen) GiveBackKeyboard();
+        };
         // the Diff View gives the keyboard back to where it was; a request that came meanwhile, or a place that went, gets it as above
         DiffViewer.Closed += (_, _) =>
         {

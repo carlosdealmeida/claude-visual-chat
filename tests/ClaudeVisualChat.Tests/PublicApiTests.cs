@@ -205,6 +205,9 @@ public class PublicApiTests
         // Glob, Grep and the web tools of 2.1.310 (0.6.0)
         foreach (var text in new[] { "GlobNone", "GlobOne", "GlobMany", "GrepNone", "GrepOne", "GrepMany", "FetchedFrom", "WebAllowed", "WebBlocked" })
             Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        // the names of the tools the rows write (0.6.0): the same in every language
+        foreach (var text in new[] { "AgentToolTitle", "WebFetchToolTitle", "WebSearchToolTitle", "ChromeToolTitle" })
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
         // MCP and Claude in Chrome rows of 2.1.310 (0.6.0): the images a result carried, and the lines the Chrome actions leave
         var images = typeof(ToolCallItem).GetProperty("ResultImages");
         Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<ChatImage>), images?.PropertyType);
@@ -235,7 +238,9 @@ public class PublicApiTests
     {
         // the Agent row of 2.1.310 (0.6.0): the prompt, the wait for a permission, and the background line's texts; what the agents it
         // started are doing stays internal
-        Assert.Equal(typeof(string), typeof(AgentInfo).GetProperty("Prompt")?.PropertyType);
+        var agentPrompt = typeof(AgentInfo).GetProperty("Prompt");
+        Assert.Equal(typeof(string), agentPrompt?.PropertyType);
+        Assert.False(agentPrompt!.SetMethod!.IsPublic); // the conversation sets it
         var waiting = typeof(AgentInfo).GetProperty("IsWaitingForPermission");
         Assert.Equal(typeof(bool), waiting?.PropertyType);
         Assert.False(waiting!.SetMethod!.IsPublic); // the conversation sets it

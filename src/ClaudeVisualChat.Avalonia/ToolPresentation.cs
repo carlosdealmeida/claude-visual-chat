@@ -521,8 +521,10 @@ public static class ToolPresentation
         return lines;
     }
 
-    private static string FirstString(JsonElement obj)
+    /// <summary>The first property of the input that is a text, or "" (the touch layout's request falls back on it, as the 0.5.0 did).</summary>
+    internal static string FirstString(JsonElement obj)
     {
+        if (obj.ValueKind != JsonValueKind.Object) return "";
         foreach (var p in obj.EnumerateObject())
             if (p.Value.ValueKind == JsonValueKind.String) return p.Value.GetString() ?? "";
         return "";

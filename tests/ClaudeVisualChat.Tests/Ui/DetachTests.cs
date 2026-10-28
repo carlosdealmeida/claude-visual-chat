@@ -651,12 +651,39 @@ public class DetachTests
         Assert.Contains("z", UiHelpers.Texts(panel));
         var close = UiHelpers.ButtonWithText(panel, m.View.Strings.Close);
         Assert.True(close.IsEffectivelyVisible);
+        Assert.Same(close, UiHelpers.Focused(m.Window));                   // back in the window, the keyboard is on the x
 
         UiHelpers.DrawFrames();                                            // the window hit-tests the last frame drawn
         UiHelpers.Click(m.Window, close);                                  // and it closes as ever
         Assert.False(panel.IsOpen);
         Assert.Equal(inList, ItemHandlers(tool));
         m.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_diff_view_does_not_take_the_keyboard_from_the_host_when_back()
+    {
+        var c = Conversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Edit", J("{\"file_path\":\"C:/work/src/a.cs\",\"old_string\":\"x\",\"new_string\":\"y\"}"))));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        var view = new ClaudeChatView { Conversation = c };
+        var slot = new ContentControl { Content = view };
+        var hostBox = new TextBox();                                       // the host's own field, beside the view
+        var window = UiHelpers.Show(new StackPanel { Children = { hostBox, slot } });
+        var panel = view.GetVisualDescendants().OfType<DiffViewPanel>().Single();
+        Assert.True(view.ShowDiff(tool));
+        UiHelpers.Pump();
+        Assert.True(panel.IsOpen);
+
+        slot.Content = null;                                               // out with the Diff View open
+        UiHelpers.Pump();
+        hostBox.Focus();
+        Assert.Same(hostBox, UiHelpers.Focused(window));
+        slot.Content = view;                                               // back: the host's field keeps the keyboard
+        UiHelpers.Pump();
+        Assert.True(panel.IsOpen);
+        Assert.Same(hostBox, UiHelpers.Focused(window));
+        window.Close();
     }
 
     [AvaloniaFact]

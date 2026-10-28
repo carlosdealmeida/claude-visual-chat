@@ -329,6 +329,16 @@ public class DiffViewTests
         window.Width = 480;
         UiHelpers.Pump();
         Assert.Empty(ViewOf(view, edit).GetVisualDescendants().OfType<DiffView>());
+
+        // "500 px wide or less": 500 hides, 501 shows
+        window.Width = 501;
+        UiHelpers.Pump();
+        Assert.Equal(501, view.Bounds.Width, 1);
+        Assert.Single(ViewOf(view, edit).GetVisualDescendants().OfType<DiffView>());
+        window.Width = 500;
+        UiHelpers.Pump();
+        Assert.Equal(500, view.Bounds.Width, 1);
+        Assert.Empty(ViewOf(view, edit).GetVisualDescendants().OfType<DiffView>());
         window.Close();
 
         // the phone is narrower still, and keeps them (R12)
@@ -396,6 +406,32 @@ public class DiffViewTests
         Assert.Empty(answers);
         Assert.NotNull(prompt.Request);
         Assert.True(prompt.IsKeyboardFocusWithin);                             // and the request gets the keyboard then, as ever
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Closing_the_preview_over_the_diff_view_does_not_give_the_keyboard_to_the_card_under_it()
+    {
+        var c = new ChatConversation();
+        var tool = Call(c, "t1", "Edit", new { file_path = "a.cs", old_string = "x", new_string = "y" }, error: false);
+        var (view, window) = Open(c);
+        var panel = Panel(view);
+        view.ShowDiff(tool);
+        UiHelpers.Pump();
+        c.Apply(new PermissionRequested("r1", "Bash", "Bash", null, "t2", J("{\"command\":\"ls\"}"), null));
+        UiHelpers.Pump();
+        var prompt = UiHelpers.Prompt(view);
+        Assert.NotNull(prompt.Request);
+
+        view.ShowPreview(ChatImage.FromBytes(UiHelpers.Png(30, 20), "image/png"), "image.png");
+        UiHelpers.Pump();
+        Assert.True(view.CloseTopLayer());                                     // the preview, over the Diff View
+        UiHelpers.Pump();
+        Assert.True(panel.IsOpen);
+        Assert.False(prompt.IsKeyboardFocusWithin);                            // the card is hidden under the Diff View: it waits
+
+        Assert.True(view.CloseTopLayer());                                     // the Diff View closes, and the request gets the keyboard then
+        Assert.True(prompt.IsKeyboardFocusWithin);
         window.Close();
     }
 

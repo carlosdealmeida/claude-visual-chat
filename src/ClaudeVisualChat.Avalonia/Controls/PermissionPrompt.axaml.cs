@@ -811,6 +811,9 @@ internal partial class PermissionPrompt : UserControl
                 break;
             default:
                 SetTitle(strings.FormatUseToolQuestion(request.DisplayName));
+                // a tool whose summary has nothing to say (an MCP tool with no field the rows know) shows the first text of its input,
+                // as in 0.5.0: the user is asked about something
+                if (string.IsNullOrEmpty(detail)) detail = ToolPresentation.FirstString(request.Input);
                 break;
         }
         return detail;

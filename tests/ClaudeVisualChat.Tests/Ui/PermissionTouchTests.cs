@@ -208,6 +208,26 @@ public class PermissionTouchTests
     }
 
     [AvaloniaFact]
+    public void Touch_mcp_request_without_a_known_field_shows_the_first_text_of_its_input()
+    {
+        var c = new ChatConversation();
+        c.Apply(new PermissionRequested("r1", "mcp__my-server__ping", "ping", null, "t1", J("{\"count\":3,\"target\":\"db-primary\",\"mode\":\"fast\"}"), null));
+        Assert.Equal("", c.CurrentPermission!.Summary);                                  // the rows have nothing to say of it
+        var ui = new Opened(c);
+
+        var box = ui.Prompt.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "SummaryBox");
+        Assert.True(box.IsEffectivelyVisible);
+        Assert.Equal(new[] { "db-primary" }, UiHelpers.Texts(box));                      // as in 0.5.0
+        ui.Window.Close();
+
+        var known = new ChatConversation();                                              // a field the rows know: that is the detail
+        known.Apply(new PermissionRequested("r2", "mcp__my-server__search", "search", null, "t2", J("{\"target\":\"db-primary\",\"query\":\"orders\"}"), null));
+        ui = new Opened(known);
+        Assert.Equal(new[] { "orders" }, UiHelpers.Texts(ui.Prompt.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "SummaryBox")));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void Touch_options_answer_after_the_pause()
     {
         var clock = new ManualClock();

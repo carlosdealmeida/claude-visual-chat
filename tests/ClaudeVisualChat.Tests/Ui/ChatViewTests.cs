@@ -2403,6 +2403,20 @@ public class ChatViewTests
         Assert.Contains("2 arquivos encontrados", UiHelpers.Texts(ViewOf(view, glob)));
         window.Close();
 
+        // the other counts of Glob and the lines of Grep
+        foreach (var (name, output, expected) in new[]
+        {
+            ("Glob", "a.cs", "1 arquivo encontrado"), ("Glob", "", "Nenhum arquivo encontrado"),
+            ("Grep", "a.cs:4:x\nb.cs:2:x\nc.cs:9:x", "3 linhas de saída"), ("Grep", "a.cs:4:x", "1 linha de saída"),
+            ("Grep", "", "Nenhuma correspondência encontrada"),
+        })
+        {
+            var (searched, call) = SearchCall(name, new { pattern = "x" }, output);
+            (view, window) = Open(searched, pt);
+            Assert.Contains(expected, UiHelpers.Texts(ViewOf(view, call)));
+            window.Close();
+        }
+
         (c, var web) = SearchCall("WebSearch", new { query = "q", allowed_domains = new[] { "a.com" }, blocked_domains = new[] { "c.com" } }, "ok");
         (view, window) = Open(c, pt);
         Assert.Contains("Permitidos: a.com · Bloqueados: c.com", UiHelpers.Texts(ViewOf(view, web)));

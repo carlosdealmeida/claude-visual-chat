@@ -41,6 +41,10 @@ public sealed class ChatConversation : ChatObservableObject
     private readonly List<MessageSubmittedEventArgs> _unanswered = new List<MessageSubmittedEventArgs>();
     /// <summary>Agents a session file left without an end: a task line from the live claude brings them back to running.</summary>
     private readonly HashSet<AgentInfo> _agentsStoppedByHistory = new HashSet<AgentInfo>();
+    /// <summary>An agent was added or its state changed since the agents were last looked at (see <see cref="Apply"/>).</summary>
+    private bool _agentsChanged;
+    /// <summary>How many times the agents' states were worked out; a test's way to see that a piece of text does not.</summary>
+    internal int AgentStateUpdates { get; private set; }
     private readonly Dictionary<PendingPermission, AgentInfo> _requestAgents = new Dictionary<PendingPermission, AgentInfo>(); // queued requests without agent_id, and their agent
     private StreamJsonParser _parser = new StreamJsonParser();
     private int _runningAgents;
@@ -545,7 +549,9 @@ public sealed class ChatConversation : ChatObservableObject
                 break;
         }
         UpdateStreaming();
-        UpdateRunningAgents();
+        // the agents are looked at after what can change them (a task line, an Agent call or its result, a turn that ends), not at every piece of text
+        if (_agentsChanged || e is AgentTaskStarted || e is AgentTaskProgress || e is AgentTaskUpdated || e is AgentTaskFinished)
+            UpdateRunningAgents();
     }
 
     /// <summary>A text or a thought is still arriving: one of the streamed blocks has not ended.</summary>
@@ -1143,11 +1149,11 @@ public sealed class ChatConversation : ChatObservableObject
         tool.HiddenResultLines = cut.HiddenLines;
         tool.FullResultText = KeptResult(tool.Name, result.Text);
         tool.RejectionReason = RefusalReason(result);
-        tool.ResultImages = ResultImagesOf(result);
+        tool.ResultImages = ToolPresentation.ChromeAction(tool.Name) == "computer" ? ResultImagesOf(result) : null; // only that action draws them
         tool.Status = ResultStatus(e, result);
     }
 
-    /// <summary>The images a tool result carried, or null when it had none.</summary>
+    /// <summary>The images a tool result carried, or null when it had none. Kept only for the Claude in Chrome <c>computer</c> action, the one row that draws them.</summary>
     private static IReadOnlyList<ChatImage>? ResultImagesOf(ToolResultBlock result)
     {
         if (result.Images.Count == 0) return null;
@@ -1284,6 +1290,7 @@ public sealed class ChatConversation : ChatObservableObject
 
     private AgentInfo NewAgent(string id, DateTimeOffset startedAt)
     {
+        _agentsChanged = true;
         var agent = new AgentInfo(id) { StartedAt = startedAt };
         Agents.Insert(0, agent);
         return agent;
@@ -1291,6 +1298,7 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void UpdateRunningAgents()
     {
+        _agentsChanged = false;
         var running = 0;
         foreach (var agent in Agents)
         {
@@ -1303,6 +1311,7 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>An Agent (or Task) call with its whole input: it starts the agent, or completes the one a task line started.</summary>
     private void OnAgentCall(ToolUseBlock tool, string? parentToolUseId, DateTimeOffset? timestamp)
     {
+        _agentsChanged = true;
         if (tool.Id.Length == 0) return;
         var agent = FindAgent(tool.Id);
         if (agent == null)
@@ -1392,6 +1401,7 @@ public sealed class ChatConversation : ChatObservableObject
     /// </summary>
     private void OnAgentResult(AgentInfo agent, UserBlock e, ToolResultBlock result)
     {
+        _agentsChanged = true;
         if (e.ToolUseResult is { ValueKind: JsonValueKind.Object } structured)
         {
             var agentId = JsonHelpers.Str(structured, "agentId");
@@ -1473,6 +1483,7 @@ public sealed class ChatConversation : ChatObservableObject
         foreach (var agent in Agents)
         {
             if (agent.Status != AgentStatus.Running) continue;
+            _agentsChanged = true;
             agent.Status = AgentStatus.Stopped;
             _agentsStoppedByHistory.Add(agent);
         }
@@ -1489,7 +1500,11 @@ public sealed class ChatConversation : ChatObservableObject
         var steps = Agents.Count; // a guard against a loop of parents
         while (agent != null && steps-- > 0)
         {
-            if (_agentsStoppedByHistory.Remove(agent)) agent.Status = AgentStatus.Running;
+            if (_agentsStoppedByHistory.Remove(agent))
+            {
+                _agentsChanged = true;
+                agent.Status = AgentStatus.Running;
+            }
             agent = FindAgent(agent.ParentId);
         }
     }
@@ -1498,6 +1513,7 @@ public sealed class ChatConversation : ChatObservableObject
     private void Resume(AgentInfo agent)
     {
         _agentsStoppedByHistory.Remove(agent);
+        _agentsChanged = true;
         agent.Status = AgentStatus.Running;
     }
 
@@ -1513,7 +1529,11 @@ public sealed class ChatConversation : ChatObservableObject
             var agent = Agents[i];
             if (agent.Status != AgentStatus.Running || agent.IsBackground) continue;
             var caller = FindAgent(agent.ParentId);
-            if (caller == null || caller.Status != AgentStatus.Running) agent.Status = AgentStatus.Stopped;
+            if (caller == null || caller.Status != AgentStatus.Running)
+            {
+                _agentsChanged = true;
+                agent.Status = AgentStatus.Stopped;
+            }
         }
     }
 
@@ -1583,6 +1603,7 @@ public sealed class ChatConversation : ChatObservableObject
     /// </summary>
     private void UpdateAgentStates()
     {
+        AgentStateUpdates++;
         if (Agents.Count == 0) return;
         HashSet<AgentInfo>? asking = null;
         foreach (var request in PendingPermissions)

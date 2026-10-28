@@ -82,16 +82,6 @@ internal partial class ToolCallView : UserControl
     /// <summary>The tool that asks to leave plan mode with a plan: its row has a line of its own and opens the plan's document.</summary>
     private const string PlanTool = "ExitPlanMode";
 
-    /// <summary>The name an Agent (or Task) call reads, with its colon: the tool's name, the same in every language.</summary>
-    private const string AgentTitle = "Agent:";
-
-    /// <summary>The names of the two web tools, the same in every language, like the extension's.</summary>
-    private const string WebFetchTitle = "Web Fetch";
-    private const string WebSearchTitle = "Web Search";
-
-    /// <summary>The name of the Claude in Chrome tools, a product's name, the same in every language.</summary>
-    private const string ChromeTitle = "Claude in Chrome";
-
     /// <summary>The Claude in Chrome actions whose result shows in an OUT box (without its "Tab Context:" section).</summary>
     private static readonly string[] ChromeOutActions =
         { "find", "gif_creator", "read_console_messages", "read_network_requests", "read_page", "get_page_text", "update_plan" };
@@ -325,7 +315,7 @@ internal partial class ToolCallView : UserControl
         else if (IsAgentTool(name))
         {
             // "Agent:" with its colon, a Task call too, like the extension's; the description follows in the editor's font
-            ToolName.Text = AgentTitle;
+            ToolName.Text = Strings.AgentToolTitle;
         }
         else if (name == SkillTool)
         {
@@ -335,7 +325,7 @@ internal partial class ToolCallView : UserControl
         }
         else if (name == "WebFetch" || name == "WebSearch")
         {
-            ToolName.Text = name == "WebFetch" ? WebFetchTitle : WebSearchTitle;
+            ToolName.Text = name == "WebFetch" ? Strings.WebFetchToolTitle : Strings.WebSearchToolTitle;
         }
         else if (IsFileTool(name))
         {
@@ -362,9 +352,9 @@ internal partial class ToolCallView : UserControl
     /// The name in bold: the tool's own, or for an MCP tool "Server [tool]" with the server made readable ("Claude AI Gmail
     /// [search]"), and for Claude in Chrome "Claude in Chrome [action]".
     /// </summary>
-    private static string TitleOf(string name)
+    private string TitleOf(string name)
     {
-        if (ToolPresentation.ChromeAction(name) is { } action) return ChromeTitle + " [" + action + "]";
+        if (ToolPresentation.ChromeAction(name) is { } action) return Strings.ChromeToolTitle + " [" + action + "]";
         return ToolPresentation.McpName(name) is { } mcp ? ToolPresentation.HumanizeServer(mcp.Server) + " [" + mcp.Tool + "]" : name;
     }
 

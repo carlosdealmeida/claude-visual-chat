@@ -8,6 +8,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 namespace ClaudeVisualChat.Controls;
@@ -139,6 +140,20 @@ internal sealed class DiffViewPanel : Border
         base.OnAttachedToVisualTree(e);
         _attached = true;
         Track(_item);
+        // back in the window with the Diff View open: the keyboard goes to the ×, unless the host put it somewhere of its own
+        if (IsVisible && _item != null && KeyboardIsFree() && !_close.Focus())
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_attached && IsVisible && _item != null && KeyboardIsFree()) _close.Focus();
+            }, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Whether nothing has the keyboard, or something inside the view does; what is outside it is the host's, and stays.</summary>
+    private bool KeyboardIsFree()
+    {
+        if (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not Visual focused) return true;
+        var view = this.FindAncestorOfType<ClaudeChatView>();
+        return view != null && (ReferenceEquals(view, focused) || view.IsVisualAncestorOf(focused));
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)

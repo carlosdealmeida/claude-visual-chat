@@ -37,6 +37,10 @@ public sealed record ChatStrings
         ThoughtFor = "Pensou por {0} s",
         RunInBackground = "Rodando em segundo plano",
         ToolReason = "Motivo:",
+        AgentToolTitle = "Agent:",
+        WebFetchToolTitle = "Web Fetch",
+        WebSearchToolTitle = "Web Search",
+        ChromeToolTitle = "Claude in Chrome",
         GlobNone = "Nenhum arquivo encontrado",
         GlobOne = "1 arquivo encontrado",
         GlobMany = "{0} arquivos encontrados",
@@ -387,6 +391,18 @@ public sealed record ChatStrings
 
     /// <summary>The bold start of the line under a refused command, edit or write: the reason the user typed follows it.</summary>
     public string ToolReason { get; init; } = "Reason:";
+
+    /// <summary>The name of an Agent (or Task) call, with its colon: the tool's name, the same in every language.</summary>
+    public string AgentToolTitle { get; init; } = "Agent:";
+
+    /// <summary>The name of the Web Fetch tool, the same in every language.</summary>
+    public string WebFetchToolTitle { get; init; } = "Web Fetch";
+
+    /// <summary>The name of the Web Search tool, the same in every language.</summary>
+    public string WebSearchToolTitle { get; init; } = "Web Search";
+
+    /// <summary>The name of the Claude in Chrome tools, a product's name, the same in every language.</summary>
+    public string ChromeToolTitle { get; init; } = "Claude in Chrome";
 
     /// <summary>The line under a Glob that found nothing.</summary>
     public string GlobNone { get; init; } = "No files found";
@@ -1186,7 +1202,7 @@ public sealed record ChatStrings
         _ => null,
     };
 
-    /// <summary>The line under a Web Search:"Allowed: a.com, b.com · Blocked: c.com", each part only when its list has domains; null when neither has.</summary>
+    /// <summary>The line under a Web Search, like "Allowed: a.com, b.com · Blocked: c.com", each part only when its list has domains; null when neither has.</summary>
     internal string? FormatWebDomains(IReadOnlyList<string> allowed, IReadOnlyList<string> blocked)
     {
         var parts = new List<string>();
@@ -1442,10 +1458,12 @@ public sealed record ChatStrings
         return line.Append(Separator).Append(AgentTasksHint).ToString();
     }
 
-    /// <summary>An activity or an error for the agent's line: trimmed, and past 120 characters its first 119 and "…".</summary>
+    private static readonly System.Text.RegularExpressions.Regex LineBreaks = new System.Text.RegularExpressions.Regex(@"\s*[\r\n]+\s*");
+
+    /// <summary>An activity or an error for the agent's line: its line breaks become a space, it is trimmed, and past 120 characters its first 119 and "…".</summary>
     private static string AgentLineText(string? text)
     {
-        var trimmed = (text ?? "").Trim();
+        var trimmed = LineBreaks.Replace((text ?? "").Trim(), " ");
         return trimmed.Length > MaxAgentLineChars ? Controls.ChatText.Clip(trimmed, MaxAgentLineChars - 1) : trimmed;
     }
 

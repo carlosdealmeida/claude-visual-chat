@@ -264,6 +264,8 @@ public class ChatStringsTests
         nameof(ChatStrings.EffortMax), nameof(ChatStrings.EffortAuto),
         nameof(ChatStrings.UsageResetsDay), nameof(ChatStrings.PanelLoading),
         nameof(ChatStrings.AgentTokens),
+        nameof(ChatStrings.AgentToolTitle), nameof(ChatStrings.WebFetchToolTitle), nameof(ChatStrings.WebSearchToolTitle),
+        nameof(ChatStrings.ChromeToolTitle),
     };
 
     [Fact]
@@ -530,6 +532,11 @@ public class ChatStringsTests
             Line(AgentStatus.Running, waiting: true, nested: AgentNesting.Waiting | AgentNesting.Working));
         Assert.Equal("Failed: Disk full" + Hint, Line(AgentStatus.Failed, error: "Disk full"));
         Assert.Equal("Failed: " + new string('e', 119) + "…" + Hint, Line(AgentStatus.Failed, error: new string('e', 200)));
+        // an error of several lines is one line, and the cut at 120 counts after that
+        Assert.Equal("Failed: Disk full at /tmp/a" + Hint, Line(AgentStatus.Failed, error: "Disk full\r\n  at /tmp/a\n"));
+        Assert.Equal("Failed: " + new string('x', 60) + " " + new string('y', 58) + "…" + Hint,
+            Line(AgentStatus.Failed, error: new string('x', 60) + "\n\n" + new string('y', 80)));
+        Assert.Equal("Working in the background: Reading a.txt then b.txt" + Hint, Line(AgentStatus.Running, activity: "Reading a.txt\nthen b.txt"));
         Assert.Equal("Failed" + Hint, Line(AgentStatus.Failed));
         Assert.Equal("Finished" + Hint, Line(AgentStatus.Completed));
         Assert.Equal("Stopped" + Hint, Line(AgentStatus.Stopped));

@@ -408,6 +408,41 @@ public class AgentMapTests
         (agentId == null ? "" : ",\"agent_id\":\"" + agentId + "\"") + "}}";
 
     [Fact]
+    public void The_agents_states_are_worked_out_after_agent_events_and_queue_changes_only()
+    {
+        var conversation = Play(new[]
+        {
+            AgentCall("toolu_a1", "Write a file"), TaskStarted("ta1", "toolu_a1", "Write a file"),
+            BashCall("toolu_b1", parent: "toolu_a1"),
+        });
+        var seen = conversation.AgentStateUpdates;
+        Assert.True(seen > 0);
+
+        // text, a status line, a call that is not an agent's: not the hot path's business
+        conversation.Apply(new AssistantBlock("m9", null, new TextContentBlock("working on it")));
+        conversation.Apply(new StatusChanged(null, null));
+        conversation.AppendLine(BashCall("toolu_b2", parent: null));
+        Assert.Equal(seen, conversation.AgentStateUpdates);
+
+        // a request in the queue, and its leaving it
+        conversation.AppendLine(BashRequest("r1", "toolu_b1", agentId: "ta1"));
+        Assert.True(conversation.AgentStateUpdates > seen);
+        Assert.True(conversation.Agents.Single().IsWaitingForPermission);
+        seen = conversation.AgentStateUpdates;
+        conversation.AnswerPermission(conversation.CurrentPermission!, PermissionDecision.Allow);
+        Assert.True(conversation.AgentStateUpdates > seen);
+        Assert.False(conversation.Agents.Single().IsWaitingForPermission);
+
+        // an agent event, and an Agent call
+        seen = conversation.AgentStateUpdates;
+        conversation.AppendLine(TaskStarted("ta2", "toolu_a2", "Read the logs"));
+        Assert.True(conversation.AgentStateUpdates > seen);
+        seen = conversation.AgentStateUpdates;
+        conversation.AppendLine(AgentCall("toolu_a3", "Another"));
+        Assert.True(conversation.AgentStateUpdates > seen);
+    }
+
+    [Fact]
     public void A_subagent_request_marks_its_agent_as_waiting_until_it_leaves_the_queue()
     {
         var conversation = Play(new[]
