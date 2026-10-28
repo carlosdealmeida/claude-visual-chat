@@ -786,8 +786,10 @@ public partial class ClaudeChatView : UserControl
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         if (Prompt.IsHeld(e.Key)) e.Handled = true;
-        // Ctrl+Alt+F, the extension's toggle of the Focus view, while the keyboard is in the view; nothing in a read-only one
-        else if (!IsReadOnly && !e.Handled && e.Key == Key.F && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Alt))
+        // Ctrl+Alt+F, the extension's toggle of the Focus view, while the keyboard is in the view; nothing in a read-only one. On Windows
+        // AltGr is Ctrl+Alt: a layout where AltGr+F types a character (the key's symbol says so) keeps it, and toggles nothing
+        else if (!IsReadOnly && !e.Handled && e.Key == Key.F && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Alt)
+            && string.IsNullOrEmpty(e.KeySymbol))
         {
             e.Handled = true;
             FocusViewToggleRequested?.Invoke(this, EventArgs.Empty);

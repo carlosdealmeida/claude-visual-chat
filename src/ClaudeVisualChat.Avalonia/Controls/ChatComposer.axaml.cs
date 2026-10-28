@@ -495,9 +495,10 @@ internal partial class ChatComposer : UserControl
             e.Handled = true; // Enter is the send key, never a line break
             Send();
         }
-        else if ((e.Key == Key.Up || e.Key == Key.Down) && Recall(e.Key == Key.Up))
+        else if (e.Key == Key.Up || e.Key == Key.Down)
         {
-            e.Handled = true;
+            if (Recall(e.Key == Key.Up)) e.Handled = true;
+            else GoToEdgeIfStuck(e.Key == Key.Up);
         }
         else if (e.Key == Key.Escape && _tracked != null && _tracked.IsBusy)
         {
@@ -512,10 +513,12 @@ internal partial class ChatComposer : UserControl
 
     /// <summary>
     /// Ctrl+J (alone) breaks the line as Shift+Enter does; Shift+Tab asks for the next permission mode. True when the key was one of them.
+    /// With the command palette or the model menu open neither acts (the key is left as it was before them).
     /// (Ctrl+Alt+F, the Focus view's, is the view's: it comes down to it before the box.)
     /// </summary>
     private bool HandleShortcut(KeyEventArgs e)
     {
+        if (HasOpenPopup) return false; // like the arrows: with the palette or the model menu open the keys are theirs, and these do nothing
         if (e.Key == Key.J && e.KeyModifiers == KeyModifiers.Control)
         {
             e.Handled = true;
@@ -548,8 +551,10 @@ internal partial class ChatComposer : UserControl
 
     /// <summary>
     /// The up and down arrows walk through the prompts of the conversation (those waiting in line too), newest first. Up acts only with
-    /// the caret at the very start of the text (an empty box counts) and the first one keeps the draft; Down only with the caret at the
-    /// end, and going past the newest prompt brings the draft back. Anywhere else the arrows move the caret. True when the key was used.
+    /// the caret at the very start of the text (an empty box counts) and the first one keeps the draft; it leaves the caret at the start,
+    /// so that the next Up goes on. Down acts only with the caret at the end, and leaves it there; going past the newest prompt brings
+    /// the draft back. Anywhere else the arrows move the caret (Up at the oldest prompt too: the key goes on). The list is the one taken at
+    /// the first Up: what is sent or queued during the walk is not in it. True when the key was used.
     /// </summary>
     private bool Recall(bool older)
     {
@@ -568,26 +573,48 @@ internal partial class ChatComposer : UserControl
                 _recallAt = prompts.Count;
                 _recallDraft = text;
             }
-            if (_recallAt > 0) ShowRecalled(_recall[--_recallAt]);
+            if (_recallAt == 0) return false; // the oldest: nothing further back, the key is the box's
+            ShowRecalled(_recall[--_recallAt], atStart: true);
             return true;
         }
         if (_recall == null || Input.CaretIndex != text.Length) return false;
         if (_recallAt < _recall.Count - 1)
         {
-            ShowRecalled(_recall[++_recallAt]);
+            ShowRecalled(_recall[++_recallAt], atStart: false);
             return true;
         }
         var draft = _recallDraft;
         EndRecall();
-        ShowRecalled(draft);
+        ShowRecalled(draft, atStart: false);
         return true;
     }
 
     /// <summary>
-    /// Puts a prompt in the box, the caret at its end. It is text set, not typed: the "/" menu opens on a "/" typed into the empty box,
-    /// so a recalled command leaves it closed until the person edits the text.
+    /// The browser's arrows, which the extension relies on: Up on the first line of the text goes to its start and Down on the last line
+    /// goes to its end, so that the next one recalls. Avalonia's text box leaves the caret where it is there, so it is done here, once the
+    /// text box has had the key: a caret that did not move is on the first (last) line. Only where a recall would use it: Up with a
+    /// prompt to recall, Down in the middle of a walk.
     /// </summary>
-    private void ShowRecalled(string text)
+    private void GoToEdgeIfStuck(bool older)
+    {
+        if (_tracked == null || _listening != null || ModelMenu.IsOpen || Input.SelectionStart != Input.SelectionEnd) return;
+        var text = Input.Text ?? "";
+        var caret = Input.CaretIndex;
+        if (caret == (older ? 0 : text.Length)) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (Input.Text != text || Input.CaretIndex != caret || Input.SelectionStart != Input.SelectionEnd) return; // it moved: not the edge line
+            if (older ? _recall != null || _tracked?.RecallablePrompts().Count > 0 : _recall != null) Input.CaretIndex = older ? 0 : text.Length;
+        });
+    }
+
+    /// <summary>
+    /// Puts a prompt in the box, the caret at its start (after an Up, which then goes on) or at its end (after a Down, and for the draft).
+    /// It is text set, not typed: the "/" menu opens on a "/" typed into the empty box, so a recalled command leaves it closed until the
+    /// person edits the text. It counts as an edit for <see cref="LastEdited"/>, like typing: a permission request that comes right after
+    /// waits for the pause.
+    /// </summary>
+    private void ShowRecalled(string text, bool atStart)
     {
         _recalling = true;
         try
@@ -598,7 +625,7 @@ internal partial class ChatComposer : UserControl
         {
             _recalling = false;
         }
-        Input.CaretIndex = text.Length;
+        Input.CaretIndex = atStart ? 0 : text.Length;
     }
 
     private void EndRecall()

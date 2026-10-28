@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.LogicalTree;
@@ -650,31 +651,132 @@ public class ComposerTests
     {
         var ui = Open(WithHistory("one", "two"));
         ui.Type("draft");
-        ui.Input.CaretIndex = 0;
+        UiHelpers.Press(ui.Window, Key.Home);
 
         UiHelpers.Press(ui.Window, Key.Up);
         Assert.Equal("two", ui.Input.Text);
-        Assert.Equal(3, ui.Input.CaretIndex);          // the caret goes to the end, where Down acts
-        ui.Input.CaretIndex = 0;
+        Assert.Equal(0, ui.Input.CaretIndex);          // the caret stays at the start, so that the next Up goes on
         UiHelpers.Press(ui.Window, Key.Up);
         Assert.Equal("one", ui.Input.Text);
-        ui.Input.CaretIndex = 0;
         UiHelpers.Press(ui.Window, Key.Up);
-        Assert.Equal("one", ui.Input.Text);            // the oldest: nowhere further back
-        Assert.DoesNotContain(Key.Up, ui.Unhandled);
+        Assert.Equal("one", ui.Input.Text);            // the oldest: nowhere further back, and the key is the box's
+        Assert.Equal(0, ui.Input.CaretIndex);
 
-        ui.Input.CaretIndex = ui.Input.Text!.Length;
+        UiHelpers.Press(ui.Window, Key.Down);          // the first Down takes the caret to the end (the box does not), the next one recalls
+        Assert.Equal("one", ui.Input.Text);
+        Assert.Equal(3, ui.Input.CaretIndex);
         UiHelpers.Press(ui.Window, Key.Down);
         Assert.Equal("two", ui.Input.Text);
-        ui.Input.CaretIndex = ui.Input.Text!.Length;
+        Assert.Equal(3, ui.Input.CaretIndex);          // after a Down the caret is at the end: the next Down goes on
         UiHelpers.Press(ui.Window, Key.Down);
         Assert.Equal("draft", ui.Input.Text);          // past the newest: the draft is back
         Assert.Equal(5, ui.Input.CaretIndex);
 
-        ui.Input.CaretIndex = 5;
         UiHelpers.Press(ui.Window, Key.Down);          // the walk is over: Down is the caret's again
         Assert.Equal("draft", ui.Input.Text);
         Assert.Empty(ui.Sent);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Up_pressed_again_and_again_walks_back_without_touching_the_caret()
+    {
+        var ui = Open(WithHistory("one", "two", "three", "four"));
+        ui.Input.Focus();
+
+        var seen = new List<string>();
+        for (var i = 0; i < 5; i++)
+        {
+            UiHelpers.Press(ui.Window, Key.Up);
+            seen.Add(ui.Input.Text ?? "");
+        }
+        Assert.Equal(new[] { "four", "three", "two", "one", "one" }, seen);
+
+        seen.Clear();
+        for (var i = 0; i < 5; i++)
+        {
+            UiHelpers.Press(ui.Window, Key.Down);
+            seen.Add(ui.Input.Text ?? "");
+        }
+        // the first Down takes the caret to the end of "one" (the box does not), then each Down recalls the next; the last gives the draft back
+        Assert.Equal(new[] { "one", "two", "three", "four", "" }, seen);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_box_leaves_the_caret_where_it_is_on_the_first_line_and_the_composer_takes_it_to_the_start()
+    {
+        // Avalonia's text box does nothing with Up on its first line (the browser moves to the start), and the recall depends on it
+        var ui = Open(WithHistory("old"));
+        ui.Type("typed");
+
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("typed", ui.Input.Text);
+        Assert.Equal(0, ui.Input.CaretIndex);           // the first Up: to the start
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("old", ui.Input.Text);             // the second one recalls
+
+        // with nothing to recall the box keeps its own behaviour
+        var empty = Open();
+        empty.Type("typed");
+        UiHelpers.Press(empty.Window, Key.Up);
+        Assert.Equal(5, empty.Input.CaretIndex);
+        empty.Window.Close();
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Up_at_the_oldest_prompt_leaves_the_key_to_the_box_and_a_multi_line_prompt_is_walked_line_by_line()
+    {
+        var ui = Open(WithHistory("only\nthen two lines"));
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("only\nthen two lines", Lines(ui.Input));
+        Assert.Equal(0, ui.Input.CaretIndex);
+
+        UiHelpers.Press(ui.Window, Key.Up);              // the oldest: not taken by the composer
+        Assert.Equal("only\nthen two lines", Lines(ui.Input));
+        Assert.Equal(0, ui.Input.CaretIndex);
+
+        // Down on the first line of two moves the box's own caret down, and only on the last line takes it to the end
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.NotEqual(0, ui.Input.CaretIndex);
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.Equal(ui.Input.Text!.Length, ui.Input.CaretIndex);
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.Equal("", ui.Input.Text ?? "");           // the draft was empty
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Editing_a_recalled_prompt_and_pressing_down_goes_on_to_the_next_newer_one()
+    {
+        var ui = Open(WithHistory("one", "two"));
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Up);
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("one", ui.Input.Text);
+        ui.Input.CaretIndex = 3;
+        UiHelpers.Type(ui.Window, "!");                  // edited: "one!"
+        Assert.Equal("one!", ui.Input.Text);
+
+        UiHelpers.Press(ui.Window, Key.Down);            // the edit is not kept, as in the extension
+        Assert.Equal("two", ui.Input.Text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_prompt_sent_during_the_walk_is_not_in_it()
+    {
+        var conversation = WithHistory("one", "two");
+        var ui = Open(conversation);
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("two", ui.Input.Text);
+
+        conversation.Apply(Said("three"));               // the list was taken at the first Up
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("one", ui.Input.Text);
         ui.Window.Close();
     }
 
@@ -734,7 +836,6 @@ public class ComposerTests
         var seen = new List<string>();
         for (var i = 0; i < 7; i++)
         {
-            ui.Input.CaretIndex = 0;
             UiHelpers.Press(ui.Window, Key.Up);
             seen.Add(ui.Input.Text ?? "");
         }
@@ -790,7 +891,6 @@ public class ComposerTests
         UiHelpers.Press(ui.Window, Key.Up);
         Assert.Equal("/", ui.Input.Text);
         Assert.False(palette.IsOpen);
-        ui.Input.CaretIndex = 0;
         UiHelpers.Press(ui.Window, Key.Up);
         Assert.Equal("/compact", ui.Input.Text);
         Assert.False(palette.IsOpen);
@@ -898,6 +998,37 @@ public class ComposerTests
     }
 
     [AvaloniaFact]
+    public void Shift_tab_and_ctrl_j_do_nothing_with_the_palette_open()
+    {
+        var ui = Open();
+        ui.Conversation.Apply(new SessionStarted("s1", "sonnet", null, "default", "2.1.310"));
+        ui.Type("/");
+        var palette = ui.Composer.GetLogicalDescendants().OfType<CommandPalette>().Single();
+        Assert.True(palette.IsOpen);
+
+        UiHelpers.Press(ui.Window, Key.Tab, RawInputModifiers.Shift);
+        UiHelpers.Press(ui.Window, Key.J, RawInputModifiers.Control);
+
+        Assert.Empty(ui.Modes);                          // the mode does not move behind an open menu
+        Assert.Equal("/", ui.Input.Text);
+        Assert.True(palette.IsOpen);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Shift_tab_takes_a_mode_outside_the_cycle_to_the_first_of_it()
+    {
+        var ui = Open();
+        ui.Conversation.Apply(new SessionStarted("s1", "sonnet", null, "bypassPermissions", "2.1.310"));
+        ui.Input.Focus();
+
+        UiHelpers.Press(ui.Window, Key.Tab, RawInputModifiers.Shift);
+
+        Assert.Equal(new[] { "default" }, ui.Modes);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void With_ctrl_enter_to_send_enter_breaks_the_line_and_ctrl_enter_sends()
     {
         var ui = Open();
@@ -950,6 +1081,23 @@ public class ComposerTests
         UiHelpers.Press(ui.Window, Key.F, RawInputModifiers.Control);
         UiHelpers.Press(ui.Window, Key.F, RawInputModifiers.Alt);
         Assert.Equal(1, toggles);                        // both modifiers, and nothing else
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Altgr_f_that_types_a_character_is_not_the_focus_views_shortcut()
+    {
+        // on Windows AltGr is Ctrl+Alt: a layout where AltGr+F gives a character keeps it
+        var ui = Open();
+        var toggles = 0;
+        ui.View.FocusViewToggleRequested += (_, _) => toggles++;
+        ui.Input.Focus();
+
+        ui.Window.KeyPress(Key.F, RawInputModifiers.Control | RawInputModifiers.Alt, PhysicalKey.F, "ƒ");
+        UiHelpers.Pump();
+
+        Assert.Equal(0, toggles);
+        Assert.Contains(Key.F, ui.Unhandled);            // not taken: the character goes on to the box
         ui.Window.Close();
     }
 

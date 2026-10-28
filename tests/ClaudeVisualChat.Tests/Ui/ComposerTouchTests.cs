@@ -86,6 +86,7 @@ public class ComposerTouchTests
 
         UiHelpers.Press(window, Key.Up);
         Assert.Equal("earlier prompt", input.Text);
+        UiHelpers.Press(window, Key.End);
         UiHelpers.Press(window, Key.J, RawInputModifiers.Control);
         Assert.Equal("earlier prompt\n", (input.Text ?? "").Replace("\r\n", "\n"));
         Assert.Empty(sent);
