@@ -2474,6 +2474,17 @@
     <Setter Property="LineHeight" Value="17.55" />
     <Setter Property="RenderTransform" Value="translate(0px,4px)" />
   </Style>
+  <!-- "Copy code" over the block's top right corner, 4 px in (the block's 8 px padding less 4), and it stays while the code scrolls. It is
+       the command row's button (ClaudeChatCopyCode), clear until the pointer is over the block (it comes in over .15 s), at .7 while pressed -->
+  <Style Selector="controls|MarkdownBlock Border.CodeBlock > Grid > Button.ClaudeChatCopyCode">
+    <Setter Property="Margin" Value="0,-4,-4,0" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock Border.CodeBlock:pointerover > Grid > Button.ClaudeChatCopyCode">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock Border.CodeBlock > Grid > Button.ClaudeChatCopyCode:pressed">
+    <Setter Property="Opacity" Value="0.7" />
+  </Style>
   <Style Selector="controls|MarkdownBlock Grid.List">
     <Setter Property="Margin" Value="10,0,0,0" />
   </Style>
@@ -2593,6 +2604,9 @@
   <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument TextBlock.CodeBlock">
     <Setter Property="FontSize" Value="13" />
     <Setter Property="LineHeight" Value="19.5" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.CodeBlock > Grid > Button.ClaudeChatCopyCode">
+    <Setter Property="Margin" Value="0,-8,-8,0" /> <!-- still 4 px from the corner, inside 12 -->
   </Style>
   <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Grid.List">
     <Setter Property="Margin" Value="16,0,0,0" />

@@ -598,6 +598,75 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void The_code_block_copy_check_timer_stops_when_the_view_leaves()
+    {
+        var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();
+        var copied = new List<string>();
+        ChatClipboard.Override = text => { copied.Add(text); return gate.Task; };
+        try
+        {
+            var c = Conversation();
+            var answer = new AssistantTextItem { Text = "Run it:\n\n```cs\nvar x = 1;\n```" };
+            c.Items.Add(answer);
+            var m = new Mounted(c);
+            CodeCopyButton Copy() => m.View.GetVisualDescendants().OfType<CodeCopyButton>().Single();
+            Avalonia.Media.Geometry? IconData() => Copy().GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Data;
+
+            // the clipboard answers after the view left: the check is not shown for a view that is out
+            UiHelpers.Click(m.Window, Copy());
+            Assert.Equal(new[] { "var x = 1;" }, copied);
+            var button = Copy();
+            m.Out();
+            gate.SetResult(true);
+            UiHelpers.Pump();
+            Assert.False(button.IsCopied);
+            Assert.False(button.IsTicking);
+
+            // a check on screen goes when the view leaves: no timer ticks out of the window, and back it is a copy icon again
+            m.In();
+            var copyIcon = IconData();
+            ChatClipboard.Override = text => { copied.Add(text); return System.Threading.Tasks.Task.CompletedTask; };
+            UiHelpers.Click(m.Window, Copy());
+            Assert.True(Copy().IsCopied);
+            Assert.True(Copy().IsTicking);
+            Assert.NotSame(copyIcon, IconData());
+
+            button = Copy();
+            m.Out();
+            Assert.False(button.IsCopied);
+            Assert.False(button.IsTicking);
+            button.EndCopied();                                            // a late tick finds nothing to do
+            m.In();
+            Assert.False(Copy().IsCopied);
+            Assert.False(Copy().IsTicking);
+            Assert.Same(copyIcon, IconData());
+            Assert.Equal("Copy code to clipboard", Avalonia.Automation.AutomationProperties.GetName(Copy()));
+
+            // the item's text changes (a recycled row shows another answer): the new block has a button of its own, with no check
+            UiHelpers.Click(m.Window, Copy());
+            Assert.True(Copy().IsCopied);
+            answer.Text = "Another:\n\n```\nls\n```";
+            Wait(() => Copy().IsCopied == false && !Copy().IsTicking);
+            UiHelpers.DrawFrames();
+            UiHelpers.Click(m.Window, Copy());
+            Assert.Equal("ls", copied[copied.Count - 1]);
+            m.Window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    private static void Wait(Func<bool> done)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (!done() && clock.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            System.Threading.Thread.Sleep(20);
+            UiHelpers.Pump();
+        }
+        Assert.True(done());
+    }
+
+    [AvaloniaFact]
     public void A_chrome_screenshot_and_its_preview_come_back_after_the_view_returns()
     {
         var c = Conversation();

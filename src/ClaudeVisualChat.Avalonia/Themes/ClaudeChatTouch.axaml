@@ -126,6 +126,20 @@
     <Setter Property="Height" Value="44" />
     <Setter Property="Opacity" Value="1" />
   </Style>
+  <!-- and the copy button of a code block in an answer: the same, its target flush with the block's corner (the block pads 8, the plan's 12) -->
+  <Style Selector="controls|MarkdownBlock:touch Border.CodeBlock > Grid > Button.ClaudeChatCopyCode">
+    <Setter Property="Template" Value="{StaticResource ClaudeChat.TouchCopyCodeTemplate}" />
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="Margin" Value="0,-8,-8,0" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument:touch Border.CodeBlock > Grid > Button.ClaudeChatCopyCode">
+    <Setter Property="Margin" Value="0,-12,-12,0" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock:touch Border.CodeBlock > Grid > Button.ClaudeChatCopyCode:pressed">
+    <Setter Property="Opacity" Value="0.7" />
+  </Style>
   <Style Selector="controls|ToolCallView:touch Grid.ClaudeChatCopyCell > Border.ClaudeChatToolContent">
     <Setter Property="Margin" Value="0,0,44,0" />
   </Style>

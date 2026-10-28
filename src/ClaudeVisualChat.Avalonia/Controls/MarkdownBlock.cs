@@ -39,6 +39,10 @@ public class MarkdownBlock : ContentControl
     public static readonly StyledProperty<TimeSpan> RenderIntervalProperty =
         AvaloniaProperty.Register<MarkdownBlock, TimeSpan>(nameof(RenderInterval), TimeSpan.FromMilliseconds(100));
 
+    /// <summary>The view's layout, which the touch styles of the "Copy code" button of a code block follow (<c>:touch</c>).</summary>
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<MarkdownBlock>();
+
     [ThreadStatic]
     private static MarkdownEngine? t_engine;
 
@@ -87,6 +91,7 @@ public class MarkdownBlock : ContentControl
     {
         base.OnPropertyChanged(change);
         if (change.Property == MarkdownProperty) OnMarkdownChanged();
+        else if (change.Property == LayoutProperty) PseudoClasses.Set(":touch", GetValue(LayoutProperty) == ChatLayout.Touch);
     }
 
     private void OnMarkdownChanged()
@@ -212,7 +217,11 @@ public class MarkdownBlock : ContentControl
 
     private static MarkdownEngine CreateEngine() => new MarkdownEngine
     {
-        Plugins = new MdAvPlugins { PathResolver = new NoImages() },
+        Plugins = new MdAvPlugins
+        {
+            PathResolver = new NoImages(),
+            Plugins = { new PreRenderCodeBlocks(), new CodeBlockOverride.Plugin() },
+        },
         HyperlinkCommand = NoLinks.Instance,
     };
 
