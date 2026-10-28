@@ -253,6 +253,21 @@ namespace ClaudeVisualChat.Tests.Protocol
         [InlineData("<pasted_content id=\"abcd\">\nnever closed", "<pasted_content id=\"abcd\">\nnever closed")]
         [InlineData("<pasted_content id=\"abcd\">\nbody\n</pasted_content id=\"ffff\">", "<pasted_content id=\"abcd\">\nbody\n</pasted_content id=\"ffff\">")]
         [InlineData("no tag at all", "no tag at all")]
+        // the four real shapes of the session file
+        [InlineData("\n\n<pasted_content id=\"04d0\">\nfirst line, with a long text\n</pasted_content id=\"04d0\">\n", "first line, with a long text")]
+        [InlineData("\n\n<pasted_content id=\"af7f\">\nPS C:\\> run it\n</pasted_content id=\"af7f\">\n\n<pasted_content id=\"af7f\">\nPS C:\\> run it\n</pasted_content id=\"af7f\">\n",
+            "PS C:\\> run it\nPS C:\\> run it")]
+        [InlineData("\n\n<pasted_content id=\"af7f\">\nPS C:\\> ssh host\nConnection closed.\nPS C:\\>\n</pasted_content id=\"af7f\">\n\nalready ran it on the server",
+            "PS C:\\> ssh host\nConnection closed.\nPS C:\\>\nalready ran it on the server")]
+        [InlineData("rebase the branch\nsee the last comment\n\n<pasted_content id=\"2b03\">\n[18:57] Ana: I opened a ticket\n\nhttps://example.com/plans/\n</pasted_content id=\"2b03\">\n",
+            "rebase the branch\nsee the last comment\n[18:57] Ana: I opened a ticket\n\nhttps://example.com/plans/")]
+        // a closing line in the middle of a line is part of the paste
+        [InlineData("<pasted_content id=\"ab12\">\nthe tag </pasted_content id=\"ab12\"> inside\n</pasted_content id=\"ab12\">\nafter",
+            "the tag </pasted_content id=\"ab12\"> inside\nafter")]
+        [InlineData("<pasted_content id=\"ab12\">\nthe </pasted_content tag\n</pasted_content id=\"ab12\">", "the </pasted_content tag")]
+        // a wrapper that is not closed ends the reading
+        [InlineData("<pasted_content id=\"ab12\">\nx\n</pasted_content id=\"ab12\">\n\nthen <pasted_content id=\"cd34\">\nopen\nand done",
+            "x\nthen <pasted_content id=\"cd34\">\nopen\nand done")]
         public void The_history_drops_the_pasted_content_wrapper(string said, string shown)
         {
             Assert.Equal(shown, TextOf(UserLine(said)));
@@ -261,6 +276,17 @@ namespace ClaudeVisualChat.Tests.Protocol
             Assert.Equal(shown, TextOf(UserLine(blocks)));
             var live = new StreamJsonParser().Parse(UserLine(said)).OfType<UserBlock>().Single();
             Assert.Equal(shown, Assert.IsType<TextContentBlock>(live.Block).Text);
+        }
+
+        [Theory]
+        [InlineData("no tag at all")]
+        [InlineData("")]
+        [InlineData("<pasted_content id=\"abcd\">\nnever closed")]
+        [InlineData("<pasted_content id=\"abcd\">\nbody\n</pasted_content id=\"ffff\">")]
+        [InlineData("<pasted_content id=\"abcd\">no line break\n</pasted_content id=\"abcd\">")]
+        public void A_message_without_a_well_formed_wrapper_comes_back_as_the_same_string(string said)
+        {
+            Assert.Same(said, PastedContent.Strip(said));
         }
     }
 }

@@ -90,77 +90,79 @@ namespace ClaudeVisualChat.Protocol
     }
 
     /// <summary>
-    /// The wrapper the claude puts around a long paste of a user message (<c>inline_pastes</c>): the line
-    /// <c>&lt;pasted_content id="abcd"&gt;</c> with a four-digit hex id, the paste, and a line that closes it with
-    /// <c>&lt;/pasted_content id="abcd"&gt;</c>, set off from the text around by up to two line breaks on each side.
+    /// Reads the wrapper the claude puts around each long paste in a user message: a line
+    /// <c>&lt;pasted_content id="abcd"&gt;</c> (four lowercase hex digits), the pasted text, and a line
+    /// <c>&lt;/pasted_content id="abcd"&gt;</c> with the same id, with up to two line breaks set it off from the text around.
+    /// The result is the message as the person saw it in the box: the pasted text in place of each wrapper.
     /// </summary>
     internal static class PastedContent
     {
-        private const string Open = "<pasted_content id=\"";
+        private const string OpenStart = "<pasted_content id=\"";
+        private const string CloseStart = "\n</pasted_content id=\"";
+        private const int IdLength = 4;
+        private const int MaxBreaks = 2;
 
         /// <summary>
-        /// The text with each wrapper taken off and its paste where it was; a paste of several lines (or one next to a word) is set off from
-        /// its neighbors by a line break. The same string, not a copy, when there is no wrapper. A tag that is not whole (another id
-        /// length, no closing line) stays as it is.
+        /// Takes the wrappers out of <paramref name="text"/>. Returns the very same instance when there is none that is
+        /// well formed. One pass: each wrapper is found once and skipped whole, and at the first one with no closing
+        /// line the rest of the text stays as it is.
         /// </summary>
-        public static string Strip(string text)
+        internal static string Strip(string text)
         {
-            if (text.IndexOf(Open, StringComparison.Ordinal) < 0) return text;
-            var pieces = new List<KeyValuePair<bool, string>>(); // true: a paste
-            var used = 0;
-            var from = 0;
-            while (true)
+            System.Text.StringBuilder? result = null;
+            var copied = 0; // everything before this index is already in result
+            var search = 0;
+            while (search < text.Length)
             {
-                var start = text.IndexOf(Open, from, StringComparison.Ordinal);
-                if (start < 0) break;
-                var idAt = start + Open.Length;
-                from = idAt;
-                if (idAt + 7 > text.Length || !IsHex4(text, idAt) || string.CompareOrdinal(text, idAt + 4, "\">\n", 0, 3) != 0) continue;
-                var id = text.Substring(idAt, 4);
-                var closing = "\n</pasted_content id=\"" + id + "\">";
-                var bodyAt = idAt + 7;
-                var closeAt = text.IndexOf(closing, bodyAt - 1, StringComparison.Ordinal);
-                if (closeAt < 0) break;
-                var before = start;
-                for (var n = 0; n < 2 && before > used && text[before - 1] == '\n'; n++) before--;
-                pieces.Add(new KeyValuePair<bool, string>(false, text.Substring(used, before - used)));
-                pieces.Add(new KeyValuePair<bool, string>(true, closeAt < bodyAt ? "" : text.Substring(bodyAt, closeAt - bodyAt)));
-                used = closeAt + closing.Length;
-                for (var n = 0; n < 2 && used < text.Length && text[used] == '\n'; n++) used++;
-                from = used;
+                var open = text.IndexOf(OpenStart, search, StringComparison.Ordinal);
+                if (open < 0) break;
+
+                var idAt = open + OpenStart.Length;
+                var bodyAt = idAt + IdLength + 3; // the id, the quote, the bracket and the line break
+                if (!IsHead(text, idAt))
+                {
+                    search = open + 1;
+                    continue;
+                }
+
+                var closing = CloseStart + text.Substring(idAt, IdLength) + "\">";
+                var close = text.IndexOf(closing, bodyAt, StringComparison.Ordinal);
+                if (close < 0) break;
+
+                result ??= new System.Text.StringBuilder(text.Length);
+
+                // what came before: without the line breaks the claude put in front of the wrapper
+                var before = open;
+                for (var cut = 0; cut < MaxBreaks && before > copied && text[before - 1] == '\n'; cut++) before--;
+                result.Append(text, copied, before - copied);
+                if (result.Length > 0 && !char.IsWhiteSpace(result[result.Length - 1])) result.Append('\n');
+
+                result.Append(text, bodyAt, close - bodyAt);
+
+                // what comes after: without the line breaks that follow, and one of its own when it starts a word
+                var after = close + closing.Length;
+                for (var cut = 0; cut < MaxBreaks && after < text.Length && text[after] == '\n'; cut++) after++;
+                if (after < text.Length && !char.IsWhiteSpace(text[after])) result.Append('\n');
+
+                copied = after;
+                search = after;
             }
-            if (pieces.Count == 0) return text;
-            pieces.Add(new KeyValuePair<bool, string>(false, text.Substring(used)));
-            var result = new System.Text.StringBuilder(text.Length);
-            KeyValuePair<bool, string>? last = null;
-            foreach (var piece in pieces)
-            {
-                if (!piece.Key && piece.Value.Length == 0) continue;
-                if (last is { } previous && BreakBetween(previous, piece)) result.Append('\n');
-                result.Append(piece.Value);
-                last = piece;
-            }
+
+            if (result == null) return text;
+            result.Append(text, copied, text.Length - copied);
             return result.ToString();
         }
 
-        /// <summary>A paste is set off from the text next to it by a line break when it has lines of its own, or the text touches it.</summary>
-        private static bool BreakBetween(KeyValuePair<bool, string> before, KeyValuePair<bool, string> after)
+        /// <summary>True when, from <paramref name="idAt"/>, the text reads <c>abcd"&gt;</c> and a line break.</summary>
+        private static bool IsHead(string text, int idAt)
         {
-            if (before.Key && after.Key) return true;
-            var paste = before.Key ? before.Value : after.Value;
-            if (paste.IndexOf('\n') >= 0) return true;
-            var touching = before.Key ? after.Value[0] : before.Value[before.Value.Length - 1];
-            return !char.IsWhiteSpace(touching);
-        }
-
-        private static bool IsHex4(string text, int at)
-        {
-            for (var i = at; i < at + 4; i++)
+            if (idAt + IdLength + 3 > text.Length) return false;
+            for (var i = idAt; i < idAt + IdLength; i++)
             {
                 var c = text[i];
                 if (!(c >= '0' && c <= '9' || c >= 'a' && c <= 'f')) return false;
             }
-            return true;
+            return text[idAt + IdLength] == '"' && text[idAt + IdLength + 1] == '>' && text[idAt + IdLength + 2] == '\n';
         }
     }
 
