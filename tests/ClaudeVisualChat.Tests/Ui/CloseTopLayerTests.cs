@@ -786,6 +786,36 @@ public class CloseTopLayerTests
         ui.Window.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void Close_top_layer_closes_the_diff_view_alone_under_the_preview(ChatLayout layout)
+    {
+        var c = TouchSamples.Opus();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Edit", J("{\"file_path\":\"a.cs\",\"old_string\":\"x\",\"new_string\":\"y\"}"))));
+        c.Apply(PlanRequest());                                              // the plan's document is open under it
+        var ui = new Opened(c, layout);
+        var document = ui.View.GetVisualDescendants().OfType<PlanDocumentPanel>().Single();
+        var diff = ui.View.GetVisualDescendants().OfType<DiffViewPanel>().Single();
+        Assert.True(ui.View.ShowDiff(c.Items.OfType<ToolCallItem>().Single(t => t.Name == "Edit")));
+        ui.View.ShowPreview(ChatImage.FromBytes(UiHelpers.Png(300, 200), "image/png"), "image.png");
+        UiHelpers.Pump();
+        Assert.True(diff.IsOpen);
+        Assert.True(document.IsOpen);
+        Assert.False(ui.View.IsSheetOpen);                                   // the Diff View is no sheet
+
+        Assert.True(ui.View.CloseTopLayer());                                // the preview over it first
+        Assert.False(ui.Preview.IsVisible);
+        Assert.True(diff.IsOpen);
+        Assert.True(ui.View.CloseTopLayer());                                // one call: the Diff View, only it
+        Assert.False(diff.IsOpen);
+        Assert.True(document.IsOpen);
+        Assert.False(ui.View.IsSheetOpen);
+        Assert.True(ui.View.CloseTopLayer());                                // then the document
+        Assert.False(document.IsOpen);
+        ui.Window.Close();
+    }
+
     [AvaloniaFact]
     public void Close_top_layer_closes_a_sheet_over_the_comment_box_first()
     {

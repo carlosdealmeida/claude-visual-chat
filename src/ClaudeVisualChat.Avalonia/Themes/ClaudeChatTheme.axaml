@@ -149,6 +149,11 @@
       <GradientStop Offset="0" Color="#001E1E1E" />
       <GradientStop Offset="1" Color="#1E1E1E" />
     </LinearGradientBrush>
+    <!-- the extension's own, the same in both themes: the layer over a diff of the list darkens under the pointer, its pill "Click to
+         expand" gets a light border under the pointer, and the Diff View's dialog has a soft shadow -->
+    <SolidColorBrush x:Key="ClaudeChat.DiffExpandHover" Color="#0D000000" />
+    <SolidColorBrush x:Key="ClaudeChat.DiffExpandPillHoverBorder" Color="#4DFFFFFF" />
+    <BoxShadows x:Key="ClaudeChat.DiffViewShadow">0 4 12 0 #0D000000</BoxShadows>
 
     <!-- fonts: VS Code's on Windows (the interface's and the editor's) -->
     <FontFamily x:Key="ClaudeChat.FontFamily">Segoe UI, Segoe WPC, Inter, sans-serif</FontFamily>
@@ -860,6 +865,89 @@
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.EditorLineHeight}" />
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+
+  <!-- the layer over a diff of the list: it takes the click (its background is what the pointer hits), darkens under the pointer, and
+       shows "Click to expand" 8 px in from its bottom right while the pointer or the keyboard is on it; the keyboard's focus is the thin
+       line inside of a tool's texts -->
+  <Style Selector="Border.ClaudeChatDiffExpand">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+  <Style Selector="Border.ClaudeChatDiffExpand:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.DiffExpandHover}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatDiffExpand:focus-visible">
+    <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.ToolContentFocusShadow}" />
+  </Style>
+  <!-- the pill: the menus' colors, 11 px, 4 by 8 px inside, 4 px corners; under the pointer a light border and 5 % larger -->
+  <Style Selector="Border.ClaudeChatDiffExpandPill">
+    <Setter Property="IsVisible" Value="False" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.MenuBackground}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="Margin" Value="8" />
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+  </Style>
+  <Style Selector="Border.ClaudeChatDiffExpand:pointerover Border.ClaudeChatDiffExpandPill, Border.ClaudeChatDiffExpand:focus-visible Border.ClaudeChatDiffExpandPill">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="Border.ClaudeChatDiffExpandPill:pointerover">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.DiffExpandPillHoverBorder}" />
+    <Setter Property="RenderTransform" Value="scale(1.05)" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatDiffExpandText">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.MenuForeground}" />
+  </Style>
+
+  <!-- the Diff View: the whole view on the side bar's color, 16 px around; the dialog as large as the view less 40 px (DiffViewPanel),
+       with the input border, 4 px corners and a soft shadow; its header in the editor's color, 8 by 12 px inside, a line under it; the
+       title (the file's whole path) semibold on one line, then a × of 20 px -->
+  <Style Selector="controls|DiffViewPanel">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
+    <Setter Property="Padding" Value="16" />
+  </Style>
+  <Style Selector="Border.ClaudeChatDiffViewDialog">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.BorderStrong}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.DiffViewShadow}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.ClaudeChatDiffViewHeader">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ToolBackground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.BorderStrong}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatDiffViewTitle">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,0,12,0" />
+  </Style>
+  <Style Selector="Button.ClaudeChatDiffViewClose">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatDiffViewClose:pointerover, Button.ClaudeChatDiffViewClose:focus-visible">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatDiffViewClose:pointerover /template/ Border#PART_ChatButton, Button.ClaudeChatDiffViewClose:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.HoverBackground}" />
+  </Style>
+  <Style Selector="Viewbox.ClaudeChatDiffViewCloseIcon">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
   </Style>
 
   <!-- ===== buttons =====

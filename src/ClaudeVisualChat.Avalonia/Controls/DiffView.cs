@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Controls.Presenters;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -18,21 +20,28 @@ namespace ClaudeVisualChat.Controls;
 /// <summary>
 /// A diff drawn like the extension's diff editor: side by side (the old text on the left, the new on the right, the
 /// shorter side hatched) when wider than <see cref="SideBySideWidth"/>, else in one column (the old lines over the new
-/// ones). Each changed line has its sign in the gutter, the changed characters of a pair of lines are marked, the
-/// indentation shows its guides and a long line wraps under its own indentation. In the list it is at most
-/// <see cref="MostHeight"/> px tall, with a fade when cut, and a line longer than <see cref="ToolCallView.MaxLineChars"/>
-/// characters is cut; whole (in the permission request, which scrolls) it shows every line and every character,
-/// building the rows as they scroll into view. Colors, font and sizes come from the <c>ClaudeChat.Diff*</c> and editor
-/// resources.
+/// ones); once side by side, it goes back to one column only at <see cref="NarrowBackWidth"/> or less. Each changed line has
+/// its sign in the gutter, the changed characters of a pair of lines are marked, the indentation shows its guides and a long
+/// line wraps under its own indentation. In the list it is as tall as its lines and <see cref="BottomSpace"/> px more, at most
+/// <see cref="MostHeight"/> px, with a fade when its lines are taller than that, and a line longer than
+/// <see cref="ToolCallView.MaxLineChars"/> characters is cut; a layer covers it there (a click, Enter or Space,
+/// <see cref="ExpandRequested"/>), which darkens under the pointer and shows "Click to expand" at its bottom right while the
+/// pointer or the keyboard is on it. Whole (in the permission request and in the Diff View, which scroll) it shows every line and
+/// every character, building the rows as they scroll into view, and has no layer. Colors, font and sizes come from the
+/// <c>ClaudeChat.Diff*</c> and editor resources.
 /// </summary>
 internal sealed class DiffView : Panel
 {
     /// <summary>Above this width the diff goes side by side, like the extension.</summary>
     internal const double SideBySideWidth = 900;
 
-    /// <summary>The tallest a diff gets, with <see cref="BottomSpace"/> under the last line.</summary>
+    /// <summary>Side by side, the diff goes back to one column only at this width or less (the extension's step back).</summary>
+    internal const double NarrowBackWidth = 876;
+
+    /// <summary>The tallest a diff gets in the list; its lines past this are faded out.</summary>
     internal const double MostHeight = 200;
 
+    /// <summary>Room under the last line.</summary>
     internal const double BottomSpace = 20;
 
     /// <summary>The gutters: the left column of a side-by-side diff has a wider one.</summary>
@@ -51,34 +60,85 @@ internal sealed class DiffView : Panel
     private readonly IReadOnlyList<DiffLine> _diff;
     private readonly ChatStrings _strings;
     private readonly bool _whole;
+    private readonly bool _alwaysSideBySide;
     private readonly Rectangle _fade = new Rectangle { IsHitTestVisible = false, Height = 30, VerticalAlignment = VerticalAlignment.Bottom };
+    private readonly Border? _expand;
     private Control? _content;
     private bool? _sideBySide;
     private double _charWidth;
 
     /// <param name="diff">The lines to draw.</param>
-    /// <param name="strings">The texts ("+N lines").</param>
-    /// <param name="whole">Every line, never cut at <see cref="MostHeight"/> (for a place that scrolls).</param>
-    public DiffView(IReadOnlyList<DiffLine> diff, ChatStrings strings, bool whole = false)
+    /// <param name="strings">The texts ("+N lines", "Click to expand").</param>
+    /// <param name="whole">Every line, never cut at <see cref="MostHeight"/> and with no layer (for a place that scrolls).</param>
+    /// <param name="alwaysSideBySide">Side by side at any width (the Diff View's).</param>
+    public DiffView(IReadOnlyList<DiffLine> diff, ChatStrings strings, bool whole = false, bool alwaysSideBySide = false)
     {
         _diff = diff ?? throw new ArgumentNullException(nameof(diff));
         _strings = strings ?? ChatStrings.English;
         _whole = whole;
+        _alwaysSideBySide = alwaysSideBySide;
         ClipToBounds = true;
         Classes.Add("ClaudeChatDiff");
         _fade.Classes.Add("ClaudeChatDiffFade");
         Children.Add(_fade);
+        if (!whole)
+        {
+            _expand = ExpandLayer();
+            Children.Add(_expand);
+        }
     }
+
+    /// <summary>Raised by a click, Enter or Space on the layer over a diff in the list: the view opens the Diff View.</summary>
+    public event EventHandler? ExpandRequested;
 
     /// <summary>True once laid out side by side.</summary>
     internal bool IsSideBySide => _sideBySide == true;
 
-    /// <summary>True when the diff is taller than it may get, so its end is cut and faded.</summary>
+    /// <summary>True when the lines are taller than the diff may get, so their end is faded out.</summary>
     internal bool IsCut { get; private set; }
+
+    /// <summary>The layer over a diff in the list, which opens the Diff View; null for a whole diff.</summary>
+    internal Border? ExpandControl => _expand;
+
+    /// <summary>
+    /// The layer over the whole diff: it takes the pointer, Enter and Space, and holds the pill "Click to expand" at its bottom right,
+    /// which the theme shows while the pointer or the keyboard is on the layer (and always in the touch layout).
+    /// </summary>
+    private Border ExpandLayer()
+    {
+        var text = new TextBlock { Text = _strings.ClickToExpand };
+        text.Classes.Add("ClaudeChatDiffExpandText");
+        var pill = new Border { Child = text };
+        pill.Classes.Add("ClaudeChatDiffExpandPill");
+        var layer = new Border { Child = pill, Focusable = true, Cursor = new Cursor(StandardCursorType.Hand) };
+        layer.Classes.Add("ClaudeChatDiffExpand");
+        AutomationProperties.SetName(layer, _strings.ClickToExpand);
+        layer.Tapped += (_, e) =>
+        {
+            e.Handled = true;
+            ExpandRequested?.Invoke(this, EventArgs.Empty);
+        };
+        // a click soon after the last one is a double tap, which raises no Tapped: it opens all the same
+        layer.DoubleTapped += (_, e) =>
+        {
+            e.Handled = true;
+            ExpandRequested?.Invoke(this, EventArgs.Empty);
+        };
+        layer.KeyDown += (_, e) =>
+        {
+            if ((e.Key != Key.Enter && e.Key != Key.Space) || e.KeyModifiers != KeyModifiers.None) return;
+            e.Handled = true;
+            ExpandRequested?.Invoke(this, EventArgs.Empty);
+        };
+        return layer;
+    }
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var wide = !double.IsInfinity(availableSize.Width) && availableSize.Width > SideBySideWidth;
+        // above 900 px side by side; once so, back in one column only at 876 px or less
+        var width = availableSize.Width;
+        var wide = _alwaysSideBySide
+            || (!double.IsInfinity(width) && width > (_sideBySide == true ? NarrowBackWidth : SideBySideWidth));
         if (_sideBySide != wide)
         {
             // built on the first measure, and again only when the width crosses the line
@@ -88,18 +148,22 @@ internal sealed class DiffView : Panel
             Children.Insert(0, _content);
         }
 
-        _content!.Measure(new Size(availableSize.Width, double.PositiveInfinity));
+        _content!.Measure(new Size(width, double.PositiveInfinity));
         _fade.Measure(availableSize);
-        var height = _content.DesiredSize.Height + BottomSpace;
-        IsCut = !_whole && height > MostHeight;
+        // the extension's: the lines and 20 px, 200 px at most, faded only when the lines alone are taller than that
+        var lines = _content.DesiredSize.Height;
+        IsCut = !_whole && lines > MostHeight;
         PseudoClasses.Set(":cut", IsCut);
-        return new Size(_content.DesiredSize.Width, IsCut ? MostHeight : height);
+        var height = _whole ? lines + BottomSpace : Math.Min(MostHeight, lines + BottomSpace);
+        _expand?.Measure(new Size(width, height));
+        return new Size(_content.DesiredSize.Width, height);
     }
 
     protected override Size ArrangeOverride(Size finalSize)
     {
         _content?.Arrange(new Rect(0, 0, finalSize.Width, _content.DesiredSize.Height));
         _fade.Arrange(new Rect(0, finalSize.Height - 30, finalSize.Width, 30));
+        _expand?.Arrange(new Rect(finalSize));
         return finalSize;
     }
 

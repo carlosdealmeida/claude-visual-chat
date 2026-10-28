@@ -51,6 +51,9 @@ public sealed record ChatStrings
         EditAddedRemoved = "Adicionou {0}, removeu {1}",
         EditFailed = "A edição falhou",
         WriteFailed = "A gravação falhou",
+        WriteSucceeded = "A gravação deu certo",
+        ClickToExpand = "Clique para ampliar",
+        DiffViewTitle = "Comparação",
         OneLine = "1 linha",
         Lines = "{0} linhas",
         ReadLines = "(linhas {0}-{1})",
@@ -317,6 +320,15 @@ public sealed record ChatStrings
 
     /// <summary>Under a write that failed.</summary>
     public string WriteFailed { get; init; } = "Write failed";
+
+    /// <summary>Under a write whose content is not a text (it is shown as JSON).</summary>
+    public string WriteSucceeded { get; init; } = "Write succeeded";
+
+    /// <summary>The pill over a diff in the list, under the pointer, and what a screen reader tells on it: a click opens the Diff View.</summary>
+    public string ClickToExpand { get; init; } = "Click to expand";
+
+    /// <summary>The title of the Diff View when the call names no file.</summary>
+    public string DiffViewTitle { get; init; } = "Diff View";
 
     /// <summary>A count of one line.</summary>
     public string OneLine { get; init; } = "1 line";

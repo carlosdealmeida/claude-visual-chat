@@ -24,7 +24,9 @@ namespace ClaudeVisualChat.Controls;
 /// approved, stays after a refusal, and Esc or its × closes it (the first Esc: only an Esc with the card on top is the card's "No");
 /// the plan's row in the timeline opens it again. A passage selected in it offers "Add Comment", which opens a box over the passage
 /// for the comment (Esc closes the box first); with comments, the card's one answer sends them as feedback. The panels and the Agent
-/// map opened over the document come over it, and close before it. What the user does comes back as the
+/// map opened over the document come over it, and close before it. A click on a diff of the list (or Enter, or Space) opens the Diff
+/// View over everything but the image preview: the whole change, side by side, under the file's whole path; Esc, its × or a click on
+/// its backdrop closes it, and the keyboard goes back to where it was (a request that came meanwhile gets it then). What the user does comes back as the
 /// conversation's events. A key is marked handled only when the view acts on it, so the app's own shortcuts keep
 /// working. Colors and fonts come from the <c>ClaudeChat.*</c> resources, which can be redefined in
 /// <see cref="StyledElement.Resources"/>; the default colors are those of VS Code's "Dark 2026" theme, and
@@ -108,6 +110,16 @@ public partial class ClaudeChatView : UserControl
     internal static readonly StyledProperty<bool> IsWorkingProperty =
         AvaloniaProperty.Register<ClaudeChatView, bool>("IsWorking", inherits: true);
 
+    /// <summary>
+    /// True while the view is <see cref="NarrowWidth"/> px wide or less; inherited, so the rows of Edit and Write leave out their box
+    /// there on the desktop, like the extension's (the touch layout keeps it).
+    /// </summary>
+    internal static readonly StyledProperty<bool> IsNarrowProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>("IsNarrow", inherits: true);
+
+    /// <summary>At this width or less the view is narrow (the extension's <c>max-width: 500px</c>).</summary>
+    internal const double NarrowWidth = 500;
+
     /// <summary>How close to the end (in pixels) still counts as being at the end.</summary>
     private const double EndTolerance = 4;
 
@@ -119,6 +131,9 @@ public partial class ClaudeChatView : UserControl
     private ChatConversation? _tracked;
     private bool _attached;
     private bool _isSheetOpen;
+
+    /// <summary>A request came while the Diff View covered the view and would have taken the keyboard: it gets it when that closes.</summary>
+    private bool _keyboardOwed;
 
     /// <summary>The list's vertical scroll bar, from the scroll viewer's template (the theme's).</summary>
     private ScrollBar? _verticalBar;
@@ -149,6 +164,13 @@ public partial class ClaudeChatView : UserControl
         AddSheet.CommandsRequested += (_, _) => Composer.OpenCommands();
         // a request that came while the preview was open was waiting for the keyboard
         Preview.Closed += (_, _) => GiveBackKeyboard();
+        // the Diff View gives the keyboard back to where it was; a request that came meanwhile, or a place that went, gets it as above
+        DiffViewer.Closed += (_, _) =>
+        {
+            var owed = _keyboardOwed;
+            _keyboardOwed = false;
+            if (_attached && ((owed && Prompt.Request != null) || !DiffViewer.GaveFocusBack)) GiveBackKeyboard();
+        };
         ContextPanel.FocusReleased += (_, _) => GiveBackKeyboard();
         UsagePanel.FocusReleased += (_, _) => GiveBackKeyboard();
         AgentMap.FocusReleased += (_, _) => GiveBackKeyboard();
@@ -262,7 +284,7 @@ public partial class ClaudeChatView : UserControl
     /// (Android's), which does not arrive as Esc.
     /// </summary>
     /// <remarks>
-    /// One layer per call, the top-most first: the image preview; a menu of the reply box (the commands or the model); a sheet
+    /// One layer per call, the top-most first: the image preview; the Diff View; a menu of the reply box (the commands or the model); a sheet
     /// of the touch layout, the usage sheet before the others, and an inner page of it going back to the first before the sheet
     /// closes; the box where the user writes a comment on the plan; an agent's card in the Agent map, which goes back to the map; the
     /// panel that is open (the Agent map, or the desktop's <c>/context</c> and <c>/usage</c>); the document of a plan over the list;
@@ -274,6 +296,11 @@ public partial class ClaudeChatView : UserControl
         if (Preview.IsVisible)
         {
             Preview.Hide();
+            return true;
+        }
+        if (DiffViewer.IsOpen)
+        {
+            DiffViewer.Hide();
             return true;
         }
         if (Composer.HasOpenPopup)
@@ -320,6 +347,7 @@ public partial class ClaudeChatView : UserControl
             ModelSheet.Conversation = Conversation; // another conversation closes the sheets
             AddSheet.Conversation = Conversation;
             UsageSheet.Conversation = Conversation; // and the usage sheet follows the new one's panel
+            DiffViewer.Hide(); // its call was the other conversation's
             Preview.Hide(); // its image was the other conversation's
             if (_attached) Track(Conversation);
         }
@@ -357,6 +385,12 @@ public partial class ClaudeChatView : UserControl
         else if (change.Property == UsageSheetContentProperty)
         {
             UsageSheet.HostContent = UsageSheetContent;
+        }
+        else if (change.Property == BoundsProperty)
+        {
+            // not before the first layout, when the view has no width yet: the rows would drop their boxes and draw them again
+            var width = Bounds.Width;
+            if (width > 0) SetValue(IsNarrowProperty, width <= NarrowWidth);
         }
         else if (change.Property == LayoutProperty)
         {
@@ -480,12 +514,19 @@ public partial class ClaudeChatView : UserControl
     /// <summary>
     /// A new request takes the keyboard only when the reply box has nothing to send (no text, no image) and the focus
     /// is in the view or nowhere, so a number typed in the reply box, or elsewhere in the app, never answers it; never
-    /// while an image preview or the Agent map covers the view (it gets the keyboard when that closes). While the prompt has the
-    /// keyboard, the next request keeps it; when none is left, the reply box gets it back, except in the touch layout, where the
+    /// while an image preview, the Diff View or the Agent map covers the view (it gets the keyboard when that closes). While the prompt
+    /// has the keyboard, the next request keeps it; when none is left, the reply box gets it back, except in the touch layout, where the
     /// keyboard goes nowhere (the reply box with the keyboard is the soft keyboard coming up after every answer).
     /// </summary>
     private void OnPromptRequestChanged(bool hadFocus)
     {
+        if (DiffViewer.IsOpen)
+        {
+            // the Diff View has the keyboard (the user opened it from the list, in the view): the request gets it when it closes, as
+            // it would have now, unless the reply box has something to send
+            _keyboardOwed = Prompt.Request != null && (hadFocus || Composer.HasNothingToSend);
+            return;
+        }
         if (Preview.IsVisible || AgentMap.IsVisible) return;
         if (Prompt.Request != null)
         {
@@ -507,6 +548,8 @@ public partial class ClaudeChatView : UserControl
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         if (Prompt.IsHeld(e.Key)) e.Handled = true;
+        // Esc with the Diff View open closes it and only it, wherever the keyboard is: it is over everything but the preview
+        else if (IsDiffEsc(e)) CloseDiff(e);
         // Esc with the comment box open closes it and only it (it is over the panels and the document), unless a menu, a sheet or the
         // preview is over it
         else if (IsCommentEsc(e)) CloseComment(e);
@@ -554,6 +597,17 @@ public partial class ClaudeChatView : UserControl
         !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && PlanDocument.IsOpen
         && !Preview.IsVisible && !Composer.HasOpenPopup && !IsSheetOpen;
 
+    private bool IsDiffEsc(KeyEventArgs e) =>
+        !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && DiffViewer.IsOpen && !Preview.IsVisible;
+
+    /// <summary>Esc on the Diff View closes it; held, it goes no further (the card under it would take it for its "No").</summary>
+    private void CloseDiff(KeyEventArgs e)
+    {
+        e.Handled = true;
+        Prompt.Hold(e.Key);
+        DiffViewer.Hide();
+    }
+
     private bool IsCommentEsc(KeyEventArgs e) =>
         !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && PlanComment.IsOpen
         && !Preview.IsVisible && !Composer.HasOpenPopup && !IsSheetOpen;
@@ -600,6 +654,18 @@ public partial class ClaudeChatView : UserControl
         var plan = current?.Request?.ToolUseId is { Length: > 0 } id && id == call.ToolUseId ? current : PlanReview.ReadOnly(call.Input);
         if (plan == null) return false;
         PlanDocument.Show(plan);
+        return true;
+    }
+
+    /// <summary>
+    /// Opens the Diff View over the whole view on the diff of <paramref name="call"/>, whole and side by side; also in a read-only
+    /// view. False, and nothing opens, when the call has no diff to show.
+    /// </summary>
+    internal bool ShowDiff(ToolCallItem call)
+    {
+        if (call == null || (call.Diff is not { Count: > 0 } && ToolPresentation.Diff(call.Name, call.Input, maxLinesPerSide: null) is not { Count: > 0 }))
+            return false;
+        DiffViewer.Show(call);
         return true;
     }
 

@@ -222,6 +222,8 @@ public class FidelityTests
         ("ClaudeChat.ModalOverlay", "#BF000000"),   // the Agent map's backdrop (--app-modal-background)
         ("ClaudeChat.AgentRunning", "#89D185"),     // an agent at work: the status-busy green
         ("ClaudeChat.ContextRingFill", "#C6613F"),  // the context ring: the send button's clay
+        ("ClaudeChat.DiffExpandHover", "#0D000000"),           // the layer over a diff in the list, under the pointer
+        ("ClaudeChat.DiffExpandPillHoverBorder", "#4DFFFFFF"), // "Click to expand" under the pointer
     };
 
     [AvaloniaFact]
@@ -233,6 +235,7 @@ public class FidelityTests
         foreach (var (key, color) in OwnColors) Assert.True(Color.Parse(color) == ColorOf(view, key), key + " is " + ColorOf(view, key));
         Assert.Equal(Color.Parse("#191A1B"), Assert.IsAssignableFrom<ISolidColorBrush>(Assert.IsAssignableFrom<Border>(view.Content).Background).Color);
         Assert.Equal(BoxShadows.Parse("0 0 0 3 #153994BC"), Resource(view, "ClaudeChat.ComposerFocusShadowPlan"));
+        Assert.Equal(BoxShadows.Parse("0 4 12 0 #0D000000"), Resource(view, "ClaudeChat.DiffViewShadow")); // the Diff View's dialog
         window.Close();
     }
 

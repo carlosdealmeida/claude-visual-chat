@@ -23,7 +23,10 @@ namespace ClaudeVisualChat.Controls;
 /// of a running call blinks only while the conversation works. Every text in the box is cut at 60 px with a fade; a long one
 /// (<see cref="ExpandableChars"/>, <see cref="ExpandableLines"/>) opens whole in place with a click, Enter or Space, and a
 /// huge one stops at <see cref="MaxExpandedChars"/>, so a huge result never slows the list. A refused command, edit or write
-/// says what the user typed on a line of its own.
+/// says what the user typed on a line of its own. An edit reads its net change ("Added 2 lines", "Removed 1 line", "Modified"), a
+/// write its lines ("Write succeeded" for a content that is not a text); a click on the diff, Enter or Space opens the Diff View over
+/// the whole view. In a desktop panel narrower than <see cref="ClaudeChatView.NarrowWidth"/> the box of an edit or a write goes,
+/// like the extension's; the touch layout keeps it.
 /// A plan (<c>ExitPlanMode</c>) reads "Claude’s Plan" and its file, then whether the user approved it, with no box; a click on
 /// its header opens the plan again in the document over the list.
 /// In the touch layout (pseudo-class <c>:touch</c>) the call is a block with a frame and its dot is the header's first
@@ -69,6 +72,12 @@ internal partial class ToolCallView : UserControl
 
     private static readonly StyledProperty<ChatLayout> LayoutProperty =
         ClaudeChatView.LayoutProperty.AddOwner<ToolCallView>();
+
+    private static readonly StyledProperty<bool> IsNarrowProperty =
+        ClaudeChatView.IsNarrowProperty.AddOwner<ToolCallView>();
+
+    /// <summary>The key of the layer over the diff, among the box's focusable parts.</summary>
+    private const string DiffKey = "diff";
 
     private ToolCallItem? _item;
     private bool _attached;
@@ -123,7 +132,15 @@ internal partial class ToolCallView : UserControl
         base.OnPropertyChanged(change);
         if (change.Property == StringsProperty) Refresh();
         else if (change.Property == IsWorkingProperty) UpdateStatus();
-        else if (change.Property == LayoutProperty) UpdateTouch();
+        else if (change.Property == LayoutProperty)
+        {
+            UpdateTouch();
+            if (_item != null && HidesBoxWhenNarrow(_item.Name)) UpdateBody(); // the phone keeps the box of an edit
+        }
+        else if (change.Property == IsNarrowProperty && _item != null && HidesBoxWhenNarrow(_item.Name))
+        {
+            UpdateBody();
+        }
     }
 
     /// <summary>
@@ -299,10 +316,16 @@ internal partial class ToolCallView : UserControl
             var result = item.FullResultText ?? item.ResultText;
             var output = showOutput && !string.IsNullOrEmpty(result);
 
-            if (name == "Write" && WrittenText(item) is { } written)
+            // the box of an edit or a write goes in a panel under 500 px, like the extension's; the phone keeps it
+            var boxHidden = HidesBoxWhenNarrow(name) && GetValue(IsNarrowProperty) && GetValue(LayoutProperty) != ChatLayout.Touch;
+            if (boxHidden && (name == "Write" || hasDiff))
+            {
+                // nothing: the lines above it say what it did
+            }
+            else if (name == "Write" && WrittenText(item) is { } written)
                 Body.Children.Add(ToolBody(TextRow(item, written, input: true, strings)));
             else if (hasDiff)
-                Body.Children.Add(DiffBox(item.Diff!, strings));
+                Body.Children.Add(ToolBody(ListDiff(item, strings)));
             else if (hasTodos)
                 Body.Children.Add(TodoList(item.Todos!));
 
@@ -430,25 +453,39 @@ internal partial class ToolCallView : UserControl
         else item.IsOutputExpanded = !item.IsOutputExpanded;
     }
 
-    /// <summary>The key (IN or OUT) of the text that has the focus, or null when none of the box's texts does.</summary>
+    /// <summary>
+    /// The diff of the list, 200 px at most, under a layer that opens the Diff View over the whole view with the whole change; the
+    /// layer keeps the focus across a redraw, like a text of the box.
+    /// </summary>
+    private DiffView ListDiff(ToolCallItem item, ChatStrings strings)
+    {
+        var diff = new DiffView(item.Diff!, strings);
+        diff.ExpandRequested += (_, _) => this.FindAncestorOfType<ClaudeChatView>()?.ShowDiff(item);
+        var layer = diff.ExpandControl!;
+        layer.Tag = DiffKey;
+        layer.GotFocus += (_, e) => _focusMethod = e.NavigationMethod;
+        return diff;
+    }
+
+    /// <summary>The key (IN, OUT or the diff) of the part of the box that has the focus, or null when none of them does.</summary>
     private string? FocusedContent()
     {
         if (Body.Children.Count == 0 || TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not Visual focus
             || !Body.IsVisualAncestorOf(focus)) return null;
         foreach (var content in Body.GetVisualDescendants().OfType<Border>())
         {
-            if (content.Tag is string key && content.Classes.Contains("expandable") && (ReferenceEquals(content, focus) || content.IsVisualAncestorOf(focus)))
+            if (content.Tag is string key && content.Focusable && (ReferenceEquals(content, focus) || content.IsVisualAncestorOf(focus)))
                 return key;
         }
         return null;
     }
 
-    /// <summary>The box was drawn again under the keyboard (or the finger): the same text keeps the focus.</summary>
+    /// <summary>The box was drawn again under the keyboard (or the finger): the same part keeps the focus.</summary>
     private void Refocus(string key)
     {
         foreach (var content in Body.GetVisualDescendants().OfType<Border>())
         {
-            if (Equals(content.Tag, key) && content.Classes.Contains("expandable"))
+            if (Equals(content.Tag, key) && content.Focusable)
             {
                 content.Focus(_focusMethod);
                 return;
@@ -471,7 +508,9 @@ internal partial class ToolCallView : UserControl
                 return ToolPresentation.EditLineChange(item.Name, item.Input) is { } change ? strings.FormatEditChange(change) : null;
             case "Write":
                 if (failed) return strings.WriteFailed;
-                return ToolPresentation.WriteLineCount(item.Name, item.Input) is { } lines ? strings.FormatLines(lines) : null;
+                if (ToolPresentation.WriteLineCount(item.Name, item.Input) is { } lines) return strings.FormatLines(lines);
+                // a content that is not a text, which the box shows as JSON
+                return NonTextContent(item.Input) != null ? strings.WriteSucceeded : null;
             case PlanTool:
                 // nothing while it waits; a refusal comes back as an error (or a rejection): the claude stays in plan mode
                 return item.Status switch
@@ -494,6 +533,15 @@ internal partial class ToolCallView : UserControl
 
     private static bool IsCommand(string toolName) => toolName == "Bash" || toolName == "PowerShell";
 
+    /// <summary>The tools whose box goes in a desktop panel narrower than <see cref="ClaudeChatView.NarrowWidth"/>: Edit and Write.</summary>
+    private static bool HidesBoxWhenNarrow(string toolName) => toolName == "Edit" || toolName == "Write";
+
+    /// <summary>The content of a Write that is not a text (the claude sent an object, say), or null.</summary>
+    private static JsonElement? NonTextContent(JsonElement input) =>
+        input.ValueKind == JsonValueKind.Object && input.TryGetProperty("content", out var content) && content.ValueKind != JsonValueKind.String
+            ? content
+            : (JsonElement?)null;
+
     /// <summary>The tools whose refusal says what the user typed on a line of its own: Edit, Write and the commands.</summary>
     private static bool TellsReason(string toolName) => toolName == "Edit" || toolName == "Write" || IsCommand(toolName);
 
@@ -504,8 +552,8 @@ internal partial class ToolCallView : UserControl
         && value.ValueKind == JsonValueKind.True;
 
     /// <summary>
-    /// The diff in the tool's box, cut at 200 px like the extension's; the permission prompt draws it the same way,
-    /// <paramref name="whole"/>, inside its own scrolling area.
+    /// A diff in a tool's box, cut at 200 px like the extension's; the permission prompt draws it <paramref name="whole"/>, inside
+    /// its own scrolling area, with no 200 px cut and no layer to open the Diff View (the list's own goes through <see cref="ListDiff"/>).
     /// </summary>
     internal static Control DiffBox(IReadOnlyList<DiffLine> diff, ChatStrings strings, bool whole = false) =>
         ToolBody(new DiffView(diff, strings, whole));
@@ -542,11 +590,20 @@ internal partial class ToolCallView : UserControl
         return stack;
     }
 
-    /// <summary>The file written, whole; the box cuts it. Without the input to read (an item built by hand), the diff's added lines.</summary>
+    /// <summary>
+    /// The file written, whole; the box cuts it. A content that is not a text, as indented JSON, like the extension's. Without the
+    /// input to read (an item built by hand), the diff's added lines.
+    /// </summary>
     private static string? WrittenText(ToolCallItem item)
     {
         var content = Str(item.Input, "content");
         if (content != null) return content;
+        if (NonTextContent(item.Input) is { } other)
+            return JsonSerializer.Serialize(other, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // shown, not sent: accents stay as they are
+            });
         if (item.Diff == null || item.Diff.Count == 0) return null;
         var lines = new List<string>();
         foreach (var line in item.Diff)

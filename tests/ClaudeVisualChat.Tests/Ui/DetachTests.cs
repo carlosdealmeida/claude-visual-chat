@@ -505,6 +505,38 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void The_diff_view_comes_back_after_the_view_returns()
+    {
+        var c = Conversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Edit", J("{\"file_path\":\"C:/work/src/a.cs\",\"old_string\":\"x\",\"new_string\":\"y\"}"))));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        var m = new Mounted(c);
+        var panel = m.View.GetVisualDescendants().OfType<DiffViewPanel>().Single();
+        var inList = ItemHandlers(tool);                                    // the row's
+        Assert.True(m.View.ShowDiff(tool));
+        UiHelpers.Pump();
+        Assert.True(panel.IsOpen);
+        Assert.Equal(inList + 1, ItemHandlers(tool));                       // the Diff View follows its call
+
+        m.Out();                                                           // taken out with the Diff View open: nothing throws
+        Assert.Equal(0, ItemHandlers(tool));                               // and the row and the Diff View let go of the call
+        tool.Input = J("{\"file_path\":\"C:/work/src/b.cs\",\"old_string\":\"x\",\"new_string\":\"z\"}"); // changed while out
+        m.In();                                                            // back: still open, drawn as the call is now
+        Assert.True(panel.IsOpen);
+        Assert.Equal(inList + 1, ItemHandlers(tool));
+        Assert.Contains("C:/work/src/b.cs", UiHelpers.Texts(panel));
+        Assert.Contains("z", UiHelpers.Texts(panel));
+        var close = UiHelpers.ButtonWithText(panel, m.View.Strings.Close);
+        Assert.True(close.IsEffectivelyVisible);
+
+        UiHelpers.DrawFrames();                                            // the window hit-tests the last frame drawn
+        UiHelpers.Click(m.Window, close);                                  // and it closes as ever
+        Assert.False(panel.IsOpen);
+        Assert.Equal(inList, ItemHandlers(tool));
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_request_that_came_while_out_shows_when_back()
     {
         var m = new Mounted(Conversation());
