@@ -78,7 +78,7 @@ namespace ClaudeVisualChat.Tests
                 new[]
                 {
                     "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model",
-                    "image", "commands", "effort",
+                    "image", "commands", "effort", "plan", "plan-auto", "plan-feedback", "queued", "hook-blocked",
                 },
                 FixtureFiles.Scenarios);
             foreach (var scenario in FixtureFiles.Scenarios)

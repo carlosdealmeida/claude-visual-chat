@@ -105,5 +105,69 @@
     ],
     "respostas": [],
     "espera": ["result_success", "set_model_ok"]
+  },
+  {
+    "id": "plan",
+    "setup": {"notes.md": "# Notes\n\nFirst point\nSecond point\nThird point\n"},
+    "passos": [
+      {"modo": "plan"},
+      {"enviar": "Plan a small change: add a line 'Fourth point' at the end of notes.md. Keep the plan to three short steps."}
+    ],
+    "respostas": ["modo:acceptEdits+allow", "allow"],
+    "repetir_ultima": true,
+    "espera": ["pedido:ExitPlanMode", "result_success"]
+  },
+  {
+    "id": "plan-auto",
+    "setup": {"notes.md": "# Notes\n\nFirst point\nSecond point\nThird point\n"},
+    "passos": [
+      {"modo": "plan"},
+      {"enviar": "Plan a small change: add a line 'Fourth point' at the end of notes.md. Keep the plan to three short steps."}
+    ],
+    "respostas": ["modo:auto+allow", "allow"],
+    "repetir_ultima": true,
+    "espera": ["pedido:ExitPlanMode"]
+  },
+  {
+    "id": "plan-feedback",
+    "setup": {"notes.md": "# Notes\n\nFirst point\nSecond point\nThird point\n"},
+    "passos": [
+      {"modo": "plan"},
+      {"enviar": "Plan a small change: add a table of the three points at the end of notes.md. Keep the plan to three short steps."}
+    ],
+    "respostas": ["deny:Use a list instead of a table.", "allow"],
+    "repetir_ultima": true,
+    "espera": ["pedido:ExitPlanMode", "recusado_e_resposta"]
+  },
+  {
+    "id": "queued",
+    "setup": {},
+    "passos": [
+      {"enviar": "Run the shell command 'sleep 5 && echo done > done.txt' and then say done in one word.", "sem_esperar": true},
+      {"enviar": "After that, say the word second in one line."}
+    ],
+    "respostas": ["allow"],
+    "repetir_ultima": true,
+    "espera": ["result_success"]
+  },
+  {
+    "id": "subagent-permission",
+    "setup": {"a.txt": "The cat sat on the mat.\n"},
+    "passos": [
+      {"enviar": "Use the Agent tool to start a subagent that runs the shell command 'echo hello from the subagent > hello.txt' and then reports that it is done. Then reply with just that."}
+    ],
+    "respostas": ["allow"],
+    "repetir_ultima": true,
+    "espera": ["subagente", "pedido:Bash"]
+  },
+  {
+    "id": "hook-blocked",
+    "setup": {".claude/settings.json": "{\n  \"hooks\": {\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"grep -q forbidden && { echo 'Blocked by the demo hook: that word is not allowed.' >&2; exit 2; }; exit 0\"\n          }\n        ]\n      }\n    ]\n  }\n}\n"},
+    "passos": [
+      {"enviar": "Say hi in one line."},
+      {"enviar": "Now say the word forbidden in one line."}
+    ],
+    "respostas": [],
+    "espera": ["result_success"]
   }
 ]
