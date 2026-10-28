@@ -185,6 +185,25 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_tool_model_api_exists()
+    {
+        // the whole result, the typed reason of a refusal and the two interruption lines (0.6.0)
+        Assert.Equal(typeof(string), typeof(ToolCallItem).GetProperty("FullResultText")?.PropertyType);
+        Assert.Equal(typeof(string), typeof(ToolCallItem).GetProperty("RejectionReason")?.PropertyType);
+        Assert.NotNull(typeof(ToolCallItem).GetProperty("ResultText")); // the short form stays
+        Assert.NotNull(typeof(ToolCallItem).GetProperty("HiddenResultLines"));
+        var max = typeof(ToolPresentation).GetField("MaxKeptResultChars");
+        Assert.Equal(500_000, max!.GetRawConstantValue());
+        Assert.Contains("ToolInterrupted", System.Enum.GetNames(typeof(NoticeKind)));
+        Assert.Equal(new[] { "Interrupted", "Compacted", "ApiRetry", "TurnFailed", "ToolInterrupted" }, System.Enum.GetNames(typeof(NoticeKind)));
+        Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty("ToolInterrupted")?.PropertyType);
+        Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty("ToolRejected")?.PropertyType); // public, so it stays
+        var ansi = typeof(ClaudeVisualChat.Protocol.AnsiText);
+        Assert.True(ansi.IsAbstract && ansi.IsSealed && ansi.IsPublic);
+        Assert.Equal(typeof(string), ansi.GetMethod("Strip", new[] { typeof(string) })?.ReturnType);
+    }
+
+    [Fact]
     public void The_plan_comment_api_exists()
     {
         // the comments on the plan (0.6.0): their texts; the controls and the comment itself stay internal

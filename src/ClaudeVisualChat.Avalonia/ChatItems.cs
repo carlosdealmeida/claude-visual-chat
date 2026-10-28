@@ -131,6 +131,8 @@ public sealed class ToolCallItem : ChatItem
     private JsonElement _input;
     private ToolStatus _status;
     private string? _resultText;
+    private string? _fullResultText;
+    private string? _rejectionReason;
     private int _hiddenResultLines;
     private IReadOnlyList<DiffLine>? _diff;
     private IReadOnlyList<TodoEntry>? _todos;
@@ -173,6 +175,26 @@ public sealed class ToolCallItem : ChatItem
     {
         get => _resultText;
         set => SetField(ref _resultText, value);
+    }
+
+    /// <summary>
+    /// The whole result, up to <see cref="ToolPresentation.MaxKeptResultChars"/> characters; for Bash, PowerShell and
+    /// TaskOutput without its ANSI escape sequences. Null until the result arrives.
+    /// </summary>
+    public string? FullResultText
+    {
+        get => _fullResultText;
+        internal set => SetField(ref _fullResultText, value);
+    }
+
+    /// <summary>
+    /// What the user typed when they refused the call: the result's text when the claude marked it as refused by the user
+    /// and the text is not its standard sentence. Null for a refusal without a reason, and for a call that was not refused.
+    /// </summary>
+    public string? RejectionReason
+    {
+        get => _rejectionReason;
+        internal set => SetField(ref _rejectionReason, value);
     }
 
     /// <summary>Result lines left out of <see cref="ResultText"/>.</summary>
@@ -230,10 +252,13 @@ public sealed class TurnFooterItem : ChatItem
 /// <summary>What a <see cref="NoticeItem"/> tells.</summary>
 public enum NoticeKind
 {
+    /// <summary>The user stopped the claude.</summary>
     Interrupted,
     Compacted,
     ApiRetry,
     TurnFailed,
+    /// <summary>The user stopped the claude while it used a tool.</summary>
+    ToolInterrupted,
 }
 
 /// <summary>A one-line notice; the view picks the text for <see cref="Kind"/>.</summary>

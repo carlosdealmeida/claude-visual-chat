@@ -249,7 +249,7 @@ public class ChatConversationTests
         }
 
         Assert.True(sawRequest);
-        Assert.Contains(c.Items, i => i is NoticeItem { Kind: NoticeKind.Interrupted });
+        Assert.Contains(c.Items, i => i is NoticeItem { Kind: NoticeKind.ToolInterrupted });
         Assert.Empty(c.PendingPermissions);
         Assert.DoesNotContain(c.Items, i => i is NoticeItem { Kind: NoticeKind.TurnFailed });
         Assert.Equal(ToolStatus.Rejected, Assert.Single(c.Items.OfType<ToolCallItem>()).Status);
@@ -471,6 +471,170 @@ public class ChatConversationTests
         Assert.Equal(ToolStatus.Failed, tools[5].Status);   // an unknown kind keeps the error rule
     }
 
+    private static ToolCallItem StartTool(ChatConversation c, string id, string name, string input = "{}")
+    {
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock(id, name, J(input))));
+        return c.Items.OfType<ToolCallItem>().Single(t => t.ToolUseId == id);
+    }
+
+    [Fact]
+    public void The_full_result_is_kept_up_to_the_cap()
+    {
+        var c = new ChatConversation();
+        var tool = StartTool(c, "t1", "Bash", "{\"command\":\"seq 30\"}");
+        var thirty = string.Join("\n", Enumerable.Range(1, 30));
+
+        c.Apply(ToolResult("t1", thirty));
+
+        Assert.Equal(30, tool.FullResultText!.Split('\n').Length);
+        Assert.Equal(thirty, tool.FullResultText);
+        Assert.Equal(ToolPresentation.OutputLines, tool.ResultText!.Split('\n').Length); // the short form stays, for compatibility
+        Assert.Equal(30 - ToolPresentation.OutputLines, tool.HiddenResultLines);
+
+        Assert.Equal(500_000, ToolPresentation.MaxKeptResultChars);
+        var huge = StartTool(c, "t2", "Grep");
+        c.Apply(ToolResult("t2", new string('x', ToolPresentation.MaxKeptResultChars + 1000)));
+        Assert.Equal(ToolPresentation.MaxKeptResultChars, huge.FullResultText!.Length);
+
+        var edge = StartTool(c, "t3", "Grep");
+        c.Apply(ToolResult("t3", new string('y', ToolPresentation.MaxKeptResultChars)));
+        Assert.Equal(ToolPresentation.MaxKeptResultChars, edge.FullResultText!.Length);
+
+        var pending = StartTool(c, "t4", "Grep");
+        Assert.Null(pending.FullResultText); // nothing before the result
+    }
+
+    [Fact]
+    public void A_result_that_is_a_list_of_tool_references_has_an_empty_full_result()
+    {
+        // ToolSearch answers with [{"type":"tool_reference",...}], not with text
+        var c = new ChatConversation();
+        var tool = StartTool(c, "t1", "ToolSearch");
+
+        c.AppendLine("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t1\","
+            + "\"content\":[{\"type\":\"tool_reference\",\"tool_name\":\"ExitPlanMode\"}]}]},\"parent_tool_use_id\":null}");
+
+        Assert.Equal(ToolStatus.Succeeded, tool.Status);
+        Assert.Equal("", tool.FullResultText);
+    }
+
+    [Theory]
+    [InlineData("Bash", true)]
+    [InlineData("PowerShell", true)]
+    [InlineData("TaskOutput", true)]
+    [InlineData("Read", false)]
+    [InlineData("Grep", false)]
+    public void Only_command_output_loses_its_ansi_codes(string tool, bool stripped)
+    {
+        var c = new ChatConversation();
+        var item = StartTool(c, "t1", tool);
+        var colored = "\u001b[32mok\u001b[0m done";
+
+        c.Apply(ToolResult("t1", colored));
+
+        Assert.Equal(stripped ? "ok done" : colored, item.FullResultText);
+    }
+
+    [Fact]
+    public void The_cap_counts_the_text_after_the_ansi_codes_are_gone()
+    {
+        var c = new ChatConversation();
+        var item = StartTool(c, "t1", "Bash");
+        var line = "\u001b[31m" + new string('z', 10) + "\u001b[0m\n"; // 11 characters of text, 20 with the codes
+        var text = string.Concat(Enumerable.Repeat(line, 60_000));    // 660,000 characters of text
+
+        c.Apply(ToolResult("t1", text));
+
+        Assert.Equal(ToolPresentation.MaxKeptResultChars, item.FullResultText!.Length);
+        Assert.True(item.FullResultText.IndexOf('\u001b') < 0); // (xunit's DoesNotContain(string) is culture-aware, and ESC is ignorable)
+    }
+
+    [Fact]
+    public void A_refusal_with_a_typed_reason_keeps_the_reason()
+    {
+        var write = Assert.Single(Play("denied").Items.OfType<ToolCallItem>());
+        Assert.Equal(ToolStatus.Rejected, write.Status);
+        Assert.Equal("Do not create files, just explain.", write.RejectionReason);
+        Assert.Equal("Do not create files, just explain.", write.FullResultText);
+
+        var fromFile = Assert.Single(Load("denied").Items.OfType<ToolCallItem>());
+        Assert.Equal("Do not create files, just explain.", fromFile.RejectionReason); // the session file says it with toolDenialKind
+    }
+
+    [Fact]
+    public void A_refusal_with_the_standard_sentence_has_no_reason()
+    {
+        var tool = Assert.Single(Play("interrupted").Items.OfType<ToolCallItem>());
+        Assert.Equal(ToolStatus.Rejected, tool.Status);
+        Assert.Null(tool.RejectionReason);
+        Assert.StartsWith("The user doesn't want to proceed", tool.FullResultText);
+
+        var c = new ChatConversation();
+        var plain = StartTool(c, "t1", "Write");
+        c.Apply(new UserBlock(null, new ToolResultBlock("t1", "The user doesn't want to proceed with this tool use.", true) { NonExecutionKind = "user-rejected" },
+            null, false, false));
+        Assert.Equal(ToolStatus.Rejected, plain.Status);
+        Assert.Null(plain.RejectionReason);
+    }
+
+    [Fact]
+    public void Only_a_refusal_has_a_reason()
+    {
+        var c = new ChatConversation();
+        var failed = StartTool(c, "t1", "Bash");
+        var unknown = StartTool(c, "t2", "Bash");
+        var empty = StartTool(c, "t3", "Bash");
+        var legacy = StartTool(c, "t4", "Write");
+
+        c.Apply(ToolResult("t1", "exit code 1", isError: true));
+        c.Apply(new UserBlock(null, new ToolResultBlock("t2", "boom", true) { NonExecutionKind = "something-new" }, null, false, false));
+        c.Apply(new UserBlock(null, new ToolResultBlock("t3", "  ", true) { NonExecutionKind = "permission-rule" }, null, false, false));
+        c.Apply(new UserBlock(null, new ToolResultBlock("t4", "nope", true), J("\"User rejected tool use\""), false, false));
+
+        Assert.Null(failed.RejectionReason);  // an error is not a refusal
+        Assert.Null(unknown.RejectionReason); // a kind the library does not know keeps the error rule
+        Assert.Null(empty.RejectionReason);   // a refusal with nothing typed
+        Assert.Null(legacy.RejectionReason);  // no meta says the user typed it
+    }
+
+    [Fact]
+    public void Tool_use_interrupted_text_becomes_a_tool_interrupted_notice()
+    {
+        var c = new ChatConversation();
+        c.Apply(new UserBlock(null, new TextContentBlock("[Request interrupted by user for tool use]"), null, false, false));
+        Assert.Equal(NoticeKind.ToolInterrupted, Assert.IsType<NoticeItem>(Assert.Single(c.Items)).Kind);
+
+        c.Apply(new UserBlock(null, new TextContentBlock("[Request interrupted by user]"), null, false, false));
+        Assert.Equal(NoticeKind.Interrupted, Assert.IsType<NoticeItem>(c.Items.Last()).Kind);
+
+        // only the two exact texts count: anything else is the user's message as written
+        c.Apply(new UserBlock(null, new TextContentBlock("[Request interrupted by user for something else]"), null, false, false));
+        Assert.Equal("[Request interrupted by user for something else]", Assert.IsType<UserMessageItem>(c.Items.Last()).Text);
+        Assert.Equal(3, c.Items.Count);
+    }
+
+    [Fact]
+    public void Either_interruption_text_marks_the_turn_as_interrupted()
+    {
+        var c = new ChatConversation();
+        StartTool(c, "t1", "Bash");
+        c.Apply(new UserBlock(null, new TextContentBlock("[Request interrupted by user for tool use]"), null, false, false));
+        c.Apply(new TurnCompleted("error_during_execution", true, 1, null, null, null));
+
+        Assert.DoesNotContain(c.Items, i => i is NoticeItem { Kind: NoticeKind.TurnFailed });
+        Assert.Equal(ToolStatus.Rejected, c.Items.OfType<ToolCallItem>().Single().Status);
+    }
+
+    [Theory]
+    [InlineData("stream")]
+    [InlineData("transcript")]
+    public void The_interrupted_recording_has_the_tool_interrupted_notice(string source)
+    {
+        var c = source == "stream" ? Play("interrupted") : Load("interrupted");
+        Assert.Contains(c.Items, i => i is NoticeItem { Kind: NoticeKind.ToolInterrupted });
+        Assert.DoesNotContain(c.Items, i => i is NoticeItem { Kind: NoticeKind.Interrupted });
+    }
+
     [Fact]
     public void Unknown_parent_goes_to_the_top_level_and_todos_are_filled()
     {
@@ -595,7 +759,7 @@ public class ChatConversationTests
             "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_h\",\"role\":\"assistant\",\"content\":[" +
             "{\"type\":\"tool_use\",\"id\":\"toolu_hist\",\"name\":\"Bash\",\"input\":{\"command\":\"ls\"}}]}}";
         c.LoadTranscript(FixtureFiles.TranscriptLines("interrupted").Append(unanswered));
-        Assert.Contains(c.Items, i => i is NoticeItem { Kind: NoticeKind.Interrupted });
+        Assert.Contains(c.Items, i => i is NoticeItem { Kind: NoticeKind.ToolInterrupted });
 
         c.Apply(new TurnCompleted("error_during_execution", true, null, null, null, null));
 

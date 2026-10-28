@@ -17,7 +17,8 @@ namespace ClaudeVisualChat;
 /// </summary>
 public sealed class ChatConversation : ChatObservableObject
 {
-    private const string InterruptedPrefix = "[Request interrupted";
+    private const string InterruptedText = "[Request interrupted by user]";
+    private const string ToolInterruptedText = "[Request interrupted by user for tool use]";
     private const string TaskNotificationPrefix = TaskNotificationText.Prefix;
     private const string AgentTaskType = "local_agent";
     private const string RejectedResultPrefix = "User rejected";
@@ -1125,7 +1126,27 @@ public sealed class ChatConversation : ChatObservableObject
         var cut = ToolPresentation.Truncate(result.Text, ToolPresentation.OutputLines);
         tool.ResultText = cut.Text;
         tool.HiddenResultLines = cut.HiddenLines;
+        tool.FullResultText = KeptResult(tool.Name, result.Text);
+        tool.RejectionReason = RefusalReason(result);
         tool.Status = ResultStatus(e, result);
+    }
+
+    /// <summary>The whole result for the item: without ANSI in a command's output, and cut at the cap.</summary>
+    private static string KeptResult(string toolName, string text)
+    {
+        if (toolName == "Bash" || toolName == "PowerShell" || toolName == "TaskOutput") text = AnsiText.Strip(text);
+        return text.Length > ToolPresentation.MaxKeptResultChars ? text.Substring(0, ToolPresentation.MaxKeptResultChars) : text;
+    }
+
+    /// <summary>
+    /// What the user typed when they refused a call. The claude says it never ran by the meta of the result; its text is the
+    /// typed text, unless the user typed none, and then it is the claude's own sentence.
+    /// </summary>
+    private static string? RefusalReason(ToolResultBlock result)
+    {
+        if (result.NonExecutionKind != "permission-rule" && result.NonExecutionKind != "user-rejected") return null;
+        if (result.Text.Trim().Length == 0 || result.Text.StartsWith(RejectedTextPrefix, StringComparison.Ordinal)) return null;
+        return result.Text;
     }
 
     private static ToolStatus ResultStatus(UserBlock e, ToolResultBlock result)
@@ -1155,10 +1176,11 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnUserText(UserBlock e, string text, IReadOnlyList<ChatImage>? images)
     {
-        if (text.StartsWith(InterruptedPrefix, StringComparison.Ordinal))
+        // only the claude's two exact texts are interruptions; any other text is the user's message as written
+        if (text == InterruptedText || text == ToolInterruptedText)
         {
             _interruptedThisTurn = true;
-            AddNotice(NoticeKind.Interrupted, e.ParentToolUseId);
+            AddNotice(text == InterruptedText ? NoticeKind.Interrupted : NoticeKind.ToolInterrupted, e.ParentToolUseId);
             return;
         }
         // a task notification is the claude telling itself that a background subagent finished: it ends the agent and

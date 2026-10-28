@@ -97,7 +97,7 @@
     <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DotFailed}" />
   </Style>
   <Style Selector="controls|ToolCallView:touch Ellipse.ClaudeChatToolDot.rejected">
-    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DotRejected}" />
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DotFailed}" />
   </Style>
   <!-- a tool still running blinks, once a second, like the timeline's dot -->
   <Style Selector="controls|ToolCallView:touch Ellipse.ClaudeChatToolDot.running">

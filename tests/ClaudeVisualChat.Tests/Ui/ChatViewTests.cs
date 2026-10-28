@@ -103,18 +103,18 @@ public class ChatViewTests
         var (view, window) = Open(c, ChatStrings.PortugueseBrazil);
 
         var texts = UiHelpers.Texts(view);
-        Assert.Contains("Interrompido por você", texts);
+        Assert.Contains("Interrompido", texts);
         Assert.Contains("Pensando", texts);
-        Assert.Contains("Recusado", texts);
+        Assert.DoesNotContain("Recusado", texts); // a refused tool says it with its dot, not with a word
 
         view.Strings = ChatStrings.English;
         UiHelpers.Pump();
 
         texts = UiHelpers.Texts(view);
-        Assert.Contains("Interrupted by the user", texts);
+        Assert.Contains("Interrupted", texts);
         Assert.Contains("Thinking", texts);
-        Assert.Contains("Rejected", texts);
-        Assert.DoesNotContain("Interrompido por você", texts);
+        Assert.DoesNotContain("Rejected", texts);
+        Assert.DoesNotContain("Interrompido", texts);
         window.Close();
     }
 
@@ -126,7 +126,8 @@ public class ChatViewTests
         var (view, window) = Open(c);
 
         var texts = UiHelpers.Texts(view);
-        Assert.Contains("Interrupted by the user", texts);
+        Assert.Contains("Interrupted", texts);
+        Assert.Contains("Tool interrupted", texts);
         Assert.Contains("Conversation compacted", texts);
         Assert.Contains("Retrying the API request…", texts);
         var failed = view.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "The turn ended with an error");
@@ -307,19 +308,104 @@ public class ChatViewTests
         Assert.Contains("boom", texts);
 
         texts = UiHelpers.Texts(ViewOf(view, rejected));
-        Assert.Contains("Rejected", texts);
+        Assert.DoesNotContain("Rejected", texts); // the extension never writes it
         Assert.DoesNotContain(texts, t => t.StartsWith("The user", StringComparison.Ordinal));
 
         // the extension's dot colors
         Assert.Same(Resource(view, "ClaudeChat.DotSucceeded"), DotFill(view, edit));
         Assert.Same(Resource(view, "ClaudeChat.Dot"), DotFill(view, todos));
         Assert.Same(Resource(view, "ClaudeChat.DotFailed"), DotFill(view, mcp));
-        Assert.Same(Resource(view, "ClaudeChat.DotRejected"), DotFill(view, rejected));
+        Assert.Same(Resource(view, "ClaudeChat.DotFailed"), DotFill(view, rejected)); // red, like an error
 
         mcp.Status = ToolStatus.Succeeded; // the dot follows the item
         UiHelpers.Pump();
         Assert.Same(Resource(view, "ClaudeChat.DotSucceeded"), DotFill(view, mcp));
         window.Close();
+    }
+
+    private static ClaudeChatView OpenIn(ChatConversation c, bool touch)
+    {
+        var view = touch ? UiHelpers.TouchView(c) : new ClaudeChatView { Conversation = c };
+        if (touch) UiHelpers.ShowPhone(view);
+        else UiHelpers.Show(view);
+        return view;
+    }
+
+    /// <summary>The dot of a tool call that the layout draws: the timeline's on the desktop, the header's in the touch layout.</summary>
+    private static Ellipse VisibleDot(Visual root, ToolCallItem item) =>
+        ViewOf(root, item).GetVisualDescendants().OfType<Ellipse>().First(e => e.IsEffectivelyVisible);
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_rejected_tool_has_a_red_dot_and_no_rejected_label(bool touch)
+    {
+        var rejected = new ToolCallItem
+        {
+            Name = "Write", Summary = "b.txt", Status = ToolStatus.Rejected, ResultText = "The user doesn't want to proceed",
+        };
+        var failed = new ToolCallItem { Name = "Write", Summary = "c.txt", Status = ToolStatus.Failed, ResultText = "boom" };
+        var c = new ChatConversation();
+        c.Items.Add(rejected);
+        c.Items.Add(failed);
+        var view = OpenIn(c, touch);
+
+        var texts = UiHelpers.Texts(ViewOf(view, rejected));
+        Assert.DoesNotContain(ChatStrings.English.ToolRejected, texts);
+        Assert.DoesNotContain(ChatStrings.PortugueseBrazil.ToolRejected, texts);
+        var red = Resource(view, "ClaudeChat.DotFailed");
+        Assert.Same(red, VisibleDot(view, rejected).Fill);
+        Assert.Same(VisibleDot(view, failed).Fill, VisibleDot(view, rejected).Fill); // red like an error
+        Assert.NotSame(Resource(view, "ClaudeChat.DotRejected"), VisibleDot(view, rejected).Fill);
+        Assert.Equal(ToolStatus.Rejected, rejected.Status); // the model still tells them apart
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_tool_cut_by_stop_turns_red_when_the_session_stops(bool touch)
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"sleep 60\"}"))));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        var view = OpenIn(c, touch);
+        Assert.NotSame(Resource(view, "ClaudeChat.DotFailed"), VisibleDot(view, tool).Fill); // still running: not red
+
+        c.Apply(new UserBlock(null, new ClaudeVisualChat.Protocol.TextContentBlock("[Request interrupted by user for tool use]"), null, false, false));
+        c.Apply(new ClaudeVisualChat.Protocol.TurnCompleted("error_during_execution", true, 1, null, null, null));
+        UiHelpers.Pump();
+
+        Assert.Equal(ToolStatus.Rejected, tool.Status);
+        Assert.Same(Resource(view, "ClaudeChat.DotFailed"), VisibleDot(view, tool).Fill);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_interrupted_line_reads_interrupted_without_a_dot(bool touch)
+    {
+        var c = new ChatConversation();
+        c.Items.Add(new UserMessageItem("do it"));
+        c.Items.Add(new NoticeItem(NoticeKind.Interrupted));
+        c.Items.Add(new NoticeItem(NoticeKind.ToolInterrupted));
+        var view = OpenIn(c, touch);
+        var strings = touch ? ChatStrings.PortugueseBrazil : ChatStrings.English;
+
+        foreach (var (kind, text) in new[] { (NoticeKind.Interrupted, strings.Interrupted), (NoticeKind.ToolInterrupted, strings.ToolInterrupted) })
+        {
+            var line = view.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == text);
+            Assert.Equal(text, strings.Notice(kind));
+            Assert.Equal(FontStyle.Italic, line.FontStyle);
+            Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), line.Foreground);
+            Assert.Equal(new Thickness(0, 8), line.Margin);                                  // 8 px over and under, no indent
+            Assert.Equal(Avalonia.Layout.HorizontalAlignment.Stretch, line.HorizontalAlignment);
+            // a plain line: no timeline row (so no dot), no bubble around it
+            Assert.DoesNotContain(line.GetVisualAncestors(), a => a is ChatTimelineRow || a is Border b && b.Classes.Contains("ClaudeChatUser"));
+            var holder = line.GetVisualAncestors().OfType<Avalonia.Controls.Presenters.ContentPresenter>().First();
+            Assert.Equal(0, line.TranslatePoint(default, holder)!.Value.X, 1);              // starts at the column's edge
+            Assert.Equal(holder.Bounds.Width, line.Bounds.Width, 1);                        // and spans it
+            Assert.DoesNotContain(holder.GetVisualDescendants(), d => d is Ellipse);
+        }
     }
 
     [AvaloniaFact]

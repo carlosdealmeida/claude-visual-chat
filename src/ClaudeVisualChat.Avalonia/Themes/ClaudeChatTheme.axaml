@@ -52,7 +52,7 @@
     <SolidColorBrush x:Key="ClaudeChat.Dot" Color="#8C8C8C" />                  <!-- descriptionForeground -->
     <SolidColorBrush x:Key="ClaudeChat.DotSucceeded" Color="#74C991" />         <!-- the extension's own dot colors -->
     <SolidColorBrush x:Key="ClaudeChat.DotFailed" Color="#C74E39" />
-    <SolidColorBrush x:Key="ClaudeChat.DotRejected" Color="#E1C08D" />
+    <SolidColorBrush x:Key="ClaudeChat.DotRejected" Color="#E1C08D" />        <!-- not used since 0.6.0: a refused call is as red as a failed one -->
     <SolidColorBrush x:Key="ClaudeChat.ToolBackground" Color="#121314" />       <!-- editor.background -->
     <SolidColorBrush x:Key="ClaudeChat.CodeBackground" Color="#262626" />       <!-- textPreformat.background -->
     <SolidColorBrush x:Key="ClaudeChat.CodeForeground" Color="#8C8C8C" />       <!-- textPreformat.foreground -->
@@ -540,7 +540,7 @@
     <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DotFailed}" />
   </Style>
   <Style Selector="controls|ChatTimelineRow.rejected /template/ Ellipse#PART_Dot">
-    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DotRejected}" />
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DotFailed}" />
   </Style>
   <!-- a tool still running blinks, once a second -->
   <Style Selector="controls|ChatTimelineRow.running /template/ Ellipse#PART_Dot">
@@ -640,6 +640,8 @@
     <Setter Property="IsVisible" Value="False" />
   </Style>
 
+  <!-- "Interrupted" and "Tool interrupted": a plain line in the column of the user's messages, no dot and no bubble, not
+       indented; italic, muted, 8 px over and under -->
   <Style Selector="TextBlock.ClaudeChatNotice">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
     <Setter Property="FontStyle" Value="Italic" />
@@ -684,13 +686,6 @@
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
     <Setter Property="Margin" Value="3.6,0,0,0" /> <!-- the space before it -->
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
-  </Style>
-  <Style Selector="TextBlock.ClaudeChatRejected">
-    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Warning}" />
-    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
-    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
-    <Setter Property="Margin" Value="8,0,0,0" />
-    <Setter Property="RenderTransform" Value="translate(0px,2px)" />
   </Style>
 
   <!-- the line under the name ("Modified", "47 lines"): .85em, muted at 70 %, in a 21 px line -->

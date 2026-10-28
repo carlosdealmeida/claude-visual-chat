@@ -214,12 +214,12 @@ internal partial class ToolCallView : UserControl
         var blinks = status == ToolStatus.Running && GetValue(IsWorkingProperty);
         SetState(Row, status, blinks); // the timeline's dot
         SetState(StatusDot, status, blinks); // the touch layout's, in the header
-        RejectedText.Text = Strings.ToolRejected;
-        // a refused plan says so in the line under it ("Stayed in plan mode")
-        RejectedText.IsVisible = status == ToolStatus.Rejected && _item?.Name != PlanTool;
     }
 
-    /// <summary>The classes the dots take their color (and their blinking) from.</summary>
+    /// <summary>
+    /// The classes the dots take their color (and their blinking) from. A refused call has its own class, but the styles
+    /// paint it red like a failed one: the extension never writes "Rejected".
+    /// </summary>
     private static void SetState(Control dot, ToolStatus status, bool blinks)
     {
         dot.Classes.Set("running", blinks);

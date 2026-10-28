@@ -21,7 +21,6 @@
                          ToolTip.Tip="{Binding Summary, Converter={x:Static controls:ChatConverters.ToolTipText}}" />
               <TextBlock Name="RangeText" Classes="ClaudeChatToolRange" />
               <Path Name="Arrow" Classes="ClaudeChatChevron" Margin="4,0,0,0" />
-              <TextBlock Name="RejectedText" Classes="ClaudeChatRejected" />
             </controls:ToolHeaderPanel>
           </Grid>
         </ToggleButton>

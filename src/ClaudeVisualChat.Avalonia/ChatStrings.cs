@@ -24,7 +24,8 @@ public sealed record ChatStrings
     {
         Thinking = "Pensando",
         MoreLines = "+{0} linhas",
-        Interrupted = "Interrompido por você",
+        Interrupted = "Interrompido",
+        ToolInterrupted = "Ferramenta interrompida",
         Compacted = "Conversa resumida",
         ApiRetry = "Tentando de novo a chamada à API…",
         TurnFailed = "A resposta terminou com erro",
@@ -248,7 +249,11 @@ public sealed record ChatStrings
     /// <summary>Lines left out of a tool output or diff; <c>{0}</c> is the count.</summary>
     public string MoreLines { get; init; } = "+{0} lines";
 
-    public string Interrupted { get; init; } = "Interrupted by the user";
+    /// <summary>The line for a request the user stopped.</summary>
+    public string Interrupted { get; init; } = "Interrupted";
+
+    /// <summary>The line for a request the user stopped while the claude used a tool.</summary>
+    public string ToolInterrupted { get; init; } = "Tool interrupted";
 
     public string Compacted { get; init; } = "Conversation compacted";
 
@@ -262,7 +267,7 @@ public sealed record ChatStrings
     /// </summary>
     public string Footer { get; init; } = "{0} · {1} in · {2} out · ${3}";
 
-    /// <summary>Shown next to a tool call the user said no to.</summary>
+    /// <summary>Not used since 0.6.0: a tool call the user said no to shows a red dot, not a word.</summary>
     public string ToolRejected { get; init; } = "Rejected";
 
     /// <summary>The empty reply box.</summary>
@@ -883,6 +888,7 @@ public sealed record ChatStrings
     internal string Notice(NoticeKind kind) => kind switch
     {
         NoticeKind.Interrupted => Interrupted,
+        NoticeKind.ToolInterrupted => ToolInterrupted,
         NoticeKind.Compacted => Compacted,
         NoticeKind.ApiRetry => ApiRetry,
         NoticeKind.TurnFailed => TurnFailed,

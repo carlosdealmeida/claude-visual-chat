@@ -30,6 +30,8 @@ public static class ToolPresentation
 {
     /// <summary>Lines of tool output shown before "+N lines".</summary>
     public const int OutputLines = 12;
+    /// <summary>Characters of a tool's result a call keeps in <see cref="ToolCallItem.FullResultText"/>.</summary>
+    public const int MaxKeptResultChars = 500_000;
     /// <summary>Lines of a Write shown as additions.</summary>
     public const int WriteLines = 20;
     /// <summary>Unchanged lines kept around a change.</summary>

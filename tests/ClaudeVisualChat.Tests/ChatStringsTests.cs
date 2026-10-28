@@ -61,8 +61,10 @@ public class ChatStringsTests
     {
         Assert.Equal("+9,988 lines", En.FormatMoreLines(9988));
         Assert.Equal("+9.988 linhas", Pt.FormatMoreLines(9988));
-        Assert.Equal("Interrupted by the user", En.Notice(NoticeKind.Interrupted));
-        Assert.Equal("Interrompido por você", Pt.Notice(NoticeKind.Interrupted));
+        Assert.Equal("Interrupted", En.Notice(NoticeKind.Interrupted));
+        Assert.Equal("Interrompido", Pt.Notice(NoticeKind.Interrupted));
+        Assert.Equal("Tool interrupted", En.Notice(NoticeKind.ToolInterrupted));
+        Assert.Equal("Ferramenta interrompida", Pt.Notice(NoticeKind.ToolInterrupted));
         Assert.Equal("Conversa resumida", Pt.Notice(NoticeKind.Compacted));
         Assert.Equal("Tentando de novo a chamada à API…", Pt.Notice(NoticeKind.ApiRetry));
         Assert.Equal("A resposta terminou com erro", Pt.Notice(NoticeKind.TurnFailed));

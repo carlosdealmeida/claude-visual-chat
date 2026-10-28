@@ -42,20 +42,11 @@ namespace ClaudeVisualChat.Protocol
 
     internal static class LineText
     {
-        private static readonly Regex Ansi = new Regex("^\u001b\\[[0-9;?]*[A-Za-z]", RegexOptions.Compiled);
-
         /// <summary>Trims the line and drops leading ANSI escapes; null when nothing JSON-like is left.</summary>
         public static string? Prepare(string? line)
         {
             if (string.IsNullOrWhiteSpace(line)) return null;
-            var text = line!.Trim();
-            while (true)
-            {
-                var m = Ansi.Match(text);
-                if (!m.Success) break;
-                text = text.Substring(m.Length);
-            }
-            text = text.Trim();
+            var text = AnsiText.TrimStart(line!.Trim()).Trim();
             return text.Length > 0 && text[0] == '{' ? text : null;
         }
     }
