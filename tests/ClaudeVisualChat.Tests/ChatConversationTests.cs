@@ -2692,6 +2692,17 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void A_subagents_synthetic_line_after_the_boundary_is_not_the_summary()
+    {
+        var c = new ChatConversation();
+        c.Apply(new SystemNotice("compact_boundary") { Trigger = "auto", PreTokens = 160_000 });
+        c.Apply(new UserBlock("toolu_agent", new TextContentBlock("a subagent's own line"), null, false, false) { IsSynthetic = true });
+        Assert.Null(Assert.Single(c.Items.OfType<CompactionItem>()).Summary); // the main agent's compaction waits for its own
+        c.Apply(new UserBlock(null, new TextContentBlock("the summary"), null, false, false) { IsSynthetic = true });
+        Assert.Equal("the summary", Assert.Single(c.Items.OfType<CompactionItem>()).Summary);
+    }
+
+    [Fact]
     public void A_synthetic_line_after_the_claude_went_on_is_not_a_summary()
     {
         var c = new ChatConversation();

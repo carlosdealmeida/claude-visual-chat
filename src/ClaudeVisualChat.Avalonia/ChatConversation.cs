@@ -1555,8 +1555,8 @@ public sealed class ChatConversation : ChatObservableObject
             return;
         }
         // the summary of a compaction is the card's, not a message: the session file marks it, and the live line says it is synthetic
-        // right after the boundary
-        if (e.IsCompactSummary || (e.IsSynthetic && _compaction != null))
+        // right after the boundary (the main agent's line: a subagent's synthetic line is not the summary of the main compaction)
+        if (e.IsCompactSummary || (e.IsSynthetic && e.ParentToolUseId == null && _compaction != null))
         {
             AddCompactionSummary(text, e.ParentToolUseId);
             return;

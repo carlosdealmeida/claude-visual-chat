@@ -365,7 +365,10 @@ public sealed record ChatStrings
         DecimalSeparator = ",",
     };
 
-    /// <summary>The collapsed line of Claude's thinking, while it arrives or when its length is unknown.</summary>
+    /// <summary>
+    /// The collapsed line of a finished thought whose length is unknown (one with a length reads <see cref="ThoughtFor"/>; while it
+    /// arrives, <see cref="ThinkingNow"/>).
+    /// </summary>
     public string Thinking { get; init; } = "Thinking";
 
     /// <summary>The collapsed line of Claude's thinking while it thinks (with plain dots, as the extension writes it).</summary>
