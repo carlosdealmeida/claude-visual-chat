@@ -36,8 +36,25 @@ public sealed class PendingPermission
     /// <summary>The claude's <c>permission_suggestions</c>, sent back on "allow always".</summary>
     public JsonElement? Suggestions { get; }
 
+    /// <summary>The subagent that asks (the claude's <c>agent_id</c>, the agent's task id); null when the main conversation asks.</summary>
+    public string? AgentId { get; init; }
+
+    /// <summary>
+    /// The claude asks to start on "No" (<c>default_to_no</c>): the keyboard goes to "No", and the digits do not answer.
+    /// False when not told.
+    /// </summary>
+    public bool DefaultToNo { get; init; }
+
+    /// <summary>
+    /// The claude offers no rule to remember (<c>suppress_always_allow_rule</c>), so there is no "allow always"
+    /// (<see cref="CanAllowAlways"/> is false), whatever the suggestions. False when not told.
+    /// </summary>
+    public bool SuppressAlwaysAllowRule { get; init; }
+
+    /// <summary>"Allow always" is offered: the claude sent suggestions and did not suppress the rule.</summary>
     public bool CanAllowAlways =>
-        Suggestions is { ValueKind: JsonValueKind.Array } suggestions && suggestions.GetArrayLength() > 0;
+        !SuppressAlwaysAllowRule
+        && Suggestions is { ValueKind: JsonValueKind.Array } suggestions && suggestions.GetArrayLength() > 0;
 
     /// <summary>
     /// True when every suggestion sent back on "allow always" lasts only for this conversation

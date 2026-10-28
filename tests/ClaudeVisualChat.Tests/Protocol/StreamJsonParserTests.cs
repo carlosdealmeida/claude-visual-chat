@@ -116,6 +116,27 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void Can_use_tool_reads_agent_id_default_to_no_and_suppress_always_allow_rule()
+        {
+            var parser = new StreamJsonParser();
+            var line = "{\"type\":\"control_request\",\"request_id\":\"r9\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Bash\","
+                       + "\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_9\",\"agent_id\":\"adb1f0b70b0f95ff6\","
+                       + "\"default_to_no\":true,\"suppress_always_allow_rule\":true}}";
+
+            var ev = Assert.IsType<PermissionRequested>(Assert.Single(parser.Parse(line)));
+
+            Assert.Equal("adb1f0b70b0f95ff6", ev.AgentId);
+            Assert.True(ev.DefaultToNo);
+            Assert.True(ev.SuppressAlwaysAllowRule);
+
+            // the recordings of 2.1.310 carry none of them: the defaults
+            var recorded = Assert.IsType<PermissionRequested>(Assert.Single(parser.Parse(FixtureFiles.StreamLines("edit").First(l => l.Contains("can_use_tool")))));
+            Assert.Null(recorded.AgentId);
+            Assert.False(recorded.DefaultToNo);
+            Assert.False(recorded.SuppressAlwaysAllowRule);
+        }
+
+        [Fact]
         public void Cancel_and_result()
         {
             var parser = new StreamJsonParser();

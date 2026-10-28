@@ -133,6 +133,8 @@ public partial class ClaudeChatView : UserControl
         Composer.Modes = AvailableModes;
         AddSheet.Modes = AvailableModes;
         Prompt.RequestChanged += OnPromptRequestChanged;
+        // a request that comes while the user types in the reply box waits for the typing to pause (the desktop's card)
+        Prompt.LastTyped = () => Composer.IsEmpty ? null : Composer.LastEdited;
         Composer.PreviewRequested += (_, e) => Preview.Show(e.Image, e.Name);
         Composer.ModelSheetRequested += (_, _) => ModelSheet.Open();
         Composer.AddSheetRequested += (_, _) => AddSheet.Open();

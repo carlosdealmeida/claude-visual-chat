@@ -159,6 +159,7 @@
     <x:Double x:Key="ClaudeChat.PromptFontSize">14.3</x:Double>      <!-- 1.1em: the permission request -->
     <x:Double x:Key="ClaudeChat.PromptLineHeight">21.45</x:Double>
     <x:Double x:Key="ClaudeChat.PromptCodeFontSize">12.87</x:Double> <!-- .9em of the request -->
+    <x:Double x:Key="ClaudeChat.PromptHintFontSize">12.155</x:Double> <!-- .85em of the request: "Esc to cancel" -->
 
     <!-- places -->
     <Thickness x:Key="ClaudeChat.ListPadding">20,20,20,40</Thickness>
@@ -176,6 +177,8 @@
     <!-- the arrow of send, on the extension's 20 px icon: from 3 to 17, its point 10.7 wide -->
     <StreamGeometry x:Key="ClaudeChat.Icon.Send">M10,17 L10,3 M4.65,8.35 L10,3 L15.35,8.35</StreamGeometry>
     <StreamGeometry x:Key="ClaudeChat.Icon.Chevron">M6.2,4.4 L9.8,8 L6.2,11.6</StreamGeometry>
+    <!-- the fold of a permission card's "Details": a 12 px arrow down, after the Codicons (MIT) chevron-down -->
+    <StreamGeometry x:Key="ClaudeChat.Icon.ChevronDown">M2.6,4.3 L6,7.7 L9.4,4.3</StreamGeometry>
     <!-- the bar's + and /, on its 26 px box with a 1.3 px line: a 13 px cross; a 14.3 px rounded square with a slash -->
     <StreamGeometry x:Key="ClaudeChat.Icon.Add">M13,7.15 L13,18.85 M7.15,13 L18.85,13</StreamGeometry>
     <StreamGeometry x:Key="ClaudeChat.Icon.Slash">M7.8,6.5 L18.2,6.5 A1.3,1.3 0 0 1 19.5,7.8 L19.5,18.2 A1.3,1.3 0 0 1 18.2,19.5 L7.8,19.5 A1.3,1.3 0 0 1 6.5,18.2 L6.5,7.8 A1.3,1.3 0 0 1 7.8,6.5 Z M14.95,9.1 L11.05,16.9</StreamGeometry>
@@ -1028,6 +1031,84 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputActiveBorder}" />
     <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <!-- the desktop's card of the extension 2.1.310 (the touch layout draws none of this: its request is the 0.5.0 one) -->
+  <!-- in the title, a file's name or a path in the editor's font, a tool's raw name in bold -->
+  <Style Selector="Run.ClaudeChatPermissionPath">
+    <Setter Property="FontFamily" Value="{DynamicResource ClaudeChat.MonoFontFamily}" />
+  </Style>
+  <Style Selector="Run.ClaudeChatPermissionTool">
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+  <!-- the lines under the title: .9em of the card, 6 px under them; a description in descriptionForeground -->
+  <Style Selector="StackPanel.ClaudeChatPermissionNotes">
+    <Setter Property="Spacing" Value="6" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatPermissionNotes > TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.PromptCodeFontSize}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatPermissionNotes > TextBlock:nth-last-child(1)">
+    <Setter Property="Margin" Value="0,0,0,6" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatPermissionNote">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatPermissionDescription">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  </Style>
+  <!-- "Details": the fold of any other tool's input, its 12 px arrow turned over when open -->
+  <Style Selector="ToggleButton.ClaudeChatPermissionDetails">
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.PromptCodeFontSize}" />
+  </Style>
+  <Style Selector="Path.ClaudeChatPermissionDetailsChevron">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.ChevronDown}" />
+    <Setter Property="Stroke" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="RenderTransform" Value="none" />
+  </Style>
+  <Style Selector="ToggleButton.ClaudeChatPermissionDetails:checked Path.ClaudeChatPermissionDetailsChevron">
+    <Setter Property="RenderTransform" Value="rotate(180deg)" />
+  </Style>
+  <!-- the input as indented JSON: a box of the editor's colors, 4 px corners, 8 px inside and above -->
+  <Style Selector="Border.ClaudeChatPermissionJson">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ToolBackground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="8" />
+    <Setter Property="Margin" Value="0,8,0,0" />
+  </Style>
+  <Style Selector="SelectableTextBlock.ClaudeChatPermissionJsonText">
+    <Setter Property="FontFamily" Value="{DynamicResource ClaudeChat.MonoFontFamily}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.PromptCodeFontSize}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <!-- the options drawn disabled for 500 ms after the card comes; no numbers with default_to_no -->
+  <Style Selector="StackPanel.ClaudeChatPermissionOptions.arming > Button.ClaudeChatOption">
+    <Setter Property="Opacity" Value="0.5" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatPermissionOptions.noNumbers TextBlock.ClaudeChatOptionNumber">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <!-- "Esc to cancel", under the field: descriptionForeground, .85em -->
+  <Style Selector="TextBlock.ClaudeChatPermissionHint">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.PromptHintFontSize}" />
+    <Setter Property="Margin" Value="0,4,0,0" />
+  </Style>
+  <!-- "Waiting for permission…", above the reply box while the card waits for the typing to pause -->
+  <Style Selector="TextBlock.ClaudeChatPermissionWaiting">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
   </Style>
 
   <!-- ===== the reply box: 680 px, 8 px corners, the text over a bar of 36 px ===== -->

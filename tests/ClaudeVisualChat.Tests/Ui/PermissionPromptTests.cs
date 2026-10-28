@@ -22,9 +22,10 @@ public class PermissionPromptTests
 {
     private const string Suggestions = "[{\"type\":\"setMode\",\"mode\":\"acceptEdits\",\"destination\":\"session\"}]";
 
-    private const string RunCommand = "Claude wants to run this command:";
+    // the desktop's card, as the extension 2.1.310 asks (the touch layout keeps the 0.5.0 request: PermissionTouchTests)
+    private const string RunCommand = "Allow this bash command?";
     private const string YesAlways = "Yes, and don't ask again this session";
-    private const string No = "No, and tell Claude what to do differently";
+    private const string No = "No";
 
     private static JsonElement J(string json)
     {
@@ -33,9 +34,15 @@ public class PermissionPromptTests
     }
 
     private static PermissionRequested Request(
-        string id, string tool, string input, string? suggestions = null, string? displayName = null) =>
-        new PermissionRequested(id, tool, displayName ?? tool, null, "tool-" + id, J(input),
-            suggestions == null ? (JsonElement?)null : J(suggestions));
+        string id, string tool, string input, string? suggestions = null, string? displayName = null,
+        string? description = null, bool defaultToNo = false, bool suppressAlwaysAllowRule = false, string? agentId = null) =>
+        new PermissionRequested(id, tool, displayName ?? tool, description, "tool-" + id, J(input),
+            suggestions == null ? (JsonElement?)null : J(suggestions))
+        {
+            DefaultToNo = defaultToNo,
+            SuppressAlwaysAllowRule = suppressAlwaysAllowRule,
+            AgentId = agentId,
+        };
 
     private static PermissionRequested Bash(string id, string command, string? suggestions = null) =>
         Request(id, "Bash", JsonSerializer.Serialize(new { command }), suggestions);
@@ -82,9 +89,20 @@ public class PermissionPromptTests
 
         public Button Option(string text) => UiHelpers.ButtonWithText(Prompt, text);
 
-        /// <summary>The field of option 3, when it is open.</summary>
+        /// <summary>The field of "No", when it is on screen (on the desktop, always, under the options).</summary>
         public TextBox? DenyField =>
             Prompt.GetVisualDescendants().OfType<TextBox>().SingleOrDefault(t => t.IsEffectivelyVisible);
+
+        /// <summary>The numbers in front of the options that the user can see.</summary>
+        public List<string> Numbers => Prompt.GetVisualDescendants().OfType<TextBlock>()
+            .Where(t => t.Classes.Contains("ClaudeChatOptionNumber") && t.IsEffectivelyVisible).Select(t => t.Text ?? "").ToList();
+
+        /// <summary>The option buttons that are on screen, in order.</summary>
+        public List<Button> Options => Prompt.GetVisualDescendants().OfType<Button>()
+            .Where(b => b.Classes.Contains("ClaudeChatOption") && b.IsEffectivelyVisible).ToList();
+
+        /// <summary>The frame of the card: hidden while the card waits for the typing in the reply box to pause.</summary>
+        public Border Frame => Prompt.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatPermission"));
     }
 
     private static Opened Open(ChatConversation conversation, ChatStrings? strings = null, IPromptClock? clock = null) =>
@@ -108,7 +126,7 @@ public class PermissionPromptTests
         Assert.True(ui.Prompt.IsEffectivelyVisible);
         Assert.Contains(RunCommand, ui.Texts);
         Assert.Contains("git push origin master", ui.Texts);
-        foreach (var expected in new[] { "1", "Yes", "3", No }) Assert.Contains(expected, ui.Texts);
+        foreach (var expected in new[] { "1", "Yes", "2", No }) Assert.Contains(expected, ui.Texts); // the visible options, numbered in order
 
         UiHelpers.Click(ui.Window, ui.Option("Yes"));
 
@@ -127,35 +145,34 @@ public class PermissionPromptTests
         var ui = Open(c);
 
         Assert.DoesNotContain(YesAlways, ui.Texts);
-        Assert.DoesNotContain("2", ui.Texts);
-        Assert.Contains("3", ui.Texts); // the others keep their numbers
+        Assert.Equal(new[] { "1", "2" }, ui.Numbers); // the visible options, numbered in order: "No" is 2
         ui.Option("Yes").Focus();
-        UiHelpers.Press(ui.Window, Key.D2);
-        Assert.Empty(ui.Answers); // no option 2, no answer
-        Assert.True(ui.Prompt.IsEffectivelyVisible);
+        UiHelpers.Press(ui.Window, Key.D3);
+        Assert.Empty(ui.Answers); // the digit after the last option goes to the field
+        Assert.True(ui.DenyField!.IsFocused);
 
         UiHelpers.Click(ui.Window, ui.Option("Yes"));
         c.Apply(Request("r2", "Write", "{\"file_path\":\"a.txt\",\"content\":\"one\"}", Suggestions));
         UiHelpers.Pump();
         Assert.Contains(YesAlways, ui.Texts);
-        Assert.Contains("2", ui.Texts);
+        Assert.Equal(new[] { "1", "2", "3" }, ui.Numbers);
         ui.Window.Close();
     }
 
     [AvaloniaFact]
-    public void Option_three_asks_what_to_do_and_enter_denies_with_it()
+    public void The_field_is_always_under_the_options_and_enter_in_it_denies_with_its_text()
     {
         var c = new ChatConversation();
         c.Apply(Bash("r1", "git diff --stat > out.txt"));
         var ui = Open(c);
-        Assert.Null(ui.DenyField);
-
-        UiHelpers.Click(ui.Window, ui.Option(No));
 
         var field = ui.DenyField;
-        Assert.NotNull(field);
-        Assert.True(field!.IsFocused);
-        Assert.Equal("Tell Claude what to do instead", field.Watermark);
+        Assert.NotNull(field);                                                   // no option opens it: it is there
+        Assert.Equal("Tell Claude what to do instead", field!.Watermark);
+        Assert.True(field.TranslatePoint(default, ui.Prompt)!.Value.Y > ui.Option(No).TranslatePoint(default, ui.Prompt)!.Value.Y);
+        Assert.Contains("Esc to cancel", ui.Texts);                              // and the hint under it
+        field.Focus();
+        UiHelpers.Pump();
         UiHelpers.Type(ui.Window, "use git diff");
         Assert.Empty(ui.Answers);
 
@@ -183,7 +200,7 @@ public class PermissionPromptTests
 
         Assert.Equal("r1", Assert.Single(ui.Answers).Request.RequestId);
         Assert.True(ui.Prompt.IsEffectivelyVisible); // the next one
-        Assert.Contains("Claude wants to edit this file:", ui.Texts);
+        Assert.Contains("Allow write to a.txt?", ui.Texts);
         Assert.DoesNotContain(ui.Texts, t => t.EndsWith("waiting", System.StringComparison.Ordinal));
         ui.Window.Close();
     }
@@ -220,7 +237,7 @@ public class PermissionPromptTests
         Assert.True(ui.Prompt.IsKeyboardFocusWithin); // the next request keeps the focus
 
         UiHelpers.Press(ui.Window, Key.NumPad3);
-        Assert.Single(ui.Answers); // 3 only opens the field
+        Assert.Single(ui.Answers); // without option 2, "No" is 2 and 3 goes to the field
         Assert.True(ui.DenyField!.IsFocused);
         UiHelpers.Press(ui.Window, Key.Enter);
 
@@ -249,18 +266,20 @@ public class PermissionPromptTests
         Assert.Empty(ui.Answers);
         Assert.Equal("123", input.Text);
         Assert.True(input.IsFocused);
-        Assert.Null(ui.DenyField);
+        Assert.Equal("", ui.DenyField!.Text ?? "");
         ui.Window.Close();
     }
 
     [AvaloniaFact]
-    public void Digits_typed_in_the_field_are_text_and_esc_closes_it()
+    public void Digits_typed_in_the_field_are_text_and_esc_sends_no_with_it()
     {
         var c = new ChatConversation();
         c.Apply(Bash("r1", "git push --force", Suggestions)); // all three options exist
+        c.Apply(Bash("r2", "git push"));
         var ui = Open(c);
         var unhandled = UiHelpers.UnhandledKeys(ui.Window);
-        UiHelpers.Click(ui.Window, ui.Option(No));
+        UiHelpers.Press(ui.Window, Key.D4);                                      // the digit after the last option: the field
+        Assert.True(ui.DenyField!.IsFocused);
 
         foreach (var (key, text) in new[] { (Key.D1, "1"), (Key.D2, "2"), (Key.D3, "3") })
         {
@@ -273,18 +292,12 @@ public class PermissionPromptTests
 
         UiHelpers.Press(ui.Window, Key.Escape);
 
-        Assert.Null(ui.DenyField);
-        Assert.Empty(ui.Answers);
-        Assert.True(ui.Prompt.IsEffectivelyVisible);
-        Assert.True(ui.Option(No).IsFocused);
+        var answer = Assert.Single(ui.Answers);
+        Assert.Equal(PermissionDecision.Deny, answer.Decision);
+        Assert.Equal("123 commits only", answer.Message);
         Assert.DoesNotContain(Key.Escape, unhandled); // the prompt used it
-
-        UiHelpers.Press(ui.Window, Key.Escape);
-        Assert.Contains(Key.Escape, unhandled); // nothing open: the app gets it
-        Assert.Empty(ui.Answers);
-
-        UiHelpers.Click(ui.Window, ui.Option(No)); // the field opens empty again
-        Assert.Equal("", ui.DenyField!.Text ?? "");
+        Assert.Equal("r2", ui.Prompt.Request!.RequestId);
+        Assert.Equal("", ui.DenyField!.Text ?? "");                             // the next request's field starts empty
         ui.Window.Close();
     }
 
@@ -404,7 +417,8 @@ public class PermissionPromptTests
 
         c.Apply(Bash("r4", "d"));
         UiHelpers.Pump();
-        UiHelpers.Click(ui.Window, ui.Option(No)); // even with the field open
+        ui.DenyField!.Focus(); // even with something written in the field
+        UiHelpers.Type(ui.Window, "half a thought");
         c.DismissPermission("r4");
         UiHelpers.Pump();
         Assert.False(ui.Prompt.IsEffectivelyVisible);
@@ -430,14 +444,13 @@ public class PermissionPromptTests
         Assert.Empty(TestLog.Instance.Entries); // no binding or property warnings
 
         var texts = ui.Texts;
-        Assert.Contains("O Claude quer editar este arquivo:", texts);
-        Assert.Contains("notes.md", texts);
+        Assert.Contains("Fazer esta edição em notes.md?", texts);
         Assert.Contains("+2 linhas", texts);
         // the editor's diff, in one column at this width: no "-" or "+" in the text, the colors tell
         Assert.Contains("e", texts);
         Assert.Contains("line three", texts);
         Assert.Contains("line 3 (edited)", texts);
-        foreach (var expected in new[] { "Sim", "Sim, e não perguntar de novo nesta conversa", "Não, e dizer o que fazer" })
+        foreach (var expected in new[] { "Sim", "Sim, e não perguntar de novo nesta conversa", "Não" })
             Assert.Contains(expected, texts);
         Assert.False(ui.Prompt.GetVisualDescendants().OfType<DiffView>().Single().IsSideBySide);
         var removed = ui.Prompt.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatDiffLine") && b.Classes.Contains("removed"));
@@ -445,7 +458,7 @@ public class PermissionPromptTests
 
         ui.View.Strings = ChatStrings.English; // the texts follow the language
         UiHelpers.Pump();
-        Assert.Contains("Claude wants to edit this file:", ui.Texts);
+        Assert.Contains("Make this edit to notes.md?", ui.Texts);
         Assert.Contains("+2 lines", ui.Texts);
         ui.Window.Close();
     }
@@ -596,26 +609,25 @@ public class PermissionPromptTests
         c.Apply(Request("r1", "Write", "{\"file_path\":\"todo.md\",\"content\":\"- Item 1\\n- Item 2\\n\"}", Suggestions));
         var ui = Open(c);
 
-        Assert.Contains("Claude wants to edit this file:", ui.Texts);
-        Assert.Contains("todo.md", ui.Texts);
-        Assert.Contains("- Item 1", ui.Texts); // added lines, in the added color
+        Assert.Contains("Allow write to todo.md?", ui.Texts);
+        Assert.Contains("- Item 1", ui.Texts); // added lines, in the added color: unlike the extension, which opens a diff tab
         Assert.Contains("- Item 2", ui.Texts);
         ui.Window.Close();
     }
 
     [AvaloniaFact]
-    public void Other_tools_use_their_display_name()
+    public void Web_fetch_asks_about_the_url_in_both_languages()
     {
         var c = new ChatConversation();
         c.Apply(Request("r1", "WebFetch", "{\"url\":\"https://example.com/docs\"}", displayName: "Fetch"));
         var ui = Open(c);
 
-        Assert.Contains("Claude wants to use Fetch:", ui.Texts);
+        Assert.Contains("Allow fetching this url?", ui.Texts);
         Assert.Contains("https://example.com/docs", ui.Texts);
 
         ui.View.Strings = ChatStrings.PortugueseBrazil;
         UiHelpers.Pump();
-        Assert.Contains("O Claude quer usar Fetch:", ui.Texts);
+        Assert.Contains("Permitir abrir esta url?", ui.Texts);
         ui.Window.Close();
     }
 
@@ -626,7 +638,7 @@ public class PermissionPromptTests
         c.Apply(Request("r1", "PowerShell", JsonSerializer.Serialize(new { command = "cd src\nRemove-Item build -Recurse" })));
         var ui = Open(c);
 
-        Assert.Contains(RunCommand, ui.Texts);
+        Assert.Contains("Allow this PowerShell command?", ui.Texts);
         Assert.Contains("cd src\nRemove-Item build -Recurse", ui.Texts); // not just the first line
         ui.Window.Close();
     }
@@ -649,7 +661,7 @@ public class PermissionPromptTests
     // ---- answers that come too soon ----
 
     [AvaloniaFact]
-    public void A_second_key_within_300_ms_does_not_answer_the_next_request()
+    public void A_second_key_within_500_ms_does_not_answer_the_next_request()
     {
         var clock = new ManualClock();
         var c = new ChatConversation();
@@ -662,14 +674,15 @@ public class PermissionPromptTests
         UiHelpers.Press(ui.Window, Key.D1);
         Assert.Equal("r1", Assert.Single(ui.Answers).Request.RequestId);
 
-        clock.Advance(299); // a double tap
+        clock.Advance(499); // a double tap
         UiHelpers.Press(ui.Window, Key.D1);
+        UiHelpers.Press(ui.Window, Key.D2);
         UiHelpers.Press(ui.Window, Key.D3);
         Assert.Single(ui.Answers);
-        Assert.Null(ui.DenyField);
+        Assert.False(ui.DenyField!.IsFocused);
         Assert.Contains("git push --force", ui.Texts); // still asking
 
-        clock.Advance(1); // 300 ms after the change: the user has seen it
+        clock.Advance(1); // 500 ms after the change: the user has seen it
         UiHelpers.Press(ui.Window, Key.D1);
         Assert.Equal(2, ui.Answers.Count);
         Assert.Equal("r2", ui.Answers[1].Request.RequestId);
@@ -692,7 +705,7 @@ public class PermissionPromptTests
         UiHelpers.Pump();
         ui.Prompt.FocusFirstOption();
 
-        clock.Advance(299);
+        clock.Advance(499);
         UiHelpers.Press(ui.Window, Key.D1);
         Assert.Empty(ui.Answers); // a stray digit right after the prompt came back
 
@@ -715,7 +728,7 @@ public class PermissionPromptTests
         UiHelpers.Click(ui.Window, ui.Option("Yes")); // it just appeared under the pointer
         Assert.Empty(ui.Answers);
 
-        clock.Advance(300);
+        clock.Advance(500);
         UiHelpers.Click(ui.Window, ui.Option("Yes"));
         Assert.Equal("r1", Assert.Single(ui.Answers).Request.RequestId);
 
@@ -723,9 +736,8 @@ public class PermissionPromptTests
         UiHelpers.Click(ui.Window, ui.Option("Yes"));
         UiHelpers.Click(ui.Window, ui.Option(No));
         Assert.Single(ui.Answers);
-        Assert.Null(ui.DenyField);
 
-        clock.Advance(200);
+        clock.Advance(400);
         UiHelpers.Click(ui.Window, ui.Option("Yes"));
         Assert.Equal("r2", ui.Answers[1].Request.RequestId);
         ui.Window.Close();
@@ -863,7 +875,359 @@ public class PermissionPromptTests
         var input = UiHelpers.Input(ui.View);
         var bottom = input.TranslatePoint(new Point(0, input.Bounds.Height), ui.Window)!.Value;
         Assert.True(bottom.Y <= UiHelpers.Height, $"the reply box ends at {bottom.Y}");
-        Assert.True(ui.Prompt.Bounds.Height < UiHelpers.Height / 2, $"the prompt is {ui.Prompt.Bounds.Height} high");
+        // the command scrolls inside its 200 px; the card around it (title, options, the field of "No" and its hint, always there
+        // since the card of 2.1.310) takes what it takes whatever the command
+        var detail = ui.Prompt.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "DetailScroller");
+        Assert.Equal(200, detail.Bounds.Height, 0);
+        Assert.True(ui.Prompt.Bounds.Height < UiHelpers.Height * 0.6, $"the prompt is {ui.Prompt.Bounds.Height} high");
+        ui.Window.Close();
+    }
+
+    // ---- the card of the extension 2.1.310 ----
+
+    /// <summary>The title of the card, its runs joined.</summary>
+    private static string Title(Opened ui)
+    {
+        var title = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatPermissionTitle"));
+        return string.IsNullOrEmpty(title.Text) && title.Inlines is { Count: > 0 } inlines ? inlines.Text ?? "" : title.Text ?? "";
+    }
+
+    [AvaloniaFact]
+    public void Bash_asks_allow_this_bash_command_and_shows_its_description()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "Bash", "{\"command\":\"ls -la\",\"description\":\"List files\"}"));
+        var ui = Open(c);
+
+        Assert.Equal("Allow this bash command?", Title(ui));
+        Assert.Contains("List files", ui.Texts);                                 // the input's description, under the title
+        var box = ui.Prompt.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "SummaryBox");
+        Assert.Equal(new[] { "ls -la" }, UiHelpers.Texts(box));                   // the command in its box
+        var description = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "List files");
+        Assert.True(description.TranslatePoint(default, ui.Prompt)!.Value.Y < box.TranslatePoint(default, ui.Prompt)!.Value.Y);
+        Assert.Same(Resource(ui.View, "ClaudeChat.ForegroundMuted"), description.Foreground);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Edit_asks_make_this_edit_to_the_file_name()
+    {
+        var c = new ChatConversation { WorkingDirectory = "C:\\demo\\app" };
+        c.Apply(Request("r1", "Edit", JsonSerializer.Serialize(new { file_path = "C:\\demo\\app\\src\\a.cs", old_string = "int a;", new_string = "int b;" })));
+        var ui = Open(c);
+
+        Assert.Equal("Make this edit to a.cs?", Title(ui));
+        var title = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatPermissionTitle"));
+        var name = title.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Single(r => r.Text == "a.cs");
+        Assert.Same(Resource(ui.View, "ClaudeChat.MonoFontFamily"), name.FontFamily); // the file's name in the editor's font
+        Assert.Single(ui.Prompt.GetVisualDescendants().OfType<DiffView>());      // and the diff stays in the card (the extension opens a tab)
+        Assert.DoesNotContain("src\\a.cs", ui.Texts);                             // the path is not repeated in a box
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Each_tool_asks_its_own_question()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "Write", "{\"file_path\":\"/home/dev/notes.md\",\"content\":\"x\"}"));
+        c.Apply(Request("r2", "Read", "{\"file_path\":\"C:\\\\demo\\\\secret.txt\"}"));
+        c.Apply(Request("r3", "Glob", "{\"pattern\":\"**/*.cs\",\"path\":\"C:\\\\demo\\\\src\"}"));
+        c.Apply(Request("r4", "Glob", "{\"pattern\":\"**/*.cs\"}"));
+        c.Apply(Request("r5", "Grep", "{\"pattern\":\"TODO\",\"path\":\"src\"}"));
+        c.Apply(Request("r6", "Grep", "{\"pattern\":\"TODO\"}"));
+        c.Apply(Request("r7", "PowerShell", "{\"command\":\"Get-ChildItem\"}"));
+        c.Apply(Request("r8", "WebSearch", "{\"query\":\"avalonia headless\",\"allowed_domains\":[\"a.com\",\"b.com\"],\"blocked_domains\":[\"c.com\"]}"));
+        var ui = Open(c);
+
+        var titles = new List<string>();
+        var texts = new List<List<string>>();
+        for (var i = 1; i <= 8; i++)
+        {
+            titles.Add(Title(ui));
+            texts.Add(ui.Texts);
+            c.DismissPermission("r" + i);
+            UiHelpers.Pump();
+        }
+        Assert.Equal(new[]
+        {
+            "Allow write to notes.md?", "Allow reading from secret.txt?", "Allow glob search in C:\\demo\\src?", "Allow this glob command",
+            "Allow grep in src?", "Allow this grep command", "Allow this PowerShell command?", "Allow searching for this query?",
+        }, titles);
+        Assert.Contains("Get-ChildItem", texts[6]);
+        Assert.Contains("avalonia headless", texts[7]);
+        Assert.Contains("Allowed: a.com, b.com · Blocked: c.com", texts[7]);
+        Assert.DoesNotContain("C:\\demo\\secret.txt", texts[1]);                   // the name is in the title: no box
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_mcp_tool_asks_do_you_want_to_proceed_and_folds_its_input_as_json()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "mcp__github__create_issue", "{\"title\":\"Bug\",\"labels\":[\"ui\"]}", displayName: "create_issue"));
+        var ui = Open(c);
+        const string Json = "{\n  \"title\": \"Bug\",\n  \"labels\": [\n    \"ui\"\n  ]\n}";
+
+        Assert.Equal("Do you want to proceed with mcp__github__create_issue?", Title(ui)); // the raw name
+        Assert.Contains("Details", ui.Texts);
+        Assert.DoesNotContain(Json, ui.Texts);                                   // folded
+
+        UiHelpers.Click(ui.Window, UiHelpers.ButtonWithText(ui.Prompt, "Details"));
+        Assert.Contains(Json, ui.Texts);                                         // the input, indented
+        Assert.Empty(ui.Answers);                                                // unfolding answers nothing
+        UiHelpers.Click(ui.Window, UiHelpers.ButtonWithText(ui.Prompt, "Details"));
+        Assert.DoesNotContain(Json, ui.Texts);
+
+        c.Apply(Request("r2", "mcp__x__ping", "{}"));
+        c.DismissPermission("r1");
+        UiHelpers.Pump();
+        Assert.Equal("Do you want to proceed with mcp__x__ping?", Title(ui));
+        Assert.DoesNotContain("Details", ui.Texts);                              // nothing to fold: no disclosure
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_skill_card_names_the_skill_its_description_and_arguments()
+    {
+        var c = new ChatConversation { Commands = new[] { new ChatCommand("review", "Review a PR", "") } };
+        c.Apply(Request("r1", "Skill", "{\"skill\":\"review\",\"args\":\"12\"}"));
+        c.Apply(Request("r2", "Skill", "{\"skill\":\"/unknown\"}"));
+        var ui = Open(c);
+
+        Assert.Equal("Use skill /review?", Title(ui));
+        Assert.Contains("Claude may use instructions, code, or files from this skill.", ui.Texts);
+        Assert.Contains("Review a PR", ui.Texts);
+        Assert.Contains("Arguments: 12", ui.Texts);
+
+        c.DismissPermission("r1");
+        UiHelpers.Pump();
+        Assert.Equal("Use skill /unknown?", Title(ui));                            // its "/" is not doubled
+        Assert.Contains("Claude may use instructions, code, or files from this skill.", ui.Texts);
+        Assert.DoesNotContain(ui.Texts, t => t.StartsWith("Arguments", System.StringComparison.Ordinal)); // none given
+        Assert.DoesNotContain("Review a PR", ui.Texts);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_request_description_is_not_shown()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "Read", "{\"file_path\":\"C:\\\\demo\\\\secret.txt\"}", description: "Run a thing"));
+        var ui = Open(c);
+
+        Assert.Equal("Allow reading from secret.txt?", Title(ui));               // what the card shows…
+        Assert.DoesNotContain(ui.Texts, t => t.Contains("Run a thing"));         // …and not the request's own description
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void No_refuses_at_once_with_the_field_text()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "git push --force"));
+        var ui = Open(c);
+
+        ui.DenyField!.Focus();
+        UiHelpers.Type(ui.Window, "use git");
+        UiHelpers.Click(ui.Window, ui.Option(No));
+
+        var answer = Assert.Single(ui.Answers);
+        Assert.Equal(PermissionDecision.Deny, answer.Decision);
+        Assert.Equal("use git", answer.Message);
+        Assert.False(ui.Prompt.IsEffectivelyVisible);
+
+        c.Apply(Bash("r2", "rm -rf build"));                                     // nothing written: a plain no
+        UiHelpers.Pump();
+        UiHelpers.Click(ui.Window, ui.Option(No));
+        Assert.Equal(PermissionDecision.Deny, ui.Answers[1].Decision);
+        Assert.Null(ui.Answers[1].Message);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_text_of_no_is_cut_at_4000_characters()
+    {
+        // the host's contract: the refusal carries 4,000 characters at most
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "git push --force"));
+        var ui = Open(c);
+        ui.DenyField!.Text = new string('x', 3990) + "0123456789ABCDEF";
+
+        UiHelpers.Click(ui.Window, ui.Option(No));
+
+        var message = Assert.Single(ui.Answers).Message!;
+        Assert.Equal(4000, message.Length);
+        Assert.EndsWith("x0123456789", message, System.StringComparison.Ordinal);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Esc_in_the_field_sends_no_with_the_text()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "git push --force"));
+        c.Apply(Bash("r2", "git push"));
+        c.Apply(Bash("r3", "git pull"));
+        var ui = Open(c);
+
+        ui.DenyField!.Focus();
+        UiHelpers.Type(ui.Window, "  only the branch  ");
+        UiHelpers.Press(ui.Window, Key.Escape);
+        Assert.Equal(PermissionDecision.Deny, Assert.Single(ui.Answers).Decision);
+        Assert.Equal("only the branch", ui.Answers[0].Message);
+
+        ui.DenyField!.Focus();                                                   // Enter in the field does the same
+        UiHelpers.Type(ui.Window, "pull first");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal("pull first", ui.Answers[1].Message);
+
+        ui.Option("Yes").Focus();                                                // and Esc on an option is "No"
+        UiHelpers.Press(ui.Window, Key.Escape);
+        Assert.Equal(PermissionDecision.Deny, ui.Answers[2].Decision);
+        Assert.Null(ui.Answers[2].Message);
+        Assert.Equal(new[] { "r1", "r2", "r3" }, ui.Answers.Select(a => a.Request.RequestId));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Arrows_move_between_the_options_and_the_field()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", Suggestions));
+        var ui = Open(c);
+        Assert.True(ui.Option("Yes").IsFocused);
+
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.True(ui.Option(YesAlways).IsFocused);
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.True(ui.Option(No).IsFocused);
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Press(ui.Window, Key.Down);                                    // round to the first
+        Assert.True(ui.Option("Yes").IsFocused);
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(ui.Option(No).IsFocused);
+        Assert.Empty(ui.Answers);
+
+        UiHelpers.Press(ui.Window, Key.Enter);                                   // Enter takes the focused option
+        Assert.Equal(PermissionDecision.Deny, Assert.Single(ui.Answers).Decision);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Options_stay_disabled_for_half_a_second()
+    {
+        var clock = new ManualClock();
+        var c = new ChatConversation();
+        var ui = Open(c, clock: clock);
+        c.Apply(Bash("r1", "dotnet build"));
+        UiHelpers.Pump();
+
+        Assert.All(ui.Options, o => Assert.Equal(0.5, o.Opacity, 2));             // drawn disabled while arming
+        Assert.True(ui.Prompt.IsTicking);
+        clock.Advance(499);
+        ui.Prompt.Tick();
+        UiHelpers.Click(ui.Window, ui.Option("Yes"));
+        Assert.Empty(ui.Answers);
+        Assert.All(ui.Options, o => Assert.Equal(0.5, o.Opacity, 2));
+
+        clock.Advance(1);
+        ui.Prompt.Tick();
+        Assert.All(ui.Options, o => Assert.Equal(1, o.Opacity, 2));               // armed
+        Assert.False(ui.Prompt.IsTicking);
+        UiHelpers.Click(ui.Window, ui.Option("Yes"));
+        Assert.Equal(PermissionDecision.Allow, Assert.Single(ui.Answers).Decision);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Default_to_no_focuses_no_and_hides_the_numbers()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "Bash", "{\"command\":\"rm -rf /\"}", Suggestions, defaultToNo: true));
+        var ui = Open(c);
+
+        Assert.True(ui.Option(No).IsFocused);
+        Assert.Empty(ui.Numbers);
+        foreach (var key in new[] { Key.D1, Key.D2, Key.D3, Key.D4 }) UiHelpers.Press(ui.Window, key);
+        Assert.Empty(ui.Answers);                                                // the digits answer nothing
+        Assert.False(ui.DenyField!.IsFocused);
+        Assert.Contains("selected", ui.Option(No).Classes);                       // the accent on "No"
+        Assert.DoesNotContain("selected", ui.Option("Yes").Classes);
+
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal(PermissionDecision.Deny, Assert.Single(ui.Answers).Decision);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Suppress_always_allow_rule_hides_option_two()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "Bash", "{\"command\":\"npm test\"}", Suggestions, suppressAlwaysAllowRule: true, agentId: "a1"));
+        var ui = Open(c);
+
+        Assert.False(c.CurrentPermission!.CanAllowAlways);
+        Assert.True(c.CurrentPermission.SuppressAlwaysAllowRule);
+        Assert.Equal("a1", c.CurrentPermission.AgentId);
+        Assert.DoesNotContain(YesAlways, ui.Texts);
+        Assert.Equal(new[] { "1", "2" }, ui.Numbers);
+
+        UiHelpers.Press(ui.Window, Key.D2);                                      // "No" is 2
+        Assert.Equal(PermissionDecision.Deny, Assert.Single(ui.Answers).Decision);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_request_waits_while_the_person_was_typing()
+    {
+        var now = new System.DateTimeOffset(2026, 10, 27, 10, 0, 0, System.TimeSpan.Zero);
+        var c = new ChatConversation { Clock = () => now };
+        var ui = Open(c);
+        var input = UiHelpers.Input(ui.View);
+        input.Focus();
+        UiHelpers.Type(ui.Window, "half a thought");
+
+        now = now.AddMilliseconds(500);
+        c.Apply(Bash("r1", "git status"));
+        UiHelpers.Pump();
+
+        Assert.Contains("Waiting for permission…", UiHelpers.Texts(ui.View));    // above the reply box
+        Assert.False(ui.Frame.IsEffectivelyVisible);                              // and no card yet
+        Assert.True(ui.Prompt.IsTicking);
+        Assert.True(input.IsFocused);
+
+        now = now.AddMilliseconds(900);                                          // 1.4 s after the typing
+        ui.Prompt.Tick();
+        Assert.False(ui.Frame.IsEffectivelyVisible);
+        now = now.AddMilliseconds(100);                                          // 1.5 s
+        ui.Prompt.Tick();
+        UiHelpers.Pump();
+        Assert.True(ui.Frame.IsEffectivelyVisible);
+        Assert.DoesNotContain("Waiting for permission…", UiHelpers.Texts(ui.View));
+        Assert.Contains(RunCommand, ui.Texts);
+        Assert.True(input.IsFocused);                                            // the keyboard stays with the typing
+        Assert.Equal("half a thought", input.Text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_request_does_not_wait_for_an_empty_reply_box()
+    {
+        var now = new System.DateTimeOffset(2026, 10, 27, 10, 0, 0, System.TimeSpan.Zero);
+        var c = new ChatConversation { Clock = () => now };
+        var ui = Open(c);
+        var input = UiHelpers.Input(ui.View);
+        input.Focus();
+        UiHelpers.Type(ui.Window, "x");
+        UiHelpers.Press(ui.Window, Key.Back);                                    // edited, but nothing is left in the box
+
+        c.Apply(Bash("r1", "git status"));
+        UiHelpers.Pump();
+        Assert.True(ui.Frame.IsEffectivelyVisible);
+        Assert.DoesNotContain("Waiting for permission…", UiHelpers.Texts(ui.View));
         ui.Window.Close();
     }
 }

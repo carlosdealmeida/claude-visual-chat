@@ -103,6 +103,9 @@ internal partial class ChatComposer : UserControl
     /// <summary>True while the mode picker is set from the conversation, so the change is not the user's.</summary>
     private bool _syncing;
 
+    /// <summary>True while a conversation's draft is put in the box, so the change is not the user's typing.</summary>
+    private bool _showingDraft;
+
     /// <summary>Why the last image or file did not go in; null when it did, or after a send.</summary>
     private Rejection? _rejected;
 
@@ -122,6 +125,8 @@ internal partial class ChatComposer : UserControl
         Input.PropertyChanged += (_, e) =>
         {
             if (e.Property != TextBox.TextProperty) return;
+            // the user's edit, not another conversation's draft coming in: a request that comes now waits for the typing to pause
+            if (!_showingDraft && !string.IsNullOrEmpty(Input.Text)) LastEdited = _conversation?.Clock() ?? DateTimeOffset.Now;
             RebaseListening();
             UpdateSend();
             UpdateBusy(); // with text, the square sends; empty while Claude works, it stops
@@ -198,7 +203,16 @@ internal partial class ChatComposer : UserControl
     private void ShowDraft(ChatConversation? conversation)
     {
         var text = conversation != null && _drafts.TryGetValue(conversation, out var draft) ? draft : "";
-        Input.Text = text;
+        LastEdited = null; // the other conversation's typing does not hold this one's requests
+        _showingDraft = true;
+        try
+        {
+            Input.Text = text;
+        }
+        finally
+        {
+            _showingDraft = false;
+        }
         Input.CaretIndex = text.Length;
         // the undo history belongs to the text that left: Ctrl+Z must not bring another conversation's draft back
         Input.IsUndoEnabled = false;
@@ -227,6 +241,13 @@ internal partial class ChatComposer : UserControl
 
     /// <summary>Nothing written yet (spaces do not count).</summary>
     internal bool IsEmpty => string.IsNullOrWhiteSpace(Input.Text);
+
+    /// <summary>
+    /// When the user last left text in the box (the conversation's <see cref="ChatConversation.Clock"/>); null before any, and
+    /// after another conversation's draft came in. The view reads it: a permission request that comes while the user types
+    /// waits for the typing to pause.
+    /// </summary>
+    internal DateTimeOffset? LastEdited { get; private set; }
 
     /// <summary>Nothing written and no image or file attached: Enter would send nothing.</summary>
     internal bool HasNothingToSend =>

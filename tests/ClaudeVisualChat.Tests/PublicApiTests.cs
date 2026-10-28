@@ -122,6 +122,30 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_permission_card_api_exists()
+    {
+        // the card of the extension 2.1.310 (0.6.0): the request's agent, "No" first, and no rule to remember
+        foreach (var type in new[] { typeof(PendingPermission), typeof(ClaudeVisualChat.Protocol.PermissionRequested) })
+        {
+            Assert.Equal(typeof(string), type.GetProperty("AgentId")?.PropertyType);
+            Assert.Equal(typeof(bool), type.GetProperty("DefaultToNo")?.PropertyType);
+            Assert.Equal(typeof(bool), type.GetProperty("SuppressAlwaysAllowRule")?.PropertyType);
+        }
+        // the positional constructor does not change
+        Assert.Equal(8, Assert.Single(typeof(PendingPermission).GetConstructors()).GetParameters().Length);
+        foreach (var text in new[]
+        {
+            "PermissionBash", "PermissionPowerShell", "PermissionEdit", "PermissionWrite", "PermissionRead", "PermissionGlob",
+            "PermissionGlobAnywhere", "PermissionGrep", "PermissionGrepAnywhere", "PermissionWebFetch", "PermissionWebSearch",
+            "PermissionAllowedDomains", "PermissionBlockedDomains", "PermissionSkill", "PermissionSkillNote", "PermissionSkillArguments",
+            "PermissionProceed", "PermissionDetails", "PermissionRefuse", "PermissionEscToCancel", "WaitingForPermission",
+        })
+        {
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        }
+    }
+
+    [Fact]
     public void The_dictation_interface_is_documented()
     {
         // the XML documentation travels in the package, beside the dll: a member without a summary shows nothing in the host's IntelliSense

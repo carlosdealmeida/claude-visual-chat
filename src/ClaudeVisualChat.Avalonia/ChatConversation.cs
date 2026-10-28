@@ -1422,7 +1422,12 @@ public sealed class ChatConversation : ChatObservableObject
         }
         PendingPermissions.Add(new PendingPermission(
             e.RequestId, e.ToolName, e.DisplayName ?? e.ToolName, e.Description, e.ToolUseId,
-            ToolPresentation.Summary(e.ToolName, e.Input, WorkingDirectory), e.Input, e.Suggestions));
+            ToolPresentation.Summary(e.ToolName, e.Input, WorkingDirectory), e.Input, e.Suggestions)
+        {
+            AgentId = e.AgentId,
+            DefaultToNo = e.DefaultToNo,
+            SuppressAlwaysAllowRule = e.SuppressAlwaysAllowRule,
+        });
     }
 
     private PendingPermission? RemovePermission(string? requestId)

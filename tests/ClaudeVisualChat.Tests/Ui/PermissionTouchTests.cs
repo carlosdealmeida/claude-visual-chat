@@ -139,6 +139,13 @@ public class PermissionTouchTests
 
     private static object? Resource(Control view, string key) => view.TryFindResource(key, out var value) ? value : null;
 
+    /// <summary>The title of the desktop's card, whose file name is a run of its own (in the editor's font).</summary>
+    private static string DesktopTitle(Opened ui)
+    {
+        var title = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatPermissionTitle"));
+        return string.IsNullOrEmpty(title.Text) && title.Inlines is { Count: > 0 } inlines ? inlines.Text ?? "" : title.Text ?? "";
+    }
+
     private static Color ColorOf(Control view, string key) => Assert.IsAssignableFrom<ISolidColorBrush>(Resource(view, key)).Color;
 
     /// <summary>
@@ -670,7 +677,7 @@ public class PermissionTouchTests
 
         ui.View.Layout = ChatLayout.Desktop;
         UiHelpers.Pump();
-        Assert.Equal("O Claude quer editar este arquivo:", ui.Title);
+        Assert.Equal("Fazer esta edição em OrderService.cs?", DesktopTitle(ui));          // the desktop's card asks as the extension 2.1.310 does
         Assert.Equal(new[] { "1", "2", "3" }, ui.Numbers);
         Assert.DoesNotContain(Send, ui.Texts);                                           // the button is the touch layout's: Enter sends there
         Assert.Equal(new CornerRadius(8), ui.Frame.CornerRadius);
@@ -905,8 +912,9 @@ public class PermissionTouchTests
         var ui = new Opened(c, layout: ChatLayout.Desktop);
         Assert.Equal(200, ui.Detail.Bounds.Height, 0);
 
-        ui.Tap(No);
-        Assert.NotNull(ui.DenyField);
+        Assert.NotNull(ui.DenyField);                                                    // the desktop's field is always there (its "No" refuses at once)
+        ui.DenyField!.Focus();
+        UiHelpers.Pump();
         Assert.Equal(200, ui.Detail.MaxHeight);
         Assert.Equal(200, ui.Detail.Bounds.Height, 0);
         ui.Window.Close();
@@ -1007,7 +1015,7 @@ public class PermissionTouchTests
         c.Apply(Edit());
         var ui = new Opened(c, clock, layout: ChatLayout.Desktop);
         var input = UiHelpers.Input(ui.View);
-        clock.Advance(300);
+        clock.Advance(500);                                                              // the desktop's card arms in 500 ms (2.1.310)
 
         ui.Tap(Yes);
         Assert.Single(ui.Answers);
@@ -1021,10 +1029,9 @@ public class PermissionTouchTests
         var c = new ChatConversation();
         c.Apply(Edit());
         var ui = new Opened(c, layout: ChatLayout.Desktop);
-        ui.Tap(No);
 
-        Assert.NotNull(ui.DenyField);
-        Assert.DoesNotContain(Send, ui.Texts);                                           // the desktop's request is as it was
+        Assert.NotNull(ui.DenyField);                                                    // always there on the desktop
+        Assert.DoesNotContain(Send, ui.Texts);                                           // the desktop's request has no button under it
         Assert.DoesNotContain(Send, UiHelpers.ButtonNames(ui.Prompt));
         ui.Window.Close();
     }

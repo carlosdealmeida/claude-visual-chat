@@ -178,7 +178,12 @@ namespace ClaudeVisualChat.Protocol
                     JsonHelpers.Str(r, "description"),
                     JsonHelpers.Str(r, "tool_use_id"),
                     JsonHelpers.CloneNonNull(r, "input") ?? JsonHelpers.EmptyInput,
-                    JsonHelpers.CloneNonNull(r, "permission_suggestions")),
+                    JsonHelpers.CloneNonNull(r, "permission_suggestions"))
+                {
+                    AgentId = JsonHelpers.Str(r, "agent_id"),
+                    DefaultToNo = JsonHelpers.Bool(r, "default_to_no"),
+                    SuppressAlwaysAllowRule = JsonHelpers.Bool(r, "suppress_always_allow_rule"),
+                },
             };
         }
 

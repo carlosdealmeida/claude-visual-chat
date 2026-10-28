@@ -56,7 +56,17 @@ namespace ClaudeVisualChat.Protocol
     public sealed record PermissionRequested(
         string RequestId, string ToolName, string? DisplayName, string? Description, string? ToolUseId,
         JsonElement Input, JsonElement? Suggestions)
-        : ClaudeEvent;
+        : ClaudeEvent
+    {
+        /// <summary>The subagent that asks (<c>agent_id</c>, its <c>task_id</c>); null when the main conversation asks.</summary>
+        public string? AgentId { get; init; }
+
+        /// <summary>The claude asks to put the keyboard on "No" (<c>default_to_no</c>); false when not told.</summary>
+        public bool DefaultToNo { get; init; }
+
+        /// <summary>The claude offers no rule to remember (<c>suppress_always_allow_rule</c>): no "allow always"; false when not told.</summary>
+        public bool SuppressAlwaysAllowRule { get; init; }
+    }
 
     public sealed record PermissionCancelled(string RequestId) : ClaudeEvent;
 

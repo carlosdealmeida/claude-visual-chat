@@ -277,6 +277,35 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void A_request_waiting_for_the_typing_stops_its_timer_out_of_the_window_and_waits_again_when_back()
+    {
+        var now = new DateTimeOffset(2026, 10, 27, 10, 0, 0, TimeSpan.Zero);
+        var c = Conversation();
+        c.Clock = () => now;
+        var m = new Mounted(c);
+        var prompt = UiHelpers.Prompt(m.View);
+        UiHelpers.Input(m.View).Focus();
+        UiHelpers.Type(m.Window, "half a thought");
+        c.Apply(new PermissionRequested("r1", "Bash", "Bash", null, "t1", J("{\"command\":\"ls\"}"), null));
+        UiHelpers.Pump();
+        Assert.True(prompt.IsTicking);                                       // it waits for the typing to pause
+        Assert.Contains(m.View.Strings.WaitingForPermission, UiHelpers.Texts(m.View));
+
+        m.Out();
+        Assert.False(prompt.IsTicking);                                      // out of the window, the timer stops
+
+        m.In();                                                              // back, still typed a moment ago: it waits again
+        Assert.True(prompt.IsTicking);
+        Assert.Contains(m.View.Strings.WaitingForPermission, UiHelpers.Texts(m.View));
+        now = now.AddSeconds(2);
+        prompt.Tick();
+        UiHelpers.Pump();
+        Assert.Contains("ls", UiHelpers.Texts(prompt));                      // and the card comes
+        Assert.DoesNotContain(m.View.Strings.WaitingForPermission, UiHelpers.Texts(m.View));
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_request_that_came_while_out_shows_when_back()
     {
         var m = new Mounted(Conversation());

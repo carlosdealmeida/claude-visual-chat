@@ -67,6 +67,27 @@ public sealed record ChatStrings
         PermissionNo = "Não, e dizer o que fazer",
         DenyPlaceholder = "Diga ao Claude o que fazer",
         MorePending = "+{0} na fila",
+        PermissionBash = "Permitir este comando bash?",
+        PermissionPowerShell = "Permitir este comando do PowerShell?",
+        PermissionEdit = "Fazer esta edição em {0}?",
+        PermissionWrite = "Permitir gravar em {0}?",
+        PermissionRead = "Permitir ler {0}?",
+        PermissionGlob = "Permitir busca glob em {0}?",
+        PermissionGlobAnywhere = "Permitir este comando glob",
+        PermissionGrep = "Permitir grep em {0}?",
+        PermissionGrepAnywhere = "Permitir este comando grep",
+        PermissionWebFetch = "Permitir abrir esta url?",
+        PermissionWebSearch = "Permitir pesquisar isto?",
+        PermissionAllowedDomains = "Permitidos: {0}",
+        PermissionBlockedDomains = "Bloqueados: {0}",
+        PermissionSkill = "Usar a skill {0}?",
+        PermissionSkillNote = "O Claude pode usar instruções, código ou arquivos desta skill.",
+        PermissionSkillArguments = "Argumentos: {0}",
+        PermissionProceed = "Quer continuar com {0}?",
+        PermissionDetails = "Detalhes",
+        PermissionRefuse = "Não",
+        PermissionEscToCancel = "Esc para cancelar",
+        WaitingForPermission = "Aguardando permissão…",
         AddAttachment = "Adicionar",
         AttachPhotoOrFile = "Foto ou arquivo",
         Commands = "Comandos",
@@ -280,13 +301,16 @@ public sealed record ChatStrings
     /// <summary>The <c>auto</c> permission mode.</summary>
     public string ModeAuto { get; init; } = "Auto";
 
-    /// <summary>Title of a permission request for Bash or PowerShell.</summary>
+    /// <summary>Title of a permission request for Bash or PowerShell. Not used since 0.6.0 (see <see cref="PermissionBash"/>).</summary>
     public string PermissionRunCommand { get; init; } = "Claude wants to run this command:";
 
-    /// <summary>Title of a permission request for Edit, Write, MultiEdit or NotebookEdit.</summary>
+    /// <summary>Title of a permission request for Edit, Write, MultiEdit or NotebookEdit. Not used since 0.6.0 (see <see cref="PermissionEdit"/>).</summary>
     public string PermissionEditFile { get; init; } = "Claude wants to edit this file:";
 
-    /// <summary>Title of a permission request for any other tool; <c>{0}</c> is the tool's display name.</summary>
+    /// <summary>
+    /// Title of a permission request for any other tool; <c>{0}</c> is the tool's display name. Not used since 0.6.0 (see
+    /// <see cref="PermissionProceed"/>).
+    /// </summary>
     public string PermissionUseTool { get; init; } = "Claude wants to use {0}:";
 
     /// <summary>Title of a permission request for Bash or PowerShell in the touch layout, which asks in a few words; the command is under it.</summary>
@@ -309,13 +333,77 @@ public sealed record ChatStrings
     /// </summary>
     public string PermissionYesAlwaysBeyondSession { get; init; } = "Yes, and don't ask again";
 
+    /// <summary>The touch layout's "No", which opens the field under it (the desktop's card says <see cref="PermissionRefuse"/>).</summary>
     public string PermissionNo { get; init; } = "No, and tell Claude what to do differently";
 
-    /// <summary>The empty field that opens with <see cref="PermissionNo"/>.</summary>
+    /// <summary>The empty field of "No": the one <see cref="PermissionNo"/> opens, and the desktop card's, always under the options.</summary>
     public string DenyPlaceholder { get; init; } = "Tell Claude what to do instead";
 
     /// <summary>Requests waiting behind the one shown; <c>{0}</c> is the count.</summary>
     public string MorePending { get; init; } = "+{0} waiting";
+
+    /// <summary>The desktop card's title for Bash; the command is in a box under it.</summary>
+    public string PermissionBash { get; init; } = "Allow this bash command?";
+
+    /// <summary>The desktop card's title for PowerShell; the command is in a box under it.</summary>
+    public string PermissionPowerShell { get; init; } = "Allow this PowerShell command?";
+
+    /// <summary>The desktop card's title for Edit; <c>{0}</c> is the file's name (the last part of its path), in the editor's font.</summary>
+    public string PermissionEdit { get; init; } = "Make this edit to {0}?";
+
+    /// <summary>The desktop card's title for Write; <c>{0}</c> is the file's name, in the editor's font.</summary>
+    public string PermissionWrite { get; init; } = "Allow write to {0}?";
+
+    /// <summary>The desktop card's title for Read; <c>{0}</c> is the file's name, in the editor's font.</summary>
+    public string PermissionRead { get; init; } = "Allow reading from {0}?";
+
+    /// <summary>The desktop card's title for Glob with a path; <c>{0}</c> is the path, in the editor's font.</summary>
+    public string PermissionGlob { get; init; } = "Allow glob search in {0}?";
+
+    /// <summary>The desktop card's title for Glob without a path.</summary>
+    public string PermissionGlobAnywhere { get; init; } = "Allow this glob command";
+
+    /// <summary>The desktop card's title for Grep with a path; <c>{0}</c> is the path, in the editor's font.</summary>
+    public string PermissionGrep { get; init; } = "Allow grep in {0}?";
+
+    /// <summary>The desktop card's title for Grep without a path.</summary>
+    public string PermissionGrepAnywhere { get; init; } = "Allow this grep command";
+
+    /// <summary>The desktop card's title for WebFetch; the url is in a box under it.</summary>
+    public string PermissionWebFetch { get; init; } = "Allow fetching this url?";
+
+    /// <summary>The desktop card's title for WebSearch; the query is in a box under it.</summary>
+    public string PermissionWebSearch { get; init; } = "Allow searching for this query?";
+
+    /// <summary>The domains a web search is kept to, in a box under its query; <c>{0}</c> is the list.</summary>
+    public string PermissionAllowedDomains { get; init; } = "Allowed: {0}";
+
+    /// <summary>The domains a web search leaves out, after <see cref="PermissionAllowedDomains"/>; <c>{0}</c> is the list.</summary>
+    public string PermissionBlockedDomains { get; init; } = "Blocked: {0}";
+
+    /// <summary>The desktop card's title for a skill; <c>{0}</c> is the skill with its "/", in the editor's font.</summary>
+    public string PermissionSkill { get; init; } = "Use skill {0}?";
+
+    /// <summary>The line under a skill's title.</summary>
+    public string PermissionSkillNote { get; init; } = "Claude may use instructions, code, or files from this skill.";
+
+    /// <summary>What a skill is given; <c>{0}</c> is the text.</summary>
+    public string PermissionSkillArguments { get; init; } = "Arguments: {0}";
+
+    /// <summary>The desktop card's title for any other tool; <c>{0}</c> is the tool's raw name, in bold.</summary>
+    public string PermissionProceed { get; init; } = "Do you want to proceed with {0}?";
+
+    /// <summary>The fold under <see cref="PermissionProceed"/> that shows the tool's input.</summary>
+    public string PermissionDetails { get; init; } = "Details";
+
+    /// <summary>The desktop card's "No", which refuses at once with what the field under the options says.</summary>
+    public string PermissionRefuse { get; init; } = "No";
+
+    /// <summary>The hint under the desktop card's field.</summary>
+    public string PermissionEscToCancel { get; init; } = "Esc to cancel";
+
+    /// <summary>Above the reply box, while a request waits for the typing in it to pause.</summary>
+    public string WaitingForPermission { get; init; } = "Waiting for permission…";
 
     /// <summary>The button that attaches a file or image to the message; also the title of the touch layout's "+" sheet.</summary>
     public string AddAttachment { get; init; } = "Add";
@@ -818,6 +906,20 @@ public sealed record ChatStrings
     internal string FormatUseToolQuestion(string toolName) => PermissionUseToolQuestion.Replace("{0}", toolName ?? "");
 
     internal string FormatMorePending(int count) => MorePending.Replace("{0}", FormatNumber(count));
+
+    /// <summary><see cref="PermissionSkillArguments"/> with what the skill is given: "Arguments: 12".</summary>
+    internal string FormatSkillArguments(string arguments) => PermissionSkillArguments.Replace("{0}", arguments ?? "");
+
+    /// <summary>
+    /// The domains of a web search: "Allowed: a.com, b.com · Blocked: c.com", either part alone, or empty when it gives none.
+    /// </summary>
+    internal string FormatSearchDomains(IReadOnlyList<string> allowed, IReadOnlyList<string> blocked)
+    {
+        var parts = new List<string>();
+        if (allowed != null && allowed.Count > 0) parts.Add(PermissionAllowedDomains.Replace("{0}", string.Join(", ", allowed)));
+        if (blocked != null && blocked.Count > 0) parts.Add(PermissionBlockedDomains.Replace("{0}", string.Join(", ", blocked)));
+        return string.Join(Separator, parts);
+    }
 
     /// <summary><see cref="ContextTotal"/>: "36,174 / 200,000 (18%)".</summary>
     internal string FormatContextTotal(ContextUsage usage) => ContextTotal
