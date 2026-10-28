@@ -240,9 +240,10 @@ namespace ClaudeVisualChat.Protocol
             var id = JsonHelpers.Str(message.Value, "id") ?? "";
             var timestamp = JsonHelpers.Time(root, "timestamp");
             var thinking = JsonHelpers.Long(root, "thinkingDurationMs");
+            var uuid = JsonHelpers.Str(root, "uuid");
             var events = new List<ClaudeEvent>();
             foreach (var block in BlockReader.ReadContent(content))
-                events.Add(new AssistantBlock(id, parent, block) { Timestamp = timestamp, ThinkingDurationMs = thinking });
+                events.Add(new AssistantBlock(id, parent, block) { Timestamp = timestamp, ThinkingDurationMs = thinking, Uuid = uuid });
             if (parent == null && JsonHelpers.Str(message.Value, "model") != "<synthetic>"
                 && ReadCache(message.Value, timestamp) is { } cache)
                 events.Add(cache);

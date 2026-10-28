@@ -44,4 +44,15 @@ public class ChatTurnsTests
             new AssistantTextItem { Text = "later" }, Footer() };
         Assert.Equal("later", ChatTurns.AnswerText(items, 4));
     }
+
+    [Fact]
+    public void LastAnswer_is_the_last_text_of_the_turn_with_something_written()
+    {
+        var two = new AssistantTextItem { Text = "two" };
+        var items = new ChatItem[] { new UserMessageItem("a"), new AssistantTextItem { Text = "old" }, Footer(),
+            new UserMessageItem("q"), new AssistantTextItem { Text = "one" }, two, new AssistantTextItem { Text = "" },
+            new ToolCallItem { Name = "Bash" }, Footer() };
+        Assert.Same(two, ChatTurns.LastAnswer(items, 8));
+        Assert.Null(ChatTurns.LastAnswer(new ChatItem[] { new UserMessageItem("a"), new ThinkingItem { Text = "hmm" }, Footer() }, 2));
+    }
 }

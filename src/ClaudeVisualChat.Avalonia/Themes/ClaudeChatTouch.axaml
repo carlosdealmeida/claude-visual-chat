@@ -172,14 +172,45 @@
 
   <!-- ===== the end of a turn: the copy button instead of the line of duration, tokens and cost ===== -->
 
-  <Style Selector="Panel.ClaudeChatTurnEnd.touch">
+  <Style Selector="StackPanel.ClaudeChatTurnEnd.touch">
     <Setter Property="Margin" Value="0,0,0,4" />
   </Style>
-  <Style Selector="Panel.ClaudeChatTurnEnd.touch > Panel.ClaudeChatFooterLine">
+  <Style Selector="StackPanel.ClaudeChatTurnEnd.touch > Panel.ClaudeChatFooterLine">
     <Setter Property="IsVisible" Value="False" />
   </Style>
-  <Style Selector="Panel.ClaudeChatTurnEnd.touch > Panel.ClaudeChatFooterCopy">
+  <Style Selector="StackPanel.ClaudeChatTurnEnd.touch Panel.ClaudeChatFooterCopy">
     <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <!-- the host's actions of the row under a reply (the thumbs, and the text beside them) beside the copy button: always shown (no
+       pointer to hover with), targets of 44 px with the icon as large as the copy button's -->
+  <Style Selector="controls|ResponseActions:touch">
+    <Setter Property="Height" Value="NaN" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Spacing" Value="0" />
+  </Style>
+  <Style Selector="controls|ResponseActions:touch Button.ClaudeChatResponseAction">
+    <Setter Property="Template" Value="{StaticResource ClaudeChat.TouchCopyCodeTemplate}" />
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+  </Style>
+  <Style Selector="controls|ResponseActions:touch StackPanel.ClaudeChatResponseRating">
+    <Setter Property="Opacity" Value="1" />
+    <Setter Property="Spacing" Value="0" />
+  </Style>
+  <Style Selector="controls|ResponseActions:touch Viewbox.ClaudeChatResponseIcon">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+  </Style>
+  <Style Selector="controls|ResponseActions:touch StackPanel.ClaudeChatResponseNotice">
+    <Setter Property="Margin" Value="4,0,0,0" />
+  </Style>
+  <Style Selector="controls|ResponseActions:touch Button.ClaudeChatResponseLink">
+    <Setter Property="MinHeight" Value="44" />
+  </Style>
+  <!-- "What went wrong?": its buttons are targets of 44 px (its × is the Diff View's, which is one already) -->
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatFeedbackSkip, controls|ClaudeChatView:touch Button.ClaudeChatFeedbackSend">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="Padding" Value="16,0" />
   </Style>
 
   <!-- ===== "Working…" at the end of the list: no timeline column to make room for ===== -->

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
 using Xunit;
 using AssistantBlock = ClaudeVisualChat.Protocol.AssistantBlock;
@@ -105,6 +106,42 @@ public class ReadOnlyTests
         UiHelpers.ItemList(view).ScrollIntoView(first);
         UiHelpers.Pump();
         Assert.Contains(first.Summary, UiHelpers.Texts(UiHelpers.ItemList(view)));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_read_only_view_keeps_copy_and_bookmark_under_a_reply_and_drops_the_thumbs()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(new UserMessageItem("Fix the build"));
+        var answer = new AssistantTextItem { Text = "It builds now.", Uuid = "u-1" };
+        c.Items.Add(answer);
+        c.Items.Add(new TurnFooterItem(1200, 10, 20, 0.01, false));
+        var asked = 0;
+        c.FeedbackRequested += (_, _) => asked++;
+        var (view, window) = Open(c);
+        var actions = view.GetVisualDescendants().OfType<ResponseActions>().Single();
+        var dialog = view.GetVisualDescendants().OfType<FeedbackDialog>().Single();
+        Assert.True(actions.GoodButton.IsEffectivelyVisible);
+        UiHelpers.Click(window, actions.BadButton);                     // the box is open when the view turns read-only
+        Assert.True(dialog.IsOpen);
+
+        view.IsReadOnly = true;
+        UiHelpers.Pump();
+
+        Assert.False(dialog.IsOpen);                                    // a rating cannot go from here: the box closes, sending nothing
+        Assert.Equal(1, asked);
+        Assert.True(actions.CopyButton.IsEffectivelyVisible);          // copying is the user's own
+        Assert.True(actions.BookmarkButton.IsEffectivelyVisible);      // and so is a bookmark, which is local
+        Assert.False(actions.GoodButton.IsEffectivelyVisible);
+        Assert.False(actions.BadButton.IsEffectivelyVisible);
+        UiHelpers.Click(window, actions.BookmarkButton);
+        Assert.True(answer.IsBookmarked);
+        Assert.False(view.ShowFeedback(answer));                       // nor does the box open by other ways
+
+        view.IsReadOnly = false;
+        UiHelpers.Pump();
+        Assert.True(actions.GoodButton.IsEffectivelyVisible);
         window.Close();
     }
 

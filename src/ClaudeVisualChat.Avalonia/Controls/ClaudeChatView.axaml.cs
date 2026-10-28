@@ -26,7 +26,10 @@ namespace ClaudeVisualChat.Controls;
 /// for the comment (Esc closes the box first); with comments, the card's one answer sends them as feedback. The panels and the Agent
 /// map opened over the document come over it, and close before it. A click on a diff of the list (or Enter, or Space) opens the Diff
 /// View over everything but the image preview: the whole change, side by side, under the file's whole path; Esc, its × or a click on
-/// its backdrop closes it, and the keyboard goes back to where it was (a request that came meanwhile gets it then). What the user does comes back as the
+/// its backdrop closes it, and the keyboard goes back to where it was (a request that came meanwhile gets it then). Under a finished turn, a
+/// row copies the answer and bookmarks it and, while the host listens to <see cref="ChatConversation.FeedbackRequested"/>, rates it; the thumb
+/// down opens "What went wrong?" over the view, under the Diff View (Esc, Skip or its × close it), and its link shows while the host listens
+/// to <see cref="ChatConversation.LinkRequested"/>. What the user does comes back as the
 /// conversation's events. A key is marked handled only when the view acts on it, so the app's own shortcuts keep
 /// working. Colors and fonts come from the <c>ClaudeChat.*</c> resources, which can be redefined in
 /// <see cref="StyledElement.Resources"/>; the default colors are those of VS Code's "Dark 2026" theme, and
@@ -117,6 +120,13 @@ public partial class ClaudeChatView : UserControl
     internal static readonly StyledProperty<bool> IsNarrowProperty =
         AvaloniaProperty.Register<ClaudeChatView, bool>("IsNarrow", inherits: true);
 
+    /// <summary>
+    /// <see cref="IsReadOnly"/>, inherited, so the rows of the list that drop what cannot be done in a read-only view (the thumbs under a
+    /// reply) follow it.
+    /// </summary>
+    internal static readonly StyledProperty<bool> ViewIsReadOnlyProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>("ViewIsReadOnly", inherits: true);
+
     /// <summary>At this width or less the view is narrow (the extension's <c>max-width: 500px</c>).</summary>
     internal const double NarrowWidth = 500;
 
@@ -165,7 +175,7 @@ public partial class ClaudeChatView : UserControl
         // a request that came while the preview was open was waiting for the keyboard; under the Diff View it waits on
         Preview.Closed += (_, _) =>
         {
-            if (!DiffViewer.IsOpen) GiveBackKeyboard();
+            if (!DiffViewer.IsOpen && !Feedback.IsOpen) GiveBackKeyboard();
         };
         // the Diff View gives the keyboard back to where it was; a request that came meanwhile, or a place that went, gets it as above
         DiffViewer.Closed += (_, _) =>
@@ -173,6 +183,13 @@ public partial class ClaudeChatView : UserControl
             var owed = _keyboardOwed;
             _keyboardOwed = false;
             if (_attached && ((owed && Prompt.Request != null) || !DiffViewer.GaveFocusBack)) GiveBackKeyboard();
+        };
+        // "What went wrong?" does the same
+        Feedback.Closed += (_, _) =>
+        {
+            var owed = _keyboardOwed;
+            _keyboardOwed = false;
+            if (_attached && ((owed && Prompt.Request != null) || !Feedback.GaveFocusBack)) GiveBackKeyboard();
         };
         ContextPanel.FocusReleased += (_, _) => GiveBackKeyboard();
         UsagePanel.FocusReleased += (_, _) => GiveBackKeyboard();
@@ -287,7 +304,7 @@ public partial class ClaudeChatView : UserControl
     /// (Android's), which does not arrive as Esc.
     /// </summary>
     /// <remarks>
-    /// One layer per call, the top-most first: the image preview; the Diff View; a menu of the reply box (the commands or the model); a sheet
+    /// One layer per call, the top-most first: the image preview; the Diff View; "What went wrong?"; a menu of the reply box (the commands or the model); a sheet
     /// of the touch layout, the usage sheet before the others, and an inner page of it going back to the first before the sheet
     /// closes; the box where the user writes a comment on the plan; an agent's card in the Agent map, which goes back to the map; the
     /// panel that is open (the Agent map, or the desktop's <c>/context</c> and <c>/usage</c>); the document of a plan over the list;
@@ -304,6 +321,11 @@ public partial class ClaudeChatView : UserControl
         if (DiffViewer.IsOpen)
         {
             DiffViewer.Hide();
+            return true;
+        }
+        if (Feedback.IsOpen)
+        {
+            Feedback.Hide();
             return true;
         }
         if (Composer.HasOpenPopup)
@@ -351,11 +373,14 @@ public partial class ClaudeChatView : UserControl
             AddSheet.Conversation = Conversation;
             UsageSheet.Conversation = Conversation; // and the usage sheet follows the new one's panel
             DiffViewer.Hide(); // its call was the other conversation's
+            Feedback.Hide();   // and so was its reply
             Preview.Hide(); // its image was the other conversation's
             if (_attached) Track(Conversation);
         }
         else if (change.Property == IsReadOnlyProperty && IsReadOnly)
         {
+            SetValue(ViewIsReadOnlyProperty, true); // the thumbs under the replies go
+            Feedback.Hide();                        // a rating cannot go from here: the box closes, sending nothing
             BottomPanel.IsVisible = false;
             PlanComment.Cancel();               // a plan that cannot be answered here takes no comments
             PlanDocument.ViewIsReadOnly = true; // nor opens by itself (the one that did closes)
@@ -366,6 +391,7 @@ public partial class ClaudeChatView : UserControl
         }
         else if (change.Property == IsReadOnlyProperty)
         {
+            SetValue(ViewIsReadOnlyProperty, false);
             BottomPanel.IsVisible = true;
             PlanDocument.ViewIsReadOnly = false;
             Composer.ViewIsReadOnly = false;
@@ -523,9 +549,9 @@ public partial class ClaudeChatView : UserControl
     /// </summary>
     private void OnPromptRequestChanged(bool hadFocus)
     {
-        if (DiffViewer.IsOpen)
+        if (DiffViewer.IsOpen || Feedback.IsOpen)
         {
-            // the Diff View has the keyboard (the user opened it from the list, in the view): the request gets it when it closes, as
+            // the Diff View (or "What went wrong?") has the keyboard (the user opened it from the list, in the view): the request gets it when it closes, as
             // it would have now, unless the reply box has something to send
             _keyboardOwed = Prompt.Request != null && (hadFocus || Composer.HasNothingToSend);
             return;
@@ -553,6 +579,8 @@ public partial class ClaudeChatView : UserControl
         if (Prompt.IsHeld(e.Key)) e.Handled = true;
         // Esc with the Diff View open closes it and only it, wherever the keyboard is: it is over everything but the preview
         else if (IsDiffEsc(e)) CloseDiff(e);
+        // Esc with "What went wrong?" open closes it and only it (it is under the Diff View and the preview only)
+        else if (IsFeedbackEsc(e)) CloseFeedback(e);
         // Esc with the comment box open closes it and only it (it is over the panels and the document), unless a menu, a sheet or the
         // preview is over it
         else if (IsCommentEsc(e)) CloseComment(e);
@@ -609,6 +637,17 @@ public partial class ClaudeChatView : UserControl
         e.Handled = true;
         Prompt.Hold(e.Key);
         DiffViewer.Hide();
+    }
+
+    private bool IsFeedbackEsc(KeyEventArgs e) =>
+        !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && Feedback.IsOpen && !Preview.IsVisible && !DiffViewer.IsOpen;
+
+    /// <summary>Esc on "What went wrong?" closes it without sending more; held, it goes no further.</summary>
+    private void CloseFeedback(KeyEventArgs e)
+    {
+        e.Handled = true;
+        Prompt.Hold(e.Key);
+        Feedback.Hide();
     }
 
     private bool IsCommentEsc(KeyEventArgs e) =>
@@ -669,6 +708,18 @@ public partial class ClaudeChatView : UserControl
         if (call == null || (call.Diff is not { Count: > 0 } && ToolPresentation.Diff(call.Name, call.Input, maxLinesPerSide: null) is not { Count: > 0 }))
             return false;
         DiffViewer.Show(call);
+        return true;
+    }
+
+    /// <summary>
+    /// Opens "What went wrong?" over the view about <paramref name="item"/>, a reply the user rated bad. False, and nothing opens, while
+    /// the host takes no feedback or the view is read-only.
+    /// </summary>
+    internal bool ShowFeedback(AssistantTextItem item)
+    {
+        var conversation = Conversation;
+        if (item == null || conversation == null || !conversation.CanSendFeedback || IsReadOnly) return false;
+        Feedback.Show(conversation, item);
         return true;
     }
 

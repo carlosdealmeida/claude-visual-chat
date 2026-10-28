@@ -222,6 +222,11 @@
     <StreamGeometry x:Key="ClaudeChat.Icon.Globe">M8,2 A6,6 0 1 1 8,14 A6,6 0 1 1 8,2 Z M2,8 L14,8 M8,2 C5,4.5 5,11.5 8,14 M8,2 C11,4.5 11,11.5 8,14</StreamGeometry>
     <StreamGeometry x:Key="ClaudeChat.Icon.Remote">M2.5,3 L13.5,3 L13.5,10 L2.5,10 Z M8,10 L8,13 M5,13 L11,13</StreamGeometry>
     <StreamGeometry x:Key="ClaudeChat.Icon.External">M12.5,9 L12.5,13 L3,13 L3,3.5 L7,3.5 M9.5,2.5 L13.5,2.5 L13.5,6.5 M13.5,2.5 L7.5,8.5</StreamGeometry>
+    <!-- the row under a reply, on a 16 px box stroked like the chevron, drawn at 14 px: shapes after the Codicons (MIT) bookmark (filled
+         once marked), thumbsup and thumbsdown -->
+    <StreamGeometry x:Key="ClaudeChat.Icon.Bookmark">M4,1.5 L12,1.5 L12,14.5 L8,11.5 L4,14.5 Z</StreamGeometry>
+    <StreamGeometry x:Key="ClaudeChat.Icon.ThumbUp">M2.5,7 L4.5,7 L4.5,14 L2.5,14 Z M4.5,7.5 L7,2.5 C7.8,2.5 8.5,3.2 8.5,4 L8.5,6.5 L12.3,6.5 C13.1,6.5 13.7,7.2 13.5,8 L12.6,12.8 C12.5,13.5 11.9,14 11.2,14 L4.5,14</StreamGeometry>
+    <StreamGeometry x:Key="ClaudeChat.Icon.ThumbDown">M2.5,9 L4.5,9 L4.5,2 L2.5,2 Z M4.5,8.5 L7,13.5 C7.8,13.5 8.5,12.8 8.5,12 L8.5,9.5 L12.3,9.5 C13.1,9.5 13.7,8.8 13.5,8 L12.6,3.2 C12.5,2.5 11.9,2 11.2,2 L4.5,2</StreamGeometry>
 
     <!-- one template per item; the list picks the one that matches -->
     <controls:ChatItemTemplates x:Key="ClaudeChat.ItemTemplates">
@@ -309,12 +314,19 @@
         <controls:ToolCallView />
       </DataTemplate>
 
-      <!-- the end of a turn: the line of duration, tokens and cost; in the touch layout (the class touch) the button that
-           copies the answer instead. The text keeps its own visibility (from its text); the holders are what the layout
-           shows or hides -->
+      <!-- the end of a turn: the row of actions under the answer (copy, bookmark and, with the host, the thumbs), then the line of
+           duration, tokens and cost; in the touch layout (the class touch) the button that copies the answer instead of both, with
+           the host's actions of the row beside it. The text keeps its own visibility (from its text), and so do the row and the copy
+           button (from the turn); the holders are what the layout shows or hides -->
       <DataTemplate DataType="cvc:TurnFooterItem">
-        <Panel Classes="ClaudeChatTurnEnd"
-               Classes.touch="{Binding $parent[controls:ClaudeChatView].Layout, Converter={x:Static controls:ChatConverters.IsTouch}}">
+        <StackPanel Classes="ClaudeChatTurnEnd"
+                    Classes.touch="{Binding $parent[controls:ClaudeChatView].Layout, Converter={x:Static controls:ChatConverters.IsTouch}}">
+          <StackPanel Classes="ClaudeChatTurnActions" Orientation="Horizontal">
+            <Panel Classes="ClaudeChatFooterCopy">
+              <controls:CopyTurnButton />
+            </Panel>
+            <controls:ResponseActions />
+          </StackPanel>
           <Panel Classes="ClaudeChatFooterLine">
             <TextBlock Classes="ClaudeChatFooter"
                        IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -326,10 +338,7 @@
               </TextBlock.Text>
             </TextBlock>
           </Panel>
-          <Panel Classes="ClaudeChatFooterCopy">
-            <controls:CopyTurnButton />
-          </Panel>
-        </Panel>
+        </StackPanel>
       </DataTemplate>
 
       <DataTemplate DataType="cvc:NoticeItem">
@@ -647,6 +656,173 @@
   <!-- the copy button's holder: only the touch layout shows it (Themes/ClaudeChatTouch.axaml) -->
   <Style Selector="Panel.ClaudeChatFooterCopy">
     <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <!-- ===== the row of actions under a reply (ResponseActions), at the end of its turn: 16 px tall, 2 px between, in the answer's
+       column. Buttons of 20 px, 2 px inside, 4 px corners, transparent, a 14 px icon in the secondary color; under the pointer the
+       foreground on the editor's background. The row is clear until the pointer is over the end of the turn or the keyboard is in it; a
+       marked bookmark, and a rated reply's thumbs and text, stay in sight. The thumb up rated is the added green, the thumb down the
+       error red; the text beside them is .9em in the secondary color, 6 px after them, its link underlined ===== -->
+
+  <Style Selector="StackPanel.ClaudeChatTurnEnd">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="controls|ResponseActions">
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Spacing" Value="2" />
+    <Setter Property="Margin" Value="30,0,0,0" />
+  </Style>
+  <Style Selector="Button.ClaudeChatResponseAction">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  </Style>
+  <!-- the copy and the bookmark are clear each on its own; the thumbs and their text, as one (ClaudeChatResponseRating) -->
+  <Style Selector="Button.ClaudeChatResponseCopy, Button.ClaudeChatResponseBookmark, StackPanel.ClaudeChatResponseRating">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatResponseRating">
+    <Setter Property="Spacing" Value="2" />
+  </Style>
+  <Style Selector="Button.ClaudeChatResponseAction:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatResponseAction:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ToolBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatResponseAction:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatResponseGood.selected">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Success}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatResponseBad.selected">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Error}" />
+  </Style>
+  <Style Selector="Viewbox.ClaudeChatResponseIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+  </Style>
+  <Style Selector="Path.ClaudeChatBookmarkIcon, Path.ClaudeChatThumbUpIcon, Path.ClaudeChatThumbDownIcon">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}" />
+    <Setter Property="StrokeThickness" Value="1" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+  </Style>
+  <Style Selector="Path.ClaudeChatBookmarkIcon">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Bookmark}" />
+  </Style>
+  <Style Selector="Path.ClaudeChatBookmarkIcon.marked">
+    <Setter Property="Fill" Value="{Binding $parent[Button].Foreground}" />
+  </Style>
+  <Style Selector="Path.ClaudeChatThumbUpIcon">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.ThumbUp}" />
+  </Style>
+  <Style Selector="Path.ClaudeChatThumbDownIcon">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.ThumbDown}" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatResponseNotice">
+    <Setter Property="Margin" Value="6,0,0,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- .9em of the text (the size of inline code) -->
+  <Style Selector="TextBlock.ClaudeChatResponseNoticeText">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.CodeFontSize}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.ClaudeChatResponseLink">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatResponseLink:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatResponseLink:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatResponseLinkText">
+    <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.CodeFontSize}" />
+    <Setter Property="TextDecorations" Value="Underline" />
+  </Style>
+  <!-- in sight: under the pointer, with the keyboard (on the button; anywhere in the thumbs), a marked bookmark, a rated reply's thumbs -->
+  <Style Selector="StackPanel.ClaudeChatTurnEnd:pointerover Button.ClaudeChatResponseCopy, StackPanel.ClaudeChatTurnEnd:pointerover Button.ClaudeChatResponseBookmark, StackPanel.ClaudeChatTurnEnd:pointerover StackPanel.ClaudeChatResponseRating, Button.ClaudeChatResponseCopy:focus, Button.ClaudeChatResponseBookmark:focus, StackPanel.ClaudeChatResponseRating:focus-within, Button.ClaudeChatResponseBookmark.marked, controls|ResponseActions:rated StackPanel.ClaudeChatResponseRating">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <!-- ===== "What went wrong?" (FeedbackDialog): the modal backdrop over the whole view; a dialog of 400 px at most with the side bar's
+       color, a 1 px border, 8 px corners and 16 px inside; the title at 16 px, semibold, and a × of 20 px; a field of four lines in the
+       input's colors, 8 px inside, .9em; "Skip" (plain) and "Send feedback" (the button color, semibold) at the right, 16 px under it ===== -->
+
+  <Style Selector="controls|FeedbackDialog">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ModalOverlay}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatFeedbackDialog">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="16" />
+  </Style>
+  <Style Selector="Border.ClaudeChatFeedbackDialog:focus-within">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.PermissionActiveBorder}" />
+  </Style>
+  <Style Selector="DockPanel.ClaudeChatFeedbackHeader">
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatFeedbackTitle">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBox.ClaudeChatFeedbackField">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="8" />
+    <Setter Property="Height" Value="80" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.CodeFontSize}" />
+  </Style>
+  <Style Selector="TextBox.ClaudeChatFeedbackField /template/ Border#PART_BorderElement, TextBox.ClaudeChatFeedbackField:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBackground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+  </Style>
+  <Style Selector="TextBox.ClaudeChatFeedbackField:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBackground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatFeedbackButtons">
+    <Setter Property="Spacing" Value="8" />
+    <Setter Property="Margin" Value="0,16,0,0" />
+  </Style>
+  <Style Selector="Button.ClaudeChatFeedbackSkip, Button.ClaudeChatFeedbackSend">
+    <Setter Property="Padding" Value="14,6" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.CodeFontSize}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatFeedbackSkip:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.HoverBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatFeedbackSend">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.AccentFill}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.AccentForeground}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.ClaudeChatFeedbackSkip:focus-visible /template/ Border#PART_ChatButton, Button.ClaudeChatFeedbackSend:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
   </Style>
 
   <!-- "Interrupted" and "Tool interrupted": a plain line in the column of the user's messages, no dot and no bubble, not

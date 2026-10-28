@@ -260,6 +260,48 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_response_actions_api_exists()
+    {
+        // the actions under a reply (0.6.0): the bookmark and the line's uuid on the reply, a link event for the host and the rating
+        var bookmarked = typeof(AssistantTextItem).GetProperty("IsBookmarked");
+        Assert.Equal(typeof(bool), bookmarked?.PropertyType);
+        Assert.True(bookmarked!.SetMethod!.IsPublic);
+        var uuid = typeof(AssistantTextItem).GetProperty("Uuid");
+        Assert.Equal(typeof(string), uuid?.PropertyType);
+        Assert.False(uuid!.SetMethod!.IsPublic); // the conversation sets it
+        Assert.Null(typeof(AssistantTextItem).GetProperty("Rating")); // the rating shown stays internal
+        var blockUuid = typeof(ClaudeVisualChat.Protocol.AssistantBlock).GetProperty("Uuid");
+        Assert.Equal(typeof(string), blockUuid?.PropertyType);
+        Assert.Contains(blockUuid!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        Assert.Equal(3, typeof(ClaudeVisualChat.Protocol.AssistantBlock).GetConstructors().Single().GetParameters().Length); // no new positional parameter
+
+        var conversation = typeof(ChatConversation);
+        Assert.Equal(typeof(System.EventHandler<LinkRequestedEventArgs>), conversation.GetEvent("LinkRequested")?.EventHandlerType);
+        Assert.Equal(typeof(System.EventHandler<FeedbackRequestedEventArgs>), conversation.GetEvent("FeedbackRequested")?.EventHandlerType);
+        Assert.Equal(typeof(string), typeof(LinkRequestedEventArgs).GetProperty("Url")?.PropertyType);
+        Assert.NotNull(typeof(LinkRequestedEventArgs).GetConstructor(new[] { typeof(string) }));
+        Assert.Equal(typeof(AssistantTextItem), typeof(FeedbackRequestedEventArgs).GetProperty("Item")?.PropertyType);
+        Assert.Equal(typeof(bool?), typeof(FeedbackRequestedEventArgs).GetProperty("Positive")?.PropertyType);
+        Assert.Equal(typeof(string), typeof(FeedbackRequestedEventArgs).GetProperty("Details")?.PropertyType);
+        Assert.NotNull(typeof(FeedbackRequestedEventArgs).GetConstructor(new[] { typeof(AssistantTextItem), typeof(bool?), typeof(string) }));
+        // what the conversation does with them stays internal (the bookmarks list is the bookmarks panel's, later)
+        foreach (var member in new[] { "Bookmarks", "ToggleBookmark", "RequestLink", "CanOpenLinks", "CanSendFeedback", "RateAnswer" })
+            Assert.Empty(conversation.GetMember(member));
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.ResponseActions", names);
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.FeedbackDialog", names);
+        foreach (var text in new[]
+        {
+            "CopyResponse", "CopyResponseToClipboard", "BookmarkResponse", "RemoveBookmark", "GoodResponse", "BadResponse",
+            "FeedbackLearnHow", "FeedbackThanks", "FeedbackLearnHowShort", "FeedbackTitle", "FeedbackPlaceholder", "FeedbackSkip",
+            "FeedbackSend",
+        })
+        {
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        }
+    }
+
+    [Fact]
     public void The_plan_comment_api_exists()
     {
         // the comments on the plan (0.6.0): their texts; the controls and the comment itself stay internal

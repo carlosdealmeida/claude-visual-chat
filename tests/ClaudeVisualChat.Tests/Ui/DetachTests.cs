@@ -697,6 +697,100 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void The_response_actions_stop_their_check_and_let_go_of_the_reply_when_the_view_leaves()
+    {
+        var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();
+        var copied = new List<string>();
+        ChatClipboard.Override = text => { copied.Add(text); return gate.Task; };
+        try
+        {
+            var c = Conversation();
+            c.Items.Add(new UserMessageItem("Fix it"));
+            var answer = new AssistantTextItem { Text = "Fixed.", Uuid = "u-1" };
+            c.Items.Add(answer);
+            c.Items.Add(new TurnFooterItem(1000, 1, 1, null, false));
+            var own = ItemHandlers(answer);
+            var m = new Mounted(c);
+            ResponseActions Actions() => m.View.GetVisualDescendants().OfType<ResponseActions>().Single();
+            Avalonia.Media.Geometry? IconData() => Actions().CopyButton.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Data;
+            Assert.True(ItemHandlers(answer) > own);                         // the row follows its reply (the bookmark, the rating)
+
+            // the clipboard answers after the view left: the check is not shown for a view that is out
+            UiHelpers.Click(m.Window, Actions().CopyButton);
+            Assert.Equal(new[] { "Fixed." }, copied);
+            var actions = Actions();
+            m.Out();
+            Assert.Equal(own, ItemHandlers(answer));                         // out: it lets go of the reply
+            gate.SetResult(true);
+            UiHelpers.Pump();
+            Assert.False(actions.IsCopied);
+            Assert.False(actions.IsTicking);
+
+            // a check on screen goes when the view leaves, and back it is a copy icon again
+            answer.IsBookmarked = true;                                      // marked while out
+            c.FeedbackRequested += (_, _) => { };                            // and the host began to take feedback
+            m.In();
+            Assert.True(ItemHandlers(answer) > own);
+            Assert.Contains("marked", Actions().BookmarkButton.Classes);     // drawn as the reply is now
+            Assert.True(Actions().GoodButton.IsEffectivelyVisible);
+            var copyIcon = IconData();
+            ChatClipboard.Override = text => { copied.Add(text); return System.Threading.Tasks.Task.CompletedTask; };
+            UiHelpers.Click(m.Window, Actions().CopyButton);
+            Assert.True(Actions().IsCopied);
+            Assert.True(Actions().IsTicking);
+            Assert.NotSame(copyIcon, IconData());
+
+            actions = Actions();
+            m.Out();
+            Assert.False(actions.IsCopied);
+            Assert.False(actions.IsTicking);
+            actions.EndCopied();                                             // a late tick finds nothing to do
+            m.In();
+            Assert.False(Actions().IsCopied);
+            Assert.Same(copyIcon, IconData());
+            Assert.Equal("Copy response to clipboard", Avalonia.Automation.AutomationProperties.GetName(Actions().CopyButton));
+
+            // a list that reuses the row for another turn drops the check without a sound
+            var current = Actions();
+            UiHelpers.Click(m.Window, current.CopyButton);
+            Assert.True(current.IsCopied);
+            current.DataContext = new TurnFooterItem(1, 1, 1, null, false);
+            UiHelpers.Pump();
+            Assert.False(current.IsCopied);
+            Assert.False(current.IsTicking);
+            m.Window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    [AvaloniaFact]
+    public void What_went_wrong_comes_back_after_the_view_returns()
+    {
+        var c = Conversation();
+        c.Items.Add(new UserMessageItem("Fix it"));
+        var answer = new AssistantTextItem { Text = "Fixed.", Uuid = "u-1" };
+        c.Items.Add(answer);
+        c.Items.Add(new TurnFooterItem(1000, 1, 1, null, false));
+        var asked = new List<FeedbackRequestedEventArgs>();
+        c.FeedbackRequested += (_, e) => asked.Add(e);
+        var m = new Mounted(c);
+        var dialog = m.View.GetVisualDescendants().OfType<FeedbackDialog>().Single();
+        Assert.True(m.View.ShowFeedback(answer));
+        dialog.Field.Text = "half a thought";
+        UiHelpers.Pump();
+
+        m.Out();                                                           // taken out with the box open: nothing throws
+        m.In();                                                            // back: the box as it was
+        Assert.True(dialog.IsOpen);
+        Assert.Equal("half a thought", dialog.Field.Text);
+        UiHelpers.DrawFrames();
+        UiHelpers.Click(m.Window, dialog.SendButton);                      // and it sends as ever
+        Assert.False(dialog.IsOpen);
+        Assert.Equal("half a thought", Assert.Single(asked).Details);
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_diff_view_comes_back_after_the_view_returns()
     {
         var c = Conversation();

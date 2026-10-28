@@ -816,6 +816,42 @@ public class CloseTopLayerTests
         ui.Window.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void Close_top_layer_closes_what_went_wrong_alone_under_the_diff_view(ChatLayout layout)
+    {
+        var c = TouchSamples.Opus();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Edit", J("{\"file_path\":\"a.cs\",\"old_string\":\"x\",\"new_string\":\"y\"}"))));
+        var answer = new AssistantTextItem { Text = "Done.", Uuid = "u-1" };
+        c.Items.Add(answer);
+        c.Items.Add(new TurnFooterItem(1000, 1, 1, null, false));
+        var asked = new List<FeedbackRequestedEventArgs>();
+        c.FeedbackRequested += (_, e) => asked.Add(e);
+        c.Apply(PlanRequest());                                              // the plan's document is open under it all
+        var ui = new Opened(c, layout);
+        var document = ui.View.GetVisualDescendants().OfType<PlanDocumentPanel>().Single();
+        var diff = ui.View.GetVisualDescendants().OfType<DiffViewPanel>().Single();
+        var feedback = ui.View.GetVisualDescendants().OfType<FeedbackDialog>().Single();
+        Assert.True(ui.View.ShowFeedback(answer));
+        Assert.True(ui.View.ShowDiff(c.Items.OfType<ToolCallItem>().Single(t => t.Name == "Edit")));
+        UiHelpers.Pump();
+        Assert.True(feedback.IsOpen);
+        Assert.True(diff.IsOpen);
+        Assert.False(ui.View.IsSheetOpen);                                   // the box is no sheet
+
+        Assert.True(ui.View.CloseTopLayer());                                // the Diff View over it first
+        Assert.False(diff.IsOpen);
+        Assert.True(feedback.IsOpen);
+        Assert.True(ui.View.CloseTopLayer());                                // one call: the box, only it
+        Assert.False(feedback.IsOpen);
+        Assert.True(document.IsOpen);
+        Assert.Empty(asked);                                                 // closed as Skip: nothing sent
+        Assert.True(ui.View.CloseTopLayer());                                // then the document
+        Assert.False(document.IsOpen);
+        ui.Window.Close();
+    }
+
     [AvaloniaFact]
     public void Close_top_layer_closes_a_sheet_over_the_comment_box_first()
     {

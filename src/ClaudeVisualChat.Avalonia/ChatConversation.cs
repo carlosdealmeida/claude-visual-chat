@@ -79,8 +79,13 @@ public sealed class ChatConversation : ChatObservableObject
     private string? _remoteControlUrl;
     private string? _remoteControlError;
 
+    private readonly ObservableCollection<AssistantTextItem> _bookmarks = new ObservableCollection<AssistantTextItem>();
+    private EventHandler<LinkRequestedEventArgs>? _linkRequested;
+    private EventHandler<FeedbackRequestedEventArgs>? _feedbackRequested;
+
     public ChatConversation()
     {
+        Bookmarks = new ReadOnlyObservableCollection<AssistantTextItem>(_bookmarks);
         PendingPermissions.CollectionChanged += OnPendingPermissionsChanged;
     }
 
@@ -125,6 +130,103 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>Raised by <see cref="OpenRemoteControl"/> when there is a link: the host opens the URL; the component never does.</summary>
     public event EventHandler<RemoteControlLinkRequestedEventArgs>? RemoteControlLinkRequested;
+
+    /// <summary>
+    /// Raised when the user asks to open a web page of the view ("Learn how we use your feedback"): the host opens the URL; the
+    /// component never does. The links show only while the host listens to this event.
+    /// </summary>
+    public event EventHandler<LinkRequestedEventArgs>? LinkRequested
+    {
+        add
+        {
+            _linkRequested += value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+        remove
+        {
+            _linkRequested -= value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
+    /// Raised when the user rates a reply with the thumbs under its turn, takes the rating back, or sends what went wrong after a bad
+    /// one (see <see cref="FeedbackRequestedEventArgs"/>): the host sends it to Anthropic. The thumbs show only while the host listens
+    /// to this event, and never in a read-only view.
+    /// </summary>
+    public event EventHandler<FeedbackRequestedEventArgs>? FeedbackRequested
+    {
+        add
+        {
+            _feedbackRequested += value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+        remove
+        {
+            _feedbackRequested -= value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>The host began or stopped listening to <see cref="LinkRequested"/> or <see cref="FeedbackRequested"/>.</summary>
+    internal event EventHandler? HostHandlersChanged;
+
+    /// <summary>The longest text of "What went wrong?" that goes to the host.</summary>
+    internal const int MaxFeedbackLength = 4000;
+
+    /// <summary>Whether the host opens links (it listens to <see cref="LinkRequested"/>).</summary>
+    internal bool CanOpenLinks => _linkRequested != null;
+
+    /// <summary>Whether the host takes feedback (it listens to <see cref="FeedbackRequested"/>).</summary>
+    internal bool CanSendFeedback => _feedbackRequested != null;
+
+    /// <summary>The bookmarked replies, in the order they were marked (<see cref="ToggleBookmark"/>); emptied with the items.</summary>
+    internal ReadOnlyObservableCollection<AssistantTextItem> Bookmarks { get; }
+
+    /// <summary>Marks <paramref name="item"/> as bookmarked, at the end of <see cref="Bookmarks"/>, or takes its bookmark away.</summary>
+    internal void ToggleBookmark(AssistantTextItem item)
+    {
+        if (item == null) throw new ArgumentNullException(nameof(item));
+        if (item.IsBookmarked)
+        {
+            item.IsBookmarked = false;
+            _bookmarks.Remove(item);
+        }
+        else
+        {
+            item.IsBookmarked = true;
+            if (!_bookmarks.Contains(item)) _bookmarks.Add(item);
+        }
+    }
+
+    /// <summary>Asks the host to open <paramref name="url"/> (raises <see cref="LinkRequested"/>); nothing for an empty one.</summary>
+    internal void RequestLink(string url)
+    {
+        if (string.IsNullOrEmpty(url)) return;
+        _linkRequested?.Invoke(this, new LinkRequestedEventArgs(url));
+    }
+
+    /// <summary>
+    /// The user clicked a thumb under the turn <paramref name="item"/> ends: the rating becomes that one, or none when it already was,
+    /// and the host is told (<see cref="FeedbackRequested"/>). True when the reply is now rated bad, so "What went wrong?" asks more.
+    /// </summary>
+    internal bool RateAnswer(AssistantTextItem item, bool positive)
+    {
+        if (item == null) throw new ArgumentNullException(nameof(item));
+        bool? rating = item.Rating == positive ? (bool?)null : positive;
+        item.Rating = rating;
+        _feedbackRequested?.Invoke(this, new FeedbackRequestedEventArgs(item, rating, null));
+        return rating == false;
+    }
+
+    /// <summary>What the user wrote in "What went wrong?" about a reply rated bad: trimmed, cut at <see cref="MaxFeedbackLength"/>, to the host.</summary>
+    internal void SendFeedbackDetails(AssistantTextItem item, string? details)
+    {
+        if (item == null) throw new ArgumentNullException(nameof(item));
+        var text = (details ?? "").Trim();
+        if (text.Length > MaxFeedbackLength) text = text.Substring(0, MaxFeedbackLength);
+        _feedbackRequested?.Invoke(this, new FeedbackRequestedEventArgs(item, false, text));
+    }
 
     /// <summary>Images waiting to go with the next message; <see cref="Submit"/> takes them all.</summary>
     public ObservableCollection<ChatImage> Attachments { get; } = new ObservableCollection<ChatImage>();
@@ -589,10 +691,11 @@ public sealed class ChatConversation : ChatObservableObject
         UpdateRunningAgents();
     }
 
-    /// <summary>Empties the items, the agents and the pending requests. Session details stay.</summary>
+    /// <summary>Empties the items (and their bookmarks), the agents and the pending requests. Session details stay.</summary>
     public void Clear()
     {
         Items.Clear();
+        _bookmarks.Clear(); // they were items of the list
         Agents.Clear();
         _agentsStoppedByHistory.Clear();
         if (PendingPermissions.Count > 0) PendingPermissions.Clear();
@@ -959,11 +1062,12 @@ public sealed class ChatConversation : ChatObservableObject
                     streamedText.Text = text.Text;
                     streamedText.IsStreaming = false;
                     streamedText.Timestamp = e.Timestamp;
+                    streamedText.Uuid = e.Uuid;
                     Complete(live);
                 }
                 else
                 {
-                    Place(new AssistantTextItem { Text = text.Text, Timestamp = e.Timestamp }, e.ParentToolUseId);
+                    Place(new AssistantTextItem { Text = text.Text, Timestamp = e.Timestamp, Uuid = e.Uuid }, e.ParentToolUseId);
                 }
                 break;
             case ThinkingBlock thinking:

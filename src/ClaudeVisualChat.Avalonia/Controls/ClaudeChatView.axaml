@@ -68,6 +68,8 @@
       <controls:ModelSheet Name="ModelSheet" Grid.RowSpan="3" />
       <controls:AddSheet Name="AddSheet" Grid.RowSpan="3" />
       <controls:UsageSheet Name="UsageSheet" Grid.RowSpan="3" />
+      <!-- "What went wrong?", which the thumb down under a reply opens: over the whole view, under the Diff View and the preview -->
+      <controls:FeedbackDialog Name="Feedback" Grid.RowSpan="3" />
       <!-- the Diff View: a diff of the list, whole, over everything but the image preview; also while read-only -->
       <controls:DiffViewPanel Name="DiffViewer" Grid.RowSpan="3" />
       <!-- an attached image, over the whole view -->

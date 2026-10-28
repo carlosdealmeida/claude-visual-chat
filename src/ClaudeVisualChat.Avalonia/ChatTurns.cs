@@ -26,4 +26,20 @@ internal static class ChatTurns
         answers.Reverse();
         return string.Join("\n\n", answers);
     }
+
+    /// <summary>
+    /// The last <see cref="AssistantTextItem"/> with text of the turn that ends with the footer at <paramref name="footerIndex"/>
+    /// (the same texts as <see cref="AnswerText"/>): the reply a bookmark or a rating of the turn is about. Null when the turn wrote nothing.
+    /// </summary>
+    internal static AssistantTextItem? LastAnswer(IList<ChatItem> items, int footerIndex)
+    {
+        if (items == null) throw new ArgumentNullException(nameof(items));
+        for (var i = footerIndex - 1; i >= 0; i--)
+        {
+            var item = items[i];
+            if (item is UserMessageItem || item is TurnFooterItem) break;
+            if (item is AssistantTextItem answer && answer.Text.Length > 0) return answer;
+        }
+        return null;
+    }
 }

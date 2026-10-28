@@ -33,6 +33,9 @@ namespace ClaudeVisualChat.Protocol
 
         /// <summary>How long a thought took (the session file's <c>thinkingDurationMs</c>); null when not told.</summary>
         public long? ThinkingDurationMs { get; init; }
+
+        /// <summary>The line's <c>uuid</c>; null when the line has none.</summary>
+        public string? Uuid { get; init; }
     }
 
     public sealed record UserBlock(

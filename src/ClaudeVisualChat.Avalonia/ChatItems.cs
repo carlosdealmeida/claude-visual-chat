@@ -53,6 +53,9 @@ public sealed class AssistantTextItem : ChatItem
     private string _text = "";
     private bool _isStreaming;
     private DateTimeOffset? _timestamp;
+    private bool _isBookmarked;
+    private string? _uuid;
+    private bool? _rating;
 
     public string Text
     {
@@ -73,6 +76,33 @@ public sealed class AssistantTextItem : ChatItem
     {
         get => _isStreaming;
         set => SetField(ref _isStreaming, value);
+    }
+
+    /// <summary>
+    /// Whether the user bookmarked it, with the bookmark button under the turn it ends (the view marks the last text of a turn). It is
+    /// kept here, in memory, because the list recycles its rows.
+    /// </summary>
+    public bool IsBookmarked
+    {
+        get => _isBookmarked;
+        set => SetField(ref _isBookmarked, value);
+    }
+
+    /// <summary>
+    /// The <c>uuid</c> of the claude's line that brought it (what a rating names it by); null for an item built by hand, or while it
+    /// is still arriving.
+    /// </summary>
+    public string? Uuid
+    {
+        get => _uuid;
+        internal set => SetField(ref _uuid, value);
+    }
+
+    /// <summary>The user's rating of the turn this text ends: true for good, false for bad, null for none. Kept for the row that shows it.</summary>
+    internal bool? Rating
+    {
+        get => _rating;
+        set => SetField(ref _rating, value);
     }
 }
 

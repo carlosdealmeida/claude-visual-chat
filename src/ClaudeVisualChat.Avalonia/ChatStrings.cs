@@ -277,6 +277,19 @@ public sealed record ChatStrings
         Copied = "Copiado",
         CopyCode = "Copiar código",
         CopyCodeToClipboard = "Copiar código para a área de transferência",
+        CopyResponse = "Copiar resposta",
+        CopyResponseToClipboard = "Copiar resposta para a área de transferência",
+        BookmarkResponse = "Marcar resposta",
+        RemoveBookmark = "Desmarcar resposta",
+        GoodResponse = "Boa resposta",
+        BadResponse = "Resposta ruim",
+        FeedbackLearnHow = "Saiba como usamos sua avaliação",
+        FeedbackThanks = "Obrigado pela avaliação",
+        FeedbackLearnHowShort = "Saiba como a usamos",
+        FeedbackTitle = "O que deu errado?",
+        FeedbackPlaceholder = "Conte mais (opcional)",
+        FeedbackSkip = "Pular",
+        FeedbackSend = "Enviar avaliação",
         ThousandsSeparator = ".",
         DecimalSeparator = ",",
     };
@@ -1067,6 +1080,45 @@ public sealed record ChatStrings
 
     /// <summary>The name of that button for a screen reader (it reads <see cref="Copied"/> for a moment after a copy).</summary>
     public string CopyCodeToClipboard { get; init; } = "Copy code to clipboard";
+
+    /// <summary>The tooltip of the button under a finished turn that copies Claude's answer (the desktop's row of actions).</summary>
+    public string CopyResponse { get; init; } = "Copy response";
+
+    /// <summary>The name of that button for a screen reader (it reads <see cref="Copied"/> for a moment after a copy).</summary>
+    public string CopyResponseToClipboard { get; init; } = "Copy response to clipboard";
+
+    /// <summary>The bookmark button under a finished turn, while its reply is not bookmarked.</summary>
+    public string BookmarkResponse { get; init; } = "Bookmark response";
+
+    /// <summary>The same button once the reply is bookmarked.</summary>
+    public string RemoveBookmark { get; init; } = "Remove bookmark";
+
+    /// <summary>The thumb up under a finished turn (while the host takes feedback).</summary>
+    public string GoodResponse { get; init; } = "Good response";
+
+    /// <summary>The thumb down under a finished turn.</summary>
+    public string BadResponse { get; init; } = "Bad response";
+
+    /// <summary>The link beside the thumbs before a rating (while the host opens links).</summary>
+    public string FeedbackLearnHow { get; init; } = "Learn how we use your feedback";
+
+    /// <summary>Beside the thumbs after a rating.</summary>
+    public string FeedbackThanks { get; init; } = "Thanks for your feedback";
+
+    /// <summary>The link after <see cref="FeedbackThanks"/> (while the host opens links).</summary>
+    public string FeedbackLearnHowShort { get; init; } = "Learn how we use it";
+
+    /// <summary>The title of the box that opens with the thumb down.</summary>
+    public string FeedbackTitle { get; init; } = "What went wrong?";
+
+    /// <summary>The placeholder of that box's field.</summary>
+    public string FeedbackPlaceholder { get; init; } = "Tell us more (optional)";
+
+    /// <summary>The button that closes that box without sending what it says.</summary>
+    public string FeedbackSkip { get; init; } = "Skip";
+
+    /// <summary>The button that sends what the box says (Ctrl+Enter too).</summary>
+    public string FeedbackSend { get; init; } = "Send feedback";
 
     public string ThousandsSeparator { get; init; } = ",";
 

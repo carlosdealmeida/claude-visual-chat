@@ -152,6 +152,45 @@ public enum ChatRemoteControlStatus
     Error,
 }
 
+/// <summary>The user asked to open a web page (a link of the view, such as how feedback is used); the host opens it.</summary>
+public sealed class LinkRequestedEventArgs : EventArgs
+{
+    public LinkRequestedEventArgs(string url)
+    {
+        Url = url ?? "";
+    }
+
+    /// <summary>The page to open.</summary>
+    public string Url { get; }
+}
+
+/// <summary>
+/// The user rated a reply, or told what went wrong with it; the host sends it to Anthropic (the extension's <c>message_rated</c> and
+/// <c>submit_feedback</c>). A rating comes with <see cref="Details"/> null; what the user wrote after a bad rating comes as a second
+/// event, with <see cref="Positive"/> false and the text in <see cref="Details"/>.
+/// </summary>
+public sealed class FeedbackRequestedEventArgs : EventArgs
+{
+    public FeedbackRequestedEventArgs(AssistantTextItem item, bool? positive, string? details)
+    {
+        Item = item ?? throw new ArgumentNullException(nameof(item));
+        Positive = positive;
+        Details = details;
+    }
+
+    /// <summary>The reply rated: the last text of its turn. Its <see cref="AssistantTextItem.Uuid"/> names it to the claude.</summary>
+    public AssistantTextItem Item { get; }
+
+    /// <summary>True for "Good response", false for "Bad response", null when the user took the rating back (a second click on it).</summary>
+    public bool? Positive { get; }
+
+    /// <summary>
+    /// What the user wrote in "What went wrong?" and sent, trimmed and 4,000 characters at most (it may be empty); null for the rating
+    /// itself.
+    /// </summary>
+    public string? Details { get; }
+}
+
 /// <summary>The user asked to open the Remote Control link; the host opens it.</summary>
 public sealed class RemoteControlLinkRequestedEventArgs : EventArgs
 {
