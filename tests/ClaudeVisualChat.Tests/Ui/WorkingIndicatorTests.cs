@@ -6,6 +6,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
 using ClaudeVisualChat.Protocol;
@@ -371,5 +372,23 @@ public class WorkingIndicatorTests
         Assert.Equal(pt.Count, pt.Distinct().Count());
         Assert.Empty(en.Intersect(pt));
         Assert.All(en.Concat(pt), verb => Assert.False(string.IsNullOrWhiteSpace(verb)));
+    }
+
+    [AvaloniaFact]
+    public void A_host_style_for_panel_claude_chat_working_no_longer_reaches_the_row_one_for_grid_does()
+    {
+        // 0.6.0 breaks this for a host that styled the old row: the row's style key is Grid, and a type selector matches the exact key
+        var c = new ChatConversation();
+        var (view, window) = Open(c, ChatLayout.Desktop);
+        c.Submit("go");
+        UiHelpers.Pump();
+        window.Styles.Add(new Style(x => x.OfType<Panel>().Class("ClaudeChatWorking")) { Setters = { new Setter(Control.TagProperty, "panel") } });
+        UiHelpers.Pump();
+        Assert.Null(Row(view).Tag);
+
+        window.Styles.Add(new Style(x => x.OfType<Grid>().Class("ClaudeChatWorking")) { Setters = { new Setter(Control.TagProperty, "grid") } });
+        UiHelpers.Pump();
+        Assert.Equal("grid", Row(view).Tag);
+        window.Close();
     }
 }
