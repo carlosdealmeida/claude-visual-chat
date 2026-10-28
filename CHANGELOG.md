@@ -7,7 +7,99 @@ All notable changes to this project are written here. The format follows
 
 ### Added
 
+- The permission request in the desktop layout asks as the Claude Code extension 2.1.310 does. The title names the tool
+  and what it works on: "Allow this bash command?" with the command in a box and, under it, the call's own
+  description; "Make this edit to OrderService.cs?" and "Allow write to ..." with the diff in the card; "Allow reading
+  from ...", glob, grep, fetch and search with the path, the url or the query (and the domains allowed and blocked);
+  "Use skill /x?" with its note, its description and its arguments; any other tool "Do you want to proceed with X?" over
+  a "Details" fold with the input as JSON. "No" refuses at once with what is in the field under the answers, which is
+  always there. Esc is "No" too, and in the field Enter and Esc send "No" with its text. The digits pick the answers in
+  the order they are shown, and the digit after the last one goes to the field; the arrows move between the answers
+  and the field. The answers stay off for 500 ms after the card appears, so a key that was meant for the reply box
+  answers nothing, and a request that comes while the person was typing (less than 1.5 s after the last key) waits
+  behind "Waiting for permission..." until the typing stops. A request with `default_to_no` focuses "No" and takes no
+  digit; one with `suppress_always_allow_rule` has no option 2. `PermissionRequested` and `PendingPermission` carry
+  `AgentId`, `DefaultToNo` and `SuppressAlwaysAllowRule`.
+- Option 2 of the card names the rule and where it is kept: "Yes, allow npm for this project (just you)", "Yes, allow
+  access to data/ for this session", "Yes, allow all edits this session" or "Yes, return to normal mode". A rule
+  longer than 20 characters is cut to 17 and an ellipsis, with its whole text in the tooltip. The place ("this project
+  (just you)", "this project", "all projects", "this session") and the "N more" of several rules are underlined and
+  have a tooltip; "N more" lists the rules left out.
+- The card folds to its title with a button of 20 px at the top right, to read the conversation behind it. Folded, Esc
+  does not refuse, the scroll keys move the conversation, and unfolding arms the answers again for 500 ms.
+- The plan card for `ExitPlanMode`: "Accept this plan?" with "Yes, and use auto mode", "Yes, and manually approve
+  edits" and "No, keep planning", the keys 1 to 3 and 4 for the field. When the view's `AvailableModes` has no `auto`,
+  the first answer reads "Yes, and auto-accept" and asks for `acceptEdits`. It exists in the touch layout too, in the
+  flow of the 0.5.0 (answers across the block, the first in the accent, "Send" under the field).
+- The plan opens by itself as a document over the list, with the card under it still in use: the plan's first heading
+  (or "Claude's Plan") as its title, the plan's file, and a "Ready for review" strip that says text can be selected to
+  comment. The document closes when the plan is approved and stays after a "No". Esc, the x and
+  `ClaudeChatView.CloseTopLayer()` close it, one layer at a time: the first Esc closes the document, and only an Esc
+  with the card on top is "No".
+- The timeline's row for `ExitPlanMode` reads "Claude's Plan" and the file, or "Plan Mode", with "User approved the
+  plan" or "Stayed in plan mode" under it and no IN/OUT box; a click on its title opens the plan again, to read, also
+  from a history (without the comments).
+- Comments on the plan: a selection in the document offers "Add Comment", which opens a box of 320 px over the passage
+  (Enter adds, Shift+Enter breaks the line, Esc cancels; in the touch layout Enter breaks the line and the button
+  adds). The passage is highlighted, with a numbered circle whose tooltip shows the comment. With comments the card
+  becomes "Continue planning": a list "Comments (N)" over the title, each item with an x, and one answer, "Send
+  feedback and keep planning", which refuses with the text and the comments and then clears them.
+- New `ChatStrings` texts, in English and Portuguese: `PermissionBash`, `PermissionPowerShell`, `PermissionEdit`,
+  `PermissionWrite`, `PermissionRead`, `PermissionGlob`, `PermissionGlobAnywhere`, `PermissionGrep`,
+  `PermissionGrepAnywhere`, `PermissionWebFetch`, `PermissionWebSearch`, `PermissionAllowedDomains`,
+  `PermissionBlockedDomains`, `PermissionSkill`, `PermissionSkillNote`, `PermissionSkillArguments`,
+  `PermissionProceed`, `PermissionDetails`, `PermissionRefuse`, `PermissionEscToCancel`, `PermissionCollapse`,
+  `PermissionExpand`, `WaitingForPermission`; `AllowAlwaysOneRule`, `AllowAlwaysTwoRules`, `AllowAlwaysManyRules`,
+  `AllowAlwaysMoreRules`, `AllowAlwaysOneDirectory`, `AllowAlwaysManyDirectories`, `AllowAlwaysAllEdits`,
+  `AllowAlwaysNormalMode`, `AllowAlwaysThisProjectJustYou`, `AllowAlwaysThisProjectJustYouTip`,
+  `AllowAlwaysAllProjects`, `AllowAlwaysAllProjectsTip`, `AllowAlwaysThisProjectShared`,
+  `AllowAlwaysThisProjectSharedTip`, `AllowAlwaysThisSession`, `AllowAlwaysThisSessionTip`; `PlanAccept`,
+  `PlanCommentHint`, `PlanYesAutoMode`, `PlanYesAutoAccept`, `PlanYesManual`, `PlanKeepPlanning`, `PlanTitle`,
+  `PlanModeTool`, `PlanApproved`, `PlanStayedInPlanMode`, `PlanReadyForReview`, `PlanSelectToComment`,
+  `PlanAddComment`, `PlanCommentPlaceholder`, `PlanCommentCancel`, `PlanComments`, `PlanRemoveComment`,
+  `PlanContinuePlanning`, `PlanOneCommentIncluded`, `PlanCommentsIncluded` and `PlanSendFeedback`.
+- New theme resources: `ClaudeChat.PlanCommentHighlight`, `ClaudeChat.SecondaryButtonBackground`,
+  `ClaudeChat.PlanCommentsMaxHeight` (160), `ClaudeChat.PromptHintFontSize` and the icons `ClaudeChat.Icon.ChevronDown`
+  and `ClaudeChat.Icon.ChevronUp`.
+
 ### Changed
+
+- The new permission card is the desktop layout's. In the touch layout the request stays as the 0.5.0 left it (a short
+  question, the answers across the block, a field with "Send" under "No", 300 ms), apart from the plan card above. The
+  fold of the card is the desktop's too: the touch layout cannot fold a tall request.
+- On the desktop, "No" refuses at once, where it used to open the field first, and the answers stay off for 500 ms
+  instead of 300 ms. `PermissionYesAlways` is no longer shown there: `PermissionYesAlwaysBeyondSession` is the option
+  when the suggestions give nothing to name. The touch layout keeps both as in 0.5.0.
+- The plan card's "Yes" raises `PermissionModeRequested` with the mode and, right after and without waiting for the
+  claude to confirm it, `PermissionAnswered` (Allow), which is what the extension does: the claude applies the two in
+  the order it reads them. "Yes, and manually approve edits" asks for the mode `default`.
+- Known limit of the way back from `auto`: if the claude answers a control request with an error after the plan was
+  approved with `auto`, the component asks for `acceptEdits`. It does not know the id of the request that failed (the
+  host picks the ids), so an error of any other control request in that window, a failed `set_model` for instance, has
+  the same effect. The worst case ends in `acceptEdits`, the more restrictive mode.
+- A refusal carries at most 4,000 characters (the limit of the Kairos relay): the typed text, the plan comments and the
+  quoted passages together. Over it, the quoted passages are shortened first, equally and with an ellipsis, then the
+  comments are dropped and, last, the typed text is cut. This holds for the "No" of every permission card, and for the
+  "Send" of the touch layout.
+- Where the extension and the first design notes differ, the card follows the extension: the request's own description
+  is not shown, a Bash command has no line count, and the plan is a document, not a block in the list. The differences
+  from the extension that remain are deliberate: the plan's document is a panel over the list, where the extension
+  opens an editor tab beside the chat; "No, keep planning" with an empty field sends "User chose to stay in plan mode
+  and continue planning", and with text sends that text without the extension's refusal sentence (the host's contract
+  has only the message); the extension sends each quoted passage whole, here they are shortened to fit the 4,000; a
+  selection to comment lies inside one paragraph or heading, it does not cross blocks; "Yes, and manually approve
+  edits" asks for the mode `default` through `PermissionModeRequested`, where the extension sends `updatedPermissions`
+  with `setMode`, which the host cannot send; the list of comments in the card is 160 px high
+  (`ClaudeChat.PlanCommentsMaxHeight`), where the extension's depends on the window; Edit and Write keep their diff in
+  the card, where the extension opens it in a tab; the command of a Bash request cannot be edited; and in the touch
+  layout the plan card has no line "Select text in the preview to add comments".
+- The plan's document sits below the `/context` and `/usage` panels, the Agent map and the bookmarks, which show over it
+  and close before it; the comment box sits above all of them.
+- `ToolPresentation.Summary("ExitPlanMode", ...)` returns the plan file's name, or "", where it returned the first
+  string of the input (the plan's text). An `ExitPlanMode` call that comes without the plan (`input: {}`) takes the
+  `input` of its permission request.
+- `ChatStrings.PermissionRunCommand`, `PermissionEditFile` and `PermissionUseTool` are not used on the desktop since
+  0.6.0 (the touch layout still uses them). Nothing public was removed or renamed.
 
 ### Fixed
 

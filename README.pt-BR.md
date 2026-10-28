@@ -343,6 +343,42 @@ conversation.LoadTranscript(File.ReadLines(sessionFile));
 O `LoadTranscript` substitui o que a conversa tinha. As linhas que não fazem parte da conversa (anexos, histórico de
 arquivos e afins) são puladas.
 
+## Plano e permissão
+
+No desktop, o pedido de permissão pergunta como a extensão 2.1.310: um título que diz a ferramenta e no que ela mexe, o
+comando, o diff ou a entrada embaixo, e as respostas numeradas na ordem em que aparecem (o dígito depois do último vai
+para o campo; "Não" recusa na hora com o que estiver escrito nele). A opção 2 diz a regra e onde ela fica guardada (por
+exemplo, "este projeto (só você)"). As respostas ficam desligadas por 500 ms depois que o cartão aparece, e um
+pedido que chega enquanto a pessoa digita espera até a digitação parar. Um botão no alto, à direita, dobra o cartão até o
+título, para ler a conversa que está atrás. O layout de toque mantém o pedido como era na 0.5.0, fora o plano.
+
+O que o seu app faz é o que ele já fazia: mandar o que `PermissionAnswered` e `PermissionModeRequested` trazem e dar à
+view todas as linhas que o claude escreve, os erros também.
+
+```csharp
+conversation.PermissionAnswered += (_, e) => Send(StdinMessages.PermissionResponse(e));
+conversation.PermissionModeRequested += (_, e) => Send(StdinMessages.SetPermissionMode("req_" + ++ids, e.Mode));
+```
+
+Um pedido de `ExitPlanMode` é o cartão do plano, "Aceitar este plano?", e o plano abre como um documento sobre a lista.
+Três coisas que o host precisa saber:
+
+- **O primeiro "Sim" depende de `ClaudeChatView.AvailableModes`.** Com `auto` entre eles, a opção diz "Sim, e usar o
+  modo automático" e pede `auto`; sem ele, "Sim, e aceitar as edições automaticamente", e pede `acceptEdits`. "Sim, e aprovar as
+  edições uma a uma" pede `default`.
+- **Um "Sim" dispara dois eventos, nesta ordem e sem espera entre eles:** `PermissionModeRequested` com o modo e depois
+  `PermissionAnswered` com Allow. Mande-os ao claude na ordem em que chegam, porque o claude os aplica na ordem em que
+  os lê. Se o claude responder a um pedido de controle com erro depois de um pedido de `auto`, o componente pede
+  `acceptEdits`. Ele não sabe qual pedido falhou (os ids são seus), então um erro de qualquer outro pedido de controle
+  nessa janela tem o mesmo efeito; o pior caso é `acceptEdits`, o modo mais restritivo.
+- **"Não, continuar planejando" é uma recusa com mensagem:** `PermissionAnsweredEventArgs.Message` traz o que a pessoa escreveu
+  e, havendo comentários no plano, os comentários e os trechos em que foram feitos. Uma recusa nunca passa de 4.000
+  caracteres (os trechos são encurtados primeiro, depois os comentários, depois o texto).
+
+O documento fecha quando o plano é aprovado e fica depois de um "Não". O Esc, o x e `CloseTopLayer()` o fecham, uma camada
+por vez; só um Esc com o cartão por cima é "Não". Selecione um trecho para comentá-lo: os comentários esperam no cartão
+("Continuar planejando") até a pessoa mandá-los como retorno. A linha do plano na lista o abre de novo.
+
 ## Cores
 
 Todas as cores, as duas fontes, os tamanhos de texto e alguns lugares vêm de recursos chamados `ClaudeChat.*` (as
