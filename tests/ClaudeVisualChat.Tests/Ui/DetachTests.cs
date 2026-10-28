@@ -306,6 +306,28 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void Option_two_keeps_its_rule_label_and_tooltips_out_of_the_window_and_back()
+    {
+        var c = Conversation();
+        c.Apply(new PermissionRequested("r1", "Bash", "Bash", null, "t1", J("{\"command\":\"npm test\"}"),
+            J("[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"npm:*\"},{\"toolName\":\"Bash\",\"ruleContent\":\"ls\"},{\"toolName\":\"Bash\",\"ruleContent\":\"pwd\"}],\"destination\":\"userSettings\"}]")));
+        var m = new Mounted(c);
+        string Label() => string.Concat(UiHelpers.Prompt(m.View).GetVisualDescendants().OfType<TextBlock>()
+            .Where(t => t.Classes.Contains("ClaudeChatOptionText") && t.Inlines is { Count: > 0 })
+            .SelectMany(t => t.Inlines!).Select(i => i is Avalonia.Controls.Documents.Run r ? r.Text
+                : i is Avalonia.Controls.Documents.InlineUIContainer { Child: TextBlock hint } ? hint.Text : ""));
+        List<string?> Tips() => UiHelpers.Prompt(m.View).GetVisualDescendants().OfType<TextBlock>()
+            .Where(t => t.Classes.Contains("ClaudeChatAllowAlwaysHint")).Select(t => ToolTip.GetTip(t) as string).ToList();
+        Assert.Equal("Yes, allow npm and 2 more for all projects", Label());
+
+        m.Out();                                                           // taken out: nothing throws, the tree is let go
+        m.In();                                                            // back: the same label, with its tooltips
+        Assert.Equal("Yes, allow npm and 2 more for all projects", Label());
+        Assert.Equal(new[] { "• ls\n• pwd", "Saves to ~/.claude/settings.json" }, Tips());
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_request_that_came_while_out_shows_when_back()
     {
         var m = new Mounted(Conversation());

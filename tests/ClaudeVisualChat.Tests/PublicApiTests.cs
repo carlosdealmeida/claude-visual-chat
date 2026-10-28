@@ -139,6 +139,11 @@ public class PublicApiTests
             "PermissionGlobAnywhere", "PermissionGrep", "PermissionGrepAnywhere", "PermissionWebFetch", "PermissionWebSearch",
             "PermissionAllowedDomains", "PermissionBlockedDomains", "PermissionSkill", "PermissionSkillNote", "PermissionSkillArguments",
             "PermissionProceed", "PermissionDetails", "PermissionRefuse", "PermissionEscToCancel", "WaitingForPermission",
+            // option 2 names the rule and where it is saved
+            "AllowAlwaysOneRule", "AllowAlwaysTwoRules", "AllowAlwaysManyRules", "AllowAlwaysMoreRules", "AllowAlwaysOneDirectory",
+            "AllowAlwaysManyDirectories", "AllowAlwaysAllEdits", "AllowAlwaysNormalMode", "AllowAlwaysThisProjectJustYou",
+            "AllowAlwaysThisProjectJustYouTip", "AllowAlwaysAllProjects", "AllowAlwaysAllProjectsTip", "AllowAlwaysThisProjectShared",
+            "AllowAlwaysThisProjectSharedTip", "AllowAlwaysThisSession", "AllowAlwaysThisSessionTip",
         })
         {
             Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);

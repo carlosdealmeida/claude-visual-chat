@@ -519,10 +519,7 @@ internal partial class PermissionPrompt : UserControl
         DetailsJson.Text = "";
         var request = _request;
         var strings = Strings;
-        // "this session" only when every rule it saves stays in the session: the claude may keep one in the settings
-        AlwaysText.Text = request == null || request.AllowAlwaysStaysInSession
-            ? strings.PermissionYesAlways
-            : strings.PermissionYesAlwaysBeyondSession;
+        FillAlways(request, strings);
         var detail = "";
         if (request != null)
         {
@@ -541,6 +538,60 @@ internal partial class PermissionPrompt : UserControl
         UpdateNumbers();
         UpdateDetails();
         UpdateSelected();
+    }
+
+    /// <summary>
+    /// Option 2. On the desktop it names the rule and where it is saved, as the extension does, the place (and "2 more") underlined
+    /// with a tooltip. The touch layout keeps the 0.5.0 sentence, which has no tooltip to reach, and says "this session" only when
+    /// every rule it saves stays in the session: the claude may keep one in the settings.
+    /// </summary>
+    private void FillAlways(PendingPermission? request, ChatStrings strings)
+    {
+        AlwaysText.Inlines!.Clear();
+        ToolTip.SetTip(AlwaysText, null);
+        if (IsTouch || request == null)
+        {
+            AlwaysText.Text = request == null || request.AllowAlwaysStaysInSession
+                ? strings.PermissionYesAlways
+                : strings.PermissionYesAlwaysBeyondSession;
+            return;
+        }
+        var label = AllowAlwaysLabels.Of(request.Suggestions, strings);
+        var text = label.Text;
+        var tail = label.Destination != null && text.EndsWith(label.Destination, StringComparison.Ordinal) ? label.Destination : null;
+        var head = tail == null ? text : text.Substring(0, text.Length - tail.Length);
+        var more = label.MoreText != null ? head.LastIndexOf(label.MoreText, StringComparison.Ordinal) : -1;
+        if (tail == null && more < 0)
+        {
+            AlwaysText.Text = text;
+        }
+        else
+        {
+            AlwaysText.Text = null;
+            var inlines = AlwaysText.Inlines;
+            if (more >= 0)
+            {
+                if (more > 0) inlines.Add(new Run(head.Substring(0, more)));
+                inlines.Add(Hint(label.MoreText!, "• " + string.Join("\n• ", label.More)));
+                if (more + label.MoreText!.Length < head.Length) inlines.Add(new Run(head.Substring(more + label.MoreText.Length)));
+            }
+            else if (head.Length > 0)
+            {
+                inlines.Add(new Run(head));
+            }
+            if (tail != null) inlines.Add(Hint(tail, label.DestinationTip!));
+        }
+        // a rule that was cut shows whole when the pointer rests on the option
+        if (label.FullText != null) ToolTip.SetTip(AlwaysText, label.FullText);
+    }
+
+    /// <summary>Words with a dotted underline and a tooltip, inline in a sentence (a <see cref="Run"/> cannot show one).</summary>
+    private static InlineUIContainer Hint(string words, string tip)
+    {
+        var hint = new TextBlock { Text = words };
+        hint.Classes.Add("ClaudeChatAllowAlwaysHint");
+        ToolTip.SetTip(hint, tip);
+        return new InlineUIContainer(hint);
     }
 
     /// <summary>The touch layout's request, as in 0.5.0: a short question and the command or the file's diff. Returns the detail.</summary>

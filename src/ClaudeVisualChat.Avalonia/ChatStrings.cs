@@ -88,6 +88,22 @@ public sealed record ChatStrings
         PermissionRefuse = "Não",
         PermissionEscToCancel = "Esc para cancelar",
         WaitingForPermission = "Aguardando permissão…",
+        AllowAlwaysOneRule = "Sim, permitir {0} para {1}",
+        AllowAlwaysTwoRules = "Sim, permitir {0} e {1} para {2}",
+        AllowAlwaysManyRules = "Sim, permitir {0} e {1} para {2}",
+        AllowAlwaysMoreRules = "mais {0}",
+        AllowAlwaysOneDirectory = "Sim, permitir acesso a {0} para {1}",
+        AllowAlwaysManyDirectories = "Sim, permitir acesso a {0} pastas para {1}",
+        AllowAlwaysAllEdits = "Sim, permitir todas as edições nesta sessão",
+        AllowAlwaysNormalMode = "Sim, voltar ao modo normal",
+        AllowAlwaysThisProjectJustYou = "este projeto (só você)",
+        AllowAlwaysThisProjectJustYouTip = "Grava em .claude/settings.local.json (fora do git)",
+        AllowAlwaysAllProjects = "todos os projetos",
+        AllowAlwaysAllProjectsTip = "Grava em ~/.claude/settings.json",
+        AllowAlwaysThisProjectShared = "este projeto (compartilhado)",
+        AllowAlwaysThisProjectSharedTip = "Grava em .claude/settings.json (compartilhado com o time)",
+        AllowAlwaysThisSession = "esta sessão",
+        AllowAlwaysThisSessionTip = "Só vale nesta sessão (não é gravado)",
         AddAttachment = "Adicionar",
         AttachPhotoOrFile = "Foto ou arquivo",
         Commands = "Comandos",
@@ -324,12 +340,16 @@ public sealed record ChatStrings
 
     public string PermissionYes { get; init; } = "Yes";
 
-    /// <summary>Option 2 when every rule it saves lasts only for this conversation (destination <c>session</c>).</summary>
+    /// <summary>
+    /// The touch layout's option 2 when every rule it saves lasts only for this conversation (destination <c>session</c>). The desktop
+    /// card names the rule instead (<see cref="AllowAlwaysOneRule"/> and the like) since 0.6.0.
+    /// </summary>
     public string PermissionYesAlways { get; init; } = "Yes, and don't ask again this session";
 
     /// <summary>
-    /// Option 2 when a rule it saves outlives the conversation (kept in the settings, such as <c>localSettings</c>):
-    /// it says nothing about how long.
+    /// The touch layout's option 2 when a rule it saves outlives the conversation (kept in the settings, such as
+    /// <c>localSettings</c>): it says nothing about how long. Also the desktop card's option 2 when the suggestions give nothing to
+    /// name.
     /// </summary>
     public string PermissionYesAlwaysBeyondSession { get; init; } = "Yes, and don't ask again";
 
@@ -404,6 +424,57 @@ public sealed record ChatStrings
 
     /// <summary>Above the reply box, while a request waits for the typing in it to pause.</summary>
     public string WaitingForPermission { get; init; } = "Waiting for permission…";
+
+    /// <summary>Option 2 with one rule; <c>{0}</c> is the rule ("npm"), <c>{1}</c> where it is saved (<see cref="AllowAlwaysThisSession"/> and the like).</summary>
+    public string AllowAlwaysOneRule { get; init; } = "Yes, allow {0} for {1}";
+
+    /// <summary>Option 2 with two rules; <c>{0}</c> and <c>{1}</c> are the rules, <c>{2}</c> where they are saved.</summary>
+    public string AllowAlwaysTwoRules { get; init; } = "Yes, allow {0} and {1} for {2}";
+
+    /// <summary>
+    /// Option 2 with more than two rules; <c>{0}</c> is the first rule, <c>{1}</c> the others (<see cref="AllowAlwaysMoreRules"/>,
+    /// with a tooltip that lists them), <c>{2}</c> where they are saved.
+    /// </summary>
+    public string AllowAlwaysManyRules { get; init; } = "Yes, allow {0} and {1} for {2}";
+
+    /// <summary>The rules that <see cref="AllowAlwaysManyRules"/> does not name; <c>{0}</c> is how many.</summary>
+    public string AllowAlwaysMoreRules { get; init; } = "{0} more";
+
+    /// <summary>Option 2 with one folder; <c>{0}</c> is its name ("data/"), <c>{1}</c> where it is saved.</summary>
+    public string AllowAlwaysOneDirectory { get; init; } = "Yes, allow access to {0} for {1}";
+
+    /// <summary>Option 2 with several folders; <c>{0}</c> is how many, <c>{1}</c> where they are saved.</summary>
+    public string AllowAlwaysManyDirectories { get; init; } = "Yes, allow access to {0} directories for {1}";
+
+    /// <summary>Option 2 when the claude only offers to accept edits.</summary>
+    public string AllowAlwaysAllEdits { get; init; } = "Yes, allow all edits this session";
+
+    /// <summary>Option 2 when the claude only offers to go back to the normal mode.</summary>
+    public string AllowAlwaysNormalMode { get; init; } = "Yes, return to normal mode";
+
+    /// <summary>Where option 2 saves the rule: the local settings (<c>localSettings</c>).</summary>
+    public string AllowAlwaysThisProjectJustYou { get; init; } = "this project (just you)";
+
+    /// <summary>The tooltip of <see cref="AllowAlwaysThisProjectJustYou"/>.</summary>
+    public string AllowAlwaysThisProjectJustYouTip { get; init; } = "Saves to .claude/settings.local.json (gitignored)";
+
+    /// <summary>Where option 2 saves the rule: the user's settings (<c>userSettings</c>).</summary>
+    public string AllowAlwaysAllProjects { get; init; } = "all projects";
+
+    /// <summary>The tooltip of <see cref="AllowAlwaysAllProjects"/>.</summary>
+    public string AllowAlwaysAllProjectsTip { get; init; } = "Saves to ~/.claude/settings.json";
+
+    /// <summary>Where option 2 saves the rule: the project's settings (<c>projectSettings</c>).</summary>
+    public string AllowAlwaysThisProjectShared { get; init; } = "this project (shared)";
+
+    /// <summary>The tooltip of <see cref="AllowAlwaysThisProjectShared"/>.</summary>
+    public string AllowAlwaysThisProjectSharedTip { get; init; } = "Saves to .claude/settings.json (shared with team)";
+
+    /// <summary>Where option 2 saves the rule: nowhere, it lasts the session (<c>session</c>).</summary>
+    public string AllowAlwaysThisSession { get; init; } = "this session";
+
+    /// <summary>The tooltip of <see cref="AllowAlwaysThisSession"/>.</summary>
+    public string AllowAlwaysThisSessionTip { get; init; } = "Only for this session (not saved)";
 
     /// <summary>The button that attaches a file or image to the message; also the title of the touch layout's "+" sheet.</summary>
     public string AddAttachment { get; init; } = "Add";
@@ -906,6 +977,9 @@ public sealed record ChatStrings
     internal string FormatUseToolQuestion(string toolName) => PermissionUseToolQuestion.Replace("{0}", toolName ?? "");
 
     internal string FormatMorePending(int count) => MorePending.Replace("{0}", FormatNumber(count));
+
+    /// <summary><see cref="AllowAlwaysMoreRules"/> with the count: "2 more".</summary>
+    internal string FormatAllowAlwaysMore(int count) => AllowAlwaysMoreRules.Replace("{0}", FormatNumber(count));
 
     /// <summary><see cref="PermissionSkillArguments"/> with what the skill is given: "Arguments: 12".</summary>
     internal string FormatSkillArguments(string arguments) => PermissionSkillArguments.Replace("{0}", arguments ?? "");

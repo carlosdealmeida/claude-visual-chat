@@ -1009,6 +1009,17 @@
   <Style Selector="TextBlock.ClaudeChatOptionText">
     <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
+  <!-- in option 2, where the rule is saved and "N more": a dotted underline with a tooltip, solid with the pointer on it -->
+  <Style Selector="TextBlock.ClaudeChatAllowAlwaysHint">
+    <Setter Property="TextDecorations">
+      <TextDecorationCollection>
+        <TextDecoration Location="Underline" StrokeDashArray="1,2" />
+      </TextDecorationCollection>
+    </Setter>
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAllowAlwaysHint:pointerover">
+    <Setter Property="TextDecorations" Value="Underline" />
+  </Style>
 
   <!-- what to tell Claude: an option's frame, the active border with the focus -->
   <Style Selector="TextBox.ClaudeChatField">

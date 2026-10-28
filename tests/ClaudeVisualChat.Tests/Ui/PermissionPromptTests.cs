@@ -4,10 +4,11 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
-using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using ClaudeVisualChat.Controls;
 using Xunit;
 using PermissionCancelled = ClaudeVisualChat.Protocol.PermissionCancelled;
@@ -24,7 +25,7 @@ public class PermissionPromptTests
 
     // the desktop's card, as the extension 2.1.310 asks (the touch layout keeps the 0.5.0 request: PermissionTouchTests)
     private const string RunCommand = "Allow this bash command?";
-    private const string YesAlways = "Yes, and don't ask again this session";
+    private const string YesAlways = "Yes, allow all edits this session"; // option 2 of the default suggestions (setMode acceptEdits)
     private const string No = "No";
 
     private static JsonElement J(string json)
@@ -450,7 +451,7 @@ public class PermissionPromptTests
         Assert.Contains("e", texts);
         Assert.Contains("line three", texts);
         Assert.Contains("line 3 (edited)", texts);
-        foreach (var expected in new[] { "Sim", "Sim, e não perguntar de novo nesta conversa", "Não" })
+        foreach (var expected in new[] { "Sim", "Sim, permitir todas as edições nesta sessão", "Não" })
             Assert.Contains(expected, texts);
         Assert.False(ui.Prompt.GetVisualDescendants().OfType<DiffView>().Single().IsSideBySide);
         var removed = ui.Prompt.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatDiffLine") && b.Classes.Contains("removed"));
@@ -536,49 +537,129 @@ public class PermissionPromptTests
         ui.Window.Close();
     }
 
-    [AvaloniaFact]
-    public void Option_two_says_this_session_only_when_every_rule_stays_in_it()
+    private const string NpmLocal = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"npm:*\"}],\"behavior\":\"allow\",\"destination\":\"localSettings\"}]";
+
+    /// <summary>The sentence of option 2 as the user reads it: the words around the underlined parts, and those parts.</summary>
+    private static string AlwaysLabel(Opened ui)
     {
-        const string Saved = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"npm test\"}],\"behavior\":\"allow\",\"destination\":\"localSettings\"}]";
-        const string Mixed = "[{\"type\":\"setMode\",\"mode\":\"acceptEdits\",\"destination\":\"session\"},{\"type\":\"addRules\",\"rules\":[],\"behavior\":\"allow\",\"destination\":\"userSettings\"}]";
-        const string Unsaid = "[{\"type\":\"setMode\",\"mode\":\"acceptEdits\"}]";
+        var text = ui.Options[1].GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatOptionText"));
+        if (text.Inlines is not { Count: > 0 } inlines) return text.Text ?? "";
+        var label = new System.Text.StringBuilder();
+        foreach (var inline in inlines)
+        {
+            if (inline is Avalonia.Controls.Documents.Run run) label.Append(run.Text);
+            else if (inline is Avalonia.Controls.Documents.InlineUIContainer { Child: TextBlock hint }) label.Append(hint.Text);
+        }
+        return label.ToString();
+    }
+
+    /// <summary>The underlined parts of option 2: where the rule is saved and "N more".</summary>
+    private static List<TextBlock> AlwaysHints(Opened ui) =>
+        ui.Options[1].GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("ClaudeChatAllowAlwaysHint")).ToList();
+
+    [AvaloniaFact]
+    public void Option_two_shows_the_rule_label()
+    {
         var c = new ChatConversation();
-        c.Apply(Bash("r1", "npm test", Suggestions));
-        c.Apply(Bash("r2", "npm test", Saved));
-        c.Apply(Bash("r3", "npm test", Mixed));
-        c.Apply(Bash("r4", "npm test", Unsaid));
+        c.Apply(Bash("r1", "npm test", NpmLocal));
         var ui = Open(c);
 
-        // all in the session: the conversation's label, in both languages
-        Assert.Contains(YesAlways, ui.Texts);
+        Assert.Equal("Yes, allow npm for this project (just you)", AlwaysLabel(ui));
+        var where = Assert.Single(AlwaysHints(ui));
+        Assert.Equal("this project (just you)", where.Text);
+        Assert.Equal("Saves to .claude/settings.local.json (gitignored)", ToolTip.GetTip(where));
+        // a dotted underline, as the extension draws it, and inside the option (not pushed out of it)
+        var underline = Assert.Single(where.TextDecorations!);
+        Assert.Equal(TextDecorationLocation.Underline, underline.Location);
+        Assert.NotNull(underline.StrokeDashArray);
+        Assert.True(where.IsEffectivelyVisible);
+        var option = ui.Options[1];
+        var box = where.TranslatePoint(new Point(0, 0), option)!.Value;
+        Assert.True(where.Bounds.Width > 0 && where.Bounds.Height > 0);
+        Assert.InRange(box.X, 0, option.Bounds.Width);
+        Assert.InRange(box.Y, 0, option.Bounds.Height);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Option_two_says_where_the_rule_is_saved_in_both_languages_and_still_answers_with_the_suggestions()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", NpmLocal));
+        var ui = Open(c);
+
         ui.View.Strings = ChatStrings.PortugueseBrazil;
         UiHelpers.Pump();
-        Assert.Contains("Sim, e não perguntar de novo nesta conversa", ui.Texts);
+        Assert.Equal("Sim, permitir npm para este projeto (só você)", AlwaysLabel(ui));
+        Assert.Equal("Grava em .claude/settings.local.json (fora do git)", ToolTip.GetTip(Assert.Single(AlwaysHints(ui))));
 
-        // a rule kept in the settings outlives the conversation: the label says nothing about how long
-        c.DismissPermission("r1");
-        UiHelpers.Pump();
-        Assert.Contains("Sim, e não perguntar de novo", ui.Texts);
-        Assert.DoesNotContain("Sim, e não perguntar de novo nesta conversa", ui.Texts);
-        ui.View.Strings = ChatStrings.English;
-        UiHelpers.Pump();
-        Assert.Contains("Yes, and don't ask again", ui.Texts);
-        Assert.DoesNotContain(YesAlways, ui.Texts);
-
-        // one rule out of the session is enough, and so is a rule that does not say where it goes
-        foreach (var id in new[] { "r2", "r3" })
-        {
-            c.DismissPermission(id);
-            UiHelpers.Pump();
-            Assert.Contains("Yes, and don't ask again", ui.Texts);
-            Assert.DoesNotContain(YesAlways, ui.Texts);
-        }
-
-        // answering still sends the suggestions back as they came
-        UiHelpers.Click(ui.Window, ui.Option("Yes, and don't ask again"));
+        // answering sends the decision as before: the suggestions go back as they came
+        UiHelpers.Click(ui.Window, ui.Options[1]);
         var answer = Assert.Single(ui.Answers);
         Assert.Equal(PermissionDecision.AllowAlways, answer.Decision);
-        Assert.Equal("r4", answer.Request.RequestId);
+        Assert.Equal("r1", answer.Request.RequestId);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Option_two_with_many_rules_has_a_tooltip_with_the_rest_and_a_cut_rule_is_whole_in_a_tooltip()
+    {
+        const string Rules = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"sleep 5 && echo done > done.txt\"},{\"toolName\":\"Bash\",\"ruleContent\":\"git status\"},{\"toolName\":\"Read\"}],\"behavior\":\"allow\",\"destination\":\"userSettings\"}]";
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "sleep 5", Rules));
+        var ui = Open(c);
+
+        Assert.Equal("Yes, allow sleep 5 && echo d… and 2 more for all projects", AlwaysLabel(ui));
+        var hints = AlwaysHints(ui);
+        Assert.Equal(new[] { "2 more", "all projects" }, hints.Select(h => h.Text));
+        Assert.Equal("• git status\n• Read", ToolTip.GetTip(hints[0]));
+        Assert.Equal("Saves to ~/.claude/settings.json", ToolTip.GetTip(hints[1]));
+        // the rule that was cut shows whole when the pointer rests on the option
+        var text = ui.Options[1].GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatOptionText"));
+        Assert.Equal("Yes, allow sleep 5 && echo done > done.txt and 2 more for all projects", ToolTip.GetTip(text));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Option_two_without_a_place_to_name_is_plain_text()
+    {
+        const string Unsaid = "[{\"type\":\"setMode\",\"mode\":\"plan\"}]";
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", Suggestions));   // all edits, this session
+        c.Apply(Bash("r2", "npm test", Unsaid));        // any other mode
+        c.Apply(Bash("r3", "npm test", "[{\"type\":\"setMode\",\"mode\":\"default\",\"destination\":\"session\"}]"));
+        var ui = Open(c);
+
+        Assert.Equal("Yes, allow all edits this session", AlwaysLabel(ui));
+        Assert.Empty(AlwaysHints(ui));
+        Assert.Contains("Yes, allow all edits this session", ui.Texts);
+        c.DismissPermission("r1");
+        UiHelpers.Pump();
+        Assert.Equal("Yes, and don't ask again", AlwaysLabel(ui));
+        Assert.Contains("Yes, and don't ask again", ui.Texts);
+        c.DismissPermission("r2");
+        UiHelpers.Pump();
+        Assert.Equal("Yes, return to normal mode", AlwaysLabel(ui));
+        ui.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal("Sim, voltar ao modo normal", AlwaysLabel(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_pointer_on_the_place_draws_its_underline_solid()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", NpmLocal));
+        var ui = Open(c);
+        var where = Assert.Single(AlwaysHints(ui));
+        Assert.NotNull(Assert.Single(where.TextDecorations!).StrokeDashArray);
+
+        var center = where.TranslatePoint(new Point(where.Bounds.Width / 2, where.Bounds.Height / 2), ui.Window)!.Value;
+        ui.Window.MouseMove(center, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.True(where.IsPointerOver);
+        Assert.Null(Assert.Single(where.TextDecorations!).StrokeDashArray);
         ui.Window.Close();
     }
 
