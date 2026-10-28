@@ -76,6 +76,7 @@
   <SolidColorBrush x:Key="ClaudeChat.SheetGroupBackground" Color="#252526" />
   <SolidColorBrush x:Key="ClaudeChat.SheetHandle" Color="#555555" />
   <SolidColorBrush x:Key="ClaudeChat.SheetOverlay" Color="#66000000" />
+  <BoxShadows x:Key="ClaudeChat.ToolContentFocusShadow">inset 0 0 0 1 #0078D4</BoxShadows> <!-- focusBorder -->
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAcceptEdits">0 0 0 3 #1FCCCCCC</BoxShadows>
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowPlan">0 0 0 3 #1F0078D4</BoxShadows>
   <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAuto">0 0 0 3 #1FF85149</BoxShadows>

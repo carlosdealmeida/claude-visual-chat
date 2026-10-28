@@ -72,7 +72,7 @@ internal partial class ToolCallView : UserControl
 
     private ToolCallItem? _item;
     private bool _attached;
-    private NavigationMethod _refocus = NavigationMethod.Pointer; // how the box gets the focus back when a key or a click redraws it
+    private NavigationMethod _focusMethod; // how a text of the box got the focus, so a redraw gives it back the same way (a key keeps the ring)
 
     public ToolCallView()
     {
@@ -404,25 +404,28 @@ internal partial class ToolCallView : UserControl
         content.Focusable = true;
         content.Cursor = new Cursor(StandardCursorType.Hand);
         AutomationProperties.SetName(content, whole ? strings.ToolCutText : strings.ToolShowFullText);
+        // the second click of a double click selects a word of the text: only the first one toggles
+        var clicks = 1;
+        content.AddHandler(InputElement.PointerPressedEvent, (_, e) => clicks = e.ClickCount, Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        content.GotFocus += (_, e) => _focusMethod = e.NavigationMethod;
         content.Tapped += (_, e) =>
         {
             // a drag on the scroll bar is not a click on the text
-            if (e.Source is Visual source && source.FindAncestorOfType<ScrollBar>(true) != null) return;
+            if (clicks > 1 || e.Source is Visual source && source.FindAncestorOfType<ScrollBar>(true) != null) return;
             e.Handled = true;
-            Toggle(item, input, NavigationMethod.Pointer);
+            Toggle(item, input);
         };
         content.KeyDown += (_, e) =>
         {
             if ((e.Key != Key.Enter && e.Key != Key.Space) || e.KeyModifiers != KeyModifiers.None) return;
             e.Handled = true;
-            Toggle(item, input, NavigationMethod.Tab);
+            Toggle(item, input);
         };
         return content;
     }
 
-    private void Toggle(ToolCallItem item, bool input, NavigationMethod how)
+    private static void Toggle(ToolCallItem item, bool input)
     {
-        _refocus = how;
         if (input) item.IsInputExpanded = !item.IsInputExpanded;
         else item.IsOutputExpanded = !item.IsOutputExpanded;
     }
@@ -430,7 +433,8 @@ internal partial class ToolCallView : UserControl
     /// <summary>The key (IN or OUT) of the text that has the focus, or null when none of the box's texts does.</summary>
     private string? FocusedContent()
     {
-        if (Body.Children.Count == 0 || TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not Visual focus) return null;
+        if (Body.Children.Count == 0 || TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not Visual focus
+            || !Body.IsVisualAncestorOf(focus)) return null;
         foreach (var content in Body.GetVisualDescendants().OfType<Border>())
         {
             if (content.Tag is string key && content.Classes.Contains("expandable") && (ReferenceEquals(content, focus) || content.IsVisualAncestorOf(focus)))
@@ -446,7 +450,7 @@ internal partial class ToolCallView : UserControl
         {
             if (Equals(content.Tag, key) && content.Classes.Contains("expandable"))
             {
-                content.Focus(_refocus);
+                content.Focus(_focusMethod);
                 return;
             }
         }

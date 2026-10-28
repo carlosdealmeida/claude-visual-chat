@@ -682,6 +682,36 @@ public class ChatViewTests
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void A_double_click_toggles_once_and_a_redraw_gives_the_focus_back_the_way_it_was_taken()
+    {
+        var (c, tool) = Answered(Lines(20));
+        var (view, window) = Open(c);
+
+        // the second click of a double click is the text's (it selects a word): only the first one toggles
+        ClickTop(window, Contents(view, tool)[1]);
+        ClickTop(window, Contents(view, tool)[1]);
+        Assert.True(tool.IsOutputExpanded);
+        System.Threading.Thread.Sleep(600);           // a click after the double-click time is a first click again
+        ClickTop(window, Contents(view, tool)[1]);
+        Assert.False(tool.IsOutputExpanded);
+
+        // taken with the keyboard, the focus comes back with its ring after the redraw; taken with the pointer, without
+        Assert.True(UiHelpers.Input(view).Focus()); // (the pointer's clicks left the focus on the text: take it away first)
+        Assert.True(Contents(view, tool)[1].Focus(NavigationMethod.Tab));
+        Assert.Contains(":focus-visible", Contents(view, tool)[1].Classes); // (the premise: Tab gives the ring)
+        UiHelpers.Press(window, Key.Enter);
+        Assert.True(tool.IsOutputExpanded);
+        Assert.Contains(":focus-visible", Contents(view, tool)[1].Classes);
+        Assert.True(UiHelpers.Input(view).Focus());
+        Assert.True(Contents(view, tool)[1].Focus(NavigationMethod.Pointer));
+        UiHelpers.Press(window, Key.Enter);
+        Assert.False(tool.IsOutputExpanded);
+        Assert.DoesNotContain(":focus-visible", Contents(view, tool)[1].Classes);
+        Assert.Same(Contents(view, tool)[1], UiHelpers.Focused(window));
+        window.Close();
+    }
+
     [AvaloniaTheory]
     [InlineData("a\nb\nc", false)]
     [InlineData("a\nb\nc\nd", true)]

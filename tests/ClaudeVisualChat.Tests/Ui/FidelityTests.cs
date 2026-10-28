@@ -250,6 +250,7 @@ public class FidelityTests
         // what is drawn follows: the background, the user's box
         Assert.Equal(Color.Parse("#1F1F1F"), Assert.IsAssignableFrom<ISolidColorBrush>(Assert.IsAssignableFrom<Border>(view.Content).Background).Color);
         Assert.Equal(BoxShadows.Parse("0 0 0 3 #1F0078D4"), Resource(view, "ClaudeChat.ComposerFocusShadowPlan"));
+        Assert.Equal(BoxShadows.Parse("inset 0 0 0 1 #0078D4"), Resource(view, "ClaudeChat.ToolContentFocusShadow")); // the focus border of this theme
         view.Conversation!.Submit("hello");
         UiHelpers.Pump();
         var box = view.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatUser"));
