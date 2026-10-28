@@ -246,6 +246,8 @@ public sealed record ChatStrings
         Dismiss = "Dispensar",
         CopyAnswer = "Copiar",
         Copied = "Copiado",
+        CopyCode = "Copiar código",
+        CopyCodeToClipboard = "Copiar código para a área de transferência",
         ThousandsSeparator = ".",
         DecimalSeparator = ",",
     };
@@ -943,6 +945,12 @@ public sealed record ChatStrings
 
     /// <summary>The same button's name for a moment after it copied.</summary>
     public string Copied { get; init; } = "Copied";
+
+    /// <summary>The tooltip of the button on a command's row that copies the command.</summary>
+    public string CopyCode { get; init; } = "Copy code";
+
+    /// <summary>The name of that button for a screen reader (it reads <see cref="Copied"/> for a moment after a copy).</summary>
+    public string CopyCodeToClipboard { get; init; } = "Copy code to clipboard";
 
     public string ThousandsSeparator { get; init; } = ",";
 

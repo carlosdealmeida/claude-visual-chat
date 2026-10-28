@@ -536,6 +536,68 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void A_copy_check_timer_stops_when_the_view_leaves()
+    {
+        var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();
+        var copied = new List<string>();
+        ChatClipboard.Override = text => { copied.Add(text); return gate.Task; };
+        try
+        {
+            var c = Conversation();
+            c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"seq 20\\nls\"}"))));
+            var tool = c.Items.OfType<ToolCallItem>().Single();
+            var m = new Mounted(c);
+            ToolCallView Row() => m.View.GetVisualDescendants().OfType<ToolCallView>().Single();
+            Button Copy() => Row().GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("ClaudeChatCopyCode"));
+            Avalonia.Media.Geometry? IconData() => Copy().GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Data;
+            var attached = ItemHandlers(tool);
+
+            // the clipboard answers after the view left: the check is not shown for a view that is out
+            UiHelpers.Click(m.Window, Copy());
+            Assert.Equal(new[] { "seq 20\nls" }, copied);
+            var row = Row();
+            m.Out();
+            gate.SetResult(true);
+            UiHelpers.Pump();
+            Assert.False(row.IsCopied);
+            Assert.False(row.IsCopyTicking);
+            Assert.True(ItemHandlers(tool) < attached);
+
+            // a check on screen goes when the view leaves: no timer ticks out of the window, and back it is a copy icon again
+            m.In();
+            Assert.Equal(attached, ItemHandlers(tool));
+            var copyIcon = IconData();
+            ChatClipboard.Override = text => { copied.Add(text); return System.Threading.Tasks.Task.CompletedTask; };
+            UiHelpers.Click(m.Window, Copy());
+            Assert.True(Row().IsCopied);
+            Assert.True(Row().IsCopyTicking);
+            Assert.NotSame(copyIcon, IconData());
+
+            m.Out();
+            Assert.False(row.IsCopied);
+            Assert.False(row.IsCopyTicking);
+            row.EndCopied();                                               // a late tick finds nothing to do
+            m.In();
+            Assert.False(Row().IsCopied);
+            Assert.False(Row().IsCopyTicking);
+            Assert.Same(copyIcon, IconData());
+            Assert.Equal("Copy code to clipboard", Avalonia.Automation.AutomationProperties.GetName(Copy()));
+            UiHelpers.Click(m.Window, Copy());                             // and it copies again
+            Assert.True(Row().IsCopied);
+            Assert.Equal(3, copied.Count);
+
+            // a list that reuses the view for another call drops the check without a sound
+            var other = new ToolCallItem { Name = "Bash", Summary = "ls", Status = ToolStatus.Succeeded };
+            Row().DataContext = other;
+            UiHelpers.Pump();
+            Assert.False(Row().IsCopied);
+            Assert.False(Row().IsCopyTicking);
+            m.Window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    [AvaloniaFact]
     public void The_diff_view_comes_back_after_the_view_returns()
     {
         var c = Conversation();

@@ -200,7 +200,7 @@ public class PublicApiTests
             Assert.True(open!.CanWrite && open.SetMethod!.IsPublic);
         }
         // Edit and Write of 2.1.310 and the Diff View (0.6.0)
-        foreach (var text in new[] { "ToolReason", "ToolShowFullText", "ToolCutText", "WriteSucceeded", "ClickToExpand", "DiffViewTitle" })
+        foreach (var text in new[] { "ToolReason", "ToolShowFullText", "ToolCutText", "WriteSucceeded", "ClickToExpand", "DiffViewTitle", "CopyCode", "CopyCodeToClipboard" })
             Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
         var max = typeof(ToolPresentation).GetField("MaxKeptResultChars");
         Assert.Equal(500_000, max!.GetRawConstantValue());

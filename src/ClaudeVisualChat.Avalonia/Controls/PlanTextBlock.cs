@@ -126,17 +126,9 @@ internal sealed class PlanTextBlock : SelectableTextBlock
     {
         var start = ToText(Math.Min(SelectionStart, SelectionEnd));
         var end = ToText(Math.Max(SelectionStart, SelectionEnd));
-        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
-        if (clipboard == null || end <= start) return;
+        if (end <= start || !ChatClipboard.IsAvailable(this)) return;
         e.Handled = true;
-        try
-        {
-            await clipboard.SetTextAsync(_text.Substring(start, end - start));
-        }
-        catch (Exception)
-        {
-            // the clipboard refused it: nothing was copied, and a refusal is not an unobserved task exception
-        }
+        await ChatClipboard.SetTextAsync(this, _text.Substring(start, end - start)); // a refusal is not an unobserved task exception
     }
 
     private void Read(IEnumerable<CInline> inlines, Look style, StringBuilder text)

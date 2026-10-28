@@ -1065,6 +1065,44 @@
     <Setter Property="StrokeThickness" Value="1.5" />
   </Style>
 
+  <!-- ===== the copy button on a command's row (Bash, PowerShell): at the row's top right, 4 px in (the row's own padding), a 14 px
+       icon in the secondary color, 4 px inside, on the editor's background with a 1 px border and 4 px corners. It is clear until the
+       pointer is over the row (or the keyboard is on it), and comes in over .15 s; the touch layout always shows it ===== -->
+
+  <Style Selector="Border.ClaudeChatToolRow.ClaudeChatCopyHost">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.ClaudeChatCopyCode">
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ToolBackground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.BorderStrong}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="Opacity" Value="0" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.15" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.ClaudeChatToolRow.ClaudeChatCopyHost:pointerover Button.ClaudeChatCopyCode, Button.ClaudeChatCopyCode:pointerover, Button.ClaudeChatCopyCode:focus-visible">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Button.ClaudeChatCopyCode:pointerover /template/ Border#PART_ChatButton, Button.ClaudeChatCopyCode:pressed /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.HoverBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatCopyCode:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="Viewbox.ClaudeChatCopyCodeIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+  </Style>
+
   <!-- ===== the permission request: the reply box's frame, the options as the extension's buttons ===== -->
 
   <Style Selector="Border.ClaudeChatPermission">

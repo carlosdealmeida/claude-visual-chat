@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -12,6 +13,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 namespace ClaudeVisualChat.Controls;
@@ -33,6 +35,8 @@ namespace ClaudeVisualChat.Controls;
 /// A subagent's call (Agent or Task) reads "Agent:" and its description, and its box holds only the prompt (IN), never an output;
 /// a background agent's row adds a line with a dot that tells what it is doing, that a request of its waits below, or how it
 /// ended, and its steps stay off the list (the map has them).
+/// The command's row (IN) of a Bash or PowerShell call has a button at its top right, shown while the pointer is over the row (always
+/// in the touch layout), that copies the whole command through <see cref="ChatClipboard"/>; for 2 s after a copy its icon is a check.
 /// In the touch layout (pseudo-class <c>:touch</c>) the call is a block with a frame and its dot is the header's first
 /// piece.
 /// </summary>
@@ -83,6 +87,9 @@ internal partial class ToolCallView : UserControl
     private static readonly StyledProperty<bool> IsNarrowProperty =
         ClaudeChatView.IsNarrowProperty.AddOwner<ToolCallView>();
 
+    /// <summary>How long the check shows on the command's copy button after a copy.</summary>
+    private static readonly TimeSpan CopiedFor = TimeSpan.FromSeconds(2);
+
     /// <summary>The key of the layer over the diff, among the box's focusable parts.</summary>
     private const string DiffKey = "diff";
 
@@ -90,12 +97,17 @@ internal partial class ToolCallView : UserControl
     private AgentInfo? _agent; // the agent an Agent call started, while the row is in the window
     private DockPanel? _agentLine; // the line under a background agent's row, while it has one
     private bool _attached;
+    private readonly DispatcherTimer _copyTimer = new DispatcherTimer { Interval = CopiedFor };
+    private Button? _copyButton; // the copy button on the command's row, while the row has one
+    private Path? _copyIcon;
+    private bool _copied; // the command was copied a moment ago: the button shows a check (it is the view's, the item has no use for it)
     private NavigationMethod _focusMethod; // how a text of the box got the focus, so a redraw gives it back the same way (a key keeps the ring)
 
     public ToolCallView()
     {
         InitializeComponent();
         Header.Click += OnHeaderClick;
+        _copyTimer.Tick += (_, _) => EndCopied();
         Refresh();
     }
 
@@ -166,6 +178,7 @@ internal partial class ToolCallView : UserControl
     private void Track(ToolCallItem? item)
     {
         if (ReferenceEquals(item, _item)) return;
+        EndCopied(); // a check belongs to the item it was copied from: the list reuses the view, and out of the window nothing waits
         if (_item != null)
         {
             _item.PropertyChanged -= OnItemChanged;
@@ -358,6 +371,8 @@ internal partial class ToolCallView : UserControl
         var focused = FocusedContent();
         Body.Children.Clear();
         _agentLine = null;
+        _copyButton = null;
+        _copyIcon = null;
         var item = _item;
         if (item != null)
         {
@@ -398,14 +413,14 @@ internal partial class ToolCallView : UserControl
             else if (hasTodos)
                 Body.Children.Add(TodoList(item.Todos!));
 
-            var rows = new List<(string Label, Control Content)>();
+            var rows = new List<(string Label, Control Content, bool Copyable)>();
             // the command: the box shows its first lines, and the request showed it whole
             if (IsCommand(name) && Str(item.Input, "command") is { Length: > 0 } command)
-                rows.Add((strings.ToolInput, TextRow(item, command, input: true, strings)));
+                rows.Add((strings.ToolInput, CommandCell(item, command, strings), true));
             // what a subagent was asked: the call's prompt, else its task line's
             if (IsAgentTool(name) && (Str(item.Input, "prompt") ?? _agent?.Prompt) is { Length: > 0 } prompt)
-                rows.Add((strings.ToolInput, TextRow(item, prompt, input: true, strings)));
-            if (output) rows.Add((strings.ToolOutput, TextRow(item, result!, input: false, strings)));
+                rows.Add((strings.ToolInput, TextRow(item, prompt, input: true, strings), false));
+            if (output) rows.Add((strings.ToolOutput, TextRow(item, result!, input: false, strings), false));
             if (rows.Count > 0) Body.Children.Add(ToolBody(Rows(rows)));
             if (IsCommand(name) && RunsInBackground(item.Input))
             {
@@ -421,6 +436,7 @@ internal partial class ToolCallView : UserControl
             }
         }
         Body.IsVisible = Body.Children.Count > 0;
+        UpdateCopyState();
         if (focused != null) Refocus(focused);
     }
 
@@ -573,6 +589,62 @@ internal partial class ToolCallView : UserControl
         else item.IsOutputExpanded = !item.IsOutputExpanded;
     }
 
+    // ---- the copy button on the command's row ----
+
+    private const string CopyKey = "copy";
+
+    /// <summary>The command's row: its text, with the copy button over its top right corner.</summary>
+    private Grid CommandCell(ToolCallItem item, string command, ChatStrings strings)
+    {
+        var icon = new Path();
+        icon.Classes.Add("ClaudeChatCopyIcon");
+        var box = new Viewbox { Child = icon };
+        box.Classes.Add("ClaudeChatCopyCodeIcon");
+        var button = new Button { Content = box, Tag = CopyKey };
+        button.Classes.Add("ClaudeChatButton");
+        button.Classes.Add("ClaudeChatCopyCode");
+        ToolTip.SetTip(button, strings.CopyCode);
+        button.GotFocus += (_, e) => _focusMethod = e.NavigationMethod;
+        button.Click += (_, _) => _ = CopyCommandAsync(item, command);
+        _copyButton = button;
+        _copyIcon = icon;
+        var cell = new Grid { Children = { TextRow(item, command, input: true, strings), button } };
+        cell.Classes.Add("ClaudeChatCopyCell");
+        return cell;
+    }
+
+    private async Task CopyCommandAsync(ToolCallItem item, string command)
+    {
+        if (!await ChatClipboard.SetTextAsync(this, command)) return; // refused: nothing was copied, so nothing is confirmed
+        if (!_attached || !ReferenceEquals(_item, item)) return; // the list took the view to another call meanwhile
+        _copied = true;
+        UpdateCopyState();
+        _copyTimer.Stop();
+        _copyTimer.Start(); // a second copy gives the check another 2 s
+    }
+
+    /// <summary>True from a copy until the check goes away.</summary>
+    internal bool IsCopied => _copied;
+
+    /// <summary>True while the timer waits to take the check away.</summary>
+    internal bool IsCopyTicking => _copyTimer.IsEnabled;
+
+    /// <summary>The check goes away (its timer's tick, 2 s after a copy): the copy icon and its name come back.</summary>
+    internal void EndCopied()
+    {
+        _copyTimer.Stop();
+        if (!_copied) return;
+        _copied = false;
+        UpdateCopyState();
+    }
+
+    private void UpdateCopyState()
+    {
+        if (_copyButton == null || _copyIcon == null) return;
+        _copyIcon.Classes.Set("copied", _copied);
+        AutomationProperties.SetName(_copyButton, _copied ? Strings.Copied : Strings.CopyCodeToClipboard);
+    }
+
     /// <summary>
     /// The diff of the list, 200 px at most, under a layer that opens the Diff View over the whole view with the whole change; the
     /// layer keeps the focus across a redraw, like a text of the box.
@@ -587,12 +659,12 @@ internal partial class ToolCallView : UserControl
         return diff;
     }
 
-    /// <summary>The key (IN, OUT or the diff) of the part of the box that has the focus, or null when none of them does.</summary>
+    /// <summary>The key (IN, OUT, the diff or the copy button) of the part of the box that has the focus, or null when none of them does.</summary>
     private string? FocusedContent()
     {
         if (Body.Children.Count == 0 || TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not Visual focus
             || !Body.IsVisualAncestorOf(focus)) return null;
-        foreach (var content in Body.GetVisualDescendants().OfType<Border>())
+        foreach (var content in Body.GetVisualDescendants().OfType<Control>())
         {
             if (content.Tag is string key && content.Focusable && (ReferenceEquals(content, focus) || content.IsVisualAncestorOf(focus)))
                 return key;
@@ -603,7 +675,7 @@ internal partial class ToolCallView : UserControl
     /// <summary>The box was drawn again under the keyboard (or the finger): the same part keeps the focus.</summary>
     private void Refocus(string key)
     {
-        foreach (var content in Body.GetVisualDescendants().OfType<Border>())
+        foreach (var content in Body.GetVisualDescendants().OfType<Control>())
         {
             if (Equals(content.Tag, key) && content.Focusable)
             {
@@ -689,7 +761,7 @@ internal partial class ToolCallView : UserControl
     }
 
     /// <summary>The rows of the box, 4 px inside, a line between them, each label (IN, OUT) in a column as wide as the widest.</summary>
-    private static Control Rows(List<(string Label, Control Content)> rows)
+    private static Control Rows(List<(string Label, Control Content, bool Copyable)> rows)
     {
         var stack = new StackPanel();
         Grid.SetIsSharedSizeScope(stack, true);
@@ -707,6 +779,7 @@ internal partial class ToolCallView : UserControl
             var frame = new Border { Child = grid };
             frame.Classes.Add("ClaudeChatToolRow");
             if (i > 0) frame.Classes.Add("next");
+            if (rows[i].Copyable) frame.Classes.Add("ClaudeChatCopyHost"); // the pointer over it shows its copy button
             stack.Children.Add(frame);
         }
         return stack;

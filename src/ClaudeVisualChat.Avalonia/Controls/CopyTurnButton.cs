@@ -23,8 +23,12 @@ internal sealed class CopyTurnButton : Button
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<CopyTurnButton>();
 
-    /// <summary>Test seam: copies the text in place of the clipboard.</summary>
-    internal static Func<string, Task>? CopyOverride;
+    /// <summary>Test seam: copies the text in place of the clipboard. It is <see cref="ChatClipboard.Override"/>, the component's one.</summary>
+    internal static Func<string, Task>? CopyOverride
+    {
+        get => ChatClipboard.Override;
+        set => ChatClipboard.Override = value;
+    }
 
     private readonly Path _icon = new Path();
     private readonly DispatcherTimer _timer = new DispatcherTimer { Interval = CopiedFor };
@@ -107,16 +111,7 @@ internal sealed class CopyTurnButton : Button
         var text = Answer();
         if (text.Length == 0) return;
         var turn = DataContext;
-        try
-        {
-            if (CopyOverride != null) await CopyOverride(text);
-            else if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard) await clipboard.SetTextAsync(text);
-            else return;
-        }
-        catch (Exception)
-        {
-            return; // the clipboard refused it: nothing was copied, so nothing is confirmed
-        }
+        if (!await ChatClipboard.SetTextAsync(this, text)) return; // the clipboard refused it: nothing was copied, so nothing is confirmed
         if (!_attached || !ReferenceEquals(DataContext, turn)) return; // the list took the control to another turn meanwhile
         _copied = true;
         _icon.Classes.Set("copied", true);

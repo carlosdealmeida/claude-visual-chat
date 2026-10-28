@@ -1640,6 +1640,248 @@ public class ChatViewTests
         window.Close();
     }
 
+    // ---- Bash and PowerShell: the copy button on the command's row ----
+
+    private const string LongCommand = "cd build\nmake -j8 && echo 'built'\necho done # a long comment to cut the line";
+
+    private static (ChatConversation C, ToolCallItem Tool) Command(string tool, string command, string? output = null)
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", tool, J(JsonSerializer.Serialize(new { command, description = "Builds it" })))));
+        if (output != null) c.Apply(new UserBlock(null, new ToolResultBlock("t1", output, false), null, false, false));
+        return (c, c.Items.OfType<ToolCallItem>().Single());
+    }
+
+    private static Button CopyButton(Visual root, ToolCallItem tool) =>
+        ViewOf(root, tool).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("ClaudeChatCopyCode"));
+
+    private static Path CopyIcon(Button button) => button.GetVisualDescendants().OfType<Path>().Single();
+
+    /// <summary>Runs frames until <paramref name="done"/>, for what a transition of 0.15 s brings (5 s at most).</summary>
+    private static void FadeUntil(Func<bool> done)
+    {
+        var clock = Stopwatch.StartNew();
+        while (!done() && clock.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            System.Threading.Thread.Sleep(20);
+            Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            UiHelpers.Pump();
+        }
+        Assert.True(done());
+    }
+
+    private static void MoveTo(Window window, Control control, double x, double y)
+    {
+        window.MouseMove(control.TranslatePoint(new Point(x, y), window)!.Value, RawInputModifiers.None);
+        UiHelpers.Pump();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Bash")]
+    [InlineData("PowerShell")]
+    public void The_copy_button_copies_the_whole_command_and_turns_into_a_check(string name)
+    {
+        var copied = new List<string>();
+        ChatClipboard.Override = text => { copied.Add(text); return System.Threading.Tasks.Task.CompletedTask; };
+        try
+        {
+            var (c, tool) = Command(name, LongCommand, "built");
+            var (view, window) = Open(c, ChatStrings.English);
+            var button = CopyButton(view, tool);
+            var icon = CopyIcon(button);
+
+            // like the extension's: a 14 px icon, 4 px inside, the editor's background, a 1 px border, 4 px corners
+            Assert.Equal(new Thickness(4), button.Padding);
+            Assert.Equal(new Thickness(1), button.BorderThickness);
+            Assert.Equal(new CornerRadius(4), button.CornerRadius);
+            Assert.Same(Resource(view, "ClaudeChat.ToolBackground"), button.Background);
+            Assert.Same(Resource(view, "ClaudeChat.BorderStrong"), button.BorderBrush);
+            Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), button.Foreground);
+            var box = Assert.IsType<Viewbox>(button.Content);
+            Assert.Equal(new Size(14, 14), box.Bounds.Size);
+            Assert.Equal("Copy code", ToolTip.GetTip(button));
+            Assert.Equal("Copy code to clipboard", AutomationProperties.GetName(button));
+            Assert.Equal(icon.FindResource("ClaudeChat.Icon.Copy"), icon.Data);
+
+            // at the top right of the IN row, 4 px in
+            var row = button.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatToolRow"));
+            var corner = button.TranslatePoint(new Point(button.Bounds.Width, 0), row)!.Value;
+            Assert.Equal(row.Bounds.Width - 4, corner.X, 1);
+            Assert.Equal(4, corner.Y, 1);
+
+            UiHelpers.Click(window, button);
+            Assert.Equal(new[] { LongCommand }, copied); // the whole command, not the 60 px that show
+            Assert.True(ViewOf(view, tool).IsCopied);
+            Assert.Equal(icon.FindResource("ClaudeChat.Icon.Check"), icon.Data);
+            Assert.Equal("Copied", AutomationProperties.GetName(button));
+            Assert.True(ViewOf(view, tool).IsCopyTicking); // a timer of 2 s takes the check away
+
+            ViewOf(view, tool).EndCopied();                // 2 s later
+            UiHelpers.Pump();
+            Assert.False(ViewOf(view, tool).IsCopyTicking);
+            Assert.Equal(icon.FindResource("ClaudeChat.Icon.Copy"), icon.Data);
+            Assert.Equal("Copy code to clipboard", AutomationProperties.GetName(button));
+
+            view.Strings = ChatStrings.PortugueseBrazil;   // the texts follow the language
+            UiHelpers.Pump();
+            button = CopyButton(view, tool);
+            Assert.Equal("Copiar código", ToolTip.GetTip(button));
+            Assert.Equal("Copiar código para a área de transferência", AutomationProperties.GetName(button));
+            window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    [AvaloniaFact]
+    public void The_check_survives_a_redraw_of_the_row_and_a_refused_copy_confirms_nothing()
+    {
+        var accept = true;
+        ChatClipboard.Override = _ => accept ? System.Threading.Tasks.Task.CompletedTask : throw new InvalidOperationException("refused");
+        try
+        {
+            var (c, tool) = Command("Bash", "ls");
+            var (view, window) = Open(c);
+            accept = false;
+            UiHelpers.Click(window, CopyButton(view, tool));
+            Assert.False(ViewOf(view, tool).IsCopied);       // the clipboard said no: no check, and nothing thrown
+            Assert.False(ViewOf(view, tool).IsCopyTicking);
+
+            accept = true;
+            UiHelpers.Click(window, CopyButton(view, tool));
+            Assert.True(ViewOf(view, tool).IsCopied);
+            c.Apply(new UserBlock(null, new ToolResultBlock("t1", "a\nb", false), null, false, false)); // the result redraws the box
+            UiHelpers.Pump();
+            var icon = CopyIcon(CopyButton(view, tool));
+            Assert.Equal(icon.FindResource("ClaudeChat.Icon.Check"), icon.Data); // and the new button still shows the check
+            Assert.Equal("Copied", AutomationProperties.GetName(CopyButton(view, tool)));
+            window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    [AvaloniaFact]
+    public void The_copy_button_shows_only_while_the_pointer_is_over_the_in_row()
+    {
+        var (c, tool) = Command("Bash", "ls -la", "a\nb");
+        var (view, window) = Open(c);
+        var button = CopyButton(view, tool);
+        var rows = ViewOf(view, tool).GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ClaudeChatToolRow")).ToList();
+        Assert.Equal(2, rows.Count);                          // IN and OUT
+        Assert.Equal(0, button.Opacity);                      // clear until the pointer comes
+        Assert.Contains(button.Transitions!, t => t is Avalonia.Animation.DoubleTransition d
+            && d.Property == Visual.OpacityProperty && d.Duration == TimeSpan.FromSeconds(0.15));
+
+        MoveTo(window, rows[0], rows[0].Bounds.Width / 2, 3);  // over the IN row, away from the button
+        FadeUntil(() => button.Opacity == 1);
+
+        MoveTo(window, rows[1], rows[1].Bounds.Width / 2, 3);  // over the OUT row
+        FadeUntil(() => button.Opacity == 0);
+
+        MoveTo(window, rows[0], 20, 3);                        // and back over IN
+        FadeUntil(() => button.Opacity == 1);
+        window.MouseMove(new Point(window.Width - 2, window.Height - 2), RawInputModifiers.None); // away from the whole call
+        FadeUntil(() => button.Opacity == 0);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_copy_button_has_a_hover_background_and_the_keyboard_shows_it()
+    {
+        var (c, tool) = Command("Bash", "ls");
+        var (view, window) = Open(c);
+        var button = CopyButton(view, tool);
+        Assert.Equal(0, button.Opacity);
+        button.Focus(NavigationMethod.Tab);                    // reached with Tab: it shows, without the pointer
+        FadeUntil(() => button.Opacity == 1);
+        var face = button.GetVisualDescendants().OfType<Border>().First(b => b.Name == "PART_ChatButton");
+        MoveTo(window, button, 5, 5);
+        Assert.Same(Resource(view, "ClaudeChat.HoverBackground"), face.Background); // its own hover: toolbar.hoverBackground
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_copy_button_is_a_target_that_copies_in_both_layouts(bool touch)
+    {
+        var copied = new List<string>();
+        var command = "echo " + new string('x', 200);
+        ChatClipboard.Override = text => { copied.Add(text); return System.Threading.Tasks.Task.CompletedTask; };
+        try
+        {
+            var (c, tool) = Command("Bash", command, "ok");
+            var view = touch ? UiHelpers.TouchView(c) : new ClaudeChatView { Conversation = c };
+            var window = touch ? UiHelpers.ShowPhone(view) : UiHelpers.Show(view);
+            var button = CopyButton(view, tool);
+            if (touch)
+            {
+                Assert.Equal(1, button.Opacity);               // no pointer to hover with: always shown
+                Assert.True(button.Bounds.Width >= 44 && button.Bounds.Height >= 44, button.Bounds.ToString());
+                var content = ViewOf(view, tool).GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatToolContent"));
+                Assert.True(content.TranslatePoint(new Point(content.Bounds.Width, 0), view)!.Value.X
+                    <= button.TranslatePoint(default, view)!.Value.X + 0.5, "the command stops short of the button");
+                var face = button.GetVisualDescendants().OfType<Border>().First(b => b.Name == "PART_ChatButton");
+                Assert.Equal(new Size(24, 24), face.Bounds.Size); // the face is the icon's (14, 4 inside, a 1 px border), the target a finger's
+            }
+            else
+            {
+                Assert.Equal(0, button.Opacity);
+                Assert.True(button.Bounds.Height < 44);
+            }
+            // a tap on the middle of its target, and (touch) near its corners, which the face does not reach
+            var taps = touch
+                ? new[] { (22.0, 22.0), (2.0, 2.0), (42.0, 2.0), (2.0, 42.0), (42.0, 42.0) }
+                : new[] { (button.Bounds.Width / 2, button.Bounds.Height / 2) };
+            foreach (var (x, y) in taps)
+            {
+                var before = copied.Count;
+                var at = button.TranslatePoint(new Point(x, y), window)!.Value;
+                window.MouseMove(at, RawInputModifiers.None);
+                window.MouseDown(at, MouseButton.Left, RawInputModifiers.None);
+                window.MouseUp(at, MouseButton.Left, RawInputModifiers.None);
+                UiHelpers.Pump();
+                Assert.True(copied.Count == before + 1, "a tap " + x + ", " + y);
+            }
+            Assert.All(copied, t => Assert.Equal(command, t));
+            window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    [AvaloniaFact]
+    public void Only_a_command_has_the_copy_button_and_the_title_reads_the_tool_and_its_description()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "PowerShell", J("{\"command\":\"Get-Date\",\"description\":\"Shows the date\"}"))));
+        c.Apply(new AssistantBlock("m2", null, new ToolUseBlock("t2", "Read", J("{\"file_path\":\"a.txt\"}"))));
+        c.Apply(new AssistantBlock("m3", null, new ToolUseBlock("t3", "Grep", J("{\"pattern\":\"x\"}"))));
+        var (view, window) = Open(c);
+        var tools = c.Items.OfType<ToolCallItem>().ToList();
+        Assert.Single(view.GetVisualDescendants().OfType<Button>(), b => b.Classes.Contains("ClaudeChatCopyCode"));
+        Assert.DoesNotContain(ViewOf(view, tools[1]).GetVisualDescendants().OfType<Button>(), b => b.Classes.Contains("ClaudeChatCopyCode"));
+        var power = ViewOf(view, tools[0]);
+        var title = power.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "ToolName");
+        var detail = power.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "DetailText");
+        Assert.Equal("PowerShell", title.Text);
+        Assert.Equal(FontWeight.Bold, title.FontWeight);
+        Assert.Equal("Shows the date", detail.Text);
+        Assert.Contains("plain", detail.Classes);             // the body font, not the monospace one
+        Assert.NotEqual(FontWeight.Bold, detail.FontWeight);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Bash")]
+    [InlineData("PowerShell")]
+    public void Bash_output_shows_without_ansi_codes(string name)
+    {
+        var (c, tool) = Command(name, "ls", "\u001b[32mgreen\u001b[0m \u001b]0;title\u0007plain \u009b1;31mred\u001b(B end");
+        var (view, window) = Open(c);
+        Assert.Equal("green plain red end", ResultOf(view, tool));
+        Assert.Equal("green plain red end", tool.FullResultText);
+        window.Close();
+    }
+
     // ---- theme ----
 
     [AvaloniaFact]

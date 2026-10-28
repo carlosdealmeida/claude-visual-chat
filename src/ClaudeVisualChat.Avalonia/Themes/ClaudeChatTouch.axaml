@@ -36,6 +36,24 @@
         </Border>
       </Border>
     </ControlTemplate>
+    <!-- the copy button on a command's row: a transparent target of 44 px around the face that is drawn at the size of its icon -->
+    <ControlTemplate x:Key="ClaudeChat.TouchCopyCodeTemplate" TargetType="Button">
+      <Border Name="PART_TouchTarget" Background="Transparent">
+        <Border Name="PART_ChatButton"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <ContentPresenter Name="PART_ChatButtonContent"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+        </Border>
+      </Border>
+    </ControlTemplate>
   </Styles.Resources>
 
   <!-- ===== the user's message: a bubble at the right, no time ===== -->
@@ -93,6 +111,16 @@
   </Style>
   <Style Selector="controls|ToolCallView:touch Border.ClaudeChatDiffExpandPill">
     <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <!-- the copy button of a command: always shown, a finger's target, and the command's text stops short of it -->
+  <Style Selector="controls|ToolCallView:touch Button.ClaudeChatCopyCode">
+    <Setter Property="Template" Value="{StaticResource ClaudeChat.TouchCopyCodeTemplate}" />
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="controls|ToolCallView:touch Grid.ClaudeChatCopyCell > Border.ClaudeChatToolContent">
+    <Setter Property="Margin" Value="0,0,44,0" />
   </Style>
   <Style Selector="controls|ToolCallView:touch Ellipse.ClaudeChatToolDot">
     <Setter Property="Width" Value="8" />
