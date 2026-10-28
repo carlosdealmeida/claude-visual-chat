@@ -28,9 +28,9 @@
         <!-- the line under the name, then the box: the diff, the file written, the command and its output -->
         <StackPanel Name="Body" />
 
-        <!-- what the subagent did, behind the arrow -->
+        <!-- what the subagent did, behind the arrow; a background agent's steps are only in the map (shown from code) -->
         <ItemsControl Name="ChildList" Classes="ClaudeChatItems" Margin="0,4,0,0"
-                      ItemsSource="{Binding Children}" IsVisible="{Binding IsExpanded}" />
+                      ItemsSource="{Binding Children}" IsVisible="False" />
       </StackPanel>
     </Border>
   </controls:ChatTimelineRow>

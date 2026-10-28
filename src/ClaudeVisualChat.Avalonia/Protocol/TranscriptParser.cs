@@ -317,7 +317,10 @@ namespace ClaudeVisualChat.Protocol
                     e = new AgentTaskStarted(
                         taskId!, toolUseId, JsonHelpers.Str(root, "description") ?? "", JsonHelpers.Str(root, "subagent_type"),
                         JsonHelpers.Bool(root, "is_backgrounded"), (int)(JsonHelpers.Long(root, "spawn_depth") ?? 1),
-                        JsonHelpers.Str(root, "task_type") ?? "");
+                        JsonHelpers.Str(root, "task_type") ?? "")
+                    {
+                        Prompt = JsonHelpers.Str(root, "prompt"),
+                    };
                     break;
                 case "task_progress":
                     e = new AgentTaskProgress(

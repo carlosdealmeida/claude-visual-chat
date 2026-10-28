@@ -439,13 +439,14 @@ public class ChatViewTests
         Assert.Contains(UiHelpers.Texts(ViewOf(view, failed)), t => t.StartsWith("File does not exist", StringComparison.Ordinal));
         window.Close();
 
-        // a subagent call that failed tells why
+        // a subagent call never has an OUT row, even when it failed: like the extension's (a background one says why on its line)
         var c = new ChatConversation();
         c.Items.Add(new ToolCallItem { Name = "Task", Summary = "dig", Status = ToolStatus.Failed, ResultText = "agent crashed" });
         c.Items.Add(new ToolCallItem { Name = "Agent", Summary = "dig", Status = ToolStatus.Succeeded, ResultText = "agentId: 42", HiddenResultLines = 5 });
         (view, window) = Open(c);
         texts = UiHelpers.Texts(view);
-        Assert.Contains("agent crashed", texts);
+        Assert.DoesNotContain("agent crashed", texts);
+        Assert.DoesNotContain(view.Strings.ToolOutput, texts);
         Assert.DoesNotContain("agentId: 42", texts);
         Assert.DoesNotContain("+5 lines", texts);
         window.Close();
@@ -454,7 +455,15 @@ public class ChatViewTests
     [AvaloniaFact]
     public void Subagent_children_expand()
     {
-        var c = UiHelpers.Recording("subagent", "stream");
+        // a foreground agent keeps its steps behind the arrow (the background one of the recording shows none, see below)
+        var c = new ChatConversation();
+        foreach (var line in new[]
+        {
+            AgentMapTests.AgentCall("toolu_fg", "Look around", background: false), AgentMapTests.BashCall("toolu_c1", parent: "toolu_fg"),
+        })
+        {
+            c.AppendLine(line);
+        }
         var agent = c.Items.OfType<ToolCallItem>().Single();
         var childSummaries = agent.Children.OfType<ToolCallItem>().Select(t => t.Summary).ToList();
         Assert.NotEmpty(childSummaries);
@@ -476,6 +485,242 @@ public class ChatViewTests
         Assert.False(agent.IsExpanded);
         Assert.DoesNotContain(childSummaries[0], UiHelpers.Texts(view));
         window.Close();
+    }
+
+    // ---- the Agent row: "Agent:", the prompt in the IN row, the background line (0.6.0) ----
+
+    private static ChatConversation Playing(params string[] lines)
+    {
+        var c = new ChatConversation();
+        foreach (var line in lines) c.AppendLine(line);
+        return c;
+    }
+
+    /// <summary>The line under a background agent's row, or null when the row has none.</summary>
+    private static Panel? AgentLine(Visual root, ToolCallItem item) =>
+        ViewOf(root, item).GetVisualDescendants().OfType<Panel>().SingleOrDefault(p => p.Classes.Contains("ClaudeChatAgentLine"));
+
+    private static string AgentLineText(Visual root, ToolCallItem item) =>
+        AgentLine(root, item)!.GetVisualDescendants().OfType<TextBlock>().Single().Text ?? "";
+
+    private static Ellipse AgentDot(Visual root, ToolCallItem item) =>
+        AgentLine(root, item)!.GetVisualDescendants().OfType<Ellipse>().Single();
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_agent_row_reads_agent_colon_and_shows_its_prompt_in_the_in_row(bool touch)
+    {
+        // eight lines (the JSON's line breaks): past three lines, it opens whole
+        var prompt = "Read the three files and summarize them." + string.Concat(Enumerable.Range(2, 7).Select(i => "\\nStep " + i + ": check it again."));
+        var c = Playing(AgentMapTests.AgentCall("toolu_fg", "Summarize files", prompt: prompt, background: false));
+        c.Items.Add(new ToolCallItem { Name = "Task", Summary = "dig", Status = ToolStatus.Succeeded, Input = J("{\"description\":\"dig\",\"prompt\":\"Dig.\"}") });
+        var agent = c.Items.OfType<ToolCallItem>().First();
+        var task = c.Items.OfType<ToolCallItem>().Last();
+        var view = OpenIn(c, touch);
+        var strings = view.Strings;
+        var row = ViewOf(view, agent);
+
+        // "Agent:" in bold, with the colon, then the description in the editor's font at .85em
+        var name = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "ToolName");
+        var detail = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "DetailText");
+        Assert.Equal("Agent:", name.Text);
+        Assert.Equal(FontWeight.Bold, name.FontWeight);
+        Assert.Equal("Summarize files", detail.Text);
+        Assert.Same(Resource(view, "ClaudeChat.MonoFontFamily"), detail.FontFamily);
+        Assert.Equal(0.85, detail.FontSize / name.FontSize, 2);
+        Assert.True(Left(detail, row) > Right(name, row));                          // after the name, on its line
+        // a Task call has the same header
+        Assert.Equal("Agent:", ViewOf(view, task).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "ToolName").Text);
+
+        // one box, one IN row with the prompt, cut at 60 px; a long prompt opens whole in place
+        var contents = Contents(view, agent);
+        var content = Assert.Single(contents);
+        Assert.Contains(strings.ToolInput, UiHelpers.Texts(row));
+        Assert.DoesNotContain(strings.ToolOutput, UiHelpers.Texts(row));
+        Assert.StartsWith("Read the three files", content.GetVisualDescendants().OfType<TextBlock>().Single().Text);
+        Assert.True(content.Bounds.Height <= 68.5);
+        Assert.Contains("expandable", content.Classes);
+        Assert.Null(AgentLine(view, agent));                                       // a foreground agent has no line under it
+        Assert.DoesNotContain(row.GetVisualDescendants().OfType<TextBlock>(), t => t.Classes.Contains("ClaudeChatSecondary"));
+        agent.IsInputExpanded = true;
+        UiHelpers.Pump();
+        content = Assert.Single(Contents(view, agent));
+        Assert.True(content.Bounds.Height > 68.5);
+        Assert.Single(Contents(view, task));                                        // the Task's prompt too
+
+        // its result, even a failure, never makes an OUT row
+        c.AppendLine(
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"tool_use_id\":\"toolu_fg\",\"type\":\"tool_result\"," +
+            "\"content\":\"The agent crashed\",\"is_error\":true}]},\"parent_tool_use_id\":null,\"session_id\":\"s1\"}");
+        UiHelpers.Pump();
+        Assert.Equal(ToolStatus.Failed, agent.Status);
+        Assert.Single(Contents(view, agent));
+        Assert.DoesNotContain(UiHelpers.Texts(ViewOf(view, agent)), t => t.Contains("The agent crashed"));
+        WindowOf(view).Close();
+    }
+
+    [AvaloniaFact]
+    public void The_agent_row_takes_the_prompt_of_the_task_line_when_the_call_has_none()
+    {
+        var c = Playing(
+            AgentMapTests.TaskStarted("ta1", "toolu_a1", "Look", prompt: "Look around the repo."),
+            "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_a1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\"," +
+            "\"id\":\"toolu_a1\",\"name\":\"Agent\",\"input\":{\"description\":\"Look\"}}]},\"parent_tool_use_id\":null,\"session_id\":\"s1\"}");
+        var agent = c.Items.OfType<ToolCallItem>().Single();
+        var (view, window) = Open(c);
+        Assert.Contains("Look around the repo.", UiHelpers.Texts(ViewOf(view, agent)));
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_background_agent_keeps_its_row_and_adds_working_in_the_background(bool touch)
+    {
+        var c = Playing(AgentMapTests.AgentCall("toolu_a1", "Read the logs"), AgentMapTests.TaskStarted("ta1", "toolu_a1", "Read the logs"));
+        var agent = c.Items.OfType<ToolCallItem>().Single();
+        var view = OpenIn(c, touch);
+        var strings = view.Strings;
+        string Line(string head) => head + " · " + strings.AgentTasksHint;
+
+        // the row stays (its prompt in the IN row), and the line comes under it: an 8 px green dot, .85em muted at 70 %
+        Assert.Single(Contents(view, agent));
+        var line = AgentLine(view, agent);
+        Assert.NotNull(line);
+        Assert.Equal(Line(strings.AgentWorkingInBackground), AgentLineText(view, agent));
+        Assert.Equal(touch ? "Trabalhando em segundo plano · digite /tasks para ver a transcrição dele" : "Working in the background · type /tasks to see its transcript",
+            AgentLineText(view, agent));
+        var dot = AgentDot(view, agent);
+        Assert.Equal((8.0, 8.0), (dot.Bounds.Width, dot.Bounds.Height));
+        Assert.Same(Resource(view, "ClaudeChat.AgentRunning"), dot.Fill);
+        Assert.Equal(1, dot.Opacity);
+        Assert.Equal(0.7, line!.Opacity, 2);
+        var text = line.GetVisualDescendants().OfType<TextBlock>().Single();
+        Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), text.Foreground);
+        Assert.Equal(0.85, text.FontSize / ViewOf(view, agent).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "ToolName").FontSize, 2);
+        Assert.True(Left(text, line) > Right(dot, line));                           // the dot first, then the text
+        var box = ViewOf(view, agent).GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatToolBody"));
+        Assert.True(line.TranslatePoint(default, view)!.Value.Y >= box.TranslatePoint(new Point(0, box.Bounds.Height), view)!.Value.Y); // under the box
+
+        // its activity, cut at 120 characters; left out when it is the description
+        c.AppendLine(AgentMapTests.TaskProgress("ta1", "toolu_a1", "Reading a.txt"));
+        UiHelpers.Pump();
+        Assert.Equal(Line(strings.AgentWorkingInBackgroundOn.Replace("{0}", "Reading a.txt")), AgentLineText(view, agent));
+        var longActivity = new string('x', 130);
+        c.AppendLine(AgentMapTests.TaskProgress("ta1", "toolu_a1", longActivity));
+        UiHelpers.Pump();
+        Assert.Equal(Line(strings.AgentWorkingInBackgroundOn.Replace("{0}", new string('x', 119) + "…")), AgentLineText(view, agent));
+        c.AppendLine(AgentMapTests.TaskProgress("ta1", "toolu_a1", "Read the logs"));
+        UiHelpers.Pump();
+        Assert.Equal(Line(strings.AgentWorkingInBackground), AgentLineText(view, agent));
+
+        // an agent it started fails, then it finishes: the gray dot at 40 %, with the suffix (and the dot of the failure)
+        c.AppendLine(AgentMapTests.AgentCall("toolu_kid", "Kid", parent: "toolu_a1"));
+        c.AppendLine(AgentMapTests.TaskStarted("tkid", "toolu_kid", "Kid", depth: 2));
+        c.AppendLine(AgentMapTests.TaskFinished("tkid", "toolu_kid", "failed", "Boom"));
+        c.AppendLine(AgentMapTests.TaskFinished("ta1", "toolu_a1", "completed", "All read"));
+        UiHelpers.Pump();
+        Assert.Equal(strings.AgentFinished + " · " + strings.AgentNestedFailed + " · " + strings.AgentTasksHint, AgentLineText(view, agent));
+        Assert.Same(Resource(view, "ClaudeChat.Error"), AgentDot(view, agent).Fill);
+        WindowOf(view).Close();
+
+        // the states one by one: finished, failed (with what it said), stopped
+        foreach (var (status, summary, head, brush, opacity) in new[]
+        {
+            ("completed", "All read", strings.AgentFinished, "ClaudeChat.ForegroundMuted", 0.4),
+            ("failed", "Disk full", strings.AgentFailedWith.Replace("{0}", "Disk full"), "ClaudeChat.Error", 1.0),
+            ("killed", "Stopped", strings.AgentStopped, "ClaudeChat.Error", 1.0),
+        })
+        {
+            c = Playing(
+                AgentMapTests.AgentCall("toolu_a1", "Read the logs"), AgentMapTests.TaskStarted("ta1", "toolu_a1", "Read the logs"),
+                AgentMapTests.TaskFinished("ta1", "toolu_a1", status, summary));
+            agent = c.Items.OfType<ToolCallItem>().Single();
+            view = OpenIn(c, touch);
+            Assert.Equal(Line(head), AgentLineText(view, agent));
+            Assert.Same(Resource(view, brush), AgentDot(view, agent).Fill);
+            Assert.Equal(opacity, AgentDot(view, agent).Opacity, 2);
+            WindowOf(view).Close();
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void A_waiting_background_agent_reads_waiting_for_your_permission(bool touch, bool withAgentId)
+    {
+        // the request of its step: with agent_id (2.1.310), or without it, by the step that asks
+        var c = Playing(
+            AgentMapTests.AgentCall("toolu_a1", "Write a file"), AgentMapTests.TaskStarted("ta1", "toolu_a1", "Write a file"),
+            AgentMapTests.BashCall("toolu_b1", parent: "toolu_a1"));
+        var agent = c.Items.OfType<ToolCallItem>().Single();
+        var view = OpenIn(c, touch);
+        var strings = view.Strings;
+        Assert.Equal(strings.AgentWorkingInBackground + " · " + strings.AgentTasksHint, AgentLineText(view, agent));
+
+        c.AppendLine(AgentMapTests.BashRequest("r1", "toolu_b1", withAgentId ? "ta1" : null));
+        UiHelpers.Pump();
+        Assert.Equal(strings.AgentWaitingForPermission + " · " + strings.AgentTasksHint, AgentLineText(view, agent));
+        Assert.Equal(touch ? "Aguardando sua permissão: veja o pedido abaixo · digite /tasks para ver a transcrição dele"
+            : "Waiting for your permission: see the request below · type /tasks to see its transcript", AgentLineText(view, agent));
+        Assert.Same(Resource(view, "ClaudeChat.AgentWaiting"), AgentDot(view, agent).Fill);
+        Assert.Equal(Color.Parse("#3B82F6"), ((ISolidColorBrush)AgentDot(view, agent).Fill!).Color);
+        Assert.True(UiHelpers.Prompt(view).IsEffectivelyVisible);                   // the request is below, in the usual card
+
+        // an agent it started waits too: both in one sentence
+        c.AppendLine(AgentMapTests.AgentCall("toolu_kid", "Kid", parent: "toolu_a1"));
+        c.AppendLine(AgentMapTests.TaskStarted("tkid", "toolu_kid", "Kid", depth: 2));
+        c.AppendLine(AgentMapTests.BashRequest("r2", "toolu_kb", "tkid"));
+        UiHelpers.Pump();
+        Assert.Equal(strings.AgentWaitingAlongWithNested + " · " + strings.AgentTasksHint, AgentLineText(view, agent));
+
+        // answered, it works again, and only the agent it started waits
+        c.AnswerPermission(c.PendingPermissions.Single(p => p.RequestId == "r1"), PermissionDecision.Allow);
+        UiHelpers.Pump();
+        Assert.Equal(strings.AgentWorkingInBackground + " · " + strings.AgentNestedWaiting + " · " + strings.AgentTasksHint, AgentLineText(view, agent));
+        Assert.Same(Resource(view, "ClaudeChat.AgentWaiting"), AgentDot(view, agent).Fill);
+        c.DismissPermission("r2");
+        UiHelpers.Pump();
+        Assert.Equal(strings.AgentWorkingInBackground + " · " + strings.AgentTasksHint, AgentLineText(view, agent)); // both work: nothing to add
+        Assert.Same(Resource(view, "ClaudeChat.AgentRunning"), AgentDot(view, agent).Fill);
+
+        // it ends while the agent it started still works
+        c.AppendLine(AgentMapTests.TaskFinished("ta1", "toolu_a1", "completed", "Done"));
+        UiHelpers.Pump();
+        Assert.Equal(strings.AgentFinished + " · " + strings.AgentNestedWorking + " · " + strings.AgentTasksHint, AgentLineText(view, agent));
+        Assert.Same(Resource(view, "ClaudeChat.AgentRunning"), AgentDot(view, agent).Fill);
+        WindowOf(view).Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_background_agents_steps_do_not_show_in_the_conversation(bool touch)
+    {
+        // the recorded agent runs in the background: its steps are in the item, for the map, but not on the list
+        var c = UiHelpers.Recording("subagent", "stream");
+        var agent = c.Items.OfType<ToolCallItem>().Single();
+        Assert.True(Assert.Single(c.Agents).IsBackground);
+        var steps = agent.Children.OfType<ToolCallItem>().Select(t => t.Summary).ToList();
+        Assert.NotEmpty(steps);
+        var view = OpenIn(c, touch);
+        UiHelpers.ItemList(view).ScrollIntoView(agent);
+        UiHelpers.Pump();
+        var row = ViewOf(view, agent);
+        var header = row.GetVisualDescendants().OfType<ToggleButton>().First();
+        Assert.False(header.Focusable);                                             // nothing to open
+        Assert.False(row.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single(p => p.Name == "Arrow").IsVisible);
+        Assert.NotNull(AgentLine(view, agent));
+        Assert.StartsWith(view.Strings.AgentFinished, AgentLineText(view, agent));
+
+        agent.IsExpanded = true;                                                    // even an item set open shows none
+        UiHelpers.Pump();
+        var texts = UiHelpers.Texts(row);
+        Assert.All(steps, s => Assert.DoesNotContain(s, texts));
+        Assert.DoesNotContain(row.GetVisualDescendants().OfType<ToolCallView>(), v => v != row && v.IsEffectivelyVisible);
+        WindowOf(view).Close();
     }
 
     // ---- the dot of a running call, the output, a command in the background ----

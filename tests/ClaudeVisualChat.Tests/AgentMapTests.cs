@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using ClaudeVisualChat.Protocol;
 using Xunit;
 
@@ -347,7 +348,8 @@ public class AgentMapTests
         var parser = new StreamJsonParser();
 
         var started = Assert.IsType<AgentTaskStarted>(Assert.Single(parser.Parse(lines.First(l => l.Contains("\"task_started\"")))));
-        Assert.Equal(new AgentTaskStarted("adb1f0b70b0f95ff6", AgentCallId, Description, "general-purpose", true, 1, "local_agent"), started);
+        Assert.Equal(new AgentTaskStarted("adb1f0b70b0f95ff6", AgentCallId, Description, "general-purpose", true, 1, "local_agent") { Prompt = started.Prompt }, started);
+        Assert.StartsWith("Read the files", started.Prompt); // 0.6.0: the prompt too
 
         var progress = Assert.IsType<AgentTaskProgress>(Assert.Single(parser.Parse(lines.First(l => l.Contains("\"task_progress\"")))));
         Assert.Equal(new AgentTaskProgress("adb1f0b70b0f95ff6", AgentCallId, "Reading a.txt", 24803, 1, 2832), progress);
@@ -361,6 +363,184 @@ public class AgentMapTests
         Assert.Equal("completed", finished.Status);
         Assert.StartsWith("a.txt:", finished.Summary);
         Assert.Equal((26316L, 3, 5850L), (finished.Tokens!.Value, finished.ToolUses!.Value, finished.DurationMs!.Value));
+    }
+
+    // ---- the prompt and the wait for a permission (0.6.0) ----
+    // No recording has a subagent's request (gravacoes.md, subagent-permission was abandoned): the lines are built in the shape
+    // of the 2.1.310 can_use_tool, with agent_id when the test wants it.
+
+    /// <summary>An Agent call of the main agent (or of the agent <paramref name="parent"/>), in the background.</summary>
+    internal static string AgentCall(string id, string description, string? parent = null, string prompt = "Look around.", bool background = true) =>
+        "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_" + id + "\",\"type\":\"message\",\"role\":\"assistant\"," +
+        "\"content\":[{\"type\":\"tool_use\",\"id\":\"" + id + "\",\"name\":\"Agent\",\"input\":{\"description\":\"" + description + "\"," +
+        "\"subagent_type\":\"general-purpose\",\"prompt\":\"" + prompt + "\",\"run_in_background\":" + (background ? "true" : "false") + "}}]}," +
+        "\"parent_tool_use_id\":" + (parent == null ? "null" : "\"" + parent + "\"") + ",\"session_id\":\"s1\"}";
+
+    /// <summary>The <c>task_started</c> line of a background agent.</summary>
+    internal static string TaskStarted(string taskId, string callId, string description, int depth = 1, string? prompt = null) =>
+        "{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"" + taskId + "\",\"tool_use_id\":\"" + callId + "\"," +
+        "\"description\":\"" + description + "\",\"subagent_type\":\"general-purpose\",\"is_backgrounded\":true,\"spawn_depth\":" + depth + "," +
+        "\"task_type\":\"local_agent\"" + (prompt == null ? "" : ",\"prompt\":\"" + prompt + "\"") + ",\"uuid\":\"u\",\"session_id\":\"s1\"}";
+
+    /// <summary>A <c>task_progress</c> line: the agent is doing <paramref name="activity"/>.</summary>
+    internal static string TaskProgress(string taskId, string callId, string activity) =>
+        "{\"type\":\"system\",\"subtype\":\"task_progress\",\"task_id\":\"" + taskId + "\",\"tool_use_id\":\"" + callId + "\"," +
+        "\"description\":" + JsonSerializer.Serialize(activity) + ",\"usage\":{\"total_tokens\":100,\"tool_uses\":1,\"duration_ms\":900}," +
+        "\"uuid\":\"u\",\"session_id\":\"s1\"}";
+
+    /// <summary>A <c>task_notification</c> line: the agent ended with <paramref name="status"/> (<c>completed</c>, <c>failed</c>, <c>killed</c>).</summary>
+    internal static string TaskFinished(string taskId, string callId, string status, string summary) =>
+        "{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"" + taskId + "\",\"tool_use_id\":\"" + callId + "\"," +
+        "\"status\":\"" + status + "\",\"summary\":" + JsonSerializer.Serialize(summary) + ",\"uuid\":\"u\",\"session_id\":\"s1\"}";
+
+    /// <summary>A Bash call, of the main agent or of the agent whose call is <paramref name="parent"/>.</summary>
+    internal static string BashCall(string id, string? parent) =>
+        "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_" + id + "\",\"type\":\"message\",\"role\":\"assistant\"," +
+        "\"content\":[{\"type\":\"tool_use\",\"id\":\"" + id + "\",\"name\":\"Bash\",\"input\":{\"command\":\"echo hi > hello.txt\"," +
+        "\"description\":\"Write hello.txt\"}}]},\"parent_tool_use_id\":" + (parent == null ? "null" : "\"" + parent + "\"") + ",\"session_id\":\"s1\"}";
+
+    /// <summary>The claude asks to run a Bash call, as 2.1.310 does; with <c>agent_id</c> when <paramref name="agentId"/> is given.</summary>
+    internal static string BashRequest(string requestId, string toolUseId, string? agentId) =>
+        "{\"type\":\"control_request\",\"request_id\":\"" + requestId + "\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Bash\"," +
+        "\"display_name\":\"Bash\",\"input\":{\"command\":\"echo hi > hello.txt\",\"description\":\"Write hello.txt\"}," +
+        "\"description\":\"Write hello.txt\",\"permission_suggestions\":[{\"type\":\"addDirectories\",\"directories\":[\"C:\\\\demo\\\\app\"]," +
+        "\"destination\":\"session\"}],\"blocked_path\":\"C:\\\\demo\\\\app\\\\hello.txt\",\"tool_use_id\":\"" + toolUseId + "\"" +
+        (agentId == null ? "" : ",\"agent_id\":\"" + agentId + "\"") + "}}";
+
+    [Fact]
+    public void A_subagent_request_marks_its_agent_as_waiting_until_it_leaves_the_queue()
+    {
+        var conversation = Play(new[]
+        {
+            AgentCall("toolu_a1", "Write a file"), TaskStarted("ta1", "toolu_a1", "Write a file"),
+            AgentCall("toolu_a2", "Read the logs"), TaskStarted("ta2", "toolu_a2", "Read the logs"),
+            BashCall("toolu_b1", parent: "toolu_a1"),
+        });
+        var first = conversation.Agents.Single(a => a.Id == "toolu_a1");
+        var second = conversation.Agents.Single(a => a.Id == "toolu_a2");
+        var changes = new List<string?>();
+        first.PropertyChanged += (_, e) => changes.Add(e.PropertyName);
+        Assert.False(first.IsWaitingForPermission);
+
+        // the request names the agent by its task id: that one waits, not the one that started last
+        conversation.AppendLine(BashRequest("r1", "toolu_b1", agentId: "ta1"));
+        Assert.Equal("ta1", conversation.CurrentPermission!.AgentId);
+        Assert.True(first.IsWaitingForPermission);
+        Assert.False(second.IsWaitingForPermission);
+        Assert.Contains(nameof(AgentInfo.IsWaitingForPermission), changes);
+
+        // answered, it leaves the queue: the agent works again
+        conversation.AnswerPermission(conversation.CurrentPermission!, PermissionDecision.Allow);
+        Assert.Empty(conversation.PendingPermissions);
+        Assert.False(first.IsWaitingForPermission);
+
+        // a request that comes back and is cancelled, or one of an agent that is over, does not keep it waiting
+        conversation.AppendLine(BashRequest("r2", "toolu_b1", agentId: "ta1"));
+        Assert.True(first.IsWaitingForPermission);
+        conversation.AppendLine("{\"type\":\"control_cancel_request\",\"request_id\":\"r2\"}");
+        Assert.False(first.IsWaitingForPermission);
+        conversation.AppendLine(BashRequest("r3", "toolu_b1", agentId: "ta1"));
+        conversation.AppendLine(
+            "{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"ta1\",\"tool_use_id\":\"toolu_a1\"," +
+            "\"status\":\"completed\",\"summary\":\"Done\",\"uuid\":\"u\",\"session_id\":\"s1\"}");
+        Assert.Single(conversation.PendingPermissions);
+        Assert.Equal(AgentStatus.Completed, first.Status);
+        Assert.False(first.IsWaitingForPermission); // waiting is for an agent that runs
+    }
+
+    [Fact]
+    public void A_request_without_agent_id_belongs_to_the_agent_whose_step_asked_else_to_the_newest_running_one()
+    {
+        var conversation = Play(new[]
+        {
+            AgentCall("toolu_a1", "Write a file"), TaskStarted("ta1", "toolu_a1", "Write a file"),
+            AgentCall("toolu_a2", "Read the logs"), TaskStarted("ta2", "toolu_a2", "Read the logs"),
+            BashCall("toolu_b1", parent: "toolu_a1"),
+            BashCall("toolu_main", parent: null),
+        });
+        var first = conversation.Agents.Single(a => a.Id == "toolu_a1");
+        var second = conversation.Agents.Single(a => a.Id == "toolu_a2");
+
+        // the step that asks is the first agent's, though the second started later
+        conversation.AppendLine(BashRequest("r1", "toolu_b1", agentId: null));
+        Assert.Null(conversation.CurrentPermission!.AgentId);
+        Assert.True(first.IsWaitingForPermission);
+        Assert.False(second.IsWaitingForPermission);
+        conversation.DismissPermission("r1");
+        Assert.False(first.IsWaitingForPermission);
+
+        // the main agent's own step asks: no agent waits
+        conversation.AppendLine(BashRequest("r2", "toolu_main", agentId: null));
+        Assert.DoesNotContain(conversation.Agents, a => a.IsWaitingForPermission);
+        conversation.DismissPermission("r2");
+
+        // a step the conversation never saw: the agent that started running last
+        conversation.AppendLine(BashRequest("r3", "toolu_unseen", agentId: null));
+        Assert.True(second.IsWaitingForPermission);
+        Assert.False(first.IsWaitingForPermission);
+
+        // the link is made when the request comes: an agent started after it does not take it over
+        conversation.AppendLine(AgentCall("toolu_a3", "Late one"));
+        conversation.AppendLine(TaskStarted("ta3", "toolu_a3", "Late one"));
+        Assert.True(second.IsWaitingForPermission);
+        Assert.False(conversation.Agents.Single(a => a.Id == "toolu_a3").IsWaitingForPermission);
+
+        // nothing runs: the request belongs to no agent
+        var idle = new ChatConversation();
+        idle.AppendLine(BashRequest("r4", "toolu_unseen", agentId: null));
+        Assert.Single(idle.PendingPermissions);
+        Assert.Empty(idle.Agents);
+    }
+
+    [Fact]
+    public void An_agent_knows_when_an_agent_it_started_waits_works_failed_or_was_stopped()
+    {
+        var conversation = Play(new[]
+        {
+            AgentCall("toolu_top", "Top"), TaskStarted("ttop", "toolu_top", "Top"),
+            AgentCall("toolu_mid", "Middle", parent: "toolu_top"), TaskStarted("tmid", "toolu_mid", "Middle", depth: 2),
+            AgentCall("toolu_low", "Lowest", parent: "toolu_mid"), TaskStarted("tlow", "toolu_low", "Lowest", depth: 3),
+        });
+        var top = conversation.Agents.Single(a => a.Id == "toolu_top");
+        var mid = conversation.Agents.Single(a => a.Id == "toolu_mid");
+        var low = conversation.Agents.Single(a => a.Id == "toolu_low");
+        Assert.Equal(AgentNesting.Working, top.Nested); // at any depth
+        Assert.Equal(AgentNesting.Working, mid.Nested);
+        Assert.Equal(AgentNesting.None, low.Nested);
+
+        conversation.AppendLine(BashRequest("r1", "toolu_x", agentId: "tlow"));
+        Assert.True(low.IsWaitingForPermission);
+        Assert.Equal(AgentNesting.Working | AgentNesting.Waiting, top.Nested);
+        Assert.False(top.IsWaitingForPermission);
+        conversation.DismissPermission("r1");
+
+        conversation.AppendLine(
+            "{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"tlow\",\"tool_use_id\":\"toolu_low\"," +
+            "\"status\":\"failed\",\"summary\":\"Boom\",\"uuid\":\"u\",\"session_id\":\"s1\"}");
+        conversation.AppendLine(
+            "{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"tmid\",\"tool_use_id\":\"toolu_mid\"," +
+            "\"status\":\"killed\",\"summary\":\"Stopped\",\"uuid\":\"u\",\"session_id\":\"s1\"}");
+        Assert.Equal(AgentNesting.Failed | AgentNesting.Stopped, top.Nested);
+        Assert.Equal(AgentNesting.Failed, mid.Nested);
+    }
+
+    [Fact]
+    public void The_prompt_comes_from_the_call_or_from_the_task_line()
+    {
+        var conversation = Play(new[] { AgentCall("toolu_a1", "Write a file", prompt: "Write hello.txt.") });
+        Assert.Equal("Write hello.txt.", Assert.Single(conversation.Agents).Prompt);
+        conversation.AppendLine(TaskStarted("ta1", "toolu_a1", "Write a file", prompt: "Another text"));
+        Assert.Equal("Write hello.txt.", conversation.Agents[0].Prompt); // the call's stays
+
+        // a task line before (or without) the call
+        var started = Play(new[] { TaskStarted("ta9", "toolu_a9", "Look", prompt: "Look around the repo.") });
+        Assert.Equal("Look around the repo.", Assert.Single(started.Agents).Prompt);
+
+        // the recorded line carries it
+        var line = FixtureFiles.StreamLines("subagent").First(l => l.Contains("\"task_started\""));
+        var e = Assert.IsType<AgentTaskStarted>(Assert.Single(new StreamJsonParser().Parse(line)));
+        Assert.StartsWith("Read the files a.txt, b.txt, and c.txt", e.Prompt);
+        Assert.Null(Assert.IsType<AgentTaskStarted>(Assert.Single(new StreamJsonParser().Parse(TaskStarted("t", "c", "d")))).Prompt);
     }
 
     [Fact]

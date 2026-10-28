@@ -31,6 +31,9 @@ public sealed class AgentInfo : ChatObservableObject
     private int? _toolUses;
     private string? _activity;
     private string? _result;
+    private string? _prompt;
+    private bool _isWaitingForPermission;
+    private AgentNesting _nested;
 
     internal AgentInfo(string id)
     {
@@ -145,4 +148,44 @@ public sealed class AgentInfo : ChatObservableObject
         get => _result;
         internal set => SetField(ref _result, value);
     }
+
+    /// <summary>
+    /// What it was asked to do: the <c>prompt</c> of its Agent call, or of its <c>task_started</c> line when the call did not
+    /// carry it; null when neither told.
+    /// </summary>
+    public string? Prompt
+    {
+        get => _prompt;
+        internal set => SetField(ref _prompt, value);
+    }
+
+    /// <summary>
+    /// True while it runs and one of the conversation's pending requests (<see cref="ChatConversation.PendingPermissions"/>) is
+    /// its own: the request's <see cref="PendingPermission.AgentId"/> is its <see cref="TaskId"/>. A request that names no agent
+    /// belongs to the agent whose step asked, else to the main agent when its own step asked, else to the agent that started
+    /// running last.
+    /// </summary>
+    public bool IsWaitingForPermission
+    {
+        get => _isWaitingForPermission;
+        internal set => SetField(ref _isWaitingForPermission, value);
+    }
+
+    /// <summary>What the agents it started (and the ones those started) are doing, for the line under a background agent's row.</summary>
+    internal AgentNesting Nested
+    {
+        get => _nested;
+        set => SetField(ref _nested, value);
+    }
+}
+
+/// <summary>What the agents an agent started, at any depth, are doing: any of them waits, works, failed or was stopped.</summary>
+[Flags]
+internal enum AgentNesting
+{
+    None = 0,
+    Waiting = 1,
+    Working = 2,
+    Failed = 4,
+    Stopped = 8,
 }

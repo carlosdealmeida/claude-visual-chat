@@ -139,6 +139,7 @@ public sealed class ToolCallItem : ChatItem
     private bool _isExpanded;
     private bool _isOutputExpanded;
     private bool _isInputExpanded;
+    private AgentInfo? _agent;
 
     public string ToolUseId
     {
@@ -242,6 +243,16 @@ public sealed class ToolCallItem : ChatItem
     {
         get => _isInputExpanded;
         set => SetField(ref _isInputExpanded, value);
+    }
+
+    /// <summary>
+    /// For an Agent (or Task) call, the agent it started, which the conversation links when it knows it: its row reads the prompt
+    /// and, for a background agent, its state there. Null for any other call, and for an item built by hand.
+    /// </summary>
+    internal AgentInfo? Agent
+    {
+        get => _agent;
+        set => SetField(ref _agent, value);
     }
 }
 

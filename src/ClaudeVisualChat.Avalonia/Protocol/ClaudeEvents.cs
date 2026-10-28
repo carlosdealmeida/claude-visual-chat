@@ -110,7 +110,11 @@ namespace ClaudeVisualChat.Protocol
     /// </summary>
     public sealed record AgentTaskStarted(
         string TaskId, string ToolUseId, string Description, string? AgentType, bool IsBackground, int Depth, string TaskType)
-        : ClaudeEvent;
+        : ClaudeEvent
+    {
+        /// <summary>What the agent was asked to do (the line's <c>prompt</c>); null when the line does not say.</summary>
+        public string? Prompt { get; init; }
+    }
 
     /// <summary>A task used a tool (<c>system/task_progress</c>); <paramref name="Activity"/> says what it is doing.</summary>
     public sealed record AgentTaskProgress(

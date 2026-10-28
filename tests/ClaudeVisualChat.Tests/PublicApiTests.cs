@@ -214,6 +214,30 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_agent_row_api_exists()
+    {
+        // the Agent row of 2.1.310 (0.6.0): the prompt, the wait for a permission, and the background line's texts; what the agents it
+        // started are doing stays internal
+        Assert.Equal(typeof(string), typeof(AgentInfo).GetProperty("Prompt")?.PropertyType);
+        var waiting = typeof(AgentInfo).GetProperty("IsWaitingForPermission");
+        Assert.Equal(typeof(bool), waiting?.PropertyType);
+        Assert.False(waiting!.SetMethod!.IsPublic); // the conversation sets it
+        var prompt = typeof(ClaudeVisualChat.Protocol.AgentTaskStarted).GetProperty("Prompt");
+        Assert.Equal(typeof(string), prompt?.PropertyType);
+        Assert.Contains(prompt!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        Assert.Equal(7, typeof(ClaudeVisualChat.Protocol.AgentTaskStarted).GetConstructors().Single().GetParameters().Length); // no new positional parameter
+        Assert.Null(typeof(AgentInfo).GetProperty("Nested"));
+        foreach (var text in new[]
+        {
+            "AgentWorkingInBackground", "AgentWorkingInBackgroundOn", "AgentWaitingForPermission", "AgentWaitingAlongWithNested",
+            "AgentFailedWith", "AgentNestedWaiting", "AgentNestedWorking", "AgentNestedFailed", "AgentNestedStopped", "AgentTasksHint",
+        })
+        {
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        }
+    }
+
+    [Fact]
     public void The_plan_comment_api_exists()
     {
         // the comments on the plan (0.6.0): their texts; the controls and the comment itself stay internal

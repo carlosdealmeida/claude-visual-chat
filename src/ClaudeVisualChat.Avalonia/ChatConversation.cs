@@ -41,6 +41,7 @@ public sealed class ChatConversation : ChatObservableObject
     private readonly List<MessageSubmittedEventArgs> _unanswered = new List<MessageSubmittedEventArgs>();
     /// <summary>Agents a session file left without an end: a task line from the live claude brings them back to running.</summary>
     private readonly HashSet<AgentInfo> _agentsStoppedByHistory = new HashSet<AgentInfo>();
+    private readonly Dictionary<PendingPermission, AgentInfo> _requestAgents = new Dictionary<PendingPermission, AgentInfo>(); // queued requests without agent_id, and their agent
     private StreamJsonParser _parser = new StreamJsonParser();
     private int _runningAgents;
     private PendingPermission? _currentPermission;
@@ -1273,6 +1274,7 @@ public sealed class ChatConversation : ChatObservableObject
             if (agent.Status == AgentStatus.Running) running++;
         }
         RunningAgents = running;
+        UpdateAgentStates();
     }
 
     /// <summary>An Agent (or Task) call with its whole input: it starts the agent, or completes the one a task line started.</summary>
@@ -1294,6 +1296,14 @@ public sealed class ChatConversation : ChatObservableObject
         agent.ParentId ??= parentToolUseId;
         if (agent.Description.Length == 0) agent.Description = JsonHelpers.Str(tool.Input, "description") ?? "";
         agent.AgentType ??= JsonHelpers.Str(tool.Input, "subagent_type");
+        if (JsonHelpers.Str(tool.Input, "prompt") is { Length: > 0 } prompt) agent.Prompt = prompt; // the call's own, over a task line's
+        LinkCall(agent);
+    }
+
+    /// <summary>The Agent call's row gets its agent, for the prompt and the background line.</summary>
+    private void LinkCall(AgentInfo agent)
+    {
+        if (_tools.TryGetValue(agent.Id, out var call)) call.Agent = agent;
     }
 
     private void OnAgentTaskStarted(AgentTaskStarted e)
@@ -1311,8 +1321,10 @@ public sealed class ChatConversation : ChatObservableObject
         agent.Depth = e.Depth;
         if (agent.Description.Length == 0) agent.Description = e.Description;
         agent.AgentType ??= e.AgentType;
+        if (agent.Prompt == null && !string.IsNullOrEmpty(e.Prompt)) agent.Prompt = e.Prompt;
         Resume(agent);
         ReviveFromHistory(agent.ParentId);
+        LinkCall(agent);
     }
 
     private void OnAgentTaskProgress(AgentTaskProgress e)
@@ -1497,14 +1509,106 @@ public sealed class ChatConversation : ChatObservableObject
             call.Input = e.Input;
             call.Summary = ToolPresentation.Summary(e.ToolName, e.Input, WorkingDirectory);
         }
-        PendingPermissions.Add(new PendingPermission(
+        var request = new PendingPermission(
             e.RequestId, e.ToolName, e.DisplayName ?? e.ToolName, e.Description, e.ToolUseId,
             ToolPresentation.Summary(e.ToolName, e.Input, WorkingDirectory), e.Input, e.Suggestions)
         {
             AgentId = e.AgentId,
             DefaultToNo = e.DefaultToNo,
             SuppressAlwaysAllowRule = e.SuppressAlwaysAllowRule,
-        });
+        };
+        if (e.AgentId == null && AskingAgent(e.ToolUseId) is { } asking) _requestAgents[request] = asking;
+        PendingPermissions.Add(request);
+    }
+
+    /// <summary>
+    /// The agent a request that names none belongs to (no recording shows a subagent's request yet, so the claude may leave
+    /// <c>agent_id</c> out): the agent whose step asks; none when the step is the main agent's own; else, for a step the
+    /// conversation has not seen, the agent that started running last. Decided when the request comes.
+    /// </summary>
+    private AgentInfo? AskingAgent(string? toolUseId)
+    {
+        if (toolUseId != null && _tools.TryGetValue(toolUseId, out var step))
+        {
+            if (!_nestedTools.Contains(step)) return null; // the main agent's own call
+            foreach (var agent in Agents)
+            {
+                if (_tools.TryGetValue(agent.Id, out var call) && call.Children.Contains(step)) return agent;
+            }
+        }
+        foreach (var agent in Agents) // newest first
+        {
+            if (agent.Status == AgentStatus.Running) return agent;
+        }
+        return null;
+    }
+
+    /// <summary>The agent a queued request belongs to: by its <c>agent_id</c> (the agent's task id), else as decided when it came.</summary>
+    private AgentInfo? AgentOf(PendingPermission request)
+    {
+        if (request.AgentId == null) return _requestAgents.TryGetValue(request, out var linked) ? linked : null;
+        foreach (var agent in Agents)
+        {
+            if (agent.TaskId == request.AgentId) return agent;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// After every change of the agents or of the queue: which agents wait for a request of theirs, and what the agents each one
+    /// started (at any depth) are doing. Each agent is looked at once, from the agents it started up.
+    /// </summary>
+    private void UpdateAgentStates()
+    {
+        if (Agents.Count == 0) return;
+        HashSet<AgentInfo>? asking = null;
+        foreach (var request in PendingPermissions)
+        {
+            if (AgentOf(request) is { } agent) (asking ??= new HashSet<AgentInfo>()).Add(agent);
+        }
+        foreach (var agent in Agents)
+            agent.IsWaitingForPermission = agent.Status == AgentStatus.Running && asking != null && asking.Contains(agent);
+
+        Dictionary<string, List<AgentInfo>>? started = null;
+        foreach (var agent in Agents)
+        {
+            if (agent.ParentId == null) continue;
+            started ??= new Dictionary<string, List<AgentInfo>>();
+            if (!started.TryGetValue(agent.ParentId, out var list)) started[agent.ParentId] = list = new List<AgentInfo>();
+            list.Add(agent);
+        }
+        if (started == null)
+        {
+            foreach (var agent in Agents) agent.Nested = AgentNesting.None; // no agent started another
+            return;
+        }
+        var nested = new Dictionary<AgentInfo, AgentNesting>();
+        foreach (var agent in Agents) agent.Nested = Nesting(agent, started, nested);
+    }
+
+    /// <summary>What the agents <paramref name="agent"/> started, at any depth, are doing; each agent's is worked out once.</summary>
+    private static AgentNesting Nesting(AgentInfo agent, Dictionary<string, List<AgentInfo>> started, Dictionary<AgentInfo, AgentNesting> done)
+    {
+        if (done.TryGetValue(agent, out var known)) return known;
+        done[agent] = AgentNesting.None; // a loop of parents ends here
+        var nesting = AgentNesting.None;
+        if (started.TryGetValue(agent.Id, out var children))
+        {
+            foreach (var child in children)
+            {
+                nesting |= Nesting(child, started, done);
+                if (child.IsWaitingForPermission) nesting |= AgentNesting.Waiting;
+                nesting |= child.Status switch
+                {
+                    AgentStatus.Running => AgentNesting.Working,
+                    AgentStatus.Failed => AgentNesting.Failed,
+                    AgentStatus.Stopped => AgentNesting.Stopped,
+                    _ => AgentNesting.None,
+                };
+            }
+        }
+        done[agent] = nesting;
+        return nesting;
     }
 
     private PendingPermission? RemovePermission(string? requestId)
@@ -1535,6 +1639,12 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnPendingPermissionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (e.Action == NotifyCollectionChangedAction.Reset) _requestAgents.Clear();
+        else if (e.OldItems != null)
+        {
+            foreach (PendingPermission gone in e.OldItems) _requestAgents.Remove(gone);
+        }
+        UpdateAgentStates();
         var first = PendingPermissions.Count > 0 ? PendingPermissions[0] : null;
         // the plan first: whoever hears that the current request changed finds its plan already there
         if (!ReferenceEquals(_currentPlan?.Request, first))

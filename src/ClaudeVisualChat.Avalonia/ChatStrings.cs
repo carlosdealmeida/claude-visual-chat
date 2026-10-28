@@ -229,6 +229,16 @@ public sealed record ChatStrings
         AgentStopped = "Parado",
         AgentBackground = "segundo plano",
         AgentNoResult = "Sem resultado ainda",
+        AgentWorkingInBackground = "Trabalhando em segundo plano",
+        AgentWorkingInBackgroundOn = "Trabalhando em segundo plano: {0}",
+        AgentWaitingForPermission = "Aguardando sua permissão: veja o pedido abaixo",
+        AgentWaitingAlongWithNested = "Aguardando sua permissão, assim como um agente que ele iniciou: veja o pedido abaixo",
+        AgentFailedWith = "Falhou: {0}",
+        AgentNestedWaiting = "um agente que ele iniciou aguarda sua permissão: veja o pedido abaixo",
+        AgentNestedWorking = "um agente que ele iniciou ainda está trabalhando",
+        AgentNestedFailed = "um agente que ele iniciou falhou",
+        AgentNestedStopped = "um agente que ele iniciou foi parado",
+        AgentTasksHint = "digite /tasks para ver a transcrição dele",
         AgentTokens = "{0} tokens",
         AgentContextTokens = "{0} tokens no contexto",
         Back = "Voltar",
@@ -883,6 +893,36 @@ public sealed record ChatStrings
     /// <summary>An agent's details, before its answer.</summary>
     public string AgentNoResult { get; init; } = "No result yet";
 
+    /// <summary>The line under a background agent's row while it works and nothing tells what it is doing.</summary>
+    public string AgentWorkingInBackground { get; init; } = "Working in the background";
+
+    /// <summary>The same line with what it is doing: <c>{0}</c> is its last activity, cut at 120 characters.</summary>
+    public string AgentWorkingInBackgroundOn { get; init; } = "Working in the background: {0}";
+
+    /// <summary>The line under a background agent's row while one of its requests waits in the card below.</summary>
+    public string AgentWaitingForPermission { get; init; } = "Waiting for your permission: see the request below";
+
+    /// <summary>The same line when an agent it started waits for a request too.</summary>
+    public string AgentWaitingAlongWithNested { get; init; } = "Waiting for your permission, and so is an agent it started: see the request below";
+
+    /// <summary>The line under a background agent's row when it failed: <c>{0}</c> is what it said, cut at 120 characters (<see cref="AgentFailed"/> without it).</summary>
+    public string AgentFailedWith { get; init; } = "Failed: {0}";
+
+    /// <summary>Added (after " · ") to a background agent's line when an agent it started waits for a request.</summary>
+    public string AgentNestedWaiting { get; init; } = "an agent it started is waiting for your permission: see the request below";
+
+    /// <summary>Added (after " · ") to a background agent's line that is over while an agent it started still works.</summary>
+    public string AgentNestedWorking { get; init; } = "an agent it started is still working";
+
+    /// <summary>Added (after " · ") to a background agent's line when an agent it started failed.</summary>
+    public string AgentNestedFailed { get; init; } = "an agent it started failed";
+
+    /// <summary>Added (after " · ") to a background agent's line when an agent it started was stopped.</summary>
+    public string AgentNestedStopped { get; init; } = "an agent it started was stopped";
+
+    /// <summary>The end (after " · ") of every background agent's line.</summary>
+    public string AgentTasksHint { get; init; } = "type /tasks to see its transcript";
+
     /// <summary>The tokens an agent used: <c>{0}</c> is the count, short ("26.3k").</summary>
     public string AgentTokens { get; init; } = "{0} tokens";
 
@@ -1224,6 +1264,42 @@ public sealed record ChatStrings
         AgentStatus.Failed => AgentFailed,
         _ => AgentStopped,
     };
+
+    /// <summary>Most characters of a background agent's activity or error on its line; past it, 119 and "…".</summary>
+    private const int MaxAgentLineChars = 120;
+
+    /// <summary>
+    /// The line under a background agent's row, like the extension's: what it is doing (its <paramref name="activity"/>, left out
+    /// when it is the <paramref name="description"/>), that it waits for a request, or how it ended (a failure with its
+    /// <paramref name="error"/>); then what the agents it started do (<paramref name="nested"/>); always ending with
+    /// <see cref="AgentTasksHint"/>. The activity and the error are trimmed and cut at 120 characters.
+    /// </summary>
+    internal string FormatBackgroundAgent(AgentStatus status, bool waiting, string? activity, string? error, string description, AgentNesting nested)
+    {
+        var doing = AgentLineText(activity);
+        if (doing == (description ?? "").Trim()) doing = "";
+        var why = AgentLineText(error);
+        var nestedWaiting = (nested & AgentNesting.Waiting) != 0;
+        string head;
+        if (waiting) head = nestedWaiting ? AgentWaitingAlongWithNested : AgentWaitingForPermission;
+        else if (status == AgentStatus.Running) head = doing.Length > 0 ? AgentWorkingInBackgroundOn.Replace("{0}", doing) : AgentWorkingInBackground;
+        else if (status == AgentStatus.Failed && why.Length > 0) head = AgentFailedWith.Replace("{0}", why);
+        else head = AgentStatusLabel(status);
+
+        var line = new StringBuilder(head);
+        if (!waiting && nestedWaiting) line.Append(Separator).Append(AgentNestedWaiting);
+        else if (!waiting && (nested & AgentNesting.Working) != 0 && status != AgentStatus.Running) line.Append(Separator).Append(AgentNestedWorking);
+        if ((nested & AgentNesting.Failed) != 0) line.Append(Separator).Append(AgentNestedFailed);
+        if ((nested & AgentNesting.Stopped) != 0 && status != AgentStatus.Stopped) line.Append(Separator).Append(AgentNestedStopped);
+        return line.Append(Separator).Append(AgentTasksHint).ToString();
+    }
+
+    /// <summary>An activity or an error for the agent's line: trimmed, and past 120 characters its first 119 and "…".</summary>
+    private static string AgentLineText(string? text)
+    {
+        var trimmed = (text ?? "").Trim();
+        return trimmed.Length > MaxAgentLineChars ? Controls.ChatText.Clip(trimmed, MaxAgentLineChars - 1) : trimmed;
+    }
 
     /// <summary>The label of a usage limit; one without a label keeps its name.</summary>
     internal string UsageWindowLabel(string name) => name switch

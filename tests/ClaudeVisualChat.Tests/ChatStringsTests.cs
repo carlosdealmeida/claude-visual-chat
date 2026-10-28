@@ -512,4 +512,42 @@ public class ChatStringsTests
         Assert.Equal("1,200 comments will be included as feedback", En.FormatPlanCommentsIncluded(1200));
         Assert.Equal(("Send feedback and keep planning", "Enviar retorno e continuar planejando"), (En.PlanSendFeedback, Pt.PlanSendFeedback));
     }
+
+    [Fact]
+    public void Background_agent_line()
+    {
+        const string Hint = " · type /tasks to see its transcript";
+        string Line(AgentStatus status, bool waiting = false, string? activity = null, string? error = null, AgentNesting nested = AgentNesting.None) =>
+            En.FormatBackgroundAgent(status, waiting, activity, error, "Read the logs", nested);
+
+        Assert.Equal("Working in the background" + Hint, Line(AgentStatus.Running));
+        Assert.Equal("Working in the background: Reading a.txt" + Hint, Line(AgentStatus.Running, activity: "  Reading a.txt "));
+        Assert.Equal("Working in the background" + Hint, Line(AgentStatus.Running, activity: "Read the logs")); // the description again
+        Assert.Equal("Working in the background: " + new string('a', 120) + Hint, Line(AgentStatus.Running, activity: new string('a', 120)));
+        Assert.Equal("Working in the background: " + new string('a', 119) + "…" + Hint, Line(AgentStatus.Running, activity: new string('a', 121)));
+        Assert.Equal("Waiting for your permission: see the request below" + Hint, Line(AgentStatus.Running, waiting: true, activity: "Reading"));
+        Assert.Equal("Waiting for your permission, and so is an agent it started: see the request below" + Hint,
+            Line(AgentStatus.Running, waiting: true, nested: AgentNesting.Waiting | AgentNesting.Working));
+        Assert.Equal("Failed: Disk full" + Hint, Line(AgentStatus.Failed, error: "Disk full"));
+        Assert.Equal("Failed: " + new string('e', 119) + "…" + Hint, Line(AgentStatus.Failed, error: new string('e', 200)));
+        Assert.Equal("Failed" + Hint, Line(AgentStatus.Failed));
+        Assert.Equal("Finished" + Hint, Line(AgentStatus.Completed));
+        Assert.Equal("Stopped" + Hint, Line(AgentStatus.Stopped));
+
+        // what the agents it started do: waiting first, still working only once it is over, failed and stopped together
+        Assert.Equal("Working in the background · an agent it started is waiting for your permission: see the request below" + Hint,
+            Line(AgentStatus.Running, nested: AgentNesting.Waiting));
+        Assert.Equal("Working in the background" + Hint, Line(AgentStatus.Running, nested: AgentNesting.Working));
+        Assert.Equal("Finished · an agent it started is still working" + Hint, Line(AgentStatus.Completed, nested: AgentNesting.Working));
+        Assert.Equal("Finished · an agent it started is still working · an agent it started failed · an agent it started was stopped" + Hint,
+            Line(AgentStatus.Completed, nested: AgentNesting.Working | AgentNesting.Failed | AgentNesting.Stopped));
+        Assert.Equal("Stopped · an agent it started failed" + Hint, Line(AgentStatus.Stopped, nested: AgentNesting.Failed | AgentNesting.Stopped));
+
+        Assert.Equal("Trabalhando em segundo plano: Lendo a.txt · digite /tasks para ver a transcrição dele",
+            Pt.FormatBackgroundAgent(AgentStatus.Running, false, "Lendo a.txt", null, "x", AgentNesting.None));
+        Assert.Equal("Terminado · um agente que ele iniciou falhou · digite /tasks para ver a transcrição dele",
+            Pt.FormatBackgroundAgent(AgentStatus.Completed, false, null, null, "x", AgentNesting.Failed));
+        Assert.Equal("Falhou: Disco cheio · digite /tasks para ver a transcrição dele",
+            Pt.FormatBackgroundAgent(AgentStatus.Failed, false, null, "Disco cheio", "x", AgentNesting.None));
+    }
 }

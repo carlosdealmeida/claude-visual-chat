@@ -91,6 +91,8 @@
     <!-- the Agent map: the extension's modal backdrop, and the dot of an agent at work (its status-busy green) -->
     <SolidColorBrush x:Key="ClaudeChat.ModalOverlay" Color="#BF000000" />
     <SolidColorBrush x:Key="ClaudeChat.AgentRunning" Color="#89D185" />
+    <!-- the dot of a background agent's line while a request of its own (or of an agent it started) waits: the extension's blue -->
+    <SolidColorBrush x:Key="ClaudeChat.AgentWaiting" Color="#3B82F6" />
     <SolidColorBrush x:Key="ClaudeChat.ContextRingTrack" Color="#26BFBFBF" />   <!-- the ring's track: the foreground at 15 % -->
     <SolidColorBrush x:Key="ClaudeChat.ContextRingFill" Color="#C6613F" />      <!-- the extension clay button orange -->
     <!-- the touch layout: the user's bubble; the sheets that rise from the bottom (the sheet, its groups, its handle and
@@ -709,6 +711,41 @@
   <!-- "Run in background", right under the command's box (measured on the print: 4 px higher than the line above a box) -->
   <Style Selector="TextBlock.ClaudeChatSecondary.background">
     <Setter Property="Margin" Value="0,-1,0,2" />
+  </Style>
+
+  <!-- the line under a background agent's row: the secondary line (.85em, muted, 70 %) starting with an 8 px dot and a space;
+       the dot is green while it works, blue while a request waits, red when it (or an agent it started) failed or stopped,
+       and gray at 40 % once it finished -->
+  <Style Selector="DockPanel.ClaudeChatAgentLine">
+    <Setter Property="Opacity" Value="0.7" />
+    <Setter Property="Margin" Value="0,-1,0,2" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAgentLineText">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.SmallLineHeight}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+  <Style Selector="Ellipse.ClaudeChatAgentLineDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="Margin" Value="0,5.3,3.5,0" /> <!-- centered on the first line; then the space -->
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+  <Style Selector="Ellipse.ClaudeChatAgentLineDot.running">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.AgentRunning}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Ellipse.ClaudeChatAgentLineDot.waiting">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.AgentWaiting}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Ellipse.ClaudeChatAgentLineDot.failed">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.Error}" />
+    <Setter Property="Opacity" Value="1" />
   </Style>
 
   <!-- the box under a tool -->

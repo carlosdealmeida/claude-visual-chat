@@ -9,6 +9,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
@@ -29,6 +30,9 @@ namespace ClaudeVisualChat.Controls;
 /// like the extension's; the touch layout keeps it.
 /// A plan (<c>ExitPlanMode</c>) reads "Claude’s Plan" and its file, then whether the user approved it, with no box; a click on
 /// its header opens the plan again in the document over the list.
+/// A subagent's call (Agent or Task) reads "Agent:" and its description, and its box holds only the prompt (IN), never an output;
+/// a background agent's row adds a line with a dot that tells what it is doing, that a request of its waits below, or how it
+/// ended, and its steps stay off the list (the map has them).
 /// In the touch layout (pseudo-class <c>:touch</c>) the call is a block with a frame and its dot is the header's first
 /// piece.
 /// </summary>
@@ -64,6 +68,9 @@ internal partial class ToolCallView : UserControl
     /// <summary>The tool that asks to leave plan mode with a plan: its row has a line of its own and opens the plan's document.</summary>
     private const string PlanTool = "ExitPlanMode";
 
+    /// <summary>The name an Agent (or Task) call reads, with its colon: the tool's name, the same in every language.</summary>
+    private const string AgentTitle = "Agent:";
+
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<ToolCallView>();
 
@@ -80,6 +87,8 @@ internal partial class ToolCallView : UserControl
     private const string DiffKey = "diff";
 
     private ToolCallItem? _item;
+    private AgentInfo? _agent; // the agent an Agent call started, while the row is in the window
+    private DockPanel? _agentLine; // the line under a background agent's row, while it has one
     private bool _attached;
     private NavigationMethod _focusMethod; // how a text of the box got the focus, so a redraw gives it back the same way (a key keeps the ring)
 
@@ -168,14 +177,54 @@ internal partial class ToolCallView : UserControl
             _item.PropertyChanged += OnItemChanged;
             _item.Children.CollectionChanged += OnChildrenChanged;
         }
+        TrackAgent(_item?.Agent);
         // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
         if (_attached) Refresh();
+    }
+
+    /// <summary>An Agent call's row follows its agent too: the prompt, whether it runs in the background, and its line's state.</summary>
+    private void TrackAgent(AgentInfo? agent)
+    {
+        if (ReferenceEquals(agent, _agent)) return;
+        if (_agent != null) _agent.PropertyChanged -= OnAgentChanged;
+        _agent = agent;
+        if (_agent != null) _agent.PropertyChanged += OnAgentChanged;
+    }
+
+    private void OnAgentChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(AgentInfo.IsBackground):
+                UpdateChildren();
+                UpdateBody();
+                break;
+            case nameof(AgentInfo.Prompt):
+                UpdateBody();
+                break;
+            case nameof(AgentInfo.Status):
+            case nameof(AgentInfo.Activity):
+            case nameof(AgentInfo.Result):
+            case nameof(AgentInfo.Description):
+            case nameof(AgentInfo.IsWaitingForPermission):
+            case nameof(AgentInfo.Nested):
+                UpdateAgentLine();
+                break;
+        }
     }
 
     private void OnItemChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
+            case nameof(ToolCallItem.Agent):
+                TrackAgent(_item?.Agent);
+                UpdateChildren();
+                UpdateBody();
+                break;
+            case nameof(ToolCallItem.IsExpanded):
+                UpdateChildren();
+                break;
             case nameof(ToolCallItem.Name):
             case nameof(ToolCallItem.Summary):
             case nameof(ToolCallItem.Input):
@@ -226,6 +275,11 @@ internal partial class ToolCallView : UserControl
             detail = plan ? ToolPresentation.PlanFileName(item!.Input) ?? "" : "";
             kind = "file";
         }
+        else if (IsAgentTool(name))
+        {
+            // "Agent:" with its colon, a Task call too, like the extension's; the description follows in the editor's font
+            ToolName.Text = AgentTitle;
+        }
         else if (IsFileTool(name))
         {
             kind = "file";
@@ -269,17 +323,29 @@ internal partial class ToolCallView : UserControl
         dot.Classes.Set("rejected", status == ToolStatus.Rejected);
     }
 
+    /// <summary>
+    /// A subagent's steps, behind the arrow; a background agent's are not on the list (only its line and the map tell about it),
+    /// like the extension's.
+    /// </summary>
     private void UpdateChildren()
     {
-        Arrow.IsVisible = _item != null && _item.Children.Count > 0;
+        var steps = ShowsSteps(_item);
+        Arrow.IsVisible = steps;
+        ChildList.IsVisible = steps && _item!.IsExpanded;
         UpdateInteraction();
     }
+
+    private bool ShowsSteps(ToolCallItem? item) => item != null && item.Children.Count > 0 && !RunsInBackground(item);
+
+    /// <summary>An Agent call whose agent runs in the background (by its task line, its result, or the call's own flag).</summary>
+    private bool RunsInBackground(ToolCallItem item) =>
+        IsAgentTool(item.Name) && (_agent != null ? _agent.IsBackground : RunsInBackground(item.Input));
 
     /// <summary>The header takes clicks and the keyboard when it opens something: a subagent's steps, or a plan's document.</summary>
     private void UpdateInteraction()
     {
         var item = _item;
-        var opens = item != null && (item.Children.Count > 0 || IsPlanRow(item));
+        var opens = item != null && (ShowsSteps(item) || IsPlanRow(item));
         Header.IsHitTestVisible = opens;
         Header.Focusable = opens;
         Header.Classes.Set("interactive", opens); // the touch layout gives it a finger's height
@@ -291,6 +357,7 @@ internal partial class ToolCallView : UserControl
     {
         var focused = FocusedContent();
         Body.Children.Clear();
+        _agentLine = null;
         var item = _item;
         if (item != null)
         {
@@ -308,11 +375,13 @@ internal partial class ToolCallView : UserControl
                 Body.Children.Add(ReasonLine(item.RejectionReason!, strings));
 
             // a diff or a list stands for the output, unless the call failed; a refused edit, write or command ran nothing, and
-            // says why on the line above; any other refused call shows what the claude answered; a Read or a subagent that
-            // worked keeps quiet, like the extension (the file's lines, the subagent's launch details)
+            // says why on the line above; any other refused call shows what the claude answered; a Read that worked keeps quiet,
+            // like the extension (the file's lines)
             var quiet = item.Status == ToolStatus.Succeeded && QuietWhenDone(name);
-            // a plan has no box: its line tells how it ended, and its document holds its text
-            var showOutput = name != PlanTool && (failed || (!hasDiff && !hasTodos && !quiet && !(refused && TellsReason(name))));
+            // a plan has no box: its line tells how it ended, and its document holds its text; a subagent's call shows only its
+            // prompt, whatever came back
+            var showOutput = name != PlanTool && !IsAgentTool(name)
+                && (failed || (!hasDiff && !hasTodos && !quiet && !(refused && TellsReason(name))));
             var result = item.FullResultText ?? item.ResultText;
             var output = showOutput && !string.IsNullOrEmpty(result);
 
@@ -333,6 +402,9 @@ internal partial class ToolCallView : UserControl
             // the command: the box shows its first lines, and the request showed it whole
             if (IsCommand(name) && Str(item.Input, "command") is { Length: > 0 } command)
                 rows.Add((strings.ToolInput, TextRow(item, command, input: true, strings)));
+            // what a subagent was asked: the call's prompt, else its task line's
+            if (IsAgentTool(name) && (Str(item.Input, "prompt") ?? _agent?.Prompt) is { Length: > 0 } prompt)
+                rows.Add((strings.ToolInput, TextRow(item, prompt, input: true, strings)));
             if (output) rows.Add((strings.ToolOutput, TextRow(item, result!, input: false, strings)));
             if (rows.Count > 0) Body.Children.Add(ToolBody(Rows(rows)));
             if (IsCommand(name) && RunsInBackground(item.Input))
@@ -341,9 +413,57 @@ internal partial class ToolCallView : UserControl
                 note.Classes.Add("background");
                 Body.Children.Add(note);
             }
+            if (IsAgentTool(name) && _agent is { IsBackground: true })
+            {
+                _agentLine = AgentLine();
+                Body.Children.Add(_agentLine);
+                UpdateAgentLine();
+            }
         }
         Body.IsVisible = Body.Children.Count > 0;
         if (focused != null) Refocus(focused);
+    }
+
+    // ---- the line under a background agent's row ----
+
+    /// <summary>An 8 px dot and a muted .85em text, the whole line at 70 %; <see cref="UpdateAgentLine"/> fills it.</summary>
+    private static DockPanel AgentLine()
+    {
+        var dot = new Ellipse();
+        dot.Classes.Add("ClaudeChatAgentLineDot");
+        DockPanel.SetDock(dot, Dock.Left);
+        var text = new TextBlock();
+        text.Classes.Add("ClaudeChatAgentLineText");
+        var line = new DockPanel { Children = { dot, text } };
+        line.Classes.Add("ClaudeChatAgentLine");
+        return line;
+    }
+
+    /// <summary>
+    /// What the background agent is doing, waits for or how it ended, and what the agents it started do; the dot's color goes
+    /// with it: green while it (or an agent it started) works, blue while a request waits, red when it failed or was stopped (or
+    /// an agent it started did), gray once it finished. Only the line changes: the prompt above keeps its state and its focus.
+    /// </summary>
+    private void UpdateAgentLine()
+    {
+        var agent = _agent;
+        if (_agentLine == null || agent == null) return;
+        var waiting = agent.IsWaitingForPermission;
+        var nested = agent.Nested;
+        var error = agent.Status == AgentStatus.Failed ? agent.Result : null;
+        var text = (TextBlock)_agentLine.Children[1];
+        text.Text = Strings.FormatBackgroundAgent(agent.Status, waiting, agent.Activity, error, agent.Description, nested);
+
+        string state;
+        if (waiting || (nested & AgentNesting.Waiting) != 0) state = "waiting";
+        else if (agent.Status == AgentStatus.Failed || agent.Status == AgentStatus.Stopped) state = "failed";
+        else if ((nested & (AgentNesting.Failed | AgentNesting.Stopped)) != 0) state = "failed";
+        else if (agent.Status == AgentStatus.Running || (nested & AgentNesting.Working) != 0) state = "running";
+        else state = "idle";
+        var dot = _agentLine.Children[0];
+        dot.Classes.Set("running", state == "running");
+        dot.Classes.Set("waiting", state == "waiting");
+        dot.Classes.Set("failed", state == "failed");
     }
 
     /// <summary>"Reason:" in bold and what the user typed, in the muted line under the name.</summary>
@@ -524,14 +644,16 @@ internal partial class ToolCallView : UserControl
         }
     }
 
-    /// <summary>Tools whose output, when they work, is not worth showing in the list.</summary>
-    private static bool QuietWhenDone(string toolName) =>
-        toolName == "Read" || toolName == "Agent" || toolName == "Task";
+    /// <summary>Tools whose output, when they work, is not worth showing in the list (a subagent's call never shows one).</summary>
+    private static bool QuietWhenDone(string toolName) => toolName == "Read";
 
     private static bool IsFileTool(string toolName) =>
         toolName == "Read" || toolName == "Edit" || toolName == "Write" || toolName == "MultiEdit" || toolName == "NotebookEdit";
 
     private static bool IsCommand(string toolName) => toolName == "Bash" || toolName == "PowerShell";
+
+    /// <summary>The calls that start a subagent: Agent, and Task (its older name), drawn alike.</summary>
+    private static bool IsAgentTool(string toolName) => toolName == "Agent" || toolName == "Task";
 
     /// <summary>The tools whose box goes in a desktop panel narrower than <see cref="ClaudeChatView.NarrowWidth"/>: Edit and Write.</summary>
     private static bool HidesBoxWhenNarrow(string toolName) => toolName == "Edit" || toolName == "Write";

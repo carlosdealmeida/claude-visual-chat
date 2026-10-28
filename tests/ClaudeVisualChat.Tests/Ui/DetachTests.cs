@@ -463,8 +463,8 @@ public class DetachTests
         m.Window.Close();
     }
 
-    /// <summary>Handlers on <paramref name="item"/>'s property changes: the rows that draw it, while they are in the window.</summary>
-    private static int ItemHandlers(ChatItem item)
+    /// <summary>Handlers on <paramref name="item"/>'s property changes (an item, an agent): the rows that draw it, while they are in the window.</summary>
+    private static int ItemHandlers(ChatObservableObject item)
     {
         for (var type = item.GetType(); type != null; type = type.BaseType)
         {
@@ -501,6 +501,37 @@ public class DetachTests
         tool.IsOutputExpanded = true;                                      // and it answers again
         UiHelpers.Pump();
         Assert.Contains("line 20", Result());
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_background_agents_line_lets_go_of_its_agent_out_of_the_window_and_tells_what_changed_when_back()
+    {
+        var c = Conversation();
+        c.AppendLine(AgentMapTests.AgentCall("toolu_a1", "Write a file"));
+        c.AppendLine(AgentMapTests.TaskStarted("ta1", "toolu_a1", "Write a file"));
+        c.AppendLine(AgentMapTests.BashCall("toolu_b1", parent: "toolu_a1"));
+        var agent = c.Agents.Single();
+        var own = ItemHandlers(agent);                                     // the conversation's own, before any view
+        var m = new Mounted(c);
+        var strings = m.View.Strings;
+        string Line() => m.View.GetVisualDescendants().OfType<Panel>().Single(p => p.Classes.Contains("ClaudeChatAgentLine"))
+            .GetVisualDescendants().OfType<TextBlock>().Single().Text!;
+        Assert.True(ItemHandlers(agent) > own);                            // the row follows its agent
+        Assert.StartsWith(strings.AgentWorkingInBackground, Line());
+
+        m.Out();                                                           // out: nothing throws, and the row lets go of the agent
+        Assert.Equal(own, ItemHandlers(agent));
+        c.AppendLine(AgentMapTests.BashRequest("r1", "toolu_b1", "ta1")); // it asks while out
+        UiHelpers.Pump();
+        Assert.True(agent.IsWaitingForPermission);
+
+        m.In();                                                            // back: drawn as the agent is now
+        Assert.True(ItemHandlers(agent) > own);
+        Assert.StartsWith(strings.AgentWaitingForPermission, Line());
+        c.AnswerPermission(c.CurrentPermission!, PermissionDecision.Allow); // and it follows again
+        UiHelpers.Pump();
+        Assert.StartsWith(strings.AgentWorkingInBackground, Line());
         m.Window.Close();
     }
 
