@@ -963,17 +963,23 @@ public partial class ClaudeChatView : UserControl
         // to read; a wheel that an inner scroller takes, or a sideways one, does not move the list. Coming back down to 50 px of the
         // end follows it again, and so does the list ending up at its very end (the rows above got shorter). New rows alone, with
         // the list not moving, change nothing: a user who went up stays up.
+        var wasFollowing = _stickToEnd;
+        var reachedOldEnd = ReachedEndOfOldEstimate(e);
         if (!anchorMove)
         {
             if (wentUp && distance > AtEndExactly) _stickToEnd = false;
-            else if ((e.OffsetDelta.Y != 0 && distance <= EndTolerance) || ReachedEndOfOldEstimate(e)) _stickToEnd = true;
+            else if ((e.OffsetDelta.Y != 0 && distance <= EndTolerance) || reachedOldEnd) _stickToEnd = true;
         }
 
-        // Following, the list goes down to the end when the content or the viewport changed size (new items, a better estimate of
-        // the ones above, a panel under the list), not when the user's own move brought it back within 50 px of the end: that only
-        // makes it follow again, from where the user left it.
-        var resized = e.ExtentDelta.Y != 0 || e.ViewportDelta.Y != 0;
-        if (_stickToEnd && distance > AtEndExactly && (resized || e.OffsetDelta.Y == 0)) QueueScrollToEnd();
+        // Following, the list goes down to the end: when it did not move (new items, a panel under the list), when it already
+        // followed and got taller (its own scroll to the end found more, a better estimate of the rows above), and when the user
+        // went to the very end the list estimated before. A move of the user's own that brought it back within 50 px of the end
+        // only makes it follow again, from where the user left it, even when the rows that move drew changed the estimate of the
+        // list's height (rows of unlike heights): the next row takes it to the end.
+        var rejoined = !wasFollowing && _stickToEnd;
+        var grew = e.ExtentDelta.Y > 0 || e.ViewportDelta.Y > 0;
+        if (_stickToEnd && distance > AtEndExactly && (e.OffsetDelta.Y == 0 || reachedOldEnd || (grew && !rejoined)))
+            QueueScrollToEnd();
 
         if (_stickToEnd) ForgetAnchor();
         else QueueKeepAnchor();
@@ -1051,7 +1057,7 @@ public partial class ClaudeChatView : UserControl
         if (e.OffsetDelta.Y <= 0) return false;
         var before = (Scroller.Extent.Height - e.ExtentDelta.Y) - (Scroller.Viewport.Height - e.ViewportDelta.Y)
                      - Scroller.Offset.Y;
-        return before <= EndTolerance;
+        return before <= AtEndExactly; // the very end: a move to 50 px of it is the user's, not the End key's
     }
 
     private double DistanceToEnd() => Scroller.Extent.Height - Scroller.Viewport.Height - Scroller.Offset.Y;

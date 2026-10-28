@@ -1554,6 +1554,36 @@ public class ChatViewTests
         window.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData(300)]
+    [InlineData(1500)]
+    public void Coming_back_near_the_end_over_rows_of_unlike_heights_does_not_jump(double from)
+    {
+        // rows of 1 to 9 lines: a move that draws rows not drawn before makes the list estimate its height again
+        var c = new ChatConversation();
+        for (var i = 0; i < 300; i++)
+            c.Items.Add(new UserMessageItem(string.Join("\n", Enumerable.Range(0, 1 + i % 9).Select(l => "message " + i + " line " + l))));
+        var (view, window) = Open(c);
+        var scroller = UiHelpers.Scroller(view);
+        double End() => scroller.Extent.Height - scroller.Viewport.Height;
+
+        scroller.Offset = new Vector(0, End() - from); // up, as the scroll bar or Page Up go
+        UiHelpers.Pump();
+        var back = End() - 40;
+        scroller.Offset = new Vector(0, back);          // and back down to 40 px from the end, in one move
+        UiHelpers.Pump();
+        Assert.Equal(back, scroller.Offset.Y, 0.5);     // where the user put it, whatever the estimate did
+
+        // within 50 px of the end the list now has, it follows, and the next row takes it to the end; when the new estimate put
+        // the end farther (from far above, the rows drawn were taller than the guess), it is not near the end and stays
+        var follows = End() - scroller.Offset.Y <= 50;
+        c.Items.Add(new UserMessageItem("new one"));
+        UiHelpers.Pump();
+        if (follows) Assert.True(UiHelpers.AtEnd(scroller), $"offset {scroller.Offset.Y} of {End()}");
+        else Assert.Equal(back, scroller.Offset.Y, 0.5);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Keeping_the_row_on_screen_in_place_is_not_the_user_scrolling_down()
     {
