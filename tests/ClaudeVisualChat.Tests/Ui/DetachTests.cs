@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Templates;
@@ -501,6 +502,95 @@ public class DetachTests
         tool.IsOutputExpanded = true;                                      // and it answers again
         UiHelpers.Pump();
         Assert.Contains("line 20", Result());
+        m.Window.Close();
+    }
+
+    /// <summary>Draws frames until <paramref name="done"/> (an animation of the render clock), 5 s at most.</summary>
+    private static void FrameUntil(Func<bool> done)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (!done() && clock.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            System.Threading.Thread.Sleep(20);
+            Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            UiHelpers.Pump();
+        }
+        Assert.True(done());
+    }
+
+    [AvaloniaFact]
+    public void A_long_prompt_folding_while_the_view_leaves_stops_and_comes_back_as_the_item_says()
+    {
+        var c = Conversation();
+        var prompt = new UserMessageItem(string.Join("\n", Enumerable.Range(1, 10).Select(i => "line " + i)));
+        c.Items.Add(prompt);
+        var m = new Mounted(c);
+        FoldedText Fold() => m.View.GetVisualDescendants().OfType<FoldedText>().Single(f => ReferenceEquals(f.DataContext, prompt));
+        var fold = Fold();
+        Assert.Equal(60, fold.Bounds.Height, 0.5);
+
+        UiHelpers.Click(m.Window, fold.ShowMoreButton);                   // opening, and taken out in the middle of it
+        Assert.True(fold.IsAnimatingHeight);
+        m.Out();                                                          // nothing throws, and the animation stops
+        Assert.False(fold.IsAnimatingHeight);
+        Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick(); // a late frame finds nothing to do
+        UiHelpers.Pump();
+        prompt.IsTextExpanded = false;                                    // folded again while out
+        m.In();                                                           // back: drawn as the item is now, at once
+        fold = Fold();
+        Assert.False(fold.IsAnimatingHeight);
+        Assert.Equal(60, fold.Bounds.Height, 0.5);
+        Assert.True(fold.ShowMoreButton.IsVisible);
+
+        UiHelpers.Click(m.Window, fold.ShowMoreButton);                   // and it answers again
+        FrameUntil(() => !fold.IsAnimatingHeight);
+        Assert.True(fold.Bounds.Height > 150);
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_sticky_prompt_lets_go_while_the_view_is_away()
+    {
+        var c = Conversation();
+        var first = new UserMessageItem("First question");
+        c.Items.Add(first);
+        for (var i = 0; i < 40; i++) c.Items.Add(new AssistantTextItem { Text = "Paragraph " + i });
+        var own = ItemHandlers(first);
+        var m = new Mounted(c);
+        var list = UiHelpers.ItemList(m.View);
+        var scroller = UiHelpers.Scroller(m.View);
+        StickyPrompt Sticky() => m.View.GetVisualDescendants().OfType<StickyPrompt>().Single();
+        list.ScrollIntoView(c.Items[20]);
+        UiHelpers.Pump();
+        scroller.Offset = new Avalonia.Vector(0, list.ContainerFromItem(c.Items[20])!.TranslatePoint(default, list)!.Value.Y);
+        UiHelpers.Pump();
+        var sticky = Sticky();
+        Assert.True(sticky.IsVisible);
+        Assert.Same(first, sticky.Item);
+        var pinned = ItemHandlers(first);
+        Assert.True(pinned > own);                                        // the pinned bubble follows its prompt (opened or folded)
+
+        // a click waits 300 ms to scroll to the turn: taken out meanwhile, the timer stops and nothing scrolls
+        var text = sticky.Bubble.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Text == "First question");
+        UiHelpers.Click(m.Window, text);
+        Assert.True(sticky.IsWaiting);
+        m.Out();                                                          // nothing throws
+        Assert.False(sticky.IsWaiting);
+        Assert.True(ItemHandlers(first) < pinned);                        // and it lets go of the prompt
+        UiHelpers.Settle();
+        first.IsTextExpanded = true;                                      // changed while out
+        c.Items.Add(new AssistantTextItem { Text = "One more paragraph" });
+
+        m.In();                                                           // back: pinned again, as the prompt is now
+        UiHelpers.Pump();
+        sticky = Sticky();
+        Assert.True(sticky.IsVisible);
+        Assert.Same(first, sticky.Item);
+        Assert.Equal(pinned, ItemHandlers(first));
+        Assert.True(sticky.Bubble.GetVisualDescendants().OfType<FoldedText>().Single().IsExpanded);
+        first.IsTextExpanded = false;                                     // and it follows the prompt again
+        UiHelpers.Pump();
+        Assert.False(sticky.Bubble.GetVisualDescendants().OfType<FoldedText>().Single().IsExpanded);
         m.Window.Close();
     }
 

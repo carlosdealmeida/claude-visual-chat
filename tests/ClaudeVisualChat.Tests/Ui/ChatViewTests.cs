@@ -1420,6 +1420,226 @@ public class ChatViewTests
         window.Close();
     }
 
+    // ---- the prompt pinned at the top ----
+
+    /// <summary>Two turns, each a prompt and a long reply in 40 paragraphs, so the rows above the screen are not drawn.</summary>
+    private static (ChatConversation C, UserMessageItem First, UserMessageItem Second) TwoLongTurns(string? firstText = null)
+    {
+        var c = new ChatConversation();
+        var first = new UserMessageItem(firstText ?? "First question");
+        var second = new UserMessageItem("Second question");
+        foreach (var prompt in new[] { first, second })
+        {
+            c.Items.Add(prompt);
+            for (var i = 0; i < 40; i++) c.Items.Add(new AssistantTextItem { Text = "Paragraph " + i + " of the answer to " + prompt.Text });
+            c.Items.Add(new TurnFooterItem(1000, 1, 1, null, false));
+        }
+        return (c, first, second);
+    }
+
+    private static StickyPrompt Sticky(ClaudeChatView view) => view.GetVisualDescendants().OfType<StickyPrompt>().Single();
+
+    /// <summary>The top of <paramref name="item"/>'s row in the view, bringing it into the list's drawn rows first.</summary>
+    private static double RowTop(ClaudeChatView view, ChatItem item)
+    {
+        var list = UiHelpers.ItemList(view);
+        var row = list.ContainerFromItem(item)!;
+        return row.TranslatePoint(default, view)!.Value.Y;
+    }
+
+    /// <summary>Scrolls the list so the top of <paramref name="item"/>'s row is <paramref name="y"/> px under the top of the view.</summary>
+    private static void ScrollRowTo(ClaudeChatView view, ChatItem item, double y)
+    {
+        var list = UiHelpers.ItemList(view);
+        var scroller = UiHelpers.Scroller(view);
+        list.ScrollIntoView(item);
+        UiHelpers.Pump();
+        var inList = list.ContainerFromItem(item)!.TranslatePoint(default, list)!.Value.Y;
+        scroller.Offset = new Vector(0, inList - y);
+        UiHelpers.Pump();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Scrolling_a_long_reply_pins_its_prompt_at_the_top(bool touch)
+    {
+        var (c, first, _) = TwoLongTurns();
+        var view = touch ? UiHelpers.TouchView(c) : new ClaudeChatView { Conversation = c };
+        var window = touch ? UiHelpers.ShowPhone(view) : UiHelpers.Show(view);
+        var scroller = UiHelpers.Scroller(view);
+        var sticky = Sticky(view);
+
+        ScrollRowTo(view, c.Items[20], 0);                                // in the middle of the first reply
+        Assert.True(sticky.IsVisible);
+        Assert.Same(first, sticky.Item);
+        Assert.Contains("First question", UiHelpers.Texts(sticky));
+        Assert.Null(UiHelpers.ItemList(view).ContainerFromItem(first));   // its own row is far above, not drawn
+        // a band of the side bar's color from the top of the view: 14 px over the bubble and 12 px under it, the last 12 px fading out
+        var band = sticky.Band;
+        Assert.Equal(0, band.TranslatePoint(default, view)!.Value.Y, 0.5);
+        var bubble = sticky.Bubble;
+        Assert.Contains("ClaudeChatStickyBubble", bubble.Classes);
+        Assert.Equal(14, bubble.TranslatePoint(default, band)!.Value.Y, 0.5);
+        Assert.Equal(band.Bounds.Height - 12, bubble.TranslatePoint(new Point(0, bubble.Bounds.Height), band)!.Value.Y, 0.5);
+        Assert.Same(view.FindResource("ClaudeChat.Background"), sticky.Fill.Fill);
+        Assert.Equal(12, sticky.Fade.Bounds.Height, 0.5);
+        Assert.Equal(band.Bounds.Height, sticky.Fade.TranslatePoint(new Point(0, 12), band)!.Value.Y, 0.5);
+        Assert.IsType<LinearGradientBrush>(sticky.Fade.OpacityMask);
+        // as wide as the list's text, the bubble across all of it (in the touch layout too, where a row's bubble is at the right)
+        var list = UiHelpers.ItemList(view);
+        var text = list.TranslatePoint(new Point(list.Padding.Left, 0), view)!.Value.X;
+        Assert.Equal(text, bubble.TranslatePoint(default, view)!.Value.X, 0.5);
+        Assert.Equal(list.Bounds.Width - list.Padding.Left - list.Padding.Right, bubble.Bounds.Width, 0.5);
+        Assert.NotNull(bubble.Cursor);                                    // a hand: a click goes to the turn
+
+        scroller.Offset = new Vector(0, 0);                               // its row is on screen again: nothing pinned
+        UiHelpers.Pump();
+        Assert.False(sticky.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_next_prompt_pushes_the_pinned_one_out()
+    {
+        var (c, first, second) = TwoLongTurns();
+        var (view, window) = Open(c);
+        var sticky = Sticky(view);
+
+        ScrollRowTo(view, second, 30);                                    // the next prompt's row 30 px under the top
+        Assert.True(sticky.IsVisible);
+        Assert.Same(first, sticky.Item);
+        var band = sticky.Band;
+        Assert.True(band.Bounds.Height > 30);
+        var bottom = band.TranslatePoint(new Point(0, band.Bounds.Height), view)!.Value.Y;
+        Assert.Equal(RowTop(view, second), bottom, 0.5);                  // pushed up by it: its bottom on the next row's top
+        Assert.True(band.TranslatePoint(default, view)!.Value.Y < 0);
+
+        ScrollRowTo(view, second, 120);                                   // further down, nothing pushes it
+        Assert.Same(first, sticky.Item);
+        Assert.Equal(0, band.TranslatePoint(default, view)!.Value.Y, 0.5);
+
+        ScrollRowTo(view, c.Items[c.Items.IndexOf(second) + 20], 0);      // into the second reply: its prompt
+        Assert.True(sticky.IsVisible);
+        Assert.Same(second, sticky.Item);
+        Assert.Contains("Second question", UiHelpers.Texts(sticky));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Prompts_without_text_and_turns_before_any_prompt_pin_nothing()
+    {
+        var c = new ChatConversation();
+        for (var i = 0; i < 40; i++) c.Items.Add(new AssistantTextItem { Text = "Resumed paragraph " + i });
+        var image = new UserMessageItem("", new[] { ChatImage.FromBytes(Png(8, 8), "image/png") });
+        c.Items.Add(image);
+        for (var i = 0; i < 40; i++) c.Items.Add(new AssistantTextItem { Text = "About the image, paragraph " + i });
+        var (view, window) = Open(c);
+        var sticky = Sticky(view);
+
+        ScrollRowTo(view, c.Items[20], 0);                                // a reply with no prompt before it
+        Assert.False(sticky.IsVisible);
+        ScrollRowTo(view, c.Items[c.Items.IndexOf(image) + 20], 0);       // the reply to an image sent without text
+        Assert.False(sticky.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_pinned_prompt_is_at_most_forty_percent_of_the_view()
+    {
+        var (c, first, _) = TwoLongTurns(string.Join("\n", Enumerable.Range(1, 60).Select(i => "requirement " + i)));
+        first.IsTextExpanded = true;                                      // opened: the whole 60 lines
+        var (view, window) = Open(c);
+        var sticky = Sticky(view);
+
+        ScrollRowTo(view, c.Items[20], 0);
+        Assert.Same(first, sticky.Item);
+        var bubble = sticky.Bubble;
+        Assert.Equal(0.4 * view.Bounds.Height, bubble.Bounds.Height, 0.5);  // 40 % of the view's height
+        var inner = bubble.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Content is not null && s is not MessageAttachments);
+        Assert.True(inner.Extent.Height > inner.Viewport.Height + 100);   // and it scrolls inside
+        inner.Offset = new Vector(0, 200);
+        UiHelpers.Pump();
+        Assert.Equal(200, inner.Offset.Y, 0.5);
+
+        window.Height = 500;                                              // a shorter view, a shorter cap
+        UiHelpers.Pump();
+        Assert.Equal(0.4 * view.Bounds.Height, sticky.Bubble.Bounds.Height, 0.5);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_click_on_the_pinned_prompt_scrolls_to_the_start_of_its_turn()
+    {
+        var (c, first, _) = TwoLongTurns();
+        var (view, window) = Open(c);
+        var scroller = UiHelpers.Scroller(view);
+        var sticky = Sticky(view);
+        ScrollRowTo(view, c.Items[20], 0);
+        Assert.Same(first, sticky.Item);
+        var before = scroller.Offset.Y;
+        var text = sticky.Bubble.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Text == "First question");
+
+        UiHelpers.Click(window, text);
+        Assert.True(sticky.IsWaiting);                                    // it waits 300 ms (a double click selects a word instead)
+        Assert.Equal(TimeSpan.FromMilliseconds(300), StickyPrompt.ClickDelay);
+        Assert.Equal(before, scroller.Offset.Y);
+        sticky.Tick();                                                    // the timer's tick
+        UiHelpers.Pump();
+        Assert.False(sticky.IsWaiting);
+        Assert.Equal(0, RowTop(view, first), 1);                          // the start of the turn at the top
+        Assert.False(sticky.IsVisible);                                   // and its row is there, so nothing is pinned
+
+        ScrollRowTo(view, c.Items[20], 0);                                // with text selected, a click does not scroll
+        Assert.True(sticky.IsVisible);
+        text = sticky.Bubble.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Text == "First question");
+        UiHelpers.Click(window, text);
+        Assert.True(sticky.IsWaiting);
+        text.SelectAll();                                                 // a word picked by a double click, before the 300 ms are up
+        before = scroller.Offset.Y;
+        sticky.Tick();
+        UiHelpers.Pump();
+        Assert.Equal(before, scroller.Offset.Y);
+        Assert.True(sticky.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Show_more_in_the_pinned_prompt_opens_the_prompt_and_waits_for_no_scroll()
+    {
+        var (c, first, _) = TwoLongTurns(string.Join("\n", Enumerable.Range(1, 10).Select(i => "requirement " + i)));
+        var (view, window) = Open(c);
+        var sticky = Sticky(view);
+        ScrollRowTo(view, c.Items[20], 0);
+        Assert.Same(first, sticky.Item);
+        var fold = sticky.Bubble.GetVisualDescendants().OfType<FoldedText>().Single();
+        Assert.True(fold.IsFolded);                                       // folded as its row is
+        Assert.Equal(60, fold.Bounds.Height, 0.5);
+
+        UiHelpers.Click(window, fold.ShowMoreButton);
+        Assert.False(sticky.IsWaiting);                                   // a button, not a click on the prompt
+        Assert.True(first.IsTextExpanded);                                // the prompt's state: its row opens too
+        Assert.True(fold.IsExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_wheel_over_the_pinned_prompt_scrolls_the_list()
+    {
+        var (c, first, _) = TwoLongTurns();
+        var (view, window) = Open(c);
+        var scroller = UiHelpers.Scroller(view);
+        var sticky = Sticky(view);
+        ScrollRowTo(view, c.Items[20], 0);
+        Assert.Same(first, sticky.Item);
+        var before = scroller.Offset.Y;
+        var at = sticky.Bubble.TranslatePoint(new Point(20, 10), window)!.Value;
+        window.MouseWheel(at, new Vector(0, -1), RawInputModifiers.None);  // down
+        UiHelpers.Pump();
+        Assert.True(scroller.Offset.Y > before, $"{scroller.Offset.Y} after {before}");
+        window.Close();
+    }
+
     // ---- images in a message, and what a command printed ----
 
     private static byte[] Png(int w, int h)
@@ -1457,7 +1677,7 @@ public class ChatViewTests
         Assert.Equal("look at these", text.Text);
         var first = thumbs[0].TranslatePoint(default, boxes[0])!.Value;
         var row = boxes[0].GetVisualDescendants().OfType<MessageAttachments>().Single();
-        Assert.Equal(6, text.Bounds.Top - row.Bounds.Bottom, 1);
+        Assert.Equal(6, text.FindAncestorOfType<FoldedText>()!.Bounds.Top - row.Bounds.Bottom, 1); // the text's box, which folds a long one
         Assert.Equal(50, row.Bounds.Height, 1); // 48 and the frame
         Assert.Equal(first.Y, thumbs[1].TranslatePoint(default, boxes[0])!.Value.Y, 1);
         Assert.True(first.Y + 50 <= text.TranslatePoint(default, boxes[0])!.Value.Y);
@@ -1472,7 +1692,7 @@ public class ChatViewTests
         Assert.Equal("image-2.jpg", Avalonia.Automation.AutomationProperties.GetName(thumbs[1]));
 
         // a message with only an image: no empty line of text over it
-        Assert.False(boxes[1].GetVisualDescendants().OfType<SelectableTextBlock>().Single().IsVisible);
+        Assert.False(boxes[1].GetVisualDescendants().OfType<FoldedText>().Single().IsVisible); // the text's box (0.6.0)
         Assert.Equal(new Size(34, 50), Thumbnails(boxes[1])[0].Bounds.Size); // a small image is drawn 48 px high too
 
         // a click opens the preview, the one of the reply box's images

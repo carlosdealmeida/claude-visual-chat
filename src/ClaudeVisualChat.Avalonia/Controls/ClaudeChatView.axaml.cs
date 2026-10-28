@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
@@ -29,7 +31,9 @@ namespace ClaudeVisualChat.Controls;
 /// its backdrop closes it, and the keyboard goes back to where it was (a request that came meanwhile gets it then). Under a finished turn, a
 /// row copies the answer and bookmarks it and, while the host listens to <see cref="ChatConversation.FeedbackRequested"/>, rates it; the thumb
 /// down opens "What went wrong?" over the view, under the Diff View (Esc, Skip or its × close it), and its link shows while the host listens
-/// to <see cref="ChatConversation.LinkRequested"/>. What the user does comes back as the
+/// to <see cref="ChatConversation.LinkRequested"/>. A prompt taller than 60 px folds behind "Show more" (open or folded as its
+/// <see cref="UserMessageItem.IsTextExpanded"/> says), and the prompt of the turn on screen stays pinned at the top of the list until the
+/// next prompt pushes it out; a click on it brings the start of its turn back to the top. What the user does comes back as the
 /// conversation's events. A key is marked handled only when the view acts on it, so the app's own shortcuts keep
 /// working. Colors and fonts come from the <c>ClaudeChat.*</c> resources, which can be redefined in
 /// <see cref="StyledElement.Resources"/>; the default colors are those of VS Code's "Dark 2026" theme, and
@@ -148,6 +152,16 @@ public partial class ClaudeChatView : UserControl
     /// <summary>The list's vertical scroll bar, from the scroll viewer's template (the theme's).</summary>
     private ScrollBar? _verticalBar;
 
+    /// <summary>The pinned prompt's height cap: this share of the view's height (the extension's 40vh).</summary>
+    private const double StickyCap = 0.4;
+
+    // What the search for the pinned prompt already knows, so a scroll looks only at the rows it has not seen: the prompt found last
+    // (its index), the rows after it known to hold no prompt (up to _clearThrough), and the rows from the first known to hold none at
+    // all (up to _emptyThrough). Rows added at the end keep it; any other change of the list forgets it.
+    private int _promptIndex = -1;
+    private int _clearThrough = -1;
+    private int _emptyThrough = -1;
+
     private static readonly Uri TouchSizesBase = new Uri("avares://ClaudeVisualChat.Avalonia/");
     private static readonly Uri TouchSizesSource = new Uri("avares://ClaudeVisualChat.Avalonia/Themes/Touch.axaml");
 
@@ -160,6 +174,9 @@ public partial class ClaudeChatView : UserControl
         FooterPanel.Children.Remove(TouchAgentsChip); // the touch layout puts it at the end of the list
         Scroller.ScrollChanged += OnScrollChanged;
         Scroller.TemplateApplied += (_, e) => _verticalBar = e.NameScope.Find<ScrollBar>("PART_VerticalScrollBar");
+        Sticky.TurnRequested += (_, prompt) => ScrollTurnToTop(prompt);
+        // the pinned prompt covers the top of the list: the wheel over it scrolls the list (once its own text has scrolled to its end)
+        Sticky.AddHandler(PointerWheelChangedEvent, OnStickyWheel, RoutingStrategies.Bubble);
         Composer.Modes = AvailableModes;
         AddSheet.Modes = AvailableModes;
         Prompt.Modes = AvailableModes; // the plan card's option 1
@@ -375,6 +392,8 @@ public partial class ClaudeChatView : UserControl
             DiffViewer.Hide(); // its call was the other conversation's
             Feedback.Hide();   // and so was its reply
             Preview.Hide(); // its image was the other conversation's
+            Sticky.Hide();  // and so was the pinned prompt: the next scroll finds this one's
+            ForgetPrompt();
             if (_attached) Track(Conversation);
         }
         else if (change.Property == IsReadOnlyProperty && IsReadOnly)
@@ -421,6 +440,7 @@ public partial class ClaudeChatView : UserControl
             // not before the first layout, when the view has no width yet: the rows would drop their boxes and draw them again
             var width = Bounds.Width;
             if (width > 0) SetValue(IsNarrowProperty, width <= NarrowWidth);
+            Sticky.CapHeight = Math.Max(0, StickyCap * Bounds.Height);
         }
         else if (change.Property == LayoutProperty)
         {
@@ -449,6 +469,11 @@ public partial class ClaudeChatView : UserControl
         _attached = true;
         UpdateTouchSizes(); // the host may have swapped the resources after setting the layout
         Track(Conversation);
+        // the pinned prompt as the list is now, once it is laid out (a list that did not move raises no scroll to say so)
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_attached) UpdateSticky();
+        }, DispatcherPriority.Background);
     }
 
     /// <summary>
@@ -489,12 +514,15 @@ public partial class ClaudeChatView : UserControl
             {
                 _tracked.PropertyChanged -= OnConversationChanged;
                 _tracked.CopyRequested -= OnCopyRequested;
+                _tracked.Items.CollectionChanged -= OnItemsChanged;
             }
             _tracked = conversation;
+            ForgetPrompt(); // what the search for the pinned prompt knew was about the list as it was while followed
             if (_tracked != null)
             {
                 _tracked.PropertyChanged += OnConversationChanged;
                 _tracked.CopyRequested += OnCopyRequested;
+                _tracked.Items.CollectionChanged += OnItemsChanged;
                 _tracked.Strings = Strings; // the lines it says itself come in this view's language
             }
         }
@@ -782,6 +810,7 @@ public partial class ClaudeChatView : UserControl
         if (!ReferenceEquals(e.Source, Scroller)) return;
 
         UpdateGutter();
+        UpdateSticky(); // it also comes when the rows change height: a prompt opened, more text, another width
         var atEnd = DistanceToEnd() <= EndTolerance;
         // When the list gets taller (the request under it goes, the window grows), the scroll viewer brings the offset
         // down to keep it in range, while new items may arrive in the same pass: that is not the user going up. (A
@@ -808,6 +837,147 @@ public partial class ClaudeChatView : UserControl
     }
 
     private double DistanceToEnd() => Scroller.Extent.Height - Scroller.Viewport.Height - Scroller.Offset.Y;
+
+    /// <summary>
+    /// Pins the prompt of the turn on screen to the top of the list (the extension's sticky prompt): the first drawn row that reaches
+    /// under the top belongs to the turn of the nearest prompt before it, which is pinned while its own row is above the top (or not
+    /// drawn), unless it has no text. The next prompt's row, when drawn, pushes it up. Only the rows the list has drawn are looked at,
+    /// and the search back for the prompt starts from what the last one found, so a scroll or a new row costs a few rows, not the list.
+    /// </summary>
+    private void UpdateSticky()
+    {
+        if (!_attached) return;
+        var items = ItemList.ItemsSource as IList;
+        if (items == null || items.Count == 0)
+        {
+            Sticky.Hide();
+            return;
+        }
+        var rows = ItemList.GetRealizedContainers();
+        var topIndex = -1;
+        foreach (var row in rows)
+        {
+            var index = ItemList.IndexFromContainer(row);
+            if (index < 0 || (topIndex >= 0 && index >= topIndex) || !row.IsVisible) continue;
+            if (Top(row) is double top && top + row.Bounds.Height > 0.5) topIndex = index;
+        }
+        var promptIndex = topIndex < 0 ? -1 : FindPrompt(items, topIndex);
+        if (promptIndex < 0 || !(items[promptIndex] is UserMessageItem prompt) || string.IsNullOrWhiteSpace(prompt.Text))
+        {
+            Sticky.Hide(); // before any prompt, or a turn whose prompt has no text (an image alone)
+            return;
+        }
+        // its own row on screen: it is where it is, nothing to pin
+        var own = ItemList.ContainerFromIndex(promptIndex);
+        if (own != null && own.IsVisible && Top(own) is double ownTop && ownTop > -0.5 && ownTop < Scroller.Viewport.Height)
+        {
+            Sticky.Hide();
+            return;
+        }
+        // the next prompt's row, when it is drawn under the top (one above it would have been found as the prompt)
+        var nextIndex = int.MaxValue;
+        var nextTop = double.PositiveInfinity;
+        foreach (var row in rows)
+        {
+            var index = ItemList.IndexFromContainer(row);
+            if (index <= promptIndex || index >= nextIndex || index >= items.Count || !(items[index] is UserMessageItem) || !row.IsVisible) continue;
+            if (Top(row) is double top && top > -0.5)
+            {
+                nextIndex = index;
+                nextTop = top;
+            }
+        }
+        PlaceSticky();
+        Sticky.Show(prompt, nextTop);
+    }
+
+    /// <summary>Where <paramref name="row"/> begins, from the top of the list's viewport.</summary>
+    private double? Top(Control row) => row.TranslatePoint(default, Scroller)?.Y;
+
+    /// <summary>
+    /// The index of the nearest prompt at or before <paramref name="from"/>, or -1 when none is. Only the rows the last searches did not
+    /// see are read: within a turn, a scroll reads none, or the few it moved past.
+    /// </summary>
+    private int FindPrompt(IList items, int from)
+    {
+        from = Math.Min(from, items.Count - 1);
+        var known = _promptIndex >= 0 && _promptIndex <= from;
+        var stop = known ? Math.Max(_promptIndex, Math.Min(_clearThrough, from)) : Math.Min(_emptyThrough, from);
+        for (var i = from; i > stop; i--)
+        {
+            if (!(items[i] is UserMessageItem)) continue;
+            _promptIndex = i;
+            _clearThrough = from;
+            return i;
+        }
+        if (known)
+        {
+            _clearThrough = Math.Max(_clearThrough, from);
+            return _promptIndex;
+        }
+        _emptyThrough = Math.Max(_emptyThrough, from);
+        return -1;
+    }
+
+    private void ForgetPrompt()
+    {
+        _promptIndex = -1;
+        _clearThrough = -1;
+        _emptyThrough = -1;
+    }
+
+    /// <summary>Rows added after everything the search knows leave it right; any other change of the list makes it start over.</summary>
+    private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == NotifyCollectionChangedAction.Add
+            && e.NewStartingIndex > Math.Max(_promptIndex, Math.Max(_clearThrough, _emptyThrough)))
+            return;
+        ForgetPrompt();
+    }
+
+    /// <summary>The pinned prompt over the list's text: inside its padding, and clear of a scroll bar drawn over it or beside it.</summary>
+    private void PlaceSticky()
+    {
+        var padding = ItemList.Padding;
+        var bar = Math.Max(0, Scroller.Bounds.Width - Scroller.Viewport.Width);
+        var margin = new Thickness(padding.Left, 0, padding.Right + ItemList.Margin.Right + bar, 0);
+        if (Sticky.Margin != margin) Sticky.Margin = margin;
+    }
+
+    /// <summary>
+    /// A click on the pinned prompt: the start of its turn (its row) comes to the top of the list, which stops following the end. The row
+    /// may be far above, not drawn: the list draws it first.
+    /// </summary>
+    private void ScrollTurnToTop(UserMessageItem prompt)
+    {
+        var items = ItemList.ItemsSource as IList;
+        if (!_attached || items == null) return;
+        var index = _promptIndex >= 0 && _promptIndex < items.Count && ReferenceEquals(items[_promptIndex], prompt)
+            ? _promptIndex
+            : items.IndexOf(prompt);
+        if (index < 0) return;
+        ItemList.ScrollIntoView(index);
+        Scroller.UpdateLayout();
+        var row = ItemList.ContainerFromIndex(index);
+        var top = row?.TranslatePoint(default, ItemList)?.Y;
+        if (top == null) return;
+        _stickToEnd = false;
+        var end = Math.Max(0, Scroller.Extent.Height - Scroller.Viewport.Height);
+        Scroller.SetCurrentValue(ScrollViewer.OffsetProperty, new Vector(Scroller.Offset.X, Math.Min(top.Value, end)));
+    }
+
+    /// <summary>The wheel over the pinned prompt that its own text did not take: the list scrolls, as it would under the pointer.</summary>
+    private void OnStickyWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (e.Handled || e.Delta.Y == 0) return;
+        var end = Math.Max(0, Scroller.Extent.Height - Scroller.Viewport.Height);
+        var y = Math.Max(0, Math.Min(end, Scroller.Offset.Y - e.Delta.Y * WheelStep));
+        Scroller.SetCurrentValue(ScrollViewer.OffsetProperty, new Vector(Scroller.Offset.X, y));
+        e.Handled = true;
+    }
+
+    /// <summary>What one notch of the wheel scrolls, as the list's own scroll viewer does.</summary>
+    private const double WheelStep = 50;
 
     /// <summary>
     /// While the list scrolls under a scroll bar drawn over it (Fluent's, which hides itself: <c>AllowAutoHide</c>),

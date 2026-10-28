@@ -251,13 +251,16 @@
             </TextBlock>
           </Panel>
           <Border Classes="ClaudeChatUser">
-            <!-- what it took, images then files, in one row above the text (as the extension's), then the text -->
+            <!-- what it took, images then files, in one row above the text (as the extension's), then the text: folded at 60 px
+                 behind "Show more" when it is taller, open or folded as the item says -->
             <StackPanel>
               <controls:MessageAttachments Images="{Binding Images}" Files="{Binding Files}"
                                            Classes.alone="{Binding Text, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
-              <SelectableTextBlock Classes="ClaudeChatUserText"
-                                   Text="{Binding Text, Converter={x:Static controls:ChatConverters.Clip}}"
-                                   IsVisible="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <controls:FoldedText IsExpanded="{Binding IsTextExpanded, Mode=TwoWay}"
+                                   IsVisible="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <SelectableTextBlock Classes="ClaudeChatUserText"
+                                     Text="{Binding Text, Converter={x:Static controls:ChatConverters.Clip}}" />
+              </controls:FoldedText>
             </StackPanel>
           </Border>
         </StackPanel>
@@ -584,7 +587,7 @@
   <Style Selector="StackPanel.ClaudeChatUserTurn">
     <Setter Property="Margin" Value="0,14,0,12" />
   </Style>
-  <Style Selector="Border.ClaudeChatUser">
+  <Style Selector="Border.ClaudeChatUser, Border.ClaudeChatStickyBubble">
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBackground}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
     <Setter Property="BorderThickness" Value="1" />
@@ -595,6 +598,21 @@
     <Setter Property="TextWrapping" Value="Wrap" />
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+
+  <!-- the prompt pinned at the top of the list (StickyPrompt): a band of the side bar's color, 14 px over the bubble and 12 px under
+       it, its last 12 px fading out; the bubble across the list's width, 40 % of the view's height at most (set by the view), scrolling
+       inside, and a hand: a click goes to the start of the turn -->
+  <Style Selector="Rectangle.ClaudeChatStickyFill, Rectangle.ClaudeChatStickyFade">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.Background}" />
+  </Style>
+  <Style Selector="Rectangle.ClaudeChatStickyFade">
+    <Setter Property="OpacityMask">
+      <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="Black" />
+        <GradientStop Offset="1" Color="Transparent" />
+      </LinearGradientBrush>
+    </Setter>
   </Style>
 
   <!-- what a message took, above its text: the extension's message attachments (2.1.309), one row 6 px over the
@@ -1226,6 +1244,41 @@
         </Border>
       </ControlTemplate>
     </Setter>
+  </Style>
+
+  <!-- ===== a long prompt folded at 60 px (FoldedText): "Show more" inside the bubble at the bottom right and "Show less" under the
+       open text at the right; 4 px around, 8 px inside, 4 px corners, .85em, in the menu's colors turned over. Under the pointer they
+       grow by 5 % over 0.2 s. "Show more" shows only while the pointer is on the bubble or the keyboard is on it; "Show less" always, at
+       90 % until the pointer comes ===== -->
+
+  <Style Selector="Button.ClaudeChatFoldButton">
+    <Setter Property="Margin" Value="4" />
+    <Setter Property="Padding" Value="8" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.MenuForeground}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.MenuBackground}" />
+    <Setter Property="RenderTransform" Value="none" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.ClaudeChatFoldButton:pointerover">
+    <Setter Property="RenderTransform" Value="scale(1.05)" />
+  </Style>
+  <Style Selector="Button.ClaudeChatShowMore">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="Border.ClaudeChatUser:pointerover Button.ClaudeChatShowMore, Border.ClaudeChatStickyBubble:pointerover Button.ClaudeChatShowMore, Button.ClaudeChatShowMore:focus-visible">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Button.ClaudeChatShowLess">
+    <Setter Property="Opacity" Value="0.9" />
+  </Style>
+  <Style Selector="Button.ClaudeChatShowLess:pointerover">
+    <Setter Property="Opacity" Value="1" />
   </Style>
 
   <!-- ===== the copy button under a finished turn (shown by the touch layout): a 44 px target around a 20 px icon, in the

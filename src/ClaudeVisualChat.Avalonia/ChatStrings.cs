@@ -297,6 +297,8 @@ public sealed record ChatStrings
         FeedbackPlaceholder = "Conte mais (opcional)",
         FeedbackSkip = "Pular",
         FeedbackSend = "Enviar avaliação",
+        ShowMore = "Mostrar mais",
+        ShowLess = "Mostrar menos",
         ThousandsSeparator = ".",
         DecimalSeparator = ",",
     };
@@ -1147,6 +1149,12 @@ public sealed record ChatStrings
 
     /// <summary>The button that sends what the box says (Ctrl+Enter too).</summary>
     public string FeedbackSend { get; init; } = "Send feedback";
+
+    /// <summary>The button inside a long prompt folded at 60 px, which shows it whole.</summary>
+    public string ShowMore { get; init; } = "Show more";
+
+    /// <summary>The button under a long prompt shown whole, which folds it again.</summary>
+    public string ShowLess { get; init; } = "Show less";
 
     public string ThousandsSeparator { get; init; } = ",";
 

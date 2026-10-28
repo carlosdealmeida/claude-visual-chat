@@ -260,6 +260,22 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_long_prompt_api_exists()
+    {
+        // a long prompt folded behind "Show more" (0.6.0): the open state in the item, because the list recycles its rows
+        var open = typeof(UserMessageItem).GetProperty("IsTextExpanded");
+        Assert.Equal(typeof(bool), open?.PropertyType);
+        Assert.True(open!.CanWrite && open.SetMethod!.IsPublic);
+        Assert.True(typeof(System.ComponentModel.INotifyPropertyChanged).IsAssignableFrom(typeof(UserMessageItem)));
+        foreach (var text in new[] { "ShowMore", "ShowLess" })
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        // the fold and the prompt pinned at the top stay internal
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.FoldedText", names);
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.StickyPrompt", names);
+    }
+
+    [Fact]
     public void The_response_actions_api_exists()
     {
         // the actions under a reply (0.6.0): the bookmark and the line's uuid on the reply, a link event for the host and the rating

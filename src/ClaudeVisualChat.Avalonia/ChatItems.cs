@@ -14,6 +14,7 @@ public abstract class ChatItem : ChatObservableObject
 public sealed class UserMessageItem : ChatItem
 {
     private DateTimeOffset? _timestamp;
+    private bool _isTextExpanded;
 
     public UserMessageItem(string text, IReadOnlyList<ChatImage>? images = null)
         : this(text, images, null)
@@ -44,6 +45,16 @@ public sealed class UserMessageItem : ChatItem
     {
         get => _timestamp;
         set => SetField(ref _timestamp, value);
+    }
+
+    /// <summary>
+    /// Whether the text shows whole instead of folded at 60 px behind "Show more". Only a text taller than that folds; "Show more"
+    /// and "Show less" turn it on and off. It lives here because the list recycles its rows.
+    /// </summary>
+    public bool IsTextExpanded
+    {
+        get => _isTextExpanded;
+        set => SetField(ref _isTextExpanded, value);
     }
 }
 

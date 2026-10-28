@@ -432,8 +432,9 @@ public sealed class FileAttachmentTests : IDisposable
         Assert.True(shown.Bounds.Width <= 180);
         var text = ui.View.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Text == "see");
         var row = ui.View.GetVisualDescendants().OfType<MessageAttachments>().Single(m => m.IsVisible);
-        Assert.Same(row.Parent, text.Parent); // in the message's box, before the text
-        Assert.Equal(6, text.Bounds.Top - row.Bounds.Bottom, 1);
+        var fold = text.FindAncestorOfType<FoldedText>()!; // the text's box, which folds a long one (0.6.0)
+        Assert.Same(row.Parent, fold.Parent); // in the message's box, before the text
+        Assert.Equal(6, fold.Bounds.Top - row.Bounds.Bottom, 1);
         Assert.Equal(shown.Bounds.Height, row.Bounds.Height, 1);
         ui.Window.Close();
     }
@@ -469,9 +470,9 @@ public sealed class FileAttachmentTests : IDisposable
 
         // above the text
         var text = box.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Text == "both");
-        Assert.Equal(6, text.Bounds.Top - row.Bounds.Bottom, 1);
+        Assert.Equal(6, text.FindAncestorOfType<FoldedText>()!.Bounds.Top - row.Bounds.Bottom, 1);
 
-        var rows = ui.View.GetVisualDescendants().OfType<MessageAttachments>().ToList();
+        var rows = UiHelpers.ItemList(ui.View).GetVisualDescendants().OfType<MessageAttachments>().ToList(); // the list's (not the pinned prompt's)
         Assert.Equal(2, rows.Count);
         Assert.False(rows[1].IsVisible);
         ui.Window.Close();

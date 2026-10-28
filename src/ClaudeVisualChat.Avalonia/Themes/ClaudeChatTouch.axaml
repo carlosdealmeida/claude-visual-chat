@@ -74,6 +74,22 @@
     <Setter Property="MaxWidth"
             Value="{Binding $parent[controls:ChatItemList].ListWidth, Converter={x:Static controls:ChatConverters.BubbleMaxWidth}}" />
   </Style>
+  <!-- "Show more" and "Show less" of a long prompt: always shown (no pointer to hover with), targets of 44 px around the face -->
+  <Style Selector="controls|FoldedText:touch Button.ClaudeChatFoldButton">
+    <Setter Property="Template" Value="{StaticResource ClaudeChat.TouchCopyCodeTemplate}" />
+    <Setter Property="MinWidth" Value="44" />
+    <Setter Property="MinHeight" Value="44" />
+  </Style>
+  <Style Selector="controls|FoldedText:touch Button.ClaudeChatShowMore, controls|FoldedText:touch Button.ClaudeChatShowLess">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <!-- the prompt pinned at the top: the bubble's look, across the whole width -->
+  <Style Selector="controls|StickyPrompt:touch Border.ClaudeChatStickyBubble">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.UserBubble}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="18" />
+    <Setter Property="Padding" Value="12,9" />
+  </Style>
 
   <!-- ===== the timeline: none; the content starts at the margin ===== -->
 
