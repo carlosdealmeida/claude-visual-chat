@@ -315,16 +315,9 @@
                           IsHitTestVisible="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                           Focusable="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
               <StackPanel Classes="ClaudeChatThinkingSummary" Orientation="Horizontal">
-                <!-- "Thinking" while it arrives (or when its length is unknown), then "Thought for 3s" -->
-                <TextBlock Classes="ClaudeChatThinkingLabel">
-                  <TextBlock.Text>
-                    <MultiBinding Converter="{x:Static controls:ChatConverters.ThinkingLabel}">
-                      <Binding Path="IsStreaming" />
-                      <Binding Path="DurationMs" />
-                      <Binding Path="$parent[controls:ClaudeChatView].Strings" />
-                    </MultiBinding>
-                  </TextBlock.Text>
-                </TextBlock>
+                <!-- "Thinking..." with the tokens counted so far while it arrives, then "Thought for 3s" ("Thinking" when its length
+                     is unknown); the label follows its item and redraws the count climbing -->
+                <controls:ThinkingLabel Classes="ClaudeChatThinkingLabel" />
                 <Path Classes="ClaudeChatChevron"
                       IsVisible="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               </StackPanel>
@@ -371,6 +364,11 @@
             </TextBlock>
           </Panel>
         </StackPanel>
+      </DataTemplate>
+
+      <!-- a compaction: a line that opens to the summary -->
+      <DataTemplate DataType="cvc:CompactionItem">
+        <controls:CompactionCard />
       </DataTemplate>
 
       <DataTemplate DataType="cvc:NoticeItem">
@@ -541,6 +539,11 @@
     <Setter Property="Height" Value="16" />
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="RenderTransform" Value="none" />
+  </Style>
+  <!-- the card of a compaction: its chevron is 12 px -->
+  <Style Selector="Path.ClaudeChatChevron.small">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
   </Style>
   <Style Selector="ToggleButton.ClaudeChatDisclosure:checked Path.ClaudeChatChevron">
     <Setter Property="RenderTransform" Value="rotate(90deg)" />
@@ -916,6 +919,29 @@
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
     <Setter Property="Margin" Value="0,8" />
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+  <!-- the card of a compaction: 4 px over and under, 8 px of padding; its line is italic, in the secondary color at 80 %, with a
+       chevron of 12 px; the summary opens 8 px under it -->
+  <Style Selector="Border.ClaudeChatCompaction">
+    <Setter Property="Margin" Value="0,4" />
+    <Setter Property="Padding" Value="8" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatCompactionLine">
+    <Setter Property="Spacing" Value="4" />
+    <Setter Property="Opacity" Value="0.8" />
+  </Style>
+  <Style Selector="ToggleButton.ClaudeChatCompactionHead:pointerover StackPanel.ClaudeChatCompactionLine, ToggleButton.ClaudeChatCompactionHead:checked StackPanel.ClaudeChatCompactionLine">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatCompactionLabel">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontStyle" Value="Italic" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatCompactionSummary">
+    <Setter Property="Margin" Value="0,8,0,0" />
   </Style>
   <!-- a meta line: italic, the secondary color at 80%, 8 px of padding, 4 px over and under, selectable -->
   <Style Selector="SelectableTextBlock.ClaudeChatMetaLine">

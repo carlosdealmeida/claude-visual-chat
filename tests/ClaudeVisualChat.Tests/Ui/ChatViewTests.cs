@@ -1263,7 +1263,7 @@ public class ChatViewTests
         c.AppendLine("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}}");
         UiHelpers.Pump();
         var row = view.GetVisualDescendants().OfType<ChatTimelineRow>().Single();
-        Assert.Contains("Thinking", UiHelpers.Texts(row)); // still arriving
+        Assert.Contains("Thinking...", UiHelpers.Texts(row)); // still arriving
 
         now = now.AddMilliseconds(2600);
         c.AppendLine("{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"hm\"}]}}");
@@ -3247,6 +3247,208 @@ public class ChatViewTests
         UiHelpers.Pump();
         Assert.Same(queued, FooterPanel(view).Children[1]);
         Assert.Equal(new[] { "held", "held too" }, UiHelpers.Texts(queued));
+        window.Close();
+    }
+
+    // ---- the thinking line with its tokens, and the compaction card (0.6.0) ----
+
+    [AvaloniaFact]
+    public void The_thinking_row_reads_thinking_dots_and_the_token_estimate()
+    {
+        long now = 5000;
+        TokenCountUp.ClockOverride = () => now;
+        try
+        {
+            var c = new ChatConversation();
+            c.Apply(new ClaudeVisualChat.Protocol.BlockStarted("m1", 0, null, new ClaudeVisualChat.Protocol.ThinkingBlock("")));
+            var (view, window) = Open(c);
+            var row = view.GetVisualDescendants().OfType<ChatTimelineRow>().Single();
+            var label = row.GetVisualDescendants().OfType<ThinkingLabel>().Single();
+            Assert.Equal(new[] { "Thinking..." }, UiHelpers.Texts(row));       // no count yet: no tokens
+
+            c.Apply(new ClaudeVisualChat.Protocol.ThinkingTokens(1234));
+            UiHelpers.Pump();
+            Assert.Equal(new[] { "Thinking..." }, UiHelpers.Texts(row));       // it starts at 0 and climbs
+            Assert.True(label.IsTicking);
+
+            now += 600;                                                        // half of the first 1200 ms
+            label.Tick();
+            Assert.Equal(new[] { "Thinking... · 617 tokens" }, UiHelpers.Texts(row));
+            Assert.True(label.IsTicking);
+
+            now += 700;                                                        // settled: 1.2k, and the timer rests
+            label.Tick();
+            Assert.Equal(new[] { "Thinking... · 1.2k tokens" }, UiHelpers.Texts(row));
+            Assert.False(label.IsTicking);
+
+            view.Strings = ChatStrings.PortugueseBrazil;
+            UiHelpers.Pump();
+            Assert.Equal(new[] { "Pensando... · 1,2k tokens" }, UiHelpers.Texts(row));
+
+            // a lower count shows at once; the whole thought says how long it took, and no tokens
+            c.Apply(new ClaudeVisualChat.Protocol.ThinkingTokens(900));
+            UiHelpers.Pump();
+            Assert.Equal(new[] { "Pensando... · 900 tokens" }, UiHelpers.Texts(row));
+            c.Apply(new AssistantBlock("m1", null, new ClaudeVisualChat.Protocol.ThinkingBlock("hm")) { ThinkingDurationMs = 2600 });
+            UiHelpers.Pump();
+            Assert.Equal(new[] { "Pensou por 3 s" }, UiHelpers.Texts(row));
+            Assert.False(label.IsTicking);
+            window.Close();
+        }
+        finally { TokenCountUp.ClockOverride = null; }
+    }
+
+    [AvaloniaFact]
+    public void A_reused_thinking_row_shows_the_count_of_the_item_it_is_given()
+    {
+        long now = 0;
+        TokenCountUp.ClockOverride = () => now;
+        try
+        {
+            var first = new ThinkingItem { IsStreaming = true };
+            var second = new ThinkingItem { IsStreaming = true };
+            var c = new ChatConversation();
+            c.Items.Add(first);
+            c.Items.Add(second);
+            first.EstimatedTokens = 340;
+            now = 5000;
+            second.EstimatedTokens = 48_700;
+            now = 10_000;
+            var (view, window) = Open(c);
+            var label = UiHelpers.ItemList(view).ContainerFromIndex(0)!.GetVisualDescendants().OfType<ThinkingLabel>().Single();
+            Assert.Equal("Thinking... · 340 tokens", label.Text);
+            label.DataContext = second;                                        // the list reuses the row for another item
+            UiHelpers.Pump();
+            Assert.Equal("Thinking... · 48.7k tokens", label.Text);
+            Assert.Equal("Thinking...", ThinkingLabel.TextOf(new ThinkingItem { IsStreaming = true }, ChatStrings.English, now));
+            window.Close();
+        }
+        finally { TokenCountUp.ClockOverride = null; }
+    }
+
+    private static CompactionItem Compaction(string? summary = "**What was done**\n\nthe summary text") =>
+        new CompactionItem { Trigger = "manual", TokensBefore = 36326, Summary = summary };
+
+    private static CompactionCard CardOf(ClaudeChatView view, CompactionItem item) =>
+        view.GetVisualDescendants().OfType<CompactionCard>().Single(card => ReferenceEquals(card.DataContext, item));
+
+    [AvaloniaFact]
+    public void The_compaction_card_opens_to_the_summary()
+    {
+        var item = Compaction();
+        var c = new ChatConversation();
+        c.Items.Add(item);
+        var (view, window) = Open(c);
+        var card = CardOf(view, item);
+
+        Assert.Equal("Compacted chat · manual · 36k tokens freed", card.Label.Text);
+        Assert.False(item.IsExpanded);                                         // closed to begin with
+        Assert.False(card.Summary.IsVisible);
+        Assert.DoesNotContain("the summary text", UiHelpers.MarkdownText(card));
+
+        UiHelpers.Click(window, card.Head);                                    // opened to the summary, in Markdown
+        Assert.True(item.IsExpanded);
+        Assert.True(card.Summary.IsVisible);
+        Assert.Contains("the summary text", UiHelpers.MarkdownText(card));
+        Assert.DoesNotContain("**", UiHelpers.MarkdownText(card));             // rendered, not as typed
+        Assert.True(card.Summary.TranslatePoint(default, card)!.Value.Y >= card.Head.Bounds.Bottom + 8 - 1);
+
+        UiHelpers.Click(window, card.Head);
+        Assert.False(item.IsExpanded);
+        Assert.False(card.Summary.IsVisible);
+
+        item.IsExpanded = true;                                                // the item says it: the card follows
+        UiHelpers.Pump();
+        Assert.True(card.Head.IsChecked);
+        Assert.True(card.Summary.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_compaction_without_a_summary_says_so_when_opened()
+    {
+        var item = Compaction(summary: null);
+        var c = new ChatConversation();
+        c.Items.Add(item);
+        var (view, window) = Open(c);
+        var card = CardOf(view, item);
+        item.IsExpanded = true;
+        UiHelpers.Pump();
+        Assert.Contains("Conversation was compacted to free up context.", UiHelpers.MarkdownText(card));
+
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal("Conversa compactada · manual · 36k tokens liberados", card.Label.Text);
+        Assert.Contains("A conversa foi compactada para liberar contexto.", UiHelpers.MarkdownText(card));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_compaction_card_is_drawn_as_measured()
+    {
+        var item = Compaction();
+        var c = new ChatConversation();
+        c.Items.Add(item);
+        var (view, window) = Open(c);
+        var card = CardOf(view, item);
+        Assert.Equal(new Thickness(0, 4), card.Margin);                        // 4 px over and under
+        Assert.Equal(new Thickness(8), card.Padding);
+        Assert.Equal(FontStyle.Italic, card.Label.FontStyle);
+        Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), card.Label.Foreground);
+        var line = card.Head.GetVisualDescendants().OfType<StackPanel>().First();
+        Assert.Equal(0.8, line.Opacity);
+        var chevron = card.Head.GetVisualDescendants().OfType<Path>().Single();
+        Assert.Equal(12, chevron.Width);
+        Assert.Equal(12, chevron.Height);
+        Assert.Equal(8, card.Summary.Margin.Top);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_compaction_head_is_a_finger_tall_in_the_touch_layout_only()
+    {
+        var item = Compaction();
+        var desktopConversation = new ChatConversation();
+        desktopConversation.Items.Add(item);
+        var (desktop, desktopWindow) = Open(desktopConversation);
+        var desktopCard = CardOf(desktop, item);
+        Assert.True(desktopCard.Head.Bounds.Height < 44);
+        desktopWindow.Close();
+
+        var other = Compaction();
+        var touchConversation = new ChatConversation();
+        touchConversation.Items.Add(other);
+        var touch = UiHelpers.TouchView(touchConversation);
+        var touchWindow = UiHelpers.ShowPhone(touch);
+        var touchCard = CardOf(touch, other);
+        Assert.True(touchCard.Head.Bounds.Height >= 44);
+        Assert.Equal("Conversa compactada · manual · 36k tokens liberados", touchCard.Label.Text);
+        UiHelpers.Click(touchWindow, touchCard.Head);                          // and a tap opens it
+        Assert.True(other.IsExpanded);
+        Assert.True(touchCard.Summary.IsVisible);
+        touchWindow.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_reused_compaction_card_shows_the_state_of_the_item_it_is_given()
+    {
+        var open = Compaction();
+        open.IsExpanded = true;
+        var closed = new CompactionItem { Trigger = "auto", TokensBefore = 160_000, Summary = "other summary" };
+        var c = new ChatConversation();
+        c.Items.Add(open);
+        c.Items.Add(closed);
+        var (view, window) = Open(c);
+        var card = CardOf(view, open);
+        Assert.True(card.Summary.IsVisible);
+        card.DataContext = closed;                                             // the list reuses the card for another item
+        UiHelpers.Pump();
+        Assert.Equal("Compacted chat · auto · 160k tokens freed", card.Label.Text);
+        Assert.False(card.Summary.IsVisible);
+        Assert.False(card.Head.IsChecked);
+        card.DataContext = open;
+        UiHelpers.Pump();
+        Assert.True(card.Summary.IsVisible);
         window.Close();
     }
 }

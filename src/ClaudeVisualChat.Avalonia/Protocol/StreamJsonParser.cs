@@ -162,7 +162,8 @@ namespace ClaudeVisualChat.Protocol
                 default:
                     return None;
             }
-            return new ClaudeEvent[] { new BlockDelta(MessageId(key), (int)index.Value, parent, kind, text ?? "") };
+            var estimate = kind == DeltaKind.Thinking ? JsonHelpers.Long(delta.Value, "estimated_tokens") : null;
+            return new ClaudeEvent[] { new BlockDelta(MessageId(key), (int)index.Value, parent, kind, text ?? "") { EstimatedTokens = estimate } };
         }
 
         private string MessageId(string key) => _messageIds.TryGetValue(key, out var id) ? id : "";

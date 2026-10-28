@@ -78,6 +78,8 @@ public sealed class ChatConversation : ChatObservableObject
     private UsageLimits? _usageLimits;
     private string _permissionMode = "default";
     private bool _interruptedThisTurn;
+    private bool _sawThinkingTokens;
+    private CompactionItem? _compaction;
     private Func<DateTimeOffset> _clock = () => DateTimeOffset.Now;
     private DateTimeOffset? _cacheAnchor;
     private DateTimeOffset? _promptCacheExpiresAt;
@@ -324,7 +326,10 @@ public sealed class ChatConversation : ChatObservableObject
     public bool IsBusy
     {
         get => _isBusy;
-        private set => SetField(ref _isBusy, value);
+        private set
+        {
+            if (SetField(ref _isBusy, value) && !value) _sawThinkingTokens = false; // the session stopped: the next thought counts afresh
+        }
     }
 
     /// <summary>True while a text or a thought is arriving in pieces (a tool call arriving does not count).</summary>
@@ -656,6 +661,9 @@ public sealed class ChatConversation : ChatObservableObject
             case BlockDelta delta:
                 OnBlockDelta(delta);
                 break;
+            case ThinkingTokens thinkingTokens:
+                OnThinkingTokens(thinkingTokens);
+                break;
             case BlockStopped stopped:
                 OnBlockStopped(stopped);
                 break;
@@ -757,6 +765,8 @@ public sealed class ChatConversation : ChatObservableObject
         _echoes.Clear();
         _unanswered.Clear();
         _interruptedThisTurn = false;
+        _sawThinkingTokens = false;
+        _compaction = null;
         _autoModeAsked = false;
         _cacheAnchor = null; // the cache belongs to the items; the browser and Remote Control belong to the host
         PromptCacheExpiresAt = null;
@@ -1167,6 +1177,7 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>Claude is answering: the turn keeps the conversation busy, whatever happens to the messages sent.</summary>
     private void ClaudeIsWorking()
     {
+        _compaction = null; // the claude went on: a summary that comes now is not the one of the last compaction
         _unanswered.Clear();
         IsBusy = true;
     }
@@ -1197,6 +1208,7 @@ public sealed class ChatConversation : ChatObservableObject
                 {
                     streamedThinking.Text = thinking.Text;
                     streamedThinking.IsStreaming = false;
+                    streamedThinking.EstimatedTokens = null;
                     streamedThinking.DurationMs ??= e.ThinkingDurationMs ?? live.Elapsed(_clock());
                     Complete(live);
                 }
@@ -1276,8 +1288,30 @@ public sealed class ChatConversation : ChatObservableObject
         if (e.Kind == DeltaKind.Text && live.Item is AssistantTextItem text)
             text.Text += e.Text;
         else if (e.Kind == DeltaKind.Thinking && live.Item is ThinkingItem thinking)
+        {
             thinking.Text += e.Text;
+            // the deltas count only until the claude tells the absolute count itself; the main agent's thoughts show it, a subagent's do not
+            if (!_sawThinkingTokens && e.EstimatedTokens is long tokens && live.ParentToolUseId == null)
+            {
+                live.DeltaTokens += tokens;
+                thinking.EstimatedTokens = live.DeltaTokens;
+            }
+        }
         // input_json deltas are not shown: the assistant line brings the whole input
+    }
+
+    /// <summary>The claude's own count of the thought that is arriving: it is for the main agent's latest one still streaming.</summary>
+    private void OnThinkingTokens(ThinkingTokens e)
+    {
+        _sawThinkingTokens = true;
+        for (var i = _live.Count - 1; i >= 0; i--)
+        {
+            if (_live[i].Item is ThinkingItem { IsStreaming: true } thought && _live[i].ParentToolUseId == null)
+            {
+                thought.EstimatedTokens = e.EstimatedTokens;
+                return;
+            }
+        }
     }
 
     private void OnBlockStopped(BlockStopped e)
@@ -1349,7 +1383,11 @@ public sealed class ChatConversation : ChatObservableObject
     private static void StopStreaming(ChatItem item)
     {
         if (item is AssistantTextItem text) text.IsStreaming = false;
-        else if (item is ThinkingItem thinking) thinking.IsStreaming = false;
+        else if (item is ThinkingItem thinking)
+        {
+            thinking.IsStreaming = false;
+            thinking.EstimatedTokens = null;
+        }
     }
 
     // ---- user blocks ----
@@ -1457,9 +1495,11 @@ public sealed class ChatConversation : ChatObservableObject
             return;
         }
         if (e.IsMeta) return;
-        if (e.IsCompactSummary)
+        // the summary of a compaction is the card's, not a message: the session file marks it, and the live line says it is synthetic
+        // right after the boundary
+        if (e.IsCompactSummary || (e.IsSynthetic && _compaction != null))
         {
-            AddNotice(NoticeKind.Compacted, e.ParentToolUseId);
+            AddCompactionSummary(text, e.ParentToolUseId);
             return;
         }
         // the files the host sent are named by lines at the end of the text: chips, not text
@@ -2095,9 +2135,28 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnSystemNotice(SystemNotice e)
     {
-        if (e.Subtype == "compact_boundary") IsPromptCacheCompacted = true;
-        if (e.Subtype == "compact_boundary") AddNotice(NoticeKind.Compacted, null);
-        else if (e.Subtype == "api_retry") AddNotice(NoticeKind.ApiRetry, null);
+        if (e.Subtype == "compact_boundary")
+        {
+            IsPromptCacheCompacted = true;
+            _compaction = new CompactionItem { Trigger = e.Trigger ?? "", TokensBefore = e.PreTokens };
+            Items.Add(_compaction);
+        }
+        else if (e.Subtype == "api_retry")
+        {
+            AddNotice(NoticeKind.ApiRetry, null);
+        }
+    }
+
+    /// <summary>The summary goes into the card the last boundary made; a summary with no boundary before it makes a card of its own.</summary>
+    private void AddCompactionSummary(string summary, string? parentToolUseId)
+    {
+        if (_compaction != null && _compaction.Summary == null)
+        {
+            _compaction.Summary = summary;
+            _compaction = null;
+            return;
+        }
+        Container(parentToolUseId).Add(new CompactionItem { Summary = summary });
     }
 
     /// <summary>Adds a notice unless the same notice is already the last item (one compaction is marked twice).</summary>
@@ -2161,6 +2220,9 @@ public sealed class ChatConversation : ChatObservableObject
 
         /// <summary>When the block started to arrive, by the conversation's clock.</summary>
         public DateTimeOffset StartedAt { get; set; }
+
+        /// <summary>For a thought: the sum of the <c>estimated_tokens</c> of its deltas, the count when the claude sends no other.</summary>
+        public long DeltaTokens { get; set; }
 
         public long Elapsed(DateTimeOffset now) => Math.Max(0, (long)Math.Round((now - StartedAt).TotalMilliseconds));
     }

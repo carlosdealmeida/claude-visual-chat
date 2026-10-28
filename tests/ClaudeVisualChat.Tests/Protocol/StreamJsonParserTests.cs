@@ -528,5 +528,51 @@ namespace ClaudeVisualChat.Tests.Protocol
 
             Assert.Equal(new CommandOutput("Compacted "), Assert.Single(events));
         }
+
+        [Fact]
+        public void Thinking_tokens_give_the_absolute_count_and_a_delta_gives_its_own()
+        {
+            var parser = new StreamJsonParser();
+            Assert.Equal(new ThinkingTokens(217), Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"thinking_tokens\",\"estimated_tokens\":217,\"estimated_tokens_delta\":167}")));
+            Assert.Empty(parser.Parse("{\"type\":\"system\",\"subtype\":\"thinking_tokens\",\"estimated_tokens_delta\":167}"));
+
+            parser.Parse("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\"}}}");
+            var told = Assert.IsType<BlockDelta>(Assert.Single(parser.Parse(
+                "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"\",\"estimated_tokens\":50}}}")));
+            var silent = Assert.IsType<BlockDelta>(Assert.Single(parser.Parse(
+                "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"\",\"estimated_tokens\":null}}}")));
+            var text = Assert.IsType<BlockDelta>(Assert.Single(parser.Parse(
+                "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"a\",\"estimated_tokens\":7}}}")));
+            Assert.Equal(50, told.EstimatedTokens);
+            Assert.Null(silent.EstimatedTokens);
+            Assert.Null(text.EstimatedTokens);                            // only a thought counts tokens
+        }
+
+        [Fact]
+        public void A_compact_boundary_brings_its_trigger_and_tokens()
+        {
+            var notice = Assert.IsType<SystemNotice>(Assert.Single(new StreamJsonParser().Parse(Line("commands", "\"subtype\": \"compact_boundary\""))));
+            Assert.Equal("compact_boundary", notice.Subtype);
+            Assert.Equal("manual", notice.Trigger);
+            Assert.Equal(36326, notice.PreTokens);
+            Assert.Equal(1522, notice.PostTokens);
+
+            var bare = Assert.IsType<SystemNotice>(Assert.Single(new StreamJsonParser().Parse("{\"type\":\"system\",\"subtype\":\"compact_boundary\"}")));
+            Assert.Null(bare.Trigger);
+            Assert.Null(bare.PreTokens);
+            Assert.Null(bare.PostTokens);
+        }
+
+        [Fact]
+        public void The_synthetic_flag_of_a_user_line_is_read()
+        {
+            var summary = Assert.IsType<UserBlock>(Assert.Single(new StreamJsonParser().Parse(Line("commands", "\"isSynthetic\": true"))));
+            Assert.True(summary.IsSynthetic);
+            Assert.False(summary.IsCompactSummary);
+            var plain = Assert.IsType<UserBlock>(Assert.Single(new StreamJsonParser().Parse(
+                "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}")));
+            Assert.False(plain.IsSynthetic);
+        }
     }
 }

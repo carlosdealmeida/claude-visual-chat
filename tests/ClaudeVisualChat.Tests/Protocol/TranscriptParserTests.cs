@@ -155,6 +155,36 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void Compact_boundary_brings_the_metadata_of_either_spelling()
+        {
+            var stream = Assert.IsType<SystemNotice>(Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"compact_metadata\":{\"trigger\":\"auto\",\"pre_tokens\":160000,\"post_tokens\":3000}}")));
+            Assert.Equal("auto", stream.Trigger);
+            Assert.Equal(160000, stream.PreTokens);
+            Assert.Equal(3000, stream.PostTokens);
+            var file = Assert.IsType<SystemNotice>(Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"compactMetadata\":{\"trigger\":\"manual\",\"preTokens\":36326}}")));
+            Assert.Equal("manual", file.Trigger);
+            Assert.Equal(36326, file.PreTokens);
+            Assert.Null(file.PostTokens);
+        }
+
+        [Fact]
+        public void A_thinking_tokens_line_of_a_file_gives_the_count_too()
+        {
+            Assert.Equal(new ThinkingTokens(50), Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"thinking_tokens\",\"estimated_tokens\":50}")));
+        }
+
+        [Fact]
+        public void The_synthetic_flag_of_a_file_line_is_read()
+        {
+            var line = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"user\",\"isSynthetic\":true,\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"x\"}]}}")));
+            Assert.True(line.IsSynthetic);
+        }
+
+        [Fact]
         public void All_fixtures_parse_without_throwing()
         {
             var total = 0;

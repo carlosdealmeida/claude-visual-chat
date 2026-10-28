@@ -116,6 +116,7 @@ namespace ClaudeVisualChat.Protocol
             var result = JsonHelpers.CloneNonNull(root, toolUseResultName);
             var isMeta = JsonHelpers.Bool(root, "isMeta");
             var isCompact = JsonHelpers.Bool(root, "isCompactSummary");
+            var isSynthetic = JsonHelpers.Bool(root, "isSynthetic");
             var meta = JsonHelpers.Prop(root, "tool_result_meta"); // stream
             var denialKind = JsonHelpers.Str(root, "toolDenialKind"); // session file
             var timestamp = JsonHelpers.Time(root, "timestamp");
@@ -131,7 +132,7 @@ namespace ClaudeVisualChat.Protocol
                 if (b is ToolResultBlock toolResult
                     && (NonExecutionKind(meta, toolResult.ToolUseId) ?? denialKind) is { } kind)
                     b = toolResult with { NonExecutionKind = kind };
-                var user = new UserBlock(parent, b, result, isMeta, isCompact) { Timestamp = timestamp };
+                var user = new UserBlock(parent, b, result, isMeta, isCompact) { Timestamp = timestamp, IsSynthetic = isSynthetic };
                 events.Add(i == carrier && images.Count > 0 ? user with { Images = images } : user);
             }
             return events;
@@ -275,9 +276,28 @@ namespace ClaudeVisualChat.Protocol
             var subtype = JsonHelpers.Str(root, "subtype");
             switch (subtype)
             {
-                case "compact_boundary":
                 case "api_retry":
                     return new ClaudeEvent[] { new SystemNotice(subtype!) };
+                case "compact_boundary":
+                    {
+                        // the stream says compact_metadata; a session file may say compactMetadata, or nothing
+                        var meta = JsonHelpers.Obj(root, "compact_metadata") ?? JsonHelpers.Obj(root, "compactMetadata");
+                        if (meta == null) return new ClaudeEvent[] { new SystemNotice(subtype!) };
+                        var m = meta.Value;
+                        return new ClaudeEvent[]
+                        {
+                            new SystemNotice(subtype!)
+                            {
+                                Trigger = JsonHelpers.Str(m, "trigger"),
+                                PreTokens = JsonHelpers.Long(m, "pre_tokens") ?? JsonHelpers.Long(m, "preTokens"),
+                                PostTokens = JsonHelpers.Long(m, "post_tokens") ?? JsonHelpers.Long(m, "postTokens"),
+                            },
+                        };
+                    }
+                case "thinking_tokens":
+                    return JsonHelpers.Long(root, "estimated_tokens") is { } estimated
+                        ? new ClaudeEvent[] { new ThinkingTokens(estimated) }
+                        : None;
                 case "commands_changed":
                     return JsonHelpers.Arr(root, "commands") is { } commands
                         ? new ClaudeEvent[] { new CommandsAvailable(ReadCommands(commands)) }

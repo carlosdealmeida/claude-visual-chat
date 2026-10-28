@@ -558,4 +558,50 @@ public class PublicApiTests
             Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
         }
     }
+
+    [Fact]
+    public void The_thinking_tokens_and_the_compaction_card_api()
+    {
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.Contains("ClaudeVisualChat.CompactionItem", names);
+        Assert.Contains("ClaudeVisualChat.Protocol.ThinkingTokens", names);
+        Assert.True(typeof(CompactionItem).IsSealed && typeof(ChatItem).IsAssignableFrom(typeof(CompactionItem)));
+        // the controls and the count are the library's own
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.CompactionCard", names);
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.ThinkingLabel", names);
+        Assert.DoesNotContain("ClaudeVisualChat.TokenCountUp", names);
+
+        var estimate = typeof(ThinkingItem).GetProperty("EstimatedTokens");
+        Assert.Equal(typeof(long?), estimate?.PropertyType);
+        Assert.Null(estimate!.GetSetMethod());                               // the conversation sets it, not the host
+
+        Assert.Equal(typeof(string), typeof(CompactionItem).GetProperty("Trigger")?.PropertyType);
+        Assert.Equal(typeof(long?), typeof(CompactionItem).GetProperty("TokensBefore")?.PropertyType);
+        Assert.Equal(typeof(string), typeof(CompactionItem).GetProperty("Summary")?.PropertyType);
+        Assert.Equal(typeof(bool), typeof(CompactionItem).GetProperty("IsExpanded")?.PropertyType);
+
+        foreach (var (type, name, kind) in new[]
+        {
+            (typeof(CompactionItem), "Trigger", typeof(string)), (typeof(CompactionItem), "TokensBefore", typeof(long?)),
+            (typeof(ClaudeVisualChat.Protocol.SystemNotice), "Trigger", typeof(string)),
+            (typeof(ClaudeVisualChat.Protocol.SystemNotice), "PreTokens", typeof(long?)),
+            (typeof(ClaudeVisualChat.Protocol.SystemNotice), "PostTokens", typeof(long?)),
+            (typeof(ClaudeVisualChat.Protocol.UserBlock), "IsSynthetic", typeof(bool)),
+            (typeof(ClaudeVisualChat.Protocol.BlockDelta), "EstimatedTokens", typeof(long?)),
+        })
+        {
+            var property = type.GetProperty(name);
+            Assert.Equal(kind, property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+        Assert.Equal(typeof(long), typeof(ClaudeVisualChat.Protocol.ThinkingTokens).GetProperty("EstimatedTokens")?.PropertyType);
+
+        foreach (var text in new[] { "ThinkingNow", "ThinkingTokensEstimate", "CompactedChat", "CompactedChatShort", "CompactionNoSummary" })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+        Assert.Contains("Compacted", System.Enum.GetNames(typeof(NoticeKind)));   // nothing public goes
+    }
 }

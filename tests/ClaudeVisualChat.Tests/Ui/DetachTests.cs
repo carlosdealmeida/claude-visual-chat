@@ -1232,4 +1232,105 @@ public class DetachTests
         Assert.False(list.IsVisible);
         m.Window.Close();
     }
+
+    [AvaloniaFact]
+    public void The_thinking_count_stops_its_timer_when_the_view_leaves_and_comes_back_right()
+    {
+        long now = 1000;
+        TokenCountUp.ClockOverride = () => now;
+        try
+        {
+            var c = Conversation();
+            c.Apply(new ClaudeVisualChat.Protocol.BlockStarted("m1", 0, null, new ClaudeVisualChat.Protocol.ThinkingBlock("")));
+            var thought = c.Items.OfType<ThinkingItem>().Single();
+            c.Apply(new ClaudeVisualChat.Protocol.ThinkingTokens(2000));
+            var own = ItemHandlers(thought);
+            var m = new Mounted(c);
+            ThinkingLabel Label() => m.View.GetVisualDescendants().OfType<ThinkingLabel>().Single();
+            var label = Label();
+            Assert.True(ItemHandlers(thought) > own);                          // the line follows its thought
+            Assert.True(label.IsTicking);                                      // and the count is climbing
+            now += 600;
+            label.Tick();
+            Assert.Equal("Thinking... · 1.0k tokens", label.Text);
+
+            m.Out();                                                           // taken out in the middle of the climb: nothing throws,
+            Assert.False(label.IsTicking);                                     // no timer ticks out of the window,
+            Assert.False(label.IsTracking);
+            Assert.Equal(own, ItemHandlers(thought));                          // and the thought is let go
+            label.Tick();                                                      // a late tick finds nothing to do
+            Assert.False(label.IsTicking);
+            now += 10_000;                                                     // a longer wait out, and the count changed meanwhile
+            c.Apply(new ClaudeVisualChat.Protocol.ThinkingTokens(3000));
+            UiHelpers.Pump();
+            Assert.Equal("Thinking... · 1.0k tokens", label.Text);            // leaving drew nothing, and nothing was drawn while out
+
+            m.In();                                                            // back: drawn as it is now, climbing from where it was
+            label = Label();                                                   // (the list built its rows again)
+            Assert.True(ItemHandlers(thought) > own);
+            Assert.True(label.IsTicking);
+            Assert.Equal("Thinking... · 2.0k tokens", label.Text);
+            now += 3000;
+            label.Tick();
+            Assert.Equal("Thinking... · 3.0k tokens", label.Text);
+            Assert.False(label.IsTicking);
+
+            m.Out();                                                           // out when it has settled: back, it rests
+            m.In();
+            label = Label();
+            Assert.False(label.IsTicking);
+            Assert.Equal("Thinking... · 3.0k tokens", label.Text);
+
+            // the thought ends while out: back, it says how long it took, with no timer
+            c.Apply(new ClaudeVisualChat.Protocol.ThinkingTokens(4000));
+            Assert.True(label.IsTicking);
+            m.Out();
+            Assert.False(label.IsTicking);
+            c.Apply(new AssistantBlock("m1", null, new ClaudeVisualChat.Protocol.ThinkingBlock("hm")) { ThinkingDurationMs = 5000 });
+            m.In();
+            label = Label();
+            Assert.False(label.IsTicking);
+            Assert.Equal("Thought for 5s", label.Text);
+            m.Window.Close();
+        }
+        finally { TokenCountUp.ClockOverride = null; }
+    }
+
+    [AvaloniaFact]
+    public void A_compaction_card_lets_go_of_its_item_out_of_the_window_and_comes_back_as_it_is()
+    {
+        var item = new CompactionItem { Trigger = "manual", TokensBefore = 36326, Summary = "the first summary" };
+        var c = Conversation();
+        c.Items.Add(item);
+        var own = ItemHandlers(item);
+        var m = new Mounted(c);
+        CompactionCard Card() => m.View.GetVisualDescendants().OfType<CompactionCard>().Single();
+        var card = Card();
+        Assert.True(card.IsTracking);
+        Assert.True(ItemHandlers(item) > own);
+        UiHelpers.Click(m.Window, card.Head);                              // opened
+        Assert.True(item.IsExpanded);
+        Assert.Contains("the first summary", UiHelpers.MarkdownText(card));
+
+        m.Out();                                                           // taken out open: nothing throws, and the item is let go
+        Assert.False(card.IsTracking);
+        Assert.Equal(own, ItemHandlers(item));
+        item.Summary = "the second summary";                               // changed while out
+        m.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+
+        m.In();                                                            // back: drawn as the item is now
+        card = Card();                                                     // (the list built its rows again)
+        Assert.True(card.IsTracking);
+        Assert.True(ItemHandlers(item) > own);
+        Assert.Equal("Conversa compactada · manual · 36k tokens liberados", card.Label.Text);
+        Assert.True(card.Summary.IsVisible);
+        Assert.Contains("the second summary", UiHelpers.MarkdownText(card));
+        UiHelpers.Click(m.Window, card.Head);                              // and it closes, and follows its item again
+        Assert.False(item.IsExpanded);
+        item.IsExpanded = true;
+        UiHelpers.Pump();
+        Assert.True(card.Summary.IsVisible);
+        m.Window.Close();
+    }
 }

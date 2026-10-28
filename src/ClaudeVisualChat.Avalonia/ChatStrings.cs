@@ -23,6 +23,10 @@ public sealed record ChatStrings
     public static ChatStrings PortugueseBrazil { get; } = new ChatStrings
     {
         Thinking = "Pensando",
+        ThinkingNow = "Pensando...",
+        CompactedChat = "Conversa compactada · {0} · {1}k tokens liberados",
+        CompactedChatShort = "Conversa compactada",
+        CompactionNoSummary = "A conversa foi compactada para liberar contexto.",
         MoreLines = "+{0} linhas",
         Interrupted = "Interrompido",
         ToolInterrupted = "Ferramenta interrompida",
@@ -311,6 +315,21 @@ public sealed record ChatStrings
 
     /// <summary>The collapsed line of Claude's thinking, while it arrives or when its length is unknown.</summary>
     public string Thinking { get; init; } = "Thinking";
+
+    /// <summary>The collapsed line of Claude's thinking while it thinks (with plain dots, as the extension writes it).</summary>
+    public string ThinkingNow { get; init; } = "Thinking...";
+
+    /// <summary>What follows <see cref="ThinkingNow"/> once the claude counts the tokens of its thought; <c>{0}</c> is the count, short ("340", "1.2k").</summary>
+    public string ThinkingTokensEstimate { get; init; } = " · {0} tokens";
+
+    /// <summary>The head of the card of a compaction; <c>{0}</c> is what started it ("manual" or "auto"), <c>{1}</c> the thousands of tokens it freed.</summary>
+    public string CompactedChat { get; init; } = "Compacted chat · {0} · {1}k tokens freed";
+
+    /// <summary>The head of the card of a compaction when the line does not tell what started it or how much it freed.</summary>
+    public string CompactedChatShort { get; init; } = "Compacted chat";
+
+    /// <summary>In the open card of a compaction whose summary the claude did not send.</summary>
+    public string CompactionNoSummary { get; init; } = "Conversation was compacted to free up context.";
 
     /// <summary>The collapsed line of a whole thought; <c>{0}</c> is how many seconds it took.</summary>
     public string ThoughtFor { get; init; } = "Thought for {0}s";
@@ -1284,6 +1303,24 @@ public sealed record ChatStrings
     {
         var seconds = (long)Math.Floor(Math.Max(0, milliseconds) / 1000.0 + 0.5);
         return ThoughtFor.Replace("{0}", seconds.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>" · 1.2k tokens": what follows "Thinking..." while the claude counts; the count is whole below 1,000, else thousands with a decimal.</summary>
+    internal string FormatThinkingTokens(long tokens) => ThinkingTokensEstimate.Replace("{0}", FormatShortTokens(tokens));
+
+    /// <summary>
+    /// The head of a compaction card: "Compacted chat · manual · 36k tokens freed", the thousands rounded half up. With the trigger or
+    /// the tokens missing it is "Compacted chat", and the trigger after it when that is known.
+    /// </summary>
+    internal string FormatCompaction(string? trigger, long? tokensBefore)
+    {
+        var hasTrigger = !string.IsNullOrEmpty(trigger);
+        if (hasTrigger && tokensBefore is long tokens)
+        {
+            var thousands = (long)Math.Floor(Math.Max(0, tokens) / 1000.0 + 0.5);
+            return CompactedChat.Replace("{0}", trigger!).Replace("{1}", Plain(thousands));
+        }
+        return hasTrigger ? CompactedChatShort + Separator + trigger! : CompactedChatShort;
     }
 
     /// <summary>"47 lines", "1 line".</summary>

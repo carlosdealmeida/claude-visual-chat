@@ -131,6 +131,8 @@ public sealed class ThinkingItem : ChatItem
     private bool _isStreaming;
     private bool _isExpanded;
     private long? _durationMs;
+    private long? _estimatedTokens;
+    private readonly TokenCountUp _countUp = new TokenCountUp();
 
     public string Text
     {
@@ -159,6 +161,28 @@ public sealed class ThinkingItem : ChatItem
         get => _durationMs;
         set => SetField(ref _durationMs, value);
     }
+
+    /// <summary>
+    /// The tokens the claude has used thinking so far, while the thought arrives (<c>system/thinking_tokens</c>, or the sum of its
+    /// deltas); null when nothing tells, and again once the turn ends. Only the main agent's thoughts have it. The line counts up to
+    /// it over a few seconds (<see cref="DisplayedTokens"/>), so what is shown is not this value at once.
+    /// </summary>
+    public long? EstimatedTokens
+    {
+        get => _estimatedTokens;
+        internal set
+        {
+            if (_estimatedTokens == value) return;
+            _countUp.Set(value, TokenCountUp.NowMs()); // before the event: the line that follows it reads the count
+            SetField(ref _estimatedTokens, value);
+        }
+    }
+
+    /// <summary>The count the line shows at <paramref name="nowMs"/> (the clock of <see cref="TokenCountUp.NowMs"/>): the estimate on its way up.</summary>
+    internal long DisplayedTokens(long nowMs) => _countUp.Display(nowMs);
+
+    /// <summary>True while the count shown is still on its way to <see cref="EstimatedTokens"/>.</summary>
+    internal bool IsCountingUp(long nowMs) => _countUp.IsMoving(nowMs);
 }
 
 /// <summary>State of a tool call.</summary>
@@ -335,6 +359,78 @@ public sealed class TurnFooterItem : ChatItem
     public bool IsError { get; }
 }
 
+/// <summary>
+/// The token count of a thought on its way up, like the extension's: the first value takes 1,200 ms to reach; each next one takes the
+/// time since the one before, but no less than 300 ms and no more than 3,000 ms; a value below the count shown is shown at once. The
+/// state is the item's, so a row of the list that is reused for another item shows that item's count.
+/// </summary>
+internal sealed class TokenCountUp
+{
+    /// <summary>The time the first value takes to reach.</summary>
+    internal const long FirstMs = 1200;
+
+    internal const long MinMs = 300;
+
+    internal const long MaxMs = 3000;
+
+    private static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
+
+    private bool _hasValue;
+    private long _from;
+    private long _to;
+    private long _startMs;
+    private long _durationMs;
+    private long _lastMs;
+
+    /// <summary>Test seam: the milliseconds <see cref="NowMs"/> gives, in place of the real clock.</summary>
+    internal static Func<long>? ClockOverride { get; set; }
+
+    /// <summary>Milliseconds on a clock that only goes forward.</summary>
+    internal static long NowMs() => ClockOverride?.Invoke() ?? Clock.ElapsedMilliseconds;
+
+    /// <summary>A new target at <paramref name="nowMs"/>; null forgets the count.</summary>
+    internal void Set(long? value, long nowMs)
+    {
+        if (value == null)
+        {
+            _hasValue = false;
+            _from = _to = 0;
+            return;
+        }
+        var shown = Display(nowMs);
+        if (!_hasValue)
+        {
+            _from = 0;
+            _durationMs = FirstMs;
+        }
+        else if (value.Value < shown)
+        {
+            _from = value.Value; // a lower value jumps straight to it
+            _durationMs = 0;
+        }
+        else
+        {
+            _from = shown;
+            _durationMs = Math.Max(MinMs, Math.Min(MaxMs, nowMs - _lastMs));
+        }
+        _hasValue = true;
+        _to = value.Value;
+        _startMs = nowMs;
+        _lastMs = nowMs;
+    }
+
+    /// <summary>The count shown at <paramref name="nowMs"/>.</summary>
+    internal long Display(long nowMs)
+    {
+        if (!_hasValue) return 0;
+        if (_durationMs <= 0 || nowMs >= _startMs + _durationMs) return _to;
+        if (nowMs <= _startMs) return _from;
+        return _from + (long)((_to - _from) * ((nowMs - _startMs) / (double)_durationMs));
+    }
+
+    internal bool IsMoving(long nowMs) => _hasValue && _durationMs > 0 && nowMs < _startMs + _durationMs;
+}
+
 /// <summary>What a <see cref="NoticeItem"/> tells.</summary>
 public enum NoticeKind
 {
@@ -356,6 +452,36 @@ public sealed class NoticeItem : ChatItem
     }
 
     public NoticeKind Kind { get; }
+}
+
+/// <summary>
+/// The card that marks a compaction of the conversation: "Compacted chat · manual · 36k tokens freed", closed until it is opened to
+/// the summary the claude wrote. It replaces the notice (<see cref="NoticeKind.Compacted"/>) that the boundary and the summary used to be.
+/// </summary>
+public sealed class CompactionItem : ChatItem
+{
+    private string? _summary;
+    private bool _isExpanded;
+
+    /// <summary>What started it: <c>manual</c> (the user ran <c>/compact</c>) or <c>auto</c> (the context was full); empty when the line does not tell.</summary>
+    public string Trigger { get; init; } = "";
+
+    /// <summary>The tokens the conversation held before; null when not told.</summary>
+    public long? TokensBefore { get; init; }
+
+    /// <summary>The summary the claude wrote of the conversation, in Markdown; null until it arrives, or when it never does.</summary>
+    public string? Summary
+    {
+        get => _summary;
+        set => SetField(ref _summary, value);
+    }
+
+    /// <summary>Whether the card is open to the summary.</summary>
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetField(ref _isExpanded, value);
+    }
 }
 
 /// <summary>What a slash command the claude ran locally printed (<c>/compact</c>, <c>/context</c>…).</summary>

@@ -125,6 +125,10 @@ internal static class UiHelpers
             .Select(t => string.IsNullOrEmpty(t.Text) && t.Inlines is { Count: > 0 } inlines ? inlines.Text ?? "" : t.Text ?? "")
             .ToList();
 
+    /// <summary>The text of the Markdown drawn under <paramref name="root"/>: its paragraphs, joined by a space.</summary>
+    public static string MarkdownText(Visual root) =>
+        string.Join(" ", root.GetVisualDescendants().OfType<ColorTextBlock.Avalonia.CTextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text));
+
     public static bool AtEnd(ScrollViewer scroller) =>
         scroller.Offset.Y >= scroller.Extent.Height - scroller.Viewport.Height - 1;
 

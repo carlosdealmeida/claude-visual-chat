@@ -28,9 +28,6 @@ internal static class ChatConverters
     public static readonly IValueConverter FullTime = new FuncValueConverter<object?, string?>(value =>
         value is DateTimeOffset time ? ChatStrings.FormatFullTime(time) : null);
 
-    /// <summary>(IsStreaming, DurationMs, <see cref="ChatStrings"/>) → "Thinking" or "Thought for 3s".</summary>
-    public static readonly IMultiValueConverter ThinkingLabel = new ThinkingLabelConverter();
-
     public static readonly IValueConverter IsTurnFailed = new FuncValueConverter<NoticeKind, bool>(kind => kind == NoticeKind.TurnFailed);
 
     /// <summary>
@@ -65,16 +62,6 @@ internal static class ChatConverters
     /// <summary>A tool's summary as its tooltip: none when empty, else cut like the texts of the list.</summary>
     public static readonly IValueConverter ToolTipText = new FuncValueConverter<string?, string?>(text =>
         string.IsNullOrEmpty(text) ? null : ChatText.ClipLines(text, ToolCallView.BoxLines, ToolCallView.MaxLineChars));
-
-    private sealed class ThinkingLabelConverter : IMultiValueConverter
-    {
-        public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
-        {
-            var strings = values.Count > 2 ? values[2] as ChatStrings ?? ChatStrings.English : ChatStrings.English;
-            var streaming = values.Count > 0 && values[0] is true;
-            return !streaming && values.Count > 1 && values[1] is long ms ? strings.FormatThoughtFor(ms) : strings.Thinking;
-        }
-    }
 
     private sealed class TimeConverter : IMultiValueConverter
     {

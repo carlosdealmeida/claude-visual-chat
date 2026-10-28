@@ -55,12 +55,25 @@ namespace ClaudeVisualChat.Protocol
 
         /// <summary>The images that came with the text; empty by default.</summary>
         public IReadOnlyList<ImageBlock> Images { get; init; } = Array.Empty<ImageBlock>();
+
+        /// <summary>The line is the claude's own (<c>isSynthetic</c>), not something the user wrote: after a compaction, the summary comes so.</summary>
+        public bool IsSynthetic { get; init; }
     }
 
     /// <summary>A streamed block opened. A <c>tool_use</c> starts with an empty <c>{}</c> input.</summary>
     public sealed record BlockStarted(string MessageId, int Index, string? ParentToolUseId, ContentBlock Block) : ClaudeEvent;
 
-    public sealed record BlockDelta(string MessageId, int Index, string? ParentToolUseId, DeltaKind Kind, string Text) : ClaudeEvent;
+    public sealed record BlockDelta(string MessageId, int Index, string? ParentToolUseId, DeltaKind Kind, string Text) : ClaudeEvent
+    {
+        /// <summary>For a thought: the tokens it has used so far, as the delta tells (<c>estimated_tokens</c>); null when not told.</summary>
+        public long? EstimatedTokens { get; init; }
+    }
+
+    /// <summary>
+    /// How many tokens the claude has thought so far in the block that is arriving (<c>system/thinking_tokens</c>): the
+    /// absolute count, which only grows within a block.
+    /// </summary>
+    public sealed record ThinkingTokens(long EstimatedTokens) : ClaudeEvent;
 
     public sealed record BlockStopped(string MessageId, int Index, string? ParentToolUseId) : ClaudeEvent;
 
@@ -89,7 +102,17 @@ namespace ClaudeVisualChat.Protocol
         : ClaudeEvent;
 
     /// <summary>Marker for <c>compact_boundary</c> and <c>api_retry</c>.</summary>
-    public sealed record SystemNotice(string Subtype) : ClaudeEvent;
+    public sealed record SystemNotice(string Subtype) : ClaudeEvent
+    {
+        /// <summary>For <c>compact_boundary</c>: what started the compaction, <c>manual</c> or <c>auto</c> (<c>compact_metadata.trigger</c>); null when not told.</summary>
+        public string? Trigger { get; init; }
+
+        /// <summary>For <c>compact_boundary</c>: the tokens the conversation held before (<c>pre_tokens</c>); null when not told.</summary>
+        public long? PreTokens { get; init; }
+
+        /// <summary>For <c>compact_boundary</c>: the tokens it holds after (<c>post_tokens</c>); null when not told.</summary>
+        public long? PostTokens { get; init; }
+    }
 
     /// <summary>The slash commands the session offers (from <c>initialize</c> or <c>commands_changed</c>).</summary>
     public sealed record CommandsAvailable(IReadOnlyList<ChatCommand> Commands) : ClaudeEvent;

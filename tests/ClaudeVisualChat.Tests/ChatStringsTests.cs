@@ -286,6 +286,49 @@ public class ChatStringsTests
         Assert.Equal(",", custom.ThousandsSeparator);
     }
 
+    [Theory]
+    [InlineData(0, "0", "0")]
+    [InlineData(340, "340", "340")]
+    [InlineData(999, "999", "999")]
+    [InlineData(1000, "1.0k", "1,0k")]
+    [InlineData(1234, "1.2k", "1,2k")]
+    [InlineData(1250, "1.3k", "1,3k")]
+    [InlineData(48700, "48.7k", "48,7k")]
+    public void The_thinking_estimate_is_whole_below_a_thousand_and_thousands_with_a_decimal_after(long tokens, string english, string portuguese)
+    {
+        Assert.Equal(" · " + english + " tokens", En.FormatThinkingTokens(tokens));
+        Assert.Equal(" · " + portuguese + " tokens", Pt.FormatThinkingTokens(tokens));
+    }
+
+    [Fact]
+    public void The_thinking_and_compaction_texts_in_both_languages()
+    {
+        Assert.Equal("Thinking...", En.ThinkingNow);
+        Assert.Equal("Pensando...", Pt.ThinkingNow);
+        Assert.Equal("Conversation was compacted to free up context.", En.CompactionNoSummary);
+        Assert.Equal("A conversa foi compactada para liberar contexto.", Pt.CompactionNoSummary);
+    }
+
+    [Theory]
+    [InlineData(36326, "Compacted chat · manual · 36k tokens freed", "Conversa compactada · manual · 36k tokens liberados")]
+    [InlineData(36500, "Compacted chat · manual · 37k tokens freed", "Conversa compactada · manual · 37k tokens liberados")]
+    [InlineData(499, "Compacted chat · manual · 0k tokens freed", "Conversa compactada · manual · 0k tokens liberados")]
+    [InlineData(1_204_000, "Compacted chat · manual · 1204k tokens freed", "Conversa compactada · manual · 1204k tokens liberados")]
+    public void The_compaction_head_rounds_the_thousands_and_names_the_trigger(long before, string english, string portuguese)
+    {
+        Assert.Equal(english, En.FormatCompaction("manual", before));
+        Assert.Equal(portuguese, Pt.FormatCompaction("manual", before));
+    }
+
+    [Fact]
+    public void The_compaction_head_keeps_only_what_is_known()
+    {
+        Assert.Equal("Compacted chat · auto", En.FormatCompaction("auto", null));
+        Assert.Equal("Compacted chat", En.FormatCompaction("", 36326));
+        Assert.Equal("Compacted chat", En.FormatCompaction(null, null));
+        Assert.Equal("Conversa compactada", Pt.FormatCompaction(null, null));
+    }
+
     // words that are the same in both languages
     private static readonly string[] SameInBoth =
     {
@@ -293,7 +336,7 @@ public class ChatStringsTests
         nameof(ChatStrings.RemoteControl),
         nameof(ChatStrings.EffortMax), nameof(ChatStrings.EffortAuto),
         nameof(ChatStrings.UsageResetsDay), nameof(ChatStrings.PanelLoading),
-        nameof(ChatStrings.AgentTokens),
+        nameof(ChatStrings.AgentTokens), nameof(ChatStrings.ThinkingTokensEstimate),
         nameof(ChatStrings.AgentToolTitle), nameof(ChatStrings.WebFetchToolTitle), nameof(ChatStrings.WebSearchToolTitle),
         nameof(ChatStrings.ChromeToolTitle),
     };

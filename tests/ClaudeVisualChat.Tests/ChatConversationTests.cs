@@ -816,7 +816,7 @@ public class ChatConversationTests
         Assert.Equal(NoticeKind.Interrupted, Assert.IsType<NoticeItem>(c.Items.Last()).Kind);
 
         c.Apply(new UserBlock(null, new TextContentBlock("This session is being continued..."), null, false, true));
-        Assert.Equal(NoticeKind.Compacted, Assert.IsType<NoticeItem>(c.Items.Last()).Kind);
+        Assert.Equal("This session is being continued...", Assert.IsType<CompactionItem>(c.Items.Last()).Summary);
         Assert.Equal(3, c.Items.Count);
     }
 
@@ -829,9 +829,11 @@ public class ChatConversationTests
         c.Apply(new SystemNotice("api_retry"));
         c.Apply(new SystemNotice("api_retry"));
 
-        // the transcript marks one compaction twice (boundary and summary); a repeated notice shows once
-        Assert.Equal(new[] { NoticeKind.Compacted, NoticeKind.ApiRetry },
-            c.Items.Cast<NoticeItem>().Select(n => n.Kind));
+        // the transcript marks one compaction twice (boundary and summary): one card, with the summary in it; a repeated notice shows once
+        var card = Assert.IsType<CompactionItem>(c.Items[0]);
+        Assert.Equal("summary of the earlier conversation", card.Summary);
+        Assert.Equal(NoticeKind.ApiRetry, Assert.IsType<NoticeItem>(c.Items[1]).Kind);
+        Assert.Equal(2, c.Items.Count);
     }
 
     [Fact]
@@ -2390,5 +2392,222 @@ public class ChatConversationTests
         Assert.True(Guid.TryParse(sent[1].Uuid, out _));
         Assert.NotEqual(sent[0].Uuid, sent[1].Uuid);
         Assert.True(Guid.TryParse(new MessageSubmittedEventArgs("by hand").Uuid, out _));
+    }
+
+    // ---- the thinking tokens and the compaction card (0.6.0) ----
+
+    private static ThinkingItem StartThought(ChatConversation c, string messageId = "m1", string? parent = null)
+    {
+        c.Apply(new BlockStarted(messageId, 0, parent, new ThinkingBlock("")));
+        return c.Items.OfType<ThinkingItem>().Last();
+    }
+
+    [Fact]
+    public void Thinking_tokens_set_the_estimate_and_later_deltas_are_ignored()
+    {
+        var c = new ChatConversation();
+        var thought = StartThought(c);
+        Assert.Null(thought.EstimatedTokens);
+
+        c.Apply(new ThinkingTokens(217));
+        Assert.Equal(217, thought.EstimatedTokens);
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Thinking, "") { EstimatedTokens = 999 }); // once the claude counts, its deltas do not
+        Assert.Equal(217, thought.EstimatedTokens);
+        c.Apply(new ThinkingTokens(300));
+        Assert.Equal(300, thought.EstimatedTokens);
+    }
+
+    [Fact]
+    public void Without_the_count_the_deltas_are_summed_and_each_block_starts_over()
+    {
+        var c = new ChatConversation();
+        var first = StartThought(c);
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Thinking, "a") { EstimatedTokens = 50 });
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Thinking, "b") { EstimatedTokens = null });
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Thinking, "c") { EstimatedTokens = 30 });
+        Assert.Equal(80, first.EstimatedTokens);
+
+        c.Apply(new BlockStopped("m1", 0, null));
+        var second = StartThought(c, "m2");
+        Assert.Null(second.EstimatedTokens);
+        c.Apply(new BlockDelta("m2", 0, null, DeltaKind.Thinking, "d") { EstimatedTokens = 20 });
+        Assert.Equal(20, second.EstimatedTokens);
+    }
+
+    [Fact]
+    public void A_subagents_thought_has_no_estimate()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m0", null, new ToolUseBlock("t1", "Agent", J("{\"description\":\"x\",\"prompt\":\"y\"}"))));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        c.Apply(new BlockStarted("m1", 0, "t1", new ThinkingBlock("")));
+        var thought = Assert.IsType<ThinkingItem>(Assert.Single(tool.Children));
+        c.Apply(new BlockDelta("m1", 0, "t1", DeltaKind.Thinking, "a") { EstimatedTokens = 50 });
+        c.Apply(new ThinkingTokens(70));                                  // the line does not say whose it is: it is the main agent's
+        Assert.Null(thought.EstimatedTokens);
+    }
+
+    [Fact]
+    public void The_estimate_clears_when_the_turn_ends()
+    {
+        var c = new ChatConversation();
+        var thought = StartThought(c);
+        c.Apply(new ThinkingTokens(217));
+        Assert.Equal(217, thought.EstimatedTokens);
+
+        c.Apply(new TurnCompleted("success", false, 1, null, null, null));
+        Assert.Null(thought.EstimatedTokens);
+        Assert.False(thought.IsStreaming);
+
+        // and the next session counts afresh: the deltas count until the claude tells its count again
+        var next = StartThought(c, "m2");
+        c.Apply(new BlockDelta("m2", 0, null, DeltaKind.Thinking, "") { EstimatedTokens = 40 });
+        Assert.Equal(40, next.EstimatedTokens);
+    }
+
+    [Fact]
+    public void The_estimate_goes_when_the_thought_is_whole()
+    {
+        var c = new ChatConversation();
+        var thought = StartThought(c);
+        c.Apply(new ThinkingTokens(217));
+        c.Apply(new AssistantBlock("m1", null, new ThinkingBlock("hm")));
+        Assert.Null(thought.EstimatedTokens);
+        c.Apply(new ThinkingTokens(300));                                 // a late count has no thought to land on
+        Assert.Null(thought.EstimatedTokens);
+    }
+
+    [Fact]
+    public void The_recorded_thinking_tokens_reach_the_item_while_it_streams()
+    {
+        var c = new ChatConversation();
+        long? atSecondCount = null;
+        foreach (var line in FixtureFiles.StreamLines("effort"))
+        {
+            c.AppendLine(line);
+            if (line.Contains("\"estimated_tokens\": 195")) atSecondCount = c.Items.OfType<ThinkingItem>().Single().EstimatedTokens;
+        }
+        Assert.Equal(195, atSecondCount);
+        Assert.Null(c.Items.OfType<ThinkingItem>().Single().EstimatedTokens);   // the turn is over
+    }
+
+    [Theory]
+    [InlineData(0, 200, 0)]
+    [InlineData(600, 200, 100)]
+    [InlineData(1200, 200, 200)]
+    [InlineData(5000, 200, 200)]
+    public void The_first_count_climbs_for_1200_ms(long at, long target, long expected)
+    {
+        var up = new TokenCountUp();
+        up.Set(target, 0);
+        Assert.Equal(expected, up.Display(at));
+    }
+
+    [Fact]
+    public void The_next_counts_climb_for_the_time_since_the_last_one_between_300_and_3000_ms()
+    {
+        var up = new TokenCountUp();
+        up.Set(100, 0);
+        Assert.Equal(100, up.Display(1200));
+        up.Set(200, 1500);                                                // 1500 ms since the last: 100 to 200 in 1500 ms
+        Assert.Equal(100, up.Display(1500));
+        Assert.Equal(150, up.Display(2250));
+        Assert.Equal(200, up.Display(3000));
+        Assert.False(up.IsMoving(3000));
+        up.Set(400, 3200);                                                // 1700 ms since the last
+        Assert.True(up.IsMoving(4899));
+        Assert.False(up.IsMoving(4900));
+        up.Set(500, 3300);                                                // 100 ms since: no less than 300
+        Assert.True(up.IsMoving(3599));
+        Assert.False(up.IsMoving(3600));
+        up.Set(600, 100_000);                                             // a long wait: no more than 3000
+        Assert.True(up.IsMoving(102_999));
+        Assert.False(up.IsMoving(103_000));
+    }
+
+    [Fact]
+    public void A_lower_count_is_shown_at_once_and_none_forgets_the_count()
+    {
+        var up = new TokenCountUp();
+        up.Set(500, 0);
+        Assert.Equal(500, up.Display(1200));
+        up.Set(120, 2000);
+        Assert.Equal(120, up.Display(2000));
+        Assert.False(up.IsMoving(2000));
+        up.Set(null, 2100);
+        Assert.Equal(0, up.Display(2100));
+        up.Set(80, 2200);                                                 // as the first count again
+        Assert.True(up.IsMoving(3399));
+        Assert.False(up.IsMoving(3400));
+    }
+
+    [Fact]
+    public void A_compact_boundary_makes_a_compaction_card_with_trigger_and_tokens()
+    {
+        var c = Play("commands");
+        var card = Assert.Single(c.Items.OfType<CompactionItem>());
+        Assert.Equal("manual", card.Trigger);
+        Assert.Equal(36326, card.TokensBefore);
+        Assert.False(card.IsExpanded);
+        Assert.Equal("Compacted chat · manual · 36k tokens freed", ChatStrings.English.FormatCompaction(card.Trigger, card.TokensBefore));
+        Assert.DoesNotContain(c.Items, i => i is NoticeItem { Kind: NoticeKind.Compacted });
+    }
+
+    [Fact]
+    public void The_live_synthetic_summary_goes_into_the_card_not_into_a_user_message()
+    {
+        var c = Play("commands");
+        var card = Assert.Single(c.Items.OfType<CompactionItem>());
+        Assert.StartsWith("This session is being continued from a previous conversation", card.Summary);
+        Assert.DoesNotContain(c.Items.OfType<UserMessageItem>(), m => m.Text.StartsWith("This session is being continued", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Only_the_first_synthetic_line_after_the_boundary_is_the_summary()
+    {
+        var c = new ChatConversation();
+        c.Apply(new UserBlock(null, new TextContentBlock("lonely"), null, false, false) { IsSynthetic = true });
+        Assert.Equal("lonely", Assert.IsType<UserMessageItem>(Assert.Single(c.Items)).Text);          // no boundary before it: a message as ever
+
+        c.Apply(new SystemNotice("compact_boundary") { Trigger = "auto", PreTokens = 160_000, PostTokens = 3000 });
+        c.Apply(new UserBlock(null, new TextContentBlock("the summary"), null, false, false) { IsSynthetic = true });
+        c.Apply(new UserBlock(null, new TextContentBlock("another"), null, false, false) { IsSynthetic = true });
+        var card = Assert.Single(c.Items.OfType<CompactionItem>());
+        Assert.Equal("the summary", card.Summary);
+        Assert.Equal("auto", card.Trigger);
+        Assert.Equal("another", Assert.IsType<UserMessageItem>(c.Items.Last()).Text);
+        Assert.True(c.IsPromptCacheCompacted);
+    }
+
+    [Fact]
+    public void A_synthetic_line_after_the_claude_went_on_is_not_a_summary()
+    {
+        var c = new ChatConversation();
+        c.Apply(new SystemNotice("compact_boundary") { Trigger = "manual", PreTokens = 1000 });
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("hello")));      // the claude went on without a summary
+        c.Apply(new UserBlock(null, new TextContentBlock("later"), null, false, false) { IsSynthetic = true });
+        Assert.Null(Assert.Single(c.Items.OfType<CompactionItem>()).Summary);
+        Assert.Equal("later", Assert.IsType<UserMessageItem>(c.Items.Last()).Text);
+    }
+
+    [Fact]
+    public void A_session_file_with_a_compaction_gives_one_card_with_its_summary()
+    {
+        var c = Load("commands");
+        var card = Assert.Single(c.Items.OfType<CompactionItem>());
+        Assert.StartsWith("This session is being continued", card.Summary);
+        Assert.Equal("", card.Trigger);                                   // the file's boundary does not tell
+        Assert.Null(card.TokensBefore);
+        Assert.Equal("Compacted chat", ChatStrings.English.FormatCompaction(card.Trigger, card.TokensBefore));
+    }
+
+    [Fact]
+    public void Clearing_forgets_a_card_waiting_for_its_summary()
+    {
+        var c = new ChatConversation();
+        c.Apply(new SystemNotice("compact_boundary") { Trigger = "manual", PreTokens = 1000 });
+        c.Clear();
+        c.Apply(new UserBlock(null, new TextContentBlock("just a line"), null, false, false) { IsSynthetic = true });
+        Assert.IsType<UserMessageItem>(Assert.Single(c.Items));
     }
 }
