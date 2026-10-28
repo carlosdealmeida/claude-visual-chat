@@ -108,8 +108,9 @@ internal abstract class ChatMenuPopup : Popup
 /// <see cref="ChatConversation.PaletteCommands"/>, each as <c>/name</c> with its description in the tooltip. A group with nothing
 /// to show is not there, and a divider of 1 px opens each one after the first. The / button opens it with a filter field that takes
 /// the keyboard, and without a filter it lists the actions only; a "/" typed in the empty reply box opens it with every group, the slash
-/// commands in their place and without the field, filtered by what follows the "/" until a space or the "/" goes. The slash commands are in alphabetical order. A row matches by its name (exactly, then
-/// at its start, then anywhere) and then by its description, in that order within each, inside its group. The arrows move the
+/// commands in their place and without the field, filtered by what follows the "/" until a space or the "/" goes. The slash commands
+/// are in alphabetical order. A row matches by its name (exactly, then at its start, then anywhere) and then by its description; inside
+/// each of those the rows keep the order they come in (the slash commands alphabetically), inside its group. The arrows move the
 /// mark, Enter runs the marked row (a command is <see cref="ChatConversation.Submit"/> with <c>/name</c>), Tab puts <c>/name </c>
 /// in the reply box, Esc closes and gives the keyboard back to the box. A press on a row runs it; in the touch layout a tap does
 /// (the pointer let go where it was pressed), so that a finger that scrolls the list runs nothing. The touch layout has the same
@@ -577,7 +578,8 @@ internal sealed class CommandPalette : ChatMenuPopup
 
     /// <summary>
     /// The commands that match, best first: the name equal to the query, then starting with it, then having it, then
-    /// the description having it; in the claude's order within each. An empty query keeps them all, in that order.
+    /// the description having it. Inside each of these the commands keep the order they come in (<see cref="Rank"/> does not sort by
+    /// name: the palette hands it the commands in alphabetical order). An empty query keeps them all, in that order.
     /// </summary>
     internal static List<ChatCommand> Rank(IReadOnlyList<ChatCommand> commands, string query, ChatStrings strings) =>
         RankBy(commands, query, command => command.Name, command => Describe(command, strings));

@@ -214,6 +214,55 @@ All notable changes to this project are written here. The format follows
   `ClaudeChat.Icon.Bookmark`, `ClaudeChat.Icon.ThumbUp` and `ClaudeChat.Icon.ThumbDown`, and the template
   `ClaudeChat.QueuedMessageTemplate`.
 
+- Prompts of the conversation come back in the reply box with the up and down arrows, as in the extension: up with the
+  caret at the start of the text (an empty box counts) brings the previous prompt and keeps what was being written, down
+  with the caret at the end goes to the next one and, past the newest, gives the draft back. They are this
+  conversation's prompts, the queued ones included, without the empty ones, the synthetic lines and the subagents',
+  trimmed, with the repeats; the list is the one at the first up. A recalled `/command` does not open the palette
+  until it is edited. Clearing the box ends the walk. It works while Claude is busy, and not with the palette or the
+  model menu open.
+- Reply box shortcuts: Ctrl+J breaks the line; Shift+Tab walks the permission modes `default`, `acceptEdits`, `plan`,
+  `auto` and back to `default`, only among `ClaudeChatView.AvailableModes`, raising `PermissionModeRequested`;
+  Ctrl+Alt+F is the Focus view's shortcut, which the view hears wherever the keyboard is inside it. A read-only view
+  acts on none of them.
+- `ClaudeChatView.UseCtrlEnterToSend` (false by default; the extension's `useCtrlEnterToSend`): true makes only Ctrl or
+  Cmd+Enter send and Enter break the line. The touch layout keeps its own rule (Enter breaks the line, Ctrl+Enter
+  sends) and now takes Cmd+Enter too.
+- A text pasted into the reply box, and a message when it is sent, lose the characters that cannot be seen (zero-width
+  characters, the tags block, the direction controls, the variation selectors, the control codes), and their line
+  breaks become line feeds. A notice over the box says how many went ("Removed 1 invisible character from the pasted
+  text"). On send the box is filled again with the clean text, the notice asks to look at it ("... review and press
+  Enter to send", Ctrl/Cmd+Enter with `UseCtrlEnterToSend`) and nothing is sent; the next send goes. The notice ends with
+  its ×, with any edit of the text or with another conversation. What the text needs stays: a joiner inside a word of a
+  script that joins letters or between emoji, a space of zero width between letters of Thai, Lao, Khmer or Myanmar,
+  the selectors after an emoji (after a digit, `#` or `*` only with the keycap U+20E3), one direction mark for each
+  sequence on a line with right-to-left letters, and the flags of England, Scotland and Wales. A message of more than
+  50,000 characters is cut there and ends with "[Message truncated - exceeded 50,000 character limit]".
+- `MessageSubmittedEventArgs.InlinePastes` (`init`, never null): the long texts pasted into the box (more than 800
+  characters or more than two line breaks, and 20 characters or more once trimmed) that are still in the message, so
+  the host can tell them from what was typed. `StdinMessages.UserMessage(e)` writes them as `inline_pastes`, after the
+  `uuid`, only when there are some. The box remembers the last 100 for each conversation, and a prompt recalled with up
+  goes with them again.
+- The history takes the `<pasted_content id="abcd">` wrapper that the claude puts around a long paste off a user
+  message, in a session file and live, and shows the pasted text where the wrapper was.
+- The command palette opened by the / button is in sections (Context, Model, Customize, Settings, Slash Commands,
+  Support) with the rows the component runs: attach a file, switch model, effort, account and usage and, where the host
+  opens links, the help docs (the extension's VS Code page). A row can be a switch, and one that keeps the palette open
+  redraws in place. The slash commands are in alphabetical order; with the / button they show once something is typed
+  in the field, and a "/" typed in the empty box opens the palette with every group, filtered by what follows the "/".
+  Typing `/model` and pressing Enter marks "Switch model..." before a `/model` command, because that is the order of the
+  sections in the extension 2.1.310.
+- The hint of a command's arguments shows as ghost text after `/name ` in the reply box (`/copy` shows `[N]`).
+- Dragging files over the chat shows "Drop to attach as context" over the whole view, which takes the drop wherever it
+  falls and not only on the reply box; a file of a type that cannot be attached names the types ("Unsupported file
+  type(s): .zip"). A read-only view shows no overlay and takes no drop.
+- New `ChatStrings` texts, in English and Portuguese: `MessageInput`, `InvisibleRemovedOne`, `InvisibleRemoved`,
+  `InvisibleReview`, `InvisibleReviewCtrl`, `InvisibleEmpty`, `InvisiblePasted`, `DismissNotice`; `PaletteContext`,
+  `PaletteCustomize`, `PaletteSettings`, `PaletteSupport`, `PaletteAttachFile`, `PaletteSwitchModel`,
+  `PaletteAccountUsage`, `PaletteHelpDocs`; `DropToAttach`, `UnsupportedFileTypes`.
+- New theme resources: `ClaudeChat.BannerWarningForeground` and `ClaudeChat.BannerWarningBackground` (the notice over
+  the reply box, in both themes), `ClaudeChat.DropFill`, `ClaudeChat.DropBorder` and `ClaudeChat.DropLabelShadow`.
+
 ### Breaking
 
 Nothing public was removed or renamed. These changes of 0.6.0 may still need a change in a host that reads `Items`,
@@ -240,6 +289,12 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   in their place are `TextBlock.ClaudeChatWorkingGlyph` and `TextBlock.ClaudeChatWorkingText`.
 - Text: `ChatStrings.Interrupted` reads "Interrupted", where it read "Interrupted by the user" (in Portuguese
   "Interrompido", where it read "Interrompido por você"). A host that compared the text sees the new one.
+- Text: the reply box reads "Ask Claude to edit..." when idle (`ChatStrings.InputPlaceholder`; in Portuguese "Peça ao
+  Claude para editar..."), where it read "Reply to Claude..." ("Responder ao Claude..."), as the extension's does. A
+  host that compared the text sees the new one.
+- Text: a file of a type that cannot be attached, dropped, picked with the **+** or pasted, says "Unsupported file
+  type(s): {0}" (`ChatStrings.UnsupportedFileTypes`, with the types), where it said "Only PDF, text and CSV files".
+  `ChatStrings.FileNotSupported` stays for a file of an accepted type that cannot be read.
 
 ### Changed
 
@@ -347,6 +402,21 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   text; the working verbs are the component's own, in English and Portuguese; and the messages of agents, sessions and
   channels are recognized by the component's own reading of their format, so a message of a shape the claude does not
   write may be read a little differently from the extension.
+- The reply box on the desktop has the extension's line height (19.5 px, `ClaudeChat.LineHeight`), where it had the
+  font's own, and its placeholder is one line with an ellipsis. The field's name for a screen reader is "Message
+  input" (`ChatStrings.MessageInput`).
+- A text pasted into the reply box is read from the clipboard and put in by the component on every platform (it used to
+  be the text box's own paste), which is what lets it be cleaned; it is still one step of undo, replaces the
+  selection and leaves the caret after it.
+- The reply box no longer takes the drop by itself: the view takes it wherever it falls, so a file dropped on the list
+  is attached once, as one dropped on the box. The palette's "View help docs" opens
+  `https://code.claude.com/docs/en/vs-code`.
+- Where this group differs from the extension 2.1.310 on purpose: a paste cut by the 50,000 limit is not sent as an
+  `inline_pastes` entry (only the pastes that fit whole); the direction of the text follows the control
+  (`FlowDirection`), not each paragraph, so a mixed text has its runs ordered but its base direction is the control's;
+  the "Effort" row of the palette steps through the levels where the extension has a slider; the palette has no
+  Customize or Settings rows yet (nor Rewind, Bookmarks, Clear conversation, Export or the footer); and a file dropped
+  while a permission request waits is attached, where the extension ignores the drop.
 
 ### Removed
 

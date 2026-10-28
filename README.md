@@ -133,7 +133,7 @@ when the box is empty (`SubmitUndone` carries it, for a host that wants it elsew
 ## Attachments
 
 The reply box takes images: the **+** button opens a file picker, Ctrl+V pastes an image (when the clipboard also has
-text, the text wins), and files can be dragged onto the box. Each one shows as a pill with a thumbnail, name, size and
+text, the text wins), and files can be dragged onto the chat. Each one shows as a pill with a thumbnail, name, size and
 a ×; a click on the thumbnail opens a full preview. Images are shrunk to fit (`MaxImageSide`, 1568 px by default, and
 `ImageBudgetBytes`, 3,750,000 bytes for the whole message), at most `MaxImages` (10) per message; a refused image says
 why (`ImageTooBig`, `TooManyImages`, `NotAnImage` in `ChatStrings`). A message can be only images. The host sends them
@@ -154,8 +154,8 @@ The reply box also takes PDF, text and CSV files: the **+** button, dragging and
 work for them as for images, and images and files together go each to their place (text on the clipboard still wins
 over files). With `MaxFiles` at 0 the **+** dialog offers images only. A file is a `.pdf` that starts with `%PDF-`, or a
 `.txt`, `.log`, `.md`, `.json` or `.csv` with no null byte in its first 8 KB; at most `MaxFiles` (5) per message and
-`MaxFileBytes` (25 MB) each. A refused file says why (`FileTooBig`, `FileNotSupported`, `TooManyFiles` in
-`ChatStrings`). Each one shows as a chip with its type's icon, name and size. From your own code:
+`MaxFileBytes` (25 MB) each. A refused file says why (`FileTooBig`, `FileNotSupported` for one it cannot read, `UnsupportedFileTypes` for a type it does not take,
+`TooManyFiles` in `ChatStrings`). Each one shows as a chip with its type's icon, name and size. From your own code:
 `ChatConversation.AddFileAsync(path)` (reads only the size and the first 8 KB) or `AddFile(name, bytes)`.
 
 **Your app sends the files; the component only shows them.** The claude reads a file from a path on its own machine, so
@@ -190,12 +190,49 @@ conversation takes those lines off the text and shows a chip for each (named aft
 For your own code, `AttachedFileLine.Format(path)` writes such a line and `AttachedFileLine.Split(message)` takes them
 off. Set `Progress` and `RemotePath` on the UI thread.
 
+## The reply box
+
+The keys of the box, as in the extension 2.1.310:
+
+- **Up and down** bring back the prompts of this conversation, the queued ones included. Up, with the caret at the start
+  of the text (an empty box counts), brings the previous prompt and keeps what was being written; down, with the caret
+  at the end, goes to the next one and, past the newest, gives the draft back. Clearing the box ends the walk. A
+  recalled `/command` does not open the palette until it is edited.
+- **Ctrl+J** breaks the line. **Shift+Tab** walks the permission modes `default`, `acceptEdits`, `plan`, `auto` and
+  back, only among `ClaudeChatView.AvailableModes`, and raises `PermissionModeRequested`. **Ctrl+Alt+F** is the Focus
+  view's shortcut. A read-only view acts on none of them.
+- `ClaudeChatView.UseCtrlEnterToSend` (false): Enter sends. Set to true, only Ctrl or Cmd+Enter sends and Enter breaks
+  the line (the touch layout always breaks the line on Enter and sends on Ctrl or Cmd+Enter).
+
+  ```xml
+  <controls:ClaudeChatView Conversation="{Binding Chat}" UseCtrlEnterToSend="True" />
+  ```
+
+- **Dropping files** anywhere on the chat attaches them: while a drag is over the view, "Drop to attach as context"
+  shows over all of it. A file of a type the box does not take names the types ("Unsupported file type(s): .zip"). A
+  read-only view shows nothing and takes no drop.
+- **Invisible characters.** A pasted text, and a message when it is sent, lose the zero-width characters, the tags
+  block, the direction controls, the variation selectors and the control codes, except where the text needs them (a
+  joiner in a word of a script that joins letters or between emoji, the selectors after an emoji, one direction mark on
+  a line with right-to-left letters). A notice over the box says how many went; on send it fills the box with the clean
+  text, asks to look at it and sends nothing, and the next send goes. A message over 50,000 characters is cut there.
+- **Long pastes.** The box remembers the long texts pasted into it (more than 800 characters or more than two line
+  breaks) and `MessageSubmittedEventArgs.InlinePastes` lists those still in the message. `StdinMessages.UserMessage(e)`
+  writes them as `inline_pastes`, only when there are some.
+- The idle placeholder is "Ask Claude to edit..." (`ChatStrings.InputPlaceholder`); while Claude works, "Queue another
+  message...".
+
 ## Commands
 
-The `/` button in the bar, or typing `/` in an empty box, opens the command palette: a filter field, then the commands
-by exact name, prefix, name containing and description. Arrows move, Enter runs, Tab inserts the command in the box
-and Esc closes. The commands are what the claude lists in its `initialize` answer (the control request your app sent
-in the quick start): feed that answer to `AppendLine`, or set them yourself.
+The `/` button in the bar, or typing `/` in an empty box, opens the command palette, in sections as the extension's:
+Context (attach a file), Model (switch model, effort, account and usage), Customize, Settings, Slash Commands and
+Support ("View help docs", only where your app handles `LinkRequested`). A section with nothing to show is not there.
+The `/` button opens a filter field and lists the actions; the commands show once something is typed in it, and a `/`
+typed in the empty box lists every section, filtered by what follows. The commands are in alphabetical order, ranked
+inside each section by exact name, prefix, name containing and description. Arrows move, Enter runs, Tab inserts the
+command in the box and Esc closes. After `/name ` the hint of the command's arguments shows as ghost text in the box.
+The commands are what the claude lists in its `initialize` answer (the control request your app sent in the quick
+start): feed that answer to `AppendLine`, or set them yourself.
 
 ```csharp
 conversation.Commands = new[] { new ChatCommand("review", "Review a pull request", "<pr>") };
@@ -427,9 +464,10 @@ a star and verbs. Nothing to set up for those. What your app may want to know:
   A thumb down opens "What went wrong?", a layer of `CloseTopLayer()`; then `Details` is what the person wrote.
   `Positive` is null when the person takes the rating back.
 - **Settings of the view** for the extension's settings your app reads and passes on: `ScrollToEndOnSend` (true: sending
-  brings the list back to its end), `ShowTimestamps` (true: the times and the date lines), `SpinnerVerbs` and
-  `SpinnerVerbsReplace` (verbs of your own for the working line, added to its own or alone) and `ReduceMotion` (false;
-  Avalonia 11.0 cannot ask the system, so your app sets it when the user wants less motion).
+  brings the list back to its end), `ShowTimestamps` (true: the times and the date lines), `UseCtrlEnterToSend` (false:
+  only Ctrl or Cmd+Enter sends; see [The reply box](#the-reply-box)), `SpinnerVerbs` and `SpinnerVerbsReplace` (verbs
+  of your own for the working line, added to its own or alone) and `ReduceMotion` (false; Avalonia 11.0 cannot ask the
+  system, so your app sets it when the user wants less motion).
 
   ```xml
   <controls:ClaudeChatView Conversation="{Binding Chat}" ShowTimestamps="False" ReduceMotion="True" />
@@ -529,7 +567,7 @@ viewer.
 <controls:ClaudeChatView Conversation="{Binding Chat}" IsReadOnly="True" />
 ```
 
-The reply box and the permission request are hidden; the list still draws, scrolls and lets the user select text.
+The reply box and the permission request are hidden, and the view takes no dropped files; the list still draws, scrolls and lets the user select text.
 Pending requests stay in `ChatConversation.PendingPermissions`, and the reply box keeps its draft, so setting
 `IsReadOnly` back to `false` shows everything again. The thumbs under a reply and the fade over the reply box go
 too; copying and bookmarking a reply still work.
@@ -558,7 +596,7 @@ What changes:
   running") and opens the Agent map.
 - **The reply box.** A rounded box with its text over a bar of targets of 44 px: **+**, the model pill, the context ring
   (from the first token, its arc the share used rather than the extension's steps), the microphone (see below) and send, or stop while Claude works. Enter breaks the line, and
-  Ctrl+Enter sends. The **/** button, the Remote Control chip and the mode picker are not in the bar: the **+** sheet
+  Ctrl or Cmd+Enter sends. The **/** button, the Remote Control chip and the mode picker are not in the bar: the **+** sheet
   has them. The touch layout does not draw the cache clock. The model pill ends in an ellipsis, the level first, when
   the bar leaves it less room than its name and level need.
 - **Sheets.** The model pill, the **+** and the context ring each open a sheet that rises from the bottom of the view.

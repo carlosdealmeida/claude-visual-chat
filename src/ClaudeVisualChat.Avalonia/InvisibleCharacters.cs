@@ -29,7 +29,9 @@ internal enum InvisibleNoticeKind
 /// <para>What stays, because the text needs it: a zero width (non) joiner between letters of the scripts that use it and a zero width
 /// joiner between emoji; a zero width space between letters of Thai, Lao, Khmer or Myanmar; a variation selector 15 or 16 after an
 /// emoji; the left-to-right, right-to-left and Arabic letter marks on a line that has right-to-left letters; the tags of the flags of
-/// England, Scotland and Wales.</para>
+/// England, Scotland and Wales. Two of these have a rule of their own: of the three direction marks, one stays for each sequence
+/// (a mark that comes right after another invisible character that stayed, or right before one or before a combining mark, goes,
+/// so a run of them leaves one); and a variation selector after a digit, # or * stays only when the keycap U+20E3 follows it.</para>
 /// <para>Line breaks: a carriage return, vertical tab, form feed, next line, line separator or paragraph separator is a line feed
 /// (a carriage return and a line feed together, one). These are not counted as removed.</para>
 /// </remarks>
