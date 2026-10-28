@@ -213,7 +213,6 @@ All notable changes to this project are written here. The format follows
   `ClaudeChat.WorkingGlyphFontSize`, `ClaudeChat.WorkingRowHeight`, `ClaudeChat.FeedbackFieldHeight`, the icons
   `ClaudeChat.Icon.Bookmark`, `ClaudeChat.Icon.ThumbUp` and `ClaudeChat.Icon.ThumbDown`, and the template
   `ClaudeChat.QueuedMessageTemplate`.
-
 - Prompts of the conversation come back in the reply box with the up and down arrows, as in the extension: up with the
   caret at the start of the text (an empty box counts) brings the previous prompt and keeps what was being written, down
   with the caret at the end goes to the next one and, past the newest, gives the draft back. They are this
@@ -224,20 +223,22 @@ All notable changes to this project are written here. The format follows
 - Reply box shortcuts: Ctrl+J breaks the line; Shift+Tab walks the permission modes `default`, `acceptEdits`, `plan`,
   `auto` and back to `default`, only among `ClaudeChatView.AvailableModes`, raising `PermissionModeRequested`;
   Ctrl+Alt+F is the Focus view's shortcut, which the view hears wherever the keyboard is inside it. A read-only view
-  acts on none of them.
+  acts on none of them, and Ctrl+J and Shift+Tab do nothing while the palette or the model menu is open.
 - `ClaudeChatView.UseCtrlEnterToSend` (false by default; the extension's `useCtrlEnterToSend`): true makes only Ctrl or
   Cmd+Enter send and Enter break the line. The touch layout keeps its own rule (Enter breaks the line, Ctrl+Enter
   sends) and now takes Cmd+Enter too.
 - A text pasted into the reply box, and a message when it is sent, lose the characters that cannot be seen (zero-width
-  characters, the tags block, the direction controls, the variation selectors, the control codes), and their line
-  breaks become line feeds. A notice over the box says how many went ("Removed 1 invisible character from the pasted
-  text"). On send the box is filled again with the clean text, the notice asks to look at it ("... review and press
-  Enter to send", Ctrl/Cmd+Enter with `UseCtrlEnterToSend`) and nothing is sent; the next send goes. The notice ends with
-  its ×, with any edit of the text or with another conversation. What the text needs stays: a joiner inside a word of a
-  script that joins letters or between emoji, a space of zero width between letters of Thai, Lao, Khmer or Myanmar,
-  the selectors after an emoji (after a digit, `#` or `*` only with the keycap U+20E3), one direction mark for each
-  sequence on a line with right-to-left letters, and the flags of England, Scotland and Wales. A message of more than
-  50,000 characters is cut there and ends with "[Message truncated - exceeded 50,000 character limit]".
+  characters, the tags block, the direction controls, the variation selectors, the control codes), and their line breaks
+  become line feeds. A notice over the box says how many went ("Removed 1 invisible character from the pasted text"). On
+  send the box is filled again with the clean text, the notice asks to look at it ("... review and press Enter to send",
+  Ctrl/Cmd+Enter with `UseCtrlEnterToSend`) and nothing is sent; the next send goes. When nothing is left of the
+  message, the notice says "nothing left to send" and the box stays empty. The notice ends with its ×, with any edit of
+  the text or with another conversation, and a permission request hides it, as it hides the other banners. What the text
+  needs stays: a joiner inside a word of a script that joins letters or between emoji, a space of zero width between
+  letters of Thai, Lao, Khmer or Myanmar, the selectors after an emoji (after a digit, `#` or `*` only with the keycap
+  U+20E3), one direction mark for each sequence on a line with right-to-left letters, and the flags of England, Scotland
+  and Wales. A message of more than 50,000 characters is cut there and ends with "[Message truncated - exceeded 50,000
+  character limit]".
 - `MessageSubmittedEventArgs.InlinePastes` (`init`, never null): the long texts pasted into the box (more than 800
   characters or more than two line breaks, and 20 characters or more once trimmed) that are still in the message, so
   the host can tell them from what was typed. `StdinMessages.UserMessage(e)` writes them as `inline_pastes`, after the
@@ -245,13 +246,15 @@ All notable changes to this project are written here. The format follows
   goes with them again.
 - The history takes the `<pasted_content id="abcd">` wrapper that the claude puts around a long paste off a user
   message, in a session file and live, and shows the pasted text where the wrapper was.
-- The command palette opened by the / button is in sections (Context, Model, Customize, Settings, Slash Commands,
-  Support) with the rows the component runs: attach a file, switch model, effort, account and usage and, where the host
-  opens links, the help docs (the extension's VS Code page). A row can be a switch, and one that keeps the palette open
-  redraws in place. The slash commands are in alphabetical order; with the / button they show once something is typed
-  in the field, and a "/" typed in the empty box opens the palette with every group, filtered by what follows the "/".
-  Typing `/model` and pressing Enter marks "Switch model..." before a `/model` command, because that is the order of the
-  sections in the extension 2.1.310.
+- The command palette opened by the / button is in sections with the rows the component runs: Context (attach a file),
+  Model (switch model and effort, when the host gives models; account and usage), Slash Commands and, where the host
+  opens links, Support (the help docs, the extension's VS Code page). Customize and Settings are in the order of the
+  sections but have no rows yet, and a section with no rows is not shown. A row can be a switch, and one that keeps the
+  palette open redraws in place. The slash commands are in alphabetical order; with the / button they show once
+  something is typed in the field, and a "/" typed in the empty box opens the palette with every group, filtered by what
+  follows the "/". Typing `/model` and pressing Enter marks "Switch model..." before a `/model` command, when the host
+  gives models (`ChatConversation.AvailableModels` is not empty), because that is the order of the sections in the
+  extension 2.1.310.
 - The hint of a command's arguments shows as ghost text after `/name ` in the reply box (`/copy` shows `[N]`).
 - Dragging files over the chat shows "Drop to attach as context" over the whole view, which takes the drop wherever it
   falls and not only on the reply box; a file of a type that cannot be attached names the types ("Unsupported file
@@ -289,9 +292,10 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   in their place are `TextBlock.ClaudeChatWorkingGlyph` and `TextBlock.ClaudeChatWorkingText`.
 - Text: `ChatStrings.Interrupted` reads "Interrupted", where it read "Interrupted by the user" (in Portuguese
   "Interrompido", where it read "Interrompido por você"). A host that compared the text sees the new one.
-- Text: the reply box reads "Ask Claude to edit..." when idle (`ChatStrings.InputPlaceholder`; in Portuguese "Peça ao
-  Claude para editar..."), where it read "Reply to Claude..." ("Responder ao Claude..."), as the extension's does. A
-  host that compared the text sees the new one.
+- Text: on the desktop layout the reply box reads "Ask Claude to edit..." when idle (`ChatStrings.InputPlaceholder`;
+  in Portuguese "Peça ao Claude para editar..."), where it read "Reply to Claude..." ("Responder ao Claude..."), as
+  the extension's does. The touch layout keeps "Type / for commands" (`InputPlaceholderTouch`). A host that compared
+  the text sees the new one.
 - Text: a file of a type that cannot be attached, dropped, picked with the **+** or pasted, says "Unsupported file
   type(s): {0}" (`ChatStrings.UnsupportedFileTypes`, with the types), where it said "Only PDF, text and CSV files".
   `ChatStrings.FileNotSupported` stays for a file of an accepted type that cannot be read.

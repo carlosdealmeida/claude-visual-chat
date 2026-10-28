@@ -4,7 +4,7 @@ using System.Text;
 
 namespace ClaudeVisualChat;
 
-/// <summary>What the notice under the reply box says, besides how many characters went (see <see cref="ChatStrings.FormatInvisibleNotice"/>).</summary>
+/// <summary>What the notice over the reply box (a banner on its top edge) says, besides how many characters went (see <see cref="ChatStrings.FormatInvisibleNotice"/>).</summary>
 internal enum InvisibleNoticeKind
 {
     /// <summary>They were found when the message was sent: the box is filled again with the clean text and nothing was sent.</summary>

@@ -157,9 +157,10 @@ Avalonia.
 
 A caixa de resposta também aceita arquivos PDF, de texto e CSV: o botão **+**, o arrastar e o Ctrl+V de arquivos
 copiados no Explorer servem para eles como para as imagens, e imagens e arquivos juntos vão cada um para o seu lugar (um
-texto na área de transferência ainda vence os arquivos). Com o `MaxFiles` em 0, o diálogo do **+** só oferece imagens. Vale como arquivo um `.pdf` que começa
-com `%PDF-`, ou um `.txt`, `.log`, `.md`, `.json` ou `.csv` sem byte nulo nos primeiros 8 KB; no máximo `MaxFiles` (5)
-por mensagem e `MaxFileBytes` (25 MB) cada um. Um arquivo recusado diz o motivo (`FileTooBig`, `FileNotSupported` para o que não consegue ler, `UnsupportedFileTypes` para um tipo que não aceita e
+texto na área de transferência ainda vence os arquivos). Com o `MaxFiles` em 0, o diálogo do **+** só oferece imagens.
+Vale como arquivo um `.pdf` que começa com `%PDF-`, ou um `.txt`, `.log`, `.md`, `.json` ou `.csv` sem byte nulo nos
+primeiros 8 KB; no máximo `MaxFiles` (5) por mensagem e `MaxFileBytes` (25 MB) cada um. Um arquivo recusado diz o motivo
+(`FileTooBig`, `FileNotSupported` para o que não consegue ler, `UnsupportedFileTypes` para um tipo que não aceita e
 `TooManyFiles` no `ChatStrings`). Cada um aparece como um chip com o ícone do tipo, o nome e o tamanho. Pelo seu código:
 `ChatConversation.AddFileAsync(caminho)` (lê só o tamanho e os primeiros 8 KB) ou `AddFile(nome, bytes)`.
 
@@ -203,9 +204,10 @@ As teclas da caixa, como na extensão 2.1.310:
   o cursor no começo do texto (a caixa vazia conta), traz o prompt anterior e guarda o que estava sendo escrito; a seta
   para baixo, com o cursor no fim, vai ao seguinte e, depois do mais novo, devolve o rascunho. Limpar a caixa encerra a
   volta. Um `/comando` recuperado não abre a paleta até ser editado.
-- **Ctrl+J** quebra a linha. **Shift+Tab** anda pelos modos de permissão `default`, `acceptEdits`, `plan`, `auto` e
-  de novo `default`, só entre os de `ClaudeChatView.AvailableModes`, e dispara o `PermissionModeRequested`.
-  **Ctrl+Alt+F** é o atalho da Focus view. A view somente leitura não age por nenhum deles.
+- **Ctrl+J** quebra a linha. **Shift+Tab** anda pelos modos de permissão `default`, `acceptEdits`, `plan`, `auto` e de
+  novo `default`, só entre os de `ClaudeChatView.AvailableModes`, e dispara o `PermissionModeRequested`. **Ctrl+Alt+F**
+  é o atalho da Focus view. A view somente leitura não age por nenhum deles, e o Ctrl+J e o Shift+Tab não fazem nada com
+  a paleta ou o menu de modelo abertos.
 - `ClaudeChatView.UseCtrlEnterToSend` (false): o Enter envia. Em true, só Ctrl ou Cmd+Enter envia e o Enter quebra a
   linha (o layout de toque sempre quebra a linha no Enter e envia com Ctrl ou Cmd+Enter).
 
@@ -220,24 +222,26 @@ As teclas da caixa, como na extensão 2.1.310:
   bloco de tags, os controles de direção, os seletores de variação e os códigos de controle, menos onde o texto precisa
   deles (um juntador numa palavra de escrita que junta letras ou entre emojis, os seletores depois de um emoji, uma
   marca de direção numa linha com letras da direita para a esquerda). Um aviso sobre a caixa diz quantos saíram; no
-  envio ele preenche a caixa com o texto limpo, pede que se confira e não envia nada, e o envio seguinte vai. Uma
-  mensagem com mais de 50.000 caracteres é cortada ali.
+  envio ele preenche a caixa com o texto limpo, pede que se confira e não envia nada, e o envio seguinte vai. Quando
+  nada sobra da mensagem, o aviso diz isso e a caixa fica vazia. O aviso termina com o ×, com uma edição do texto ou com
+  outra conversa, e um pedido de permissão o esconde. Uma mensagem com mais de 50.000 caracteres é cortada ali.
 - **Colagens longas.** A caixa lembra os textos longos colados nela (mais de 800 caracteres ou mais de duas quebras de
   linha) e o `MessageSubmittedEventArgs.InlinePastes` lista os que ainda estão na mensagem. O
   `StdinMessages.UserMessage(e)` os escreve como `inline_pastes`, só quando há algum.
-- O placeholder da caixa ociosa é "Peça ao Claude para editar…" (`ChatStrings.InputPlaceholder`); com o Claude
-  trabalhando, "Pôr outra mensagem na fila…".
+- No layout de desktop, o placeholder da caixa ociosa é "Peça ao Claude para editar…" (`ChatStrings.InputPlaceholder`);
+  com o Claude trabalhando, "Pôr outra mensagem na fila…". O layout de toque mantém "Digite / para ver os comandos".
 
 ## Comandos
 
 O botão `/` da barra, ou digitar `/` na caixa vazia, abre a paleta de comandos, em seções como a da extensão: Contexto
-(anexar arquivo), Modelo (trocar de modelo, esforço, conta e uso), Personalizar, Configurações, Comandos com barra e
-Suporte ("Ver a documentação de ajuda", só onde o seu app trata o `LinkRequested`). Uma seção sem nada para mostrar não aparece. O botão
-`/` abre um campo de filtro e lista as ações; os comandos aparecem quando se digita algo nele, e um `/` digitado na caixa
-vazia lista todas as seções, filtradas pelo que vem depois. Os comandos estão em ordem alfabética e, dentro de cada seção,
-são ordenados por nome exato, prefixo, nome que contém e descrição. As setas movem, o Enter executa, o Tab insere o
-comando na caixa e o Esc fecha. Depois de `/nome ` a dica dos argumentos do comando aparece como texto fantasma na caixa.
-Os comandos são os que o claude lista na resposta do `initialize` (o pedido de controle que o seu app mandou no início
+(anexar arquivo), Modelo (trocar de modelo e esforço, quando o seu app dá os `AvailableModels`; conta e uso), Comandos
+com barra e Suporte ("Ver a documentação de ajuda", só onde o seu app trata o `LinkRequested`). Personalizar e
+Configurações têm o seu lugar mas ainda não têm linhas, e uma seção sem nada para mostrar não aparece. O botão `/` abre
+um campo de filtro e lista as ações; os comandos aparecem quando se digita algo nele, e um `/` digitado na caixa vazia
+lista todas as seções, filtradas pelo que vem depois. Os comandos estão em ordem alfabética e, dentro de cada seção, são
+ordenados por nome exato, prefixo, nome que contém e descrição. As setas movem, o Enter executa, o Tab insere o comando
+na caixa e o Esc fecha. Depois de `/nome ` a dica dos argumentos do comando aparece como texto fantasma na caixa. Os
+comandos são os que o claude lista na resposta do `initialize` (o pedido de controle que o seu app mandou no início
 rápido): passe essa resposta ao `AppendLine` ou defina-os você mesmo.
 
 ```csharp
@@ -575,10 +579,11 @@ fora do ar, um visualizador.
 <controls:ClaudeChatView Conversation="{Binding Chat}" IsReadOnly="True" />
 ```
 
-A caixa de resposta e o pedido de permissão ficam ocultos, e a view não aceita arquivos soltos; a lista continua sendo desenhada, rolando e deixando
-selecionar o texto. Os pedidos pendentes continuam em `ChatConversation.PendingPermissions` e a caixa de resposta
-guarda o rascunho, então voltar `IsReadOnly` para `false` mostra tudo de novo. Os polegares embaixo de uma resposta e
-o degradê sobre a caixa de resposta também somem; copiar e marcar uma resposta continuam valendo.
+A caixa de resposta e o pedido de permissão ficam ocultos, e a view não aceita arquivos soltos; a lista continua sendo
+desenhada, rolando e deixando selecionar o texto. Os pedidos pendentes continuam em
+`ChatConversation.PendingPermissions` e a caixa de resposta guarda o rascunho, então voltar `IsReadOnly` para `false`
+mostra tudo de novo. Os polegares embaixo de uma resposta e o degradê sobre a caixa de resposta também somem; copiar e
+marcar uma resposta continuam valendo.
 
 ## Layout de toque
 
@@ -603,9 +608,10 @@ O que muda:
   que põe na área de transferência o que o Claude escreveu no turno, no lugar da linha de duração, tokens e custo. O
   chip de agentes fica no fim da lista ("Agentes · 2 rodando") e abre o mapa de agentes.
 - **A caixa de resposta.** Uma caixa arredondada com o texto sobre uma barra de alvos de 44 px: **+**, a pílula do
-  modelo, o anel de contexto (desde o primeiro token, com o arco na parte usada e não nos degraus da extensão), o microfone (veja abaixo) e enviar, ou parar enquanto o Claude
-  trabalha. Enter quebra a linha e Ctrl ou Cmd+Enter envia. O botão **/**, o chip do Remote Control e o seletor de modo não
-  estão na barra: a folha do **+** tem os três. O layout de toque não desenha o relógio do cache. A pílula do modelo
+  modelo, o anel de contexto (desde o primeiro token, com o arco na parte usada e não nos degraus da extensão), o
+  microfone (veja abaixo) e enviar, ou parar enquanto o Claude trabalha. Enter quebra a linha e Ctrl ou Cmd+Enter envia.
+  O placeholder continua "Digite / para ver os comandos". O botão **/**, o chip do Remote Control e o seletor de modo
+  não estão na barra: a folha do **+** tem os três. O layout de toque não desenha o relógio do cache. A pílula do modelo
   termina em reticências, o nível primeiro, quando a barra deixa menos espaço do que o nome e o nível pedem.
 - **Folhas.** A pílula do modelo, o **+** e o anel de contexto abrem, cada um, uma folha que sobe da base da view. O ✕,
   o Esc ou um toque no véu sobre o resto da view a fecha, e uma página dentro da folha tem uma seta de voltar.

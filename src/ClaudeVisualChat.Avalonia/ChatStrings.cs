@@ -573,7 +573,7 @@ public sealed record ChatStrings
     /// <summary>The accessible name of the reply box's text field (screen readers).</summary>
     public string MessageInput { get; init; } = "Message input";
 
-    /// <summary>The notice under the reply box when one invisible character was taken out of the text.</summary>
+    /// <summary>The notice over the reply box (a banner on its top edge) when one invisible character was taken out of the text.</summary>
     public string InvisibleRemovedOne { get; init; } = "Removed 1 invisible character";
 
     /// <summary>The same for several; <c>{0}</c> is how many.</summary>
@@ -1542,7 +1542,7 @@ public sealed record ChatStrings
     internal string FormatFileTooBig(long maxBytes) => FileTooBig.Replace("{0}", FormatFileSize(maxBytes));
 
     /// <summary>
-    /// What the notice under the reply box says of <paramref name="removed"/> invisible characters taken out: how many, and then what
+    /// What the notice over the reply box (a banner on its top edge) says of <paramref name="removed"/> invisible characters taken out: how many, and then what
     /// happens next. <paramref name="ctrlEnter"/> is true where Ctrl/Cmd+Enter is what sends.
     /// </summary>
     internal string FormatInvisibleNotice(int removed, InvisibleNoticeKind kind, bool ctrlEnter)
