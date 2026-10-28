@@ -181,8 +181,8 @@
   <Style Selector="StackPanel.ClaudeChatTurnEnd.touch Panel.ClaudeChatFooterCopy">
     <Setter Property="IsVisible" Value="True" />
   </Style>
-  <!-- the host's actions of the row under a reply (the thumbs, and the text beside them) beside the copy button: always shown (no
-       pointer to hover with), targets of 44 px with the icon as large as the copy button's -->
+  <!-- the row under a reply beside the copy button: the bookmark and the host's actions (the thumbs, and the text beside them), always
+       shown (no pointer to hover with), targets of 44 px with the icon as large as the copy button's -->
   <Style Selector="controls|ResponseActions:touch">
     <Setter Property="Height" Value="NaN" />
     <Setter Property="Margin" Value="0" />
@@ -192,6 +192,9 @@
     <Setter Property="Template" Value="{StaticResource ClaudeChat.TouchCopyCodeTemplate}" />
     <Setter Property="Width" Value="44" />
     <Setter Property="Height" Value="44" />
+  </Style>
+  <Style Selector="controls|ResponseActions:touch Button.ClaudeChatResponseBookmark">
+    <Setter Property="Opacity" Value="1" />
   </Style>
   <Style Selector="controls|ResponseActions:touch StackPanel.ClaudeChatResponseRating">
     <Setter Property="Opacity" Value="1" />

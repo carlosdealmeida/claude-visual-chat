@@ -161,6 +161,36 @@ public class ResponseActionsTests
         UiHelpers.Pump();
         Assert.Equal("Remove bookmark", AutomationProperties.GetName(bookmark));
         window.Close();
+
+        // the touch layout: the bookmark (it is local, no host needed) beside the turn's copy button, always shown, a finger's target
+        var (tc, _, tlast) = Turn();
+        var (touch, touchWindow) = Open(tc, ChatLayout.Touch);
+        var touchActions = AllActions(touch).Single(a => a.IsEffectivelyVisible);
+        var touchBookmark = touchActions.BookmarkButton;
+        Assert.True(touchBookmark.IsEffectivelyVisible);
+        Assert.Equal(1, Shown(touchBookmark));
+        Assert.Equal(44, touchBookmark.Bounds.Width, 1);
+        Assert.Equal(44, touchBookmark.Bounds.Height, 1);
+        Assert.Equal("Bookmark response", AutomationProperties.GetName(touchBookmark));
+        var copy = touch.GetVisualDescendants().OfType<CopyTurnButton>().Single(b => b.IsEffectivelyVisible);
+        var copyAt = copy.TranslatePoint(default, touch)!.Value;
+        var bookmarkAt = touchBookmark.TranslatePoint(default, touch)!.Value;
+        Assert.Equal(copyAt.Y, bookmarkAt.Y, 1);                               // on the copy button's line
+        Assert.True(bookmarkAt.X >= copyAt.X + copy.Bounds.Width - 0.5);       // after it
+        UiHelpers.Click(touchWindow, touchBookmark);
+        Assert.True(tlast.IsBookmarked);
+        Assert.Equal(new[] { tlast }, tc.Bookmarks);
+        Assert.Equal("Remove bookmark", AutomationProperties.GetName(touchBookmark));
+
+        // and in a read-only view, where the bookmark still works
+        touch.IsReadOnly = true;
+        UiHelpers.Pump();
+        Assert.True(touchBookmark.IsEffectivelyVisible);
+        Assert.Equal(1, Shown(touchBookmark));
+        UiHelpers.Click(touchWindow, touchBookmark);
+        Assert.False(tlast.IsBookmarked);
+        Assert.Empty(tc.Bookmarks);
+        touchWindow.Close();
     }
 
     [AvaloniaFact]
@@ -303,21 +333,40 @@ public class ResponseActionsTests
         Assert.False(dialog.IsOpen);
         Assert.Equal(5, asked.Count);
 
-        // Esc closes the box and only it (Claude is not stopped)
+        // Esc closes the box and only it, while Claude works and a request waits under it: Claude is not stopped, and the request
+        // does not take the Esc for its "No"
+        var answers = 0;
+        c.PermissionAnswered += (_, _) => answers++;
+        using (var input = System.Text.Json.JsonDocument.Parse("{\"command\":\"ls\"}"))
+        {
+            c.Apply(new ClaudeVisualChat.Protocol.AssistantBlock("m9", null,
+                new ClaudeVisualChat.Protocol.ToolUseBlock("t9", "Bash", input.RootElement.Clone())));
+            c.Apply(new ClaudeVisualChat.Protocol.PermissionRequested("r9", "Bash", "Bash", null, "t9", input.RootElement.Clone(), null));
+        }
+        UiHelpers.Pump();
+        Assert.True(c.IsBusy);
+        Assert.NotNull(c.CurrentPermission);
+        UiHelpers.DrawFrames();
         UiHelpers.Click(window, actions.BadButton);                            // clears
         UiHelpers.Click(window, actions.BadButton);                            // down again
         Assert.True(dialog.IsOpen);
+        Assert.Same(dialog.Field, UiHelpers.Focused(window));
         UiHelpers.Press(window, Key.Escape);
         Assert.False(dialog.IsOpen);
         Assert.Equal(0, stops);
+        Assert.Equal(0, answers);
+        Assert.NotNull(c.CurrentPermission);                                   // still waiting to be answered
         Assert.Equal(7, asked.Count);
 
-        // what goes to the host stops at 4,000 characters
+        // what goes to the host stops at 4,000 characters: the field takes no more, and the conversation cuts what it is given
         UiHelpers.Click(window, actions.BadButton);                            // clears
         UiHelpers.Click(window, actions.BadButton);                            // down again
+        Assert.Equal(4000, dialog.Field.MaxLength);
         dialog.Field.Text = new string('x', 4500);
         UiHelpers.Click(window, dialog.SendButton);
         Assert.Equal(4000, asked[asked.Count - 1].Details!.Length);
+        c.SendFeedbackDetails(last, "  " + new string('y', 4500) + "  ");
+        Assert.Equal(new string('y', 4000), asked[asked.Count - 1].Details);
         window.Close();
     }
 

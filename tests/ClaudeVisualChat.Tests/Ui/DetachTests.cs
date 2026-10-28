@@ -710,10 +710,12 @@ public class DetachTests
             c.Items.Add(answer);
             c.Items.Add(new TurnFooterItem(1000, 1, 1, null, false));
             var own = ItemHandlers(answer);
+            var hostOwn = HostHandlers(c);
             var m = new Mounted(c);
             ResponseActions Actions() => m.View.GetVisualDescendants().OfType<ResponseActions>().Single();
             Avalonia.Media.Geometry? IconData() => Actions().CopyButton.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Data;
             Assert.True(ItemHandlers(answer) > own);                         // the row follows its reply (the bookmark, the rating)
+            Assert.True(HostHandlers(c) > hostOwn);                          // and whether the host takes feedback and opens links
 
             // the clipboard answers after the view left: the check is not shown for a view that is out
             UiHelpers.Click(m.Window, Actions().CopyButton);
@@ -721,6 +723,7 @@ public class DetachTests
             var actions = Actions();
             m.Out();
             Assert.Equal(own, ItemHandlers(answer));                         // out: it lets go of the reply
+            Assert.Equal(hostOwn, HostHandlers(c));                          // and of the conversation
             gate.SetResult(true);
             UiHelpers.Pump();
             Assert.False(actions.IsCopied);
@@ -731,6 +734,7 @@ public class DetachTests
             c.FeedbackRequested += (_, _) => { };                            // and the host began to take feedback
             m.In();
             Assert.True(ItemHandlers(answer) > own);
+            Assert.True(HostHandlers(c) > hostOwn);
             Assert.Contains("marked", Actions().BookmarkButton.Classes);     // drawn as the reply is now
             Assert.True(Actions().GoodButton.IsEffectivelyVisible);
             var copyIcon = IconData();
@@ -761,6 +765,13 @@ public class DetachTests
             m.Window.Close();
         }
         finally { ChatClipboard.Override = null; }
+    }
+
+    /// <summary>How many listen to the conversation's internal <c>HostHandlersChanged</c> (the rows under the replies).</summary>
+    private static int HostHandlers(ChatConversation conversation)
+    {
+        var field = typeof(ChatConversation).GetField("HostHandlersChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        return ((Delegate?)field!.GetValue(conversation))?.GetInvocationList().Length ?? 0;
     }
 
     [AvaloniaFact]

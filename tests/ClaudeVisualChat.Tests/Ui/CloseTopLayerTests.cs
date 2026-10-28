@@ -838,6 +838,9 @@ public class CloseTopLayerTests
         UiHelpers.Pump();
         Assert.True(feedback.IsOpen);
         Assert.True(diff.IsOpen);
+        var fieldHeight = ui.View.FindResource("ClaudeChat.FeedbackFieldHeight");
+        Assert.Equal(layout == ChatLayout.Touch ? 92d : 80d, fieldHeight);  // four lines of the layout's text
+        Assert.Equal((double)fieldHeight!, feedback.Field.Bounds.Height, 1);
         Assert.False(ui.View.IsSheetOpen);                                   // the box is no sheet
 
         Assert.True(ui.View.CloseTopLayer());                                // the Diff View over it first

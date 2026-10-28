@@ -206,7 +206,7 @@ public class TouchLayoutTests
         var targets = view.GetVisualDescendants().OfType<Button>() // a ToggleButton is a Button
             .Where(b => b.IsEffectivelyVisible && b.IsHitTestVisible && b.Focusable && b.GetVisualAncestors().OfType<ChatItemList>().Any())
             .ToList();
-        Assert.Equal(3, targets.Count);                                      // the thought, the subagent's header, copy
+        Assert.Equal(4, targets.Count);                                      // the thought, the subagent's header, copy, bookmark
         Assert.All(targets, t => Assert.True(t.Bounds.Width >= 44 && t.Bounds.Height >= 44, t.GetType().Name + " " + t.Bounds));
     }
 

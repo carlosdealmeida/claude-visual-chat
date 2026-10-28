@@ -29,4 +29,6 @@
   <x:Double x:Key="ClaudeChat.ScrollBarGutter">0</x:Double>
   <x:Double x:Key="ClaudeChat.PromptDetailMaxHeight">240</x:Double>
   <x:Double x:Key="ClaudeChat.PromptDetailPeekHeight">56</x:Double>
+  <!-- the field of "What went wrong?": still four lines of its larger text -->
+  <x:Double x:Key="ClaudeChat.FeedbackFieldHeight">92</x:Double>
 </ResourceDictionary>

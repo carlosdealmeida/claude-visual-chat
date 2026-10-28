@@ -152,7 +152,8 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>
     /// Raised when the user rates a reply with the thumbs under its turn, takes the rating back, or sends what went wrong after a bad
     /// one (see <see cref="FeedbackRequestedEventArgs"/>): the host sends it to Anthropic. The thumbs show only while the host listens
-    /// to this event, and never in a read-only view.
+    /// to this event, only under a reply that has its line's <see cref="AssistantTextItem.Uuid"/> (what the rating names it by), and
+    /// never in a read-only view.
     /// </summary>
     public event EventHandler<FeedbackRequestedEventArgs>? FeedbackRequested
     {
