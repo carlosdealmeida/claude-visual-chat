@@ -459,7 +459,7 @@ public class DetachTests
         c.ApprovePlan(c.CurrentPermission!, "default");
         m.In();
         Assert.False(box.IsOpen);
-        Assert.True(CommentHandlers(plan) <= 1);                           // the card let go of it (the document keeps its last plan)
+        Assert.Equal(1, CommentHandlers(plan));                           // the card let go of it (the document keeps its last plan)
         m.Window.Close();
     }
 

@@ -122,14 +122,21 @@ internal sealed class PlanTextBlock : SelectableTextBlock
     private int ToText(int drawn) => drawn <= 0 ? 0 : drawn < _toText.Length ? _toText[drawn] : _text.Length;
 
     /// <summary>A copy takes the words without the circles.</summary>
-    private void OnCopying(object? sender, RoutedEventArgs e)
+    private async void OnCopying(object? sender, RoutedEventArgs e)
     {
         var start = ToText(Math.Min(SelectionStart, SelectionEnd));
         var end = ToText(Math.Max(SelectionStart, SelectionEnd));
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard == null || end <= start) return;
         e.Handled = true;
-        _ = clipboard.SetTextAsync(_text.Substring(start, end - start));
+        try
+        {
+            await clipboard.SetTextAsync(_text.Substring(start, end - start));
+        }
+        catch (Exception)
+        {
+            // the clipboard refused it: nothing was copied, and a refusal is not an unobserved task exception
+        }
     }
 
     private void Read(IEnumerable<CInline> inlines, Look style, StringBuilder text)

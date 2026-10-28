@@ -2400,22 +2400,6 @@
     <Setter Property="FontSize" Value="14" />
     <Setter Property="LineHeight" Value="22.4" />
   </Style>
-  <!-- headings: semibold, 24 px over and 8 px under them (none over the first); H1 at 1.6em and H2 at 1.3em, each over a 1 px
-       line of the panel's border, 8 and 6 px under the text; H3 at 1.1em -->
-  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading1, controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading2, controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading3">
-    <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="LineHeight" Value="NaN" />
-    <Setter Property="Margin" Value="0,24,0,8" />
-  </Style>
-  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading1">
-    <Setter Property="FontSize" Value="22.4" />
-  </Style>
-  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading2">
-    <Setter Property="FontSize" Value="18.2" />
-  </Style>
-  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading3">
-    <Setter Property="FontSize" Value="15.4" />
-  </Style>
   <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.ClaudeChatPlanRule">
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.Border}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
@@ -2427,16 +2411,10 @@
   <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.ClaudeChatPlanRule.h2">
     <Setter Property="Padding" Value="0,0,0,6" />
   </Style>
-  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.ClaudeChatPlanRule > ctb|CTextBlock">
-    <Setter Property="Margin" Value="0" />
-  </Style>
-  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument StackPanel > Border.ClaudeChatPlanRule:nth-child(1), controls|MarkdownBlock.ClaudeChatPlanDocument StackPanel > ctb|CTextBlock.Heading3:nth-child(1)">
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument StackPanel > Border.ClaudeChatPlanRule:nth-child(1)">
     <Setter Property="Margin" Value="0,0,0,8" />
   </Style>
-  <!-- inline code in the editor's font at 13 px; code blocks 12 px inside; lists 32 px in; quotes 4 by 12 px inside their bar -->
-  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CCode">
-    <Setter Property="FontSize" Value="13" />
-  </Style>
+  <!-- code blocks 12 px inside; lists 32 px in; quotes 4 by 12 px inside their bar -->
   <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.CodeBlock">
     <Setter Property="Padding" Value="12" />
   </Style>
