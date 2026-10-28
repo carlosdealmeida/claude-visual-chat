@@ -2096,6 +2096,77 @@ public class ChatViewTests
         }
     }
 
+    // ---- TaskOutput, Skill and the call that is still arriving ----
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Task_output_reads_its_task_id_and_has_no_in_row(bool touch)
+    {
+        const string colored = "\u001b[32mbuild ok\u001b[0m\nsecond line";
+        var (c, tool) = SearchCall("TaskOutput", new { task_id = "bq1x7", block = true, timeout = 30000 }, colored);
+        var view = OpenIn(c, touch);
+        Assert.Equal("TaskOutput", ToolTitle(view, tool, "ToolName").Text);          // the raw name
+        var detail = ToolTitle(view, tool, "DetailText");
+        Assert.Equal("task: \"bq1x7\"", detail.Text);                                // in mono, like the other patterns
+        Assert.DoesNotContain("plain", detail.Classes);
+        Assert.DoesNotContain("file", detail.Classes);
+        var texts = UiHelpers.Texts(ViewOf(view, tool));
+        Assert.DoesNotContain("IN", texts);
+        Assert.Contains("OUT", texts);
+        Assert.Contains(texts, t => t.Contains("build ok", StringComparison.Ordinal));
+        Assert.DoesNotContain(texts, t => t.IndexOf('\u001b') >= 0);                 // no ANSI
+        Assert.DoesNotContain(texts, t => t.Contains("bq1x7", StringComparison.Ordinal) && t != detail.Text); // the id is only on the header
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_skill_row_reads_name_skill_and_has_no_body(bool touch)
+    {
+        var (c, tool) = SearchCall("Skill", new { skill = "/commit", args = "-m fix" }, "Launching skill: commit");
+        var view = OpenIn(c, touch);
+        var name = ToolTitle(view, tool, "ToolName");
+        Assert.Equal("commit", name.Text);                                           // without the leading "/"
+        Assert.Equal(FontWeight.Bold, name.FontWeight);
+        var detail = ToolTitle(view, tool, "DetailText");
+        Assert.Equal("skill", detail.Text);                                          // mono, .85em, after the name's gap
+        Assert.Equal(name.FontSize * 0.85, detail.FontSize, 1);
+        Assert.NotEqual(name.FontFamily, detail.FontFamily);
+        Assert.False(HasBox(view, tool));                                            // no arguments, no output
+        var texts = UiHelpers.Texts(ViewOf(view, tool));
+        Assert.DoesNotContain("IN", texts);
+        Assert.DoesNotContain("OUT", texts);
+        Assert.DoesNotContain(texts, t => t.Contains("Launching", StringComparison.Ordinal) || t.Contains("-m fix", StringComparison.Ordinal));
+        Assert.True(detail.TranslatePoint(default, view)!.Value.X > name.TranslatePoint(default, view)!.Value.X); // it follows the name
+
+        // a skill that failed has no body either
+        var (c2, failed) = SearchCall("Skill", new { skill = "gone" }, "Unknown skill: gone", isError: true);
+        var view2 = OpenIn(c2, touch);
+        Assert.Equal("gone", ToolTitle(view2, failed, "ToolName").Text);
+        Assert.False(HasBox(view2, failed));
+        Assert.DoesNotContain("OUT", UiHelpers.Texts(ViewOf(view2, failed)));
+    }
+
+    [AvaloniaFact]
+    public void A_call_still_arriving_has_no_row_and_the_working_line_shows()
+    {
+        var c = new ChatConversation();
+        var (view, window) = Open(c);
+        c.Submit("go");
+        c.AppendLine("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"m1\"}}}");
+        c.AppendLine("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"Bash\",\"input\":{}}}}");
+        c.AppendLine("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"comm\"}}}");
+        UiHelpers.Pump();
+        Assert.Empty(view.GetVisualDescendants().OfType<ToolCallView>()); // no row until the input is whole
+        Assert.True(WorkingRow(view).IsEffectivelyVisible);              // "Working…" is all that shows the work meanwhile
+
+        c.AppendLine("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_stop\",\"index\":0}}");
+        UiHelpers.Pump();
+        Assert.Single(view.GetVisualDescendants().OfType<ToolCallView>());
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void The_new_lines_read_in_portuguese()
     {

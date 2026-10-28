@@ -281,14 +281,13 @@ public class ChatConversationTests
         var editStart = Array.FindIndex(lines, l => l.Contains("\"content_block_start\"") && l.Contains("\"Edit\""));
 
         for (var i = 0; i <= editStart; i++) c.AppendLine(lines[i]);
-        var edit = Assert.IsType<ToolCallItem>(c.Items.Last());
-        Assert.Equal("Edit", edit.Name);
-        Assert.Equal("", edit.Summary);
-        Assert.Equal(ToolStatus.Running, edit.Status);
-        Assert.Null(edit.Diff);
+        var editLine = Array.FindIndex(lines, editStart, l => l.StartsWith("{\"type\": \"assistant\"", StringComparison.Ordinal));
+        for (var i = editStart + 1; i < editLine; i++) c.AppendLine(lines[i]);
+        Assert.DoesNotContain(c.Items, i => i is ToolCallItem { Name: "Edit" }); // the call's input is still arriving: no row yet
         Assert.True(c.IsBusy);
 
-        for (var i = editStart + 1; i <= firstTextDelta; i++) c.AppendLine(lines[i]);
+        for (var i = editLine; i <= firstTextDelta; i++) c.AppendLine(lines[i]); // the whole input comes: the row, filled
+        var edit = Assert.IsType<ToolCallItem>(Assert.Single(c.Items.OfType<ToolCallItem>(), t => t.Name == "Edit"));
         Assert.Equal("notes.md", edit.Summary);
         Assert.NotNull(edit.Diff);
         var text = Assert.IsType<AssistantTextItem>(c.Items.Last());
@@ -313,10 +312,10 @@ public class ChatConversationTests
         var c = new ChatConversation();
         c.Apply(new BlockStarted("m1", 0, null, new ToolUseBlock("toolu_1", "Bash", J("{}"))));
         c.Apply(new BlockDelta("m1", 0, null, DeltaKind.InputJson, "{\"command\":\"ls\"}"));
+        c.Apply(new BlockStopped("m1", 0, null));
         c.Apply(new BlockStarted("m1", 1, null, new TextContentBlock("")));
         c.Apply(new BlockDelta("m1", 1, null, DeltaKind.Text, "Hel"));
         c.Apply(new BlockDelta("m1", 1, null, DeltaKind.Text, "lo"));
-        c.Apply(new BlockStopped("m1", 0, null));
         c.Apply(new BlockStopped("m1", 1, null));
 
         var tool = Assert.IsType<ToolCallItem>(c.Items[0]);
@@ -332,6 +331,89 @@ public class ChatConversationTests
         Assert.Equal(2, c.Items.Count);
         Assert.Equal("ls", tool.Summary);
         Assert.Equal("Hello!", text.Text);
+    }
+
+    [Fact]
+    public void A_streamed_call_appears_only_when_its_input_is_complete()
+    {
+        var c = new ChatConversation();
+        c.Apply(new BlockStarted("m1", 0, null, new ToolUseBlock("toolu_1", "Bash", J("{}"))));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.InputJson, "{\"comm"));
+        Assert.Empty(c.Items);          // the input is still arriving: no row yet
+        Assert.False(c.IsStreaming);    // and a tool's input is not what "streaming" counts
+
+        c.Apply(new BlockStopped("m1", 0, null));
+        var tool = Assert.IsType<ToolCallItem>(Assert.Single(c.Items));
+        Assert.Equal("toolu_1", tool.ToolUseId);
+        Assert.Equal(ToolStatus.Running, tool.Status);
+
+        // the assistant line completes that same row
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("toolu_1", "Bash", J("{\"command\":\"ls\"}"))));
+        Assert.Same(tool, Assert.Single(c.Items));
+        Assert.Equal("ls", tool.Summary);
+        c.Apply(ToolResult("toolu_1", "a.txt"));
+        Assert.Equal(ToolStatus.Succeeded, tool.Status);
+    }
+
+    [Fact]
+    public void A_streamed_call_the_turn_cuts_short_never_shows()
+    {
+        var c = new ChatConversation();
+        c.Apply(new BlockStarted("m1", 0, null, new TextContentBlock("")));
+        c.Apply(new BlockStarted("m1", 1, null, new ToolUseBlock("toolu_1", "Write", J("{}"))));
+        c.Apply(new TurnCompleted("error_during_execution", true, null, null, null, null));
+
+        Assert.DoesNotContain(c.Items, i => i is ToolCallItem);
+    }
+
+    [Fact]
+    public void A_streamed_call_whose_assistant_line_comes_first_shows_then_and_once()
+    {
+        var c = new ChatConversation();
+        c.Apply(new BlockStarted("m1", 0, null, new ToolUseBlock("toolu_1", "Bash", J("{}"))));
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("toolu_1", "Bash", J("{\"command\":\"ls\"}"))));
+        var tool = Assert.IsType<ToolCallItem>(Assert.Single(c.Items));
+        c.Apply(new BlockStopped("m1", 0, null));
+        Assert.Same(tool, Assert.Single(c.Items));
+    }
+
+    [Fact]
+    public void A_streamed_subagent_call_lands_in_its_parent_when_complete()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m0", null, new ToolUseBlock("ta", "Agent", J("{\"description\":\"d\"}"))));
+        c.Apply(new BlockStarted("s1", 0, "ta", new ToolUseBlock("tb", "Read", J("{}"))));
+        var agent = Assert.IsType<ToolCallItem>(Assert.Single(c.Items));
+        Assert.Empty(agent.Children);
+        c.Apply(new BlockStopped("s1", 0, "ta"));
+        Assert.Equal("tool:Read::Running:0", Describe(Assert.Single(agent.Children)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Tool_search_calls_and_their_results_never_become_items(bool streamed)
+    {
+        Assert.Contains("ToolSearch", ToolPresentation.HiddenTools);
+        var c = new ChatConversation();
+        var input = J("{\"query\":\"select:ExitPlanMode\",\"max_results\":1}");
+        if (streamed)
+        {
+            c.Apply(new BlockStarted("m1", 0, null, new ToolUseBlock("t1", "ToolSearch", J("{}"))));
+            c.Apply(new BlockStopped("m1", 0, null));
+        }
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "ToolSearch", input)));
+        // the result is a list of tool_reference blocks
+        c.AppendLine("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t1\","
+            + "\"content\":[{\"type\":\"tool_reference\",\"tool_name\":\"ExitPlanMode\"}]}]},\"parent_tool_use_id\":null}");
+        // a subagent's search too
+        c.Apply(new AssistantBlock("m0", null, new ToolUseBlock("ta", "Agent", J("{\"description\":\"d\"}"))));
+        c.Apply(new AssistantBlock("s1", "ta", new ToolUseBlock("t2", "ToolSearch", input)));
+        c.Apply(new UserBlock("ta", new ToolResultBlock("t2", "", false), null, false, false));
+
+        var agent = Assert.IsType<ToolCallItem>(Assert.Single(c.Items)); // only the Agent call
+        Assert.Equal("ta", agent.ToolUseId);
+        Assert.Empty(agent.Children);
     }
 
     [Fact]
@@ -507,9 +589,9 @@ public class ChatConversationTests
     [Fact]
     public void A_result_that_is_a_list_of_tool_references_has_an_empty_full_result()
     {
-        // ToolSearch answers with [{"type":"tool_reference",...}], not with text
+        // ToolSearch answers with [{"type":"tool_reference",...}], not with text; any call could get such a list
         var c = new ChatConversation();
-        var tool = StartTool(c, "t1", "ToolSearch");
+        var tool = StartTool(c, "t1", "Read");
 
         c.AppendLine("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t1\","
             + "\"content\":[{\"type\":\"tool_reference\",\"tool_name\":\"ExitPlanMode\"}]}]},\"parent_tool_use_id\":null}");
@@ -740,7 +822,8 @@ public class ChatConversationTests
 
         c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Read", J("{\"file_path\":\"a\"}"))));
         c.Apply(ToolResult("t1"));
-        c.Apply(new BlockStarted("m1", 1, null, new ToolUseBlock("t2", "Write", J("{}")))); // input still arriving
+        c.Apply(new BlockStarted("m1", 1, null, new ToolUseBlock("t2", "Write", J("{}"))));
+        c.Apply(new BlockStopped("m1", 1, null)); // its input is whole: the call shows, and nothing answers it
         c.Apply(new UserBlock(null, new TextContentBlock("[Request interrupted by user]"), null, false, false));
         c.Apply(new TurnCompleted("error_during_execution", true, null, null, null, null));
 

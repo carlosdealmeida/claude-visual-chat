@@ -35,6 +35,8 @@ namespace ClaudeVisualChat.Controls;
 /// A subagent's call (Agent or Task) reads "Agent:" and its description, and its box holds only the prompt (IN), never an output;
 /// a background agent's row adds a line with a dot that tells what it is doing, that a request of its waits below, or how it
 /// ended, and its steps stay off the list (the map has them).
+/// A skill reads its name (without the "/") in bold and "skill" in the editor's font, with no body; a TaskOutput reads its name and
+/// <c>task: "id"</c>, with only its output (without ANSI) in the box.
 /// The command's row (IN) of a Bash or PowerShell call has a button at its top right, shown while the pointer is over the row (always
 /// in the touch layout), that copies the whole command through <see cref="ChatClipboard"/>; for 2 s after a copy its icon is a check.
 /// A Glob or a Grep that worked reads only a line under its name ("Found 3 files", "12 lines of output"), with no box; with output, a
@@ -81,6 +83,10 @@ internal partial class ToolCallView : UserControl
     /// <summary>The names of the two web tools, the same in every language, like the extension's.</summary>
     private const string WebFetchTitle = "Web Fetch";
     private const string WebSearchTitle = "Web Search";
+
+    /// <summary>The Skill tool, whose row reads the skill's name in bold and this word after it, in the editor's font.</summary>
+    private const string SkillTool = "Skill";
+    private const string SkillWord = "skill";
 
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<ToolCallView>();
@@ -300,6 +306,12 @@ internal partial class ToolCallView : UserControl
             // "Agent:" with its colon, a Task call too, like the extension's; the description follows in the editor's font
             ToolName.Text = AgentTitle;
         }
+        else if (name == SkillTool)
+        {
+            // the skill's name, bold, then "skill" in mono; a call whose input has no skill yet reads only the tool's name
+            if (detail.Length > 0) ToolName.Text = detail;
+            detail = detail.Length > 0 ? SkillWord : "";
+        }
         else if (name == "WebFetch" || name == "WebSearch")
         {
             ToolName.Text = name == "WebFetch" ? WebFetchTitle : WebSearchTitle;
@@ -412,7 +424,8 @@ internal partial class ToolCallView : UserControl
             var quiet = item.Status == ToolStatus.Succeeded && QuietWhenDone(name);
             // a plan has no box: its line tells how it ended, and its document holds its text; a subagent's call shows only its
             // prompt, whatever came back
-            var showOutput = name != PlanTool && !IsAgentTool(name)
+            // a skill's row has no body at all: neither its arguments nor what it answered
+            var showOutput = name != PlanTool && name != SkillTool && !IsAgentTool(name)
                 && (failed || (!hasDiff && !hasTodos && !quiet && !(refused && TellsReason(name))));
             var output = showOutput && !string.IsNullOrEmpty(result);
 

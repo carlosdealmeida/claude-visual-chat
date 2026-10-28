@@ -39,6 +39,12 @@ public static class ToolPresentation
 
     private const string McpPrefix = "mcp__";
 
+    /// <summary>
+    /// The tools whose calls and results never become items: ToolSearch only loads another tool's definition for the claude,
+    /// and the extension marks its renderer hidden.
+    /// </summary>
+    internal static readonly IReadOnlyCollection<string> HiddenTools = new[] { "ToolSearch" };
+
     public static string Summary(string toolName, JsonElement input, string? workingDirectory)
     {
         try
@@ -68,7 +74,12 @@ public static class ToolPresentation
                 case "WebSearch": return Str(input, "query");
                 case "Agent":
                 case "Task": return Str(input, "description");
-                case "Skill": return Str(input, "skill");
+                case "Skill": return Str(input, "skill").TrimStart('/');
+                case "TaskOutput":
+                {
+                    var task = Str(input, "task_id");
+                    return task.Length > 0 ? "task: \"" + task + "\"" : "";
+                }
                 case "TodoWrite": return "";
                 case "ExitPlanMode": return PlanFileName(input) ?? ""; // never the plan's text: the document shows it
                 default: return FirstString(input);

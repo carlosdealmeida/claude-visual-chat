@@ -974,6 +974,7 @@ public sealed class ChatConversation : ChatObservableObject
                 }
                 break;
             case ToolUseBlock tool:
+                if (ToolPresentation.HiddenTools.Contains(tool.Name)) break;
                 if (live?.Item is ToolCallItem streamedTool)
                 {
                     if (streamedTool.ToolUseId.Length == 0 && tool.Id.Length > 0)
@@ -983,6 +984,7 @@ public sealed class ChatConversation : ChatObservableObject
                         Register(streamedTool);
                     }
                     Fill(streamedTool, tool);
+                    Reveal(live); // its input is whole: if the stop did not bring it yet, it shows now
                     Complete(live);
                 }
                 else
@@ -1019,12 +1021,14 @@ public sealed class ChatConversation : ChatObservableObject
                 item = new ThinkingItem { Text = thinking.Text, IsStreaming = true };
                 break;
             case ToolUseBlock tool:
+                // a call shows once its input is complete (the block's stop, or its assistant line), like the extension's; a hidden
+                // tool's never does. Until then "Working…" is all there is: the call is not what IsStreaming counts.
+                if (ToolPresentation.HiddenTools.Contains(tool.Name)) return;
                 var call = new ToolCallItem
                 {
                     ToolUseId = tool.Id, Name = tool.Name, Input = tool.Input, Status = ToolStatus.Running,
                 };
-                _live.Add(new LiveBlock(e.MessageId, e.ParentToolUseId, e.Index, call));
-                AddTool(call, e.ParentToolUseId);
+                _live.Add(new LiveBlock(e.MessageId, e.ParentToolUseId, e.Index, call) { Hidden = true });
                 return;
             default:
                 return;
@@ -1050,6 +1054,7 @@ public sealed class ChatConversation : ChatObservableObject
         if (live == null) return;
         if (live.Item is ThinkingItem { IsStreaming: true } thought) thought.DurationMs ??= live.Elapsed(_clock());
         StopStreaming(live.Item);
+        Reveal(live);
         live.Stopped = true;
         if (live.Completed) _live.Remove(live);
     }
@@ -1086,6 +1091,14 @@ public sealed class ChatConversation : ChatObservableObject
             if (live.Index == index && live.MessageId == messageId) return live;
         }
         return null;
+    }
+
+    /// <summary>A streamed call whose input is complete takes its place in the list (once).</summary>
+    private void Reveal(LiveBlock live)
+    {
+        if (!live.Hidden || live.Item is not ToolCallItem call) return;
+        live.Hidden = false;
+        AddTool(call, live.ParentToolUseId);
     }
 
     private void Complete(LiveBlock live)
@@ -1821,6 +1834,9 @@ public sealed class ChatConversation : ChatObservableObject
 
         /// <summary>The <c>content_block_stop</c> for this block arrived.</summary>
         public bool Stopped { get; set; }
+
+        /// <summary>A tool call whose input is still arriving: its item is not in the list yet.</summary>
+        public bool Hidden { get; set; }
 
         /// <summary>When the block started to arrive, by the conversation's clock.</summary>
         public DateTimeOffset StartedAt { get; set; }
