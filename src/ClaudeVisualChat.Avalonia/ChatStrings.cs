@@ -46,6 +46,22 @@ public sealed record ChatStrings
         FetchedFrom = "Buscado em {0}",
         WebAllowed = "Permitidos:",
         WebBlocked = "Bloqueados:",
+        ChromeActionCompleted = "Ação concluída",
+        ChromeScreenshot = "Captura de tela",
+        ChromeNavigated = "Navegação concluída",
+        ChromeTabCreated = "Aba criada",
+        ChromeTabsRead = "Abas lidas",
+        ChromeInputCompleted = "Entrada concluída",
+        ChromeWindowResized = "Janela redimensionada",
+        ChromeSearchCompleted = "Busca concluída",
+        ChromeGifCompleted = "Ação do GIF concluída",
+        ChromeConsoleRetrieved = "Mensagens do console obtidas",
+        ChromeNetworkRetrieved = "Requisições de rede obtidas",
+        ChromeScriptExecuted = "Script executado",
+        ChromePageRead = "Página lida",
+        ChromeTextRetrieved = "Texto obtido",
+        ChromeImageUploaded = "Imagem enviada",
+        ChromePlanUpdated = "Plano atualizado",
         ToolShowFullText = "Pressione Enter para mostrar o texto inteiro",
         ToolCutText = "Pressione Enter para cortar o texto",
         Working = "Trabalhando…",
@@ -398,6 +414,54 @@ public sealed record ChatStrings
 
     /// <summary>Starts the domains a Web Search was kept away from.</summary>
     public string WebBlocked { get; init; } = "Blocked:";
+
+    /// <summary>A Claude in Chrome computer action that worked.</summary>
+    public string ChromeActionCompleted { get; init; } = "Action completed";
+
+    /// <summary>The thumbnail of a Claude in Chrome screenshot; also its name for screen readers and in the preview.</summary>
+    public string ChromeScreenshot { get; init; } = "Screenshot";
+
+    /// <summary>Claude in Chrome: a navigate that worked.</summary>
+    public string ChromeNavigated { get; init; } = "Navigation completed";
+
+    /// <summary>Claude in Chrome: a tab opened.</summary>
+    public string ChromeTabCreated { get; init; } = "Tab created";
+
+    /// <summary>Claude in Chrome: the open tabs read.</summary>
+    public string ChromeTabsRead { get; init; } = "Tabs read";
+
+    /// <summary>Claude in Chrome: a form field filled.</summary>
+    public string ChromeInputCompleted { get; init; } = "Input completed";
+
+    /// <summary>Claude in Chrome: the window resized.</summary>
+    public string ChromeWindowResized { get; init; } = "Window resized";
+
+    /// <summary>Claude in Chrome: a find that ended with no text to show.</summary>
+    public string ChromeSearchCompleted { get; init; } = "Search completed";
+
+    /// <summary>Claude in Chrome: a GIF action that ended with no text to show.</summary>
+    public string ChromeGifCompleted { get; init; } = "GIF action completed";
+
+    /// <summary>Claude in Chrome: the console read with no text to show.</summary>
+    public string ChromeConsoleRetrieved { get; init; } = "Console messages retrieved";
+
+    /// <summary>Claude in Chrome: the network requests read with no text to show.</summary>
+    public string ChromeNetworkRetrieved { get; init; } = "Network requests retrieved";
+
+    /// <summary>Claude in Chrome: a script ran.</summary>
+    public string ChromeScriptExecuted { get; init; } = "Script executed";
+
+    /// <summary>Claude in Chrome: the page read with no text to show.</summary>
+    public string ChromePageRead { get; init; } = "Page read";
+
+    /// <summary>Claude in Chrome: the page's text read with no text to show.</summary>
+    public string ChromeTextRetrieved { get; init; } = "Text retrieved";
+
+    /// <summary>Claude in Chrome: an image uploaded.</summary>
+    public string ChromeImageUploaded { get; init; } = "Image uploaded";
+
+    /// <summary>Claude in Chrome: the plan updated with no text to show.</summary>
+    public string ChromePlanUpdated { get; init; } = "Plan updated";
 
     /// <summary>What a screen reader tells on a cut text of a tool, which a key opens whole.</summary>
     public string ToolShowFullText { get; init; } = "Press Enter to show the full text";
@@ -1102,7 +1166,27 @@ public sealed record ChatStrings
     /// <summary>The box of a Web Fetch that worked.</summary>
     internal string FormatFetchedFrom(string url) => FetchedFrom.Replace("{0}", url);
 
-    /// <summary>The line under a Web Search: "Allowed: a.com, b.com · Blocked: c.com", each part only when its list has domains; null when neither has.</summary>
+    /// <summary>The line a Claude in Chrome action leaves under its name ("Navigation completed", "Page read"…); null for an action that has none.</summary>
+    internal string? ChromeLine(string action) => action switch
+    {
+        "navigate" => ChromeNavigated,
+        "tabs_create" => ChromeTabCreated,
+        "tabs_context" => ChromeTabsRead,
+        "form_input" => ChromeInputCompleted,
+        "resize_window" => ChromeWindowResized,
+        "find" => ChromeSearchCompleted,
+        "gif_creator" => ChromeGifCompleted,
+        "read_console_messages" => ChromeConsoleRetrieved,
+        "read_network_requests" => ChromeNetworkRetrieved,
+        "javascript_tool" => ChromeScriptExecuted,
+        "read_page" => ChromePageRead,
+        "get_page_text" => ChromeTextRetrieved,
+        "upload_image" => ChromeImageUploaded,
+        "update_plan" => ChromePlanUpdated,
+        _ => null,
+    };
+
+    /// <summary>The line under a Web Search:"Allowed: a.com, b.com · Blocked: c.com", each part only when its list has domains; null when neither has.</summary>
     internal string? FormatWebDomains(IReadOnlyList<string> allowed, IReadOnlyList<string> blocked)
     {
         var parts = new List<string>();

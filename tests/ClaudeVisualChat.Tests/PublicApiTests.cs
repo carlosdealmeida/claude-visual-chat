@@ -205,6 +205,20 @@ public class PublicApiTests
         // Glob, Grep and the web tools of 2.1.310 (0.6.0)
         foreach (var text in new[] { "GlobNone", "GlobOne", "GlobMany", "GrepNone", "GrepOne", "GrepMany", "FetchedFrom", "WebAllowed", "WebBlocked" })
             Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        // MCP and Claude in Chrome rows of 2.1.310 (0.6.0): the images a result carried, and the lines the Chrome actions leave
+        var images = typeof(ToolCallItem).GetProperty("ResultImages");
+        Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<ChatImage>), images?.PropertyType);
+        Assert.False(images!.SetMethod!.IsPublic); // the conversation sets it
+        var blockImages = typeof(ClaudeVisualChat.Protocol.ToolResultBlock).GetProperty("Images");
+        Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<ClaudeVisualChat.Protocol.ImageBlock>), blockImages?.PropertyType);
+        Assert.Contains(blockImages!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        foreach (var text in new[]
+        {
+            "ChromeActionCompleted", "ChromeScreenshot", "ChromeNavigated", "ChromeTabCreated", "ChromeTabsRead", "ChromeInputCompleted",
+            "ChromeWindowResized", "ChromeSearchCompleted", "ChromeGifCompleted", "ChromeConsoleRetrieved", "ChromeNetworkRetrieved",
+            "ChromeScriptExecuted", "ChromePageRead", "ChromeTextRetrieved", "ChromeImageUploaded", "ChromePlanUpdated",
+        })
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
         var max = typeof(ToolPresentation).GetField("MaxKeptResultChars");
         Assert.Equal(500_000, max!.GetRawConstantValue());
         Assert.Contains("ToolInterrupted", System.Enum.GetNames(typeof(NoticeKind)));

@@ -587,6 +587,26 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void The_images_of_a_result_go_to_the_call()
+    {
+        var c = new ChatConversation();
+        var shot = StartTool(c, "t1", "mcp__claude-in-chrome__computer", "{\"action\":\"screenshot\"}");
+        var plain = StartTool(c, "t2", "Bash", "{\"command\":\"ls\"}");
+        Assert.Null(shot.ResultImages);                                  // nothing before the result
+
+        c.Apply(new UserBlock(null, new ToolResultBlock("t1", "ok", false)
+        {
+            Images = new[] { new ImageBlock("image/png", Convert.ToBase64String(Png(4, 3, false))) },
+        }, null, false, false));
+        c.Apply(ToolResult("t2", "a.txt"));
+
+        var image = Assert.Single(shot.ResultImages!);
+        Assert.Equal("image/png", image.MediaType);
+        Assert.Equal((4, 3), (image.Width, image.Height));
+        Assert.Null(plain.ResultImages);                                 // a result with no image has none
+    }
+
+    [Fact]
     public void A_result_that_is_a_list_of_tool_references_has_an_empty_full_result()
     {
         // ToolSearch answers with [{"type":"tool_reference",...}], not with text; any call could get such a list

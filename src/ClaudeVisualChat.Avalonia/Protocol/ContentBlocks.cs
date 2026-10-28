@@ -24,6 +24,9 @@ namespace ClaudeVisualChat.Protocol
         /// the stream's <c>tool_result_meta</c> or the session file's <c>toolDenialKind</c>; null when it ran.
         /// </summary>
         public string? NonExecutionKind { get; init; }
+
+        /// <summary>The images in the result's content (a screenshot, say) that came as base64; empty by default.</summary>
+        public IReadOnlyList<ImageBlock> Images { get; init; } = Array.Empty<ImageBlock>();
     }
 
     /// <summary>An image; <paramref name="Data"/> is base64 as it came, empty when the source is not base64.</summary>
@@ -135,7 +138,10 @@ namespace ClaudeVisualChat.Protocol
                     return new ToolResultBlock(
                         JsonHelpers.Str(block, "tool_use_id") ?? "",
                         ReadResultText(JsonHelpers.Prop(block, "content")),
-                        JsonHelpers.Bool(block, "is_error"));
+                        JsonHelpers.Bool(block, "is_error"))
+                    {
+                        Images = ReadResultImages(JsonHelpers.Prop(block, "content")),
+                    };
                 case "image":
                     return ReadImage(block);
                 default:
@@ -171,6 +177,20 @@ namespace ClaudeVisualChat.Protocol
                 }
             }
             return list;
+        }
+
+        /// <summary>The image blocks of a tool result's array content that carry base64 data.</summary>
+        private static IReadOnlyList<ImageBlock> ReadResultImages(JsonElement? content)
+        {
+            if (content == null || content.Value.ValueKind != JsonValueKind.Array) return Array.Empty<ImageBlock>();
+            List<ImageBlock>? images = null;
+            foreach (var item in content.Value.EnumerateArray())
+            {
+                if (JsonHelpers.Str(item, "type") != "image") continue;
+                var image = ReadImage(item);
+                if (image.Data.Length > 0) (images ??= new List<ImageBlock>()).Add(image);
+            }
+            return images ?? (IReadOnlyList<ImageBlock>)Array.Empty<ImageBlock>();
         }
 
         private static string ReadResultText(JsonElement? content)

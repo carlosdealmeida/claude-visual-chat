@@ -598,6 +598,36 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void A_chrome_screenshot_and_its_preview_come_back_after_the_view_returns()
+    {
+        var c = Conversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "mcp__claude-in-chrome__computer", J("{\"action\":\"screenshot\"}"))));
+        c.Apply(new ClaudeVisualChat.Protocol.UserBlock(null, new ClaudeVisualChat.Protocol.ToolResultBlock("t1", "ok", false)
+        {
+            Images = new[] { new ClaudeVisualChat.Protocol.ImageBlock("image/png", Convert.ToBase64String(Png(300, 100))) },
+        }, null, false, false));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        var m = new Mounted(c);
+        Button Thumb() => m.View.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("ClaudeChatMessageImage"));
+        var preview = m.View.GetVisualDescendants().OfType<ImagePreview>().Single();
+        var inList = ItemHandlers(tool);
+        Assert.NotNull(Thumb());
+
+        UiHelpers.Click(m.Window, Thumb());
+        Assert.True(preview.IsEffectivelyVisible);
+        m.Out();                                                           // out with the preview open: nothing throws
+        Assert.Equal(0, ItemHandlers(tool));                               // and the row lets go of the call
+        tool.ResultImages = null;                                          // changed while out
+        m.In();                                                            // back: drawn as the call is now
+        Assert.Equal(inList, ItemHandlers(tool));
+        Assert.DoesNotContain(m.View.GetVisualDescendants().OfType<Button>(), b => b.Classes.Contains("ClaudeChatMessageImage"));
+        tool.ResultImages = new[] { ChatImage.FromBytes(Png(40, 80), "image/png") };
+        UiHelpers.Pump();
+        Assert.Equal(42, Thumb().Bounds.Width, 1);                         // and a new screenshot shows again
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_diff_view_comes_back_after_the_view_returns()
     {
         var c = Conversation();

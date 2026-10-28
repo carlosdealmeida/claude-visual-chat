@@ -133,6 +133,7 @@ public sealed class ToolCallItem : ChatItem
     private string? _resultText;
     private string? _fullResultText;
     private string? _rejectionReason;
+    private IReadOnlyList<ChatImage>? _resultImages;
     private int _hiddenResultLines;
     private IReadOnlyList<DiffLine>? _diff;
     private IReadOnlyList<TodoEntry>? _todos;
@@ -188,6 +189,13 @@ public sealed class ToolCallItem : ChatItem
     {
         get => _fullResultText;
         internal set => SetField(ref _fullResultText, value);
+    }
+
+    /// <summary>The images the result carried (a screenshot of Claude in Chrome); null when it came with none or has not arrived.</summary>
+    public IReadOnlyList<ChatImage>? ResultImages
+    {
+        get => _resultImages;
+        internal set => SetField(ref _resultImages, value);
     }
 
     /// <summary>

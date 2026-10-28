@@ -1143,7 +1143,17 @@ public sealed class ChatConversation : ChatObservableObject
         tool.HiddenResultLines = cut.HiddenLines;
         tool.FullResultText = KeptResult(tool.Name, result.Text);
         tool.RejectionReason = RefusalReason(result);
+        tool.ResultImages = ResultImagesOf(result);
         tool.Status = ResultStatus(e, result);
+    }
+
+    /// <summary>The images a tool result carried, or null when it had none.</summary>
+    private static IReadOnlyList<ChatImage>? ResultImagesOf(ToolResultBlock result)
+    {
+        if (result.Images.Count == 0) return null;
+        var images = new List<ChatImage>(result.Images.Count);
+        foreach (var image in result.Images) images.Add(new ChatImage(image.MediaType, image.Data));
+        return images;
     }
 
     /// <summary>The whole result for the item: without ANSI in a command's output, and cut at the cap.</summary>

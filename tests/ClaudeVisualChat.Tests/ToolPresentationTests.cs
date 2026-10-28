@@ -38,7 +38,8 @@ public class ToolPresentationTests
     [InlineData("Task", "{\"description\":\"Resumir\"}", "Resumir")]
     [InlineData("Skill", "{\"skill\":\"pdf\"}", "pdf")]
     [InlineData("TodoWrite", "{\"todos\":[]}", "")]
-    [InlineData("mcp__srv__tool", "{\"n\":1,\"a\":\"b\"}", "b")]
+    [InlineData("mcp__srv__tool", "{\"n\":1,\"a\":\"b\"}", "")]
+    [InlineData("mcp__srv__tool", "{\"n\":1,\"query\":\"b\"}", "b")]
     [InlineData("Mystery", "{\"x\":true,\"y\":\"first\",\"z\":\"second\"}", "first")]
     [InlineData("Mystery", "{\"x\":1}", "")]
     public void Summary_per_tool(string tool, string json, string expected)
@@ -82,6 +83,86 @@ public class ToolPresentationTests
     public void Summary_without_working_directory_keeps_the_path()
         => Assert.Equal(@"C:\demo\app\a.cs",
             ToolPresentation.Summary("Read", J("{\"file_path\":\"C:\\\\demo\\\\app\\\\a.cs\"}"), null));
+
+    [Theory]
+    [InlineData("claude_ai_Gmail", "Claude AI Gmail")]
+    [InlineData("github", "GitHub")]
+    [InlineData("pubmed_search", "PubMed Search")]
+    [InlineData("my-server", "My-server")]
+    [InlineData("MY_SERVER", "My Server")]
+    [InlineData("a__b", "A B")]
+    public void Server_names_are_humanized(string raw, string expected) => Assert.Equal(expected, ToolPresentation.HumanizeServer(raw));
+
+    [Theory]
+    [InlineData("{\"channel\":\"general\"}", "#general")]
+    [InlineData("{\"channel\":\"\",\"repo\":\"owner/name\"}", "owner/name")]              // an empty field is skipped
+    [InlineData("{\"text\":\"t\",\"query\":\"q\"}", "q")]                                  // the order of the list, not the input's
+    [InlineData("{\"message\":\"m\",\"channel\":\"c\"}", "m")]
+    [InlineData("{\"url\":\"https://example.com/a/b?c=1\"}", "example.com")]               // the host
+    [InlineData("{\"url\":\"not a url, but a very long piece of text\"}", "not a url, but a very long pie…")] // 30 characters
+    [InlineData("{\"url\":\"short\"}", "short")]                                           // nothing cut, no ellipsis
+    [InlineData("{\"path\":\"0123456789012345678901234567890123456789ABC\"}", "0123456789012345678901234567890123456789…")] // 40
+    [InlineData("{\"title\":\"0123456789012345678901234567890123456789\"}", "0123456789012345678901234567890123456789")]
+    [InlineData("{\"search\":\"s\"}", "s")]
+    [InlineData("{\"n\":1,\"other\":\"x\"}", null)]
+    [InlineData("{\"query\":3}", null)]
+    [InlineData("[]", null)]
+    public void Mcp_detail_takes_the_first_known_field(string json, string? expected) =>
+        Assert.Equal(expected, ToolPresentation.McpDetail(J(json)));
+
+    [Fact]
+    public void An_mcp_call_summary_is_its_detail_and_a_chrome_call_its_own()
+    {
+        Assert.Equal("#dev", ToolPresentation.Summary("mcp__slack__post", J("{\"channel\":\"dev\",\"text\":\"hi\"}"), Wd));
+        Assert.Equal("example.com", ToolPresentation.Summary("mcp__claude-in-chrome__navigate", J("{\"url\":\"https://example.com/x\",\"tabId\":3}"), Wd));
+    }
+
+    [Theory]
+    [InlineData("mcp__claude-in-chrome__navigate", "navigate")]
+    [InlineData("mcp__claude-in-chrome__tabs_create_mcp", "tabs_create")]
+    [InlineData("mcp__claude-in-chrome__tabs_context_mcp", "tabs_context")]
+    [InlineData("mcp__claude-in-chrome__read_page", "read_page")]
+    [InlineData("mcp__github__navigate", null)]
+    [InlineData("Read", null)]
+    public void Chrome_actions_come_from_the_technical_name(string tool, string? expected) =>
+        Assert.Equal(expected, ToolPresentation.ChromeAction(tool));
+
+    [Theory]
+    [InlineData("navigate", "{\"url\":\"https://www.example.com/page\"}", "www.example.com")]
+    [InlineData("find", "{\"query\":\"the login button\"}", "pattern: the login button")]
+    [InlineData("find", "{\"query\":\"0123456789012345678901234567890123\"}", "pattern: 012345678901234567890123456789…")]
+    [InlineData("computer", "{\"action\":\"left_click\",\"ref\":\"ref_4\"}", "left_click on ref_4")]
+    [InlineData("computer", "{\"action\":\"right_click\",\"coordinate\":[10,20]}", "right_click at (10, 20)")]
+    [InlineData("computer", "{\"action\":\"double_click\",\"coordinate\":[10.4,20.6]}", "double_click at (10, 21)")]
+    [InlineData("computer", "{\"action\":\"triple_click\"}", "triple_click")]
+    [InlineData("computer", "{\"action\":\"type\",\"text\":\"hello world, how are you\"}", "type \"hello world, ho…\"")]
+    [InlineData("computer", "{\"action\":\"type\",\"text\":\"hi\"}", "type \"hi\"")]
+    [InlineData("computer", "{\"action\":\"key\",\"text\":\"ctrl+a\"}", "key ctrl+a")]
+    [InlineData("computer", "{\"action\":\"scroll\",\"scroll_direction\":\"down\"}", "scroll down")]
+    [InlineData("computer", "{\"action\":\"wait\",\"duration\":2}", "wait 2ms")]
+    [InlineData("computer", "{\"action\":\"left_click_drag\"}", "left_click_drag")]
+    [InlineData("computer", "{\"action\":\"screenshot\"}", "screenshot")]
+    [InlineData("resize_window", "{\"width\":1280,\"height\":720}", "1280x720")]
+    [InlineData("read_console_messages", "{\"pattern\":\"error|warn\"}", "pattern: error|warn")]
+    [InlineData("read_console_messages", "{\"onlyErrors\":true}", "errors only")]
+    [InlineData("read_console_messages", "{\"pattern\":\"0123456789012345678901234\"}", "pattern: 01234567890123456789…")]
+    [InlineData("read_network_requests", "{\"urlPattern\":\"/api/\"}", "pattern: /api/")]
+    [InlineData("javascript_tool", "{\"action\":\"javascript_exec\",\"text\":\"1+1\"}", "execute")]
+    [InlineData("gif_creator", "{\"action\":\"start_recording\"}", "start_recording")]
+    [InlineData("read_page", "{\"filter\":\"all\"}", "")]
+    [InlineData("form_input", "{\"ref\":\"ref_1\",\"value\":\"x\"}", "")]
+    public void Chrome_summaries_are_the_extensions(string action, string json, string expected) =>
+        Assert.Equal(expected, ToolPresentation.ChromeSummary(action, J(json)));
+
+    [Theory]
+    [InlineData("page text", "page text")]
+    [InlineData("page text\n\nTab Context:\n- tabId 1: https://a.com", "page text")]
+    [InlineData("a\nTab Context:\nx\nTab Context:\ny", "a\nTab Context:\nx")]    // only the last section goes
+    [InlineData("it says Tab Context: inline", "it says Tab Context: inline")]     // a section starts a line
+    [InlineData("Tab Context:\n- tabId 1", "")]
+    [InlineData("", "")]
+    public void The_tab_context_section_is_cut_off_the_result(string text, string expected) =>
+        Assert.Equal(expected, ToolPresentation.WithoutTabContext(text));
 
     [Fact]
     public void McpName_splits_server_and_tool()

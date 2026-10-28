@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using ClaudeVisualChat.Controls;
 
 namespace ClaudeVisualChat;
 
@@ -82,7 +83,9 @@ public static class ToolPresentation
                 }
                 case "TodoWrite": return "";
                 case "ExitPlanMode": return PlanFileName(input) ?? ""; // never the plan's text: the document shows it
-                default: return FirstString(input);
+                default:
+                    if (McpName(toolName) == null) return FirstString(input);
+                    return ChromeAction(toolName) is { } action ? ChromeSummary(action, input) : McpDetail(input) ?? "";
             }
         }
         catch (Exception)
@@ -322,6 +325,162 @@ public static class ToolPresentation
         var sep = rest.IndexOf("__", StringComparison.Ordinal);
         if (sep <= 0 || sep + 2 >= rest.Length) return null;
         return (rest.Substring(0, sep), rest.Substring(sep + 2));
+    }
+
+    /// <summary>The server of the Claude in Chrome tools (<c>mcp__claude-in-chrome__&lt;action&gt;</c>).</summary>
+    internal const string ChromeServer = "claude-in-chrome";
+
+    /// <summary>
+    /// The server of an MCP tool as the extension names it: split on "_", each word with an upper-case first letter and the rest in
+    /// lower case, then Github, Pubmed and Ai fixed to GitHub, PubMed and AI ("claude_ai_Gmail" reads "Claude AI Gmail"). A hyphen
+    /// does not split.
+    /// </summary>
+    internal static string HumanizeServer(string server)
+    {
+        var words = new List<string>();
+        foreach (var part in (server ?? "").Split('_'))
+        {
+            if (part.Length == 0) continue;
+            var word = part.Substring(0, 1).ToUpperInvariant() + part.Substring(1).ToLowerInvariant();
+            words.Add(word switch { "Github" => "GitHub", "Pubmed" => "PubMed", "Ai" => "AI", _ => word });
+        }
+        return string.Join(" ", words);
+    }
+
+    /// <summary>The input fields an MCP call's secondary text is taken from, the first one that is not empty.</summary>
+    private static readonly string[] McpDetailFields = { "query", "message", "channel", "repo", "url", "path", "title", "search", "text" };
+
+    /// <summary>
+    /// The secondary text of an MCP call: the first non-empty field among query, message, channel, repo, url, path, title, search
+    /// and text. A channel reads "#name", a url its host (or its first 30 characters), any other field its first 40 characters; the
+    /// "…" comes only when something was cut. Null when no such field has a text.
+    /// </summary>
+    internal static string? McpDetail(JsonElement input)
+    {
+        try
+        {
+            foreach (var field in McpDetailFields)
+            {
+                var value = Str(input, field);
+                if (value.Length == 0) continue;
+                if (field == "channel") return "#" + value;
+                if (field == "url") return UrlHost(value) ?? ChatText.Clip(value, 30);
+                return ChatText.Clip(value, 40);
+            }
+        }
+        catch (Exception)
+        {
+            // odd input: no secondary text
+        }
+        return null;
+    }
+
+    /// <summary>The host name of an absolute url; null when the text is not one or has no host.</summary>
+    private static string? UrlHost(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Host.Length > 0 ? uri.Host : null;
+
+    /// <summary>
+    /// The action of a Claude in Chrome tool (<c>mcp__claude-in-chrome__navigate</c> is "navigate"); <c>tabs_create_mcp</c> and
+    /// <c>tabs_context_mcp</c> read <c>tabs_create</c> and <c>tabs_context</c>. Null for any other tool.
+    /// </summary>
+    internal static string? ChromeAction(string toolName)
+    {
+        if (McpName(toolName) is not { } mcp || mcp.Server != ChromeServer) return null;
+        return mcp.Tool == "tabs_create_mcp" || mcp.Tool == "tabs_context_mcp" ? mcp.Tool.Substring(0, mcp.Tool.Length - 4) : mcp.Tool;
+    }
+
+    /// <summary>
+    /// What a Claude in Chrome call says after its name, in the editor's font: the host a navigate goes to, a find's pattern (30
+    /// characters), what a computer action does (a click on a ref or at a point, the text typed (15), a key, a scroll, a wait, a drag, a
+    /// screenshot), a window's size, the pattern of a console or network read (20) or "errors only", "execute" for a script, a GIF's
+    /// action. Empty for the other actions.
+    /// </summary>
+    internal static string ChromeSummary(string action, JsonElement input)
+    {
+        try
+        {
+            switch (action)
+            {
+                case "navigate":
+                {
+                    var url = Str(input, "url");
+                    return UrlHost(url) ?? url;
+                }
+                case "find":
+                    return Str(input, "query") is { Length: > 0 } query ? "pattern: " + ChatText.Clip(query, 30) : "";
+                case "computer":
+                    return ComputerSummary(input);
+                case "resize_window":
+                    return TryNumber(input, "width", out var width) && TryNumber(input, "height", out var height)
+                        ? Whole(width) + "x" + Whole(height)
+                        : "";
+                case "read_console_messages":
+                    if (Str(input, "pattern") is { Length: > 0 } filter) return "pattern: " + ChatText.Clip(filter, 20);
+                    return input.TryGetProperty("onlyErrors", out var errors) && errors.ValueKind == JsonValueKind.True ? "errors only" : "";
+                case "read_network_requests":
+                {
+                    var pattern = Str(input, "urlPattern");
+                    if (pattern.Length == 0) pattern = Str(input, "pattern");
+                    return pattern.Length > 0 ? "pattern: " + ChatText.Clip(pattern, 20) : "";
+                }
+                case "javascript_tool":
+                    return "execute";
+                case "gif_creator":
+                    return Str(input, "action");
+                default:
+                    return "";
+            }
+        }
+        catch (Exception)
+        {
+            return "";
+        }
+    }
+
+    private static string ComputerSummary(JsonElement input)
+    {
+        var action = Str(input, "action");
+        switch (action)
+        {
+            case "left_click":
+            case "right_click":
+            case "double_click":
+            case "triple_click":
+            {
+                if (Str(input, "ref") is { Length: > 0 } reference) return action + " on " + reference;
+                if (input.TryGetProperty("coordinate", out var point) && point.ValueKind == JsonValueKind.Array && point.GetArrayLength() >= 2
+                    && point[0].ValueKind == JsonValueKind.Number && point[1].ValueKind == JsonValueKind.Number)
+                    return action + " at (" + Whole(point[0].GetDouble()) + ", " + Whole(point[1].GetDouble()) + ")";
+                return action;
+            }
+            case "type":
+                return Str(input, "text") is { Length: > 0 } typed ? "type \"" + ChatText.Clip(typed, 15) + "\"" : action;
+            case "key":
+                return Str(input, "text") is { Length: > 0 } keys ? "key " + keys : action;
+            case "scroll":
+                return Str(input, "scroll_direction") is { Length: > 0 } direction ? "scroll " + direction : action;
+            case "wait":
+                return TryNumber(input, "duration", out var duration) ? "wait " + Whole(duration) + "ms" : action;
+            default:
+                return action; // drag, screenshot and the rest read as they are called
+        }
+    }
+
+    private static bool TryNumber(JsonElement obj, string name, out double value)
+    {
+        value = 0;
+        return obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetDouble(out value);
+    }
+
+    private static string Whole(double number) => Math.Round(number).ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The result of a Claude in Chrome call without its last section, "Tab Context:" (the open tabs), which the tool appends.</summary>
+    internal static string WithoutTabContext(string text)
+    {
+        const string marker = "Tab Context:";
+        var at = text.LastIndexOf(marker, StringComparison.Ordinal);
+        while (at > 0 && text[at - 1] != '\n') at = text.LastIndexOf(marker, at - 1, StringComparison.Ordinal); // a section starts a line
+        return at < 0 ? text : text.Substring(0, at).TrimEnd();
     }
 
     // ---- helpers ----

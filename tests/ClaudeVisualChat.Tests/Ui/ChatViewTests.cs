@@ -304,7 +304,7 @@ public class ChatViewTests
         foreach (var expected in new[] { "✓", "plan", "✽", "build", "ship" }) Assert.Contains(expected, texts);
 
         texts = UiHelpers.Texts(ViewOf(view, mcp));
-        Assert.Contains("github · search_issues", texts);
+        Assert.Contains("GitHub [search_issues]", texts);
         Assert.Contains("boom", texts);
 
         texts = UiHelpers.Texts(ViewOf(view, rejected));
@@ -2146,6 +2146,233 @@ public class ChatViewTests
         Assert.Equal("gone", ToolTitle(view2, failed, "ToolName").Text);
         Assert.False(HasBox(view2, failed));
         Assert.DoesNotContain("OUT", UiHelpers.Texts(ViewOf(view2, failed)));
+    }
+
+    // ---- MCP and Claude in Chrome ----
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_mcp_row_reads_server_and_tool_in_brackets(bool touch)
+    {
+        var (c, tool) = SearchCall("mcp__claude_ai_Gmail__search_threads", new { query = "from:boss", maxResults = 5 }, "3 threads");
+        var view = OpenIn(c, touch);
+        var name = ToolTitle(view, tool, "ToolName");
+        Assert.Equal("Claude AI Gmail [search_threads]", name.Text);                  // the server made readable, the tool raw
+        Assert.Equal(FontWeight.Bold, name.FontWeight);
+        Assert.Equal("from:boss", ToolTitle(view, tool, "DetailText").Text);          // the first known field
+        var texts = UiHelpers.Texts(ViewOf(view, tool));
+        Assert.DoesNotContain("IN", texts);                                           // no IN row, an OUT row with the result
+        Assert.Contains("OUT", texts);
+        Assert.Contains("3 threads", texts);
+
+        // a channel reads "#name", a long url its host, and a field of no known name is left out
+        var (c2, slack) = SearchCall("mcp__github__post", new { owner = "x", channel = "dev", url = "https://example.com/a" }, "ok");
+        var view2 = OpenIn(c2, touch);
+        Assert.Equal("GitHub [post]", ToolTitle(view2, slack, "ToolName").Text);
+        Assert.Equal("#dev", ToolTitle(view2, slack, "DetailText").Text);
+        var (c3, bare) = SearchCall("mcp__my-server__ping", new { owner = "x" }, "pong");
+        var view3 = OpenIn(c3, touch);
+        Assert.Equal("My-server [ping]", ToolTitle(view3, bare, "ToolName").Text);
+        Assert.False(ToolTitle(view3, bare, "DetailText").IsVisible);
+    }
+
+    /// <summary>The view in the desktop or touch layout (which starts in Portuguese), reading English.</summary>
+    private static ClaudeChatView EnglishIn(ChatConversation c, bool touch)
+    {
+        var view = OpenIn(c, touch);
+        view.Strings = ChatStrings.English;
+        UiHelpers.Pump();
+        return view;
+    }
+
+    private static (ChatConversation C, ToolCallItem Tool) ChromeCall(string action, object input, string? result, bool isError = false,
+        params (int W, int H)[] images)
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "mcp__claude-in-chrome__" + action, J(JsonSerializer.Serialize(input)))));
+        if (result != null)
+        {
+            var block = new ToolResultBlock("t1", result, isError)
+            {
+                Images = images.Select(i => new ClaudeVisualChat.Protocol.ImageBlock("image/png", Convert.ToBase64String(Png(i.W, i.H)))).ToList(),
+            };
+            c.Apply(new UserBlock(null, block, null, false, false));
+        }
+        return (c, c.Items.OfType<ToolCallItem>().Single());
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Chrome_navigate_reads_navigation_completed(bool touch)
+    {
+        var (c, tool) = ChromeCall("navigate", new { url = "https://www.example.com/page?q=1", tabId = 7 },
+            "Navigated to https://www.example.com/page?q=1\n\nTab Context:\n- tabId 7: Example");
+        var view = EnglishIn(c, touch);
+        var name = ToolTitle(view, tool, "ToolName");
+        Assert.Equal("Claude in Chrome [navigate]", name.Text);
+        Assert.Equal(FontWeight.Bold, name.FontWeight);
+        var detail = ToolTitle(view, tool, "DetailText");
+        Assert.Equal("www.example.com", detail.Text);                                // the host, in mono
+        Assert.DoesNotContain("plain", detail.Classes);
+        var texts = UiHelpers.Texts(ViewOf(view, tool));
+        Assert.Contains("Navigation completed", texts);                              // only the table's line
+        Assert.DoesNotContain("OUT", texts);
+        Assert.DoesNotContain("IN", texts);
+        Assert.DoesNotContain(texts, t => t.Contains("Tab Context", StringComparison.Ordinal) || t.Contains("Show Tab", StringComparison.Ordinal));
+        Assert.False(HasBox(view, tool));
+
+        // another language, another line
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Contains("Navegação concluída", UiHelpers.Texts(ViewOf(view, tool)));
+        Assert.Equal("Claude in Chrome [navigate]", ToolTitle(view, tool, "ToolName").Text); // a product's name stays
+    }
+
+    [AvaloniaFact]
+    public void Chrome_actions_with_an_out_box_drop_the_tab_context_and_the_others_show_one_line()
+    {
+        // the page text goes in OUT, without the section the tool appends
+        var (c, read) = ChromeCall("get_page_text", new { tabId = 1 }, "Hello world\nsecond line\n\nTab Context:\n- tabId 1: Home");
+        var (view, window) = Open(c);
+        var texts = UiHelpers.Texts(ViewOf(view, read));
+        Assert.Contains("OUT", texts);
+        Assert.Contains(texts, t => t.Contains("Hello world", StringComparison.Ordinal));
+        Assert.DoesNotContain(texts, t => t.Contains("Tab Context", StringComparison.Ordinal));
+        Assert.DoesNotContain("Text retrieved", texts);                               // the line is for an empty result
+        window.Close();
+
+        // nothing but the section: the summary line takes its place
+        var (c2, empty) = ChromeCall("read_page", new { filter = "all" }, "Tab Context:\n- tabId 1: Home");
+        (view, window) = Open(c2);
+        texts = UiHelpers.Texts(ViewOf(view, empty));
+        Assert.Contains("Page read", texts);
+        Assert.DoesNotContain("OUT", texts);
+        window.Close();
+
+        // a find: its pattern on the header, and an OUT box
+        var (c3, find) = ChromeCall("find", new { query = "the login button" }, "ref_3 button \"Log in\"");
+        (view, window) = Open(c3);
+        Assert.Equal("pattern: the login button", ToolTitle(view, find, "DetailText").Text);
+        Assert.Contains("OUT", UiHelpers.Texts(ViewOf(view, find)));
+        window.Close();
+
+        // the other actions: only their line; the technical "_mcp" of the tab tools is not shown
+        var cases = new (string Action, string Shown, string Line)[]
+        {
+            ("tabs_create_mcp", "tabs_create", "Tab created"),
+            ("tabs_context_mcp", "tabs_context", "Tabs read"),
+            ("form_input", "form_input", "Input completed"),
+            ("resize_window", "resize_window", "Window resized"),
+            ("upload_image", "upload_image", "Image uploaded"),
+        };
+        foreach (var (action, shown, line) in cases)
+        {
+            var (cc, call) = ChromeCall(action, new { width = 800, height = 600 }, "done\n\nTab Context:\n- tabId 1");
+            (view, window) = Open(cc);
+            Assert.Equal("Claude in Chrome [" + shown + "]", ToolTitle(view, call, "ToolName").Text);
+            texts = UiHelpers.Texts(ViewOf(view, call));
+            Assert.Contains(line, texts);
+            Assert.DoesNotContain("OUT", texts);
+            Assert.DoesNotContain("done", texts);
+            window.Close();
+        }
+        var (c4, resize) = ChromeCall("resize_window", new { width = 800, height = 600 }, "ok");
+        (view, window) = Open(c4);
+        Assert.Equal("800x600", ToolTitle(view, resize, "DetailText").Text);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_chrome_error_and_a_script_show_the_generic_body_and_a_call_without_result_shows_nothing()
+    {
+        var (c, failed) = ChromeCall("navigate", new { url = "https://nope.invalid" }, "net::ERR_NAME_NOT_RESOLVED", isError: true);
+        var (view, window) = Open(c);
+        var texts = UiHelpers.Texts(ViewOf(view, failed));
+        Assert.Contains("IN", texts);                                                // the input as JSON
+        Assert.Contains(texts, t => t.Contains("\"url\": \"https://nope.invalid\"", StringComparison.Ordinal));
+        Assert.Contains("OUT", texts);
+        Assert.Contains("net::ERR_NAME_NOT_RESOLVED", texts);                         // the raw text
+        Assert.DoesNotContain("Navigation completed", texts);
+        window.Close();
+
+        var (c2, script) = ChromeCall("javascript_tool", new { action = "javascript_exec", text = "1+1" }, "2\n\nTab Context:\n- x");
+        (view, window) = Open(c2);
+        Assert.Equal("execute", ToolTitle(view, script, "DetailText").Text);
+        texts = UiHelpers.Texts(ViewOf(view, script));
+        Assert.Contains("IN", texts);
+        Assert.Contains("OUT", texts);
+        Assert.DoesNotContain("Script executed", texts);
+        window.Close();
+
+        var (c3, running) = ChromeCall("computer", new { action = "screenshot" }, null);
+        (view, window) = Open(c3);
+        Assert.False(HasBox(view, running));
+        Assert.DoesNotContain("Action completed", UiHelpers.Texts(ViewOf(view, running)));
+        Assert.Equal("screenshot", ToolTitle(view, running, "DetailText").Text);
+        window.Close();
+    }
+
+    private static IReadOnlyList<Button> Screenshots(Visual root, ToolCallItem tool) =>
+        ViewOf(root, tool).GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("ClaudeChatMessageImage")).ToList();
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_chrome_screenshot_shows_a_thumbnail_that_opens_the_preview(bool touch)
+    {
+        var (c, tool) = ChromeCall("computer", new { action = "left_click", coordinate = new[] { 120, 340 } }, "Clicked at (120, 340)", false, (400, 100));
+        var view = EnglishIn(c, touch);
+        var window = (Window)view.GetVisualRoot()!;
+        Assert.Equal("left_click at (120, 340)", ToolTitle(view, tool, "DetailText").Text);
+        var line = ViewOf(view, tool).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Action completed");
+        var thumb = Assert.Single(Screenshots(view, tool));
+        Assert.Equal("Screenshot", AutomationProperties.GetName(thumb));
+
+        // 80 px high and at most 160 wide (a long image is cut at its sides), 1 px frame and 8 px corners; the frame adds 2
+        Assert.Equal(new Size(162, 82), thumb.Bounds.Size);
+        var frame = thumb.GetVisualDescendants().OfType<Border>().First(b => b.Name == "PART_ChatButton");
+        Assert.Equal(new CornerRadius(8), frame.CornerRadius);
+        Assert.Equal(new Thickness(1), frame.BorderThickness);
+        Assert.Same(Resource(view, "ClaudeChat.InputBorder"), frame.BorderBrush);
+        var below = thumb.TranslatePoint(default, view)!.Value.Y - (line.TranslatePoint(default, view)!.Value.Y + line.Bounds.Height);
+        Assert.InRange(below, 8, 8 + 8);                                              // 8 px under the line (the line's own margin may add)
+        UiHelpers.DrawFrames();
+        Assert.NotNull(thumb.GetVisualDescendants().OfType<Image>().Single().Source ?? WaitForPicture(thumb));
+
+        // a click shows the image over the view; Esc closes it
+        var preview = view.GetVisualDescendants().OfType<ImagePreview>().Single();
+        UiHelpers.Click(window, thumb);
+        Assert.True(preview.IsEffectivelyVisible);
+        Assert.Equal("Screenshot", AutomationProperties.GetName(preview));
+        Assert.Equal(400, ((Avalonia.Media.Imaging.Bitmap)preview.GetVisualDescendants().OfType<Image>().Single().Source!).PixelSize.Width);
+        UiHelpers.Press(window, Key.Escape);
+        Assert.False(preview.IsVisible);
+
+        // a narrow image keeps its proportion: 40 x 80 is 40 wide
+        var (c2, narrow) = ChromeCall("computer", new { action = "screenshot" }, "ok", false, (40, 80));
+        var view2 = EnglishIn(c2, touch);
+        Assert.Equal(new Size(42, 82), Assert.Single(Screenshots(view2, narrow)).Bounds.Size);
+    }
+
+    private static Avalonia.Media.IImage? WaitForPicture(Button thumb)
+    {
+        var image = thumb.GetVisualDescendants().OfType<Image>().Single();
+        UiHelpers.PumpUntil(() => image.Source != null);
+        return image.Source;
+    }
+
+    [AvaloniaFact]
+    public void A_chrome_computer_action_without_an_image_has_only_its_line()
+    {
+        var (c, tool) = ChromeCall("computer", new { action = "key", text = "ctrl+a" }, "Pressed ctrl+a");
+        var (view, window) = Open(c);
+        Assert.Equal("key ctrl+a", ToolTitle(view, tool, "DetailText").Text);
+        Assert.Contains("Action completed", UiHelpers.Texts(ViewOf(view, tool)));
+        Assert.Empty(Screenshots(view, tool));
+        Assert.DoesNotContain("OUT", UiHelpers.Texts(ViewOf(view, tool)));
+        window.Close();
     }
 
     [AvaloniaFact]

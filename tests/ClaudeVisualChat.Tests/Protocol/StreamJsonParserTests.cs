@@ -179,6 +179,23 @@ namespace ClaudeVisualChat.Tests.Protocol
             Assert.Equal("User rejected tool use", ev.ToolUseResult!.Value.GetString());
         }
 
+        [Fact]
+        public void A_tool_result_keeps_the_base64_images_of_its_content()
+        {
+            var parser = new StreamJsonParser();
+            var ev = Assert.IsType<UserBlock>(Assert.Single(parser.Parse(
+                "{\"type\":\"user\",\"parent_tool_use_id\":null,\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_1\",\"content\":["
+                + "{\"type\":\"text\",\"text\":\"done\"},"
+                + "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"AAAA\"}},"
+                + "{\"type\":\"image\",\"source\":{\"type\":\"url\",\"url\":\"https://x/y.png\"}}]}]}}")));
+
+            var result = Assert.IsType<ToolResultBlock>(ev.Block);
+            Assert.Equal("done", result.Text);
+            var image = Assert.Single(result.Images);   // the one that is not base64 has nothing to draw
+            Assert.Equal(("image/png", "AAAA"), (image.MediaType, image.Data));
+            Assert.Empty(ev.Images);                    // they are the result's, not the message's
+        }
+
         [Theory]
         [InlineData("denied", "permission-rule")]
         [InlineData("interrupted", "user-rejected")]

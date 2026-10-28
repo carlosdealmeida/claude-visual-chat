@@ -13,6 +13,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
@@ -42,6 +43,10 @@ namespace ClaudeVisualChat.Controls;
 /// A Glob or a Grep that worked reads only a line under its name ("Found 3 files", "12 lines of output"), with no box; with output, a
 /// click, Enter or Space on the line opens the whole output under it. A Web Fetch that worked has only "Fetched from" and its url in the
 /// box (what it fetched stays out); a Web Search says the domains it was allowed or kept away from.
+/// An MCP tool reads "Server [tool]" in bold (the server made readable: "Claude AI Gmail"), with its first known input field after
+/// it and only an OUT box. Claude in Chrome reads "Claude in Chrome [action]" and what the action does; what worked says so in a line
+/// ("Navigation completed"), a computer action also shows its screenshot as a thumbnail that opens in the preview, a read shows its text
+/// without the "Tab Context:" section, and an error or a script shows its input as JSON (IN) and the result (OUT).
 /// In the touch layout (pseudo-class <c>:touch</c>) the call is a block with a frame and its dot is the header's first
 /// piece.
 /// </summary>
@@ -84,6 +89,20 @@ internal partial class ToolCallView : UserControl
     private const string WebFetchTitle = "Web Fetch";
     private const string WebSearchTitle = "Web Search";
 
+    /// <summary>The name of the Claude in Chrome tools, a product's name, the same in every language.</summary>
+    private const string ChromeTitle = "Claude in Chrome";
+
+    /// <summary>The Claude in Chrome actions whose result shows in an OUT box (without its "Tab Context:" section).</summary>
+    private static readonly string[] ChromeOutActions =
+        { "find", "gif_creator", "read_console_messages", "read_network_requests", "read_page", "get_page_text", "update_plan" };
+
+    /// <summary>A screenshot of Claude in Chrome shows 80 px high and at most 160 px wide.</summary>
+    internal const double ScreenshotHeight = 80;
+    internal const double ScreenshotMaxWidth = 160;
+
+    /// <summary>Decoded once per screenshot, off the UI thread.</summary>
+    private static readonly ThumbnailCache Screenshots = ThumbnailCache.Cover(ScreenshotMaxWidth, ScreenshotHeight);
+
     /// <summary>The Skill tool, whose row reads the skill's name in bold and this word after it, in the editor's font.</summary>
     private const string SkillTool = "Skill";
     private const string SkillWord = "skill";
@@ -114,6 +133,7 @@ internal partial class ToolCallView : UserControl
     private Button? _copyButton; // the copy button on the command's row, while the row has one
     private Path? _copyIcon;
     private bool _copied; // the command was copied a moment ago: the button shows a check (it is the view's, the item has no use for it)
+    private int _generation; // counts the redraws of the body: a screenshot decoded after another redraw is for a box no longer there
     private NavigationMethod _focusMethod; // how a text of the box got the focus, so a redraw gives it back the same way (a key keeps the ring)
 
     public ToolCallView()
@@ -265,6 +285,7 @@ internal partial class ToolCallView : UserControl
             case nameof(ToolCallItem.Todos):
             case nameof(ToolCallItem.ResultText):
             case nameof(ToolCallItem.FullResultText):
+            case nameof(ToolCallItem.ResultImages):
             case nameof(ToolCallItem.RejectionReason):
             case nameof(ToolCallItem.IsOutputExpanded):
             case nameof(ToolCallItem.IsInputExpanded):
@@ -289,7 +310,7 @@ internal partial class ToolCallView : UserControl
     {
         var item = _item;
         var name = item?.Name ?? "";
-        ToolName.Text = ToolPresentation.McpName(name) is { } mcp ? mcp.Server + " · " + mcp.Tool : name;
+        ToolName.Text = TitleOf(name);
 
         var detail = item?.Summary ?? "";
         var kind = "mono";
@@ -335,6 +356,16 @@ internal partial class ToolCallView : UserControl
         RangeText.Text = range is { } lines ? Strings.FormatReadRange(lines) : "";
         RangeText.IsVisible = range != null;
         UpdateInteraction();
+    }
+
+    /// <summary>
+    /// The name in bold: the tool's own, or for an MCP tool "Server [tool]" with the server made readable ("Claude AI Gmail
+    /// [search]"), and for Claude in Chrome "Claude in Chrome [action]".
+    /// </summary>
+    private static string TitleOf(string name)
+    {
+        if (ToolPresentation.ChromeAction(name) is { } action) return ChromeTitle + " [" + action + "]";
+        return ToolPresentation.McpName(name) is { } mcp ? ToolPresentation.HumanizeServer(mcp.Server) + " [" + mcp.Tool + "]" : name;
     }
 
     private void UpdateStatus()
@@ -392,6 +423,7 @@ internal partial class ToolCallView : UserControl
     private void UpdateBody()
     {
         var focused = FocusedContent();
+        _generation++;
         Body.Children.Clear();
         _agentLine = null;
         _copyButton = null;
@@ -408,9 +440,23 @@ internal partial class ToolCallView : UserControl
 
             var subtitle = Subtitle(item, strings);
             var result = item.FullResultText ?? item.ResultText;
+            // Claude in Chrome: what worked says so in a line (a computer action also shows its screenshot, a read its text); an
+            // error and a script show the generic body, with the input as JSON
+            var chrome = ToolPresentation.ChromeAction(name);
+            var chromeDone = chrome != null && item.Status == ToolStatus.Succeeded && ChromeHasOwnBody(chrome, strings);
+            string? chromeOut = null;
+            if (chromeDone)
+            {
+                if (chrome == "computer") subtitle = strings.ChromeActionCompleted;
+                else if (Array.IndexOf(ChromeOutActions, chrome) >= 0
+                         && ToolPresentation.WithoutTabContext(result ?? "") is { Length: > 0 } text) chromeOut = text;
+                else subtitle = strings.ChromeLine(chrome!);
+            }
             var opensOutput = CountsOutput(name) && subtitle != null && !string.IsNullOrEmpty(result);
             if (subtitle != null)
                 Body.Children.Add(opensOutput ? OutputLine(item, subtitle, strings) : Line(subtitle, "ClaudeChatSecondary"));
+            if (chromeDone && chrome == "computer" && item.ResultImages is { Count: > 0 } screens && Screenshot(screens[0], strings) is { } screenshot)
+                Body.Children.Add(screenshot);
             // the output of a Glob or a Grep, opened from its line
             if (opensOutput && item.IsOutputExpanded)
                 Body.Children.Add(ToolBody(TextRow(item, result!, input: false, strings, interactive: false)));
@@ -425,7 +471,7 @@ internal partial class ToolCallView : UserControl
             // a plan has no box: its line tells how it ended, and its document holds its text; a subagent's call shows only its
             // prompt, whatever came back
             // a skill's row has no body at all: neither its arguments nor what it answered
-            var showOutput = name != PlanTool && name != SkillTool && !IsAgentTool(name)
+            var showOutput = name != PlanTool && name != SkillTool && !IsAgentTool(name) && !chromeDone
                 && (failed || (!hasDiff && !hasTodos && !quiet && !(refused && TellsReason(name))));
             var output = showOutput && !string.IsNullOrEmpty(result);
 
@@ -451,7 +497,11 @@ internal partial class ToolCallView : UserControl
             // what a subagent was asked: the call's prompt, else its task line's
             if (IsAgentTool(name) && (Str(item.Input, "prompt") ?? _agent?.Prompt) is { Length: > 0 } prompt)
                 rows.Add((strings.ToolInput, TextRow(item, prompt, input: true, strings), false));
+            // a Chrome call that failed, or ran a script: the input as JSON, then what came back
+            if (chrome != null && (failed || chrome == "javascript_tool") && InputJson(item.Input) is { Length: > 0 } json)
+                rows.Add((strings.ToolInput, TextRow(item, json, input: true, strings), false));
             if (output) rows.Add((strings.ToolOutput, TextRow(item, result!, input: false, strings), false));
+            else if (chromeOut != null) rows.Add((strings.ToolOutput, TextRow(item, chromeOut, input: false, strings), false));
             if (rows.Count > 0) Body.Children.Add(ToolBody(Rows(rows)));
             if (IsCommand(name) && RunsInBackground(item.Input))
             {
@@ -469,6 +519,62 @@ internal partial class ToolCallView : UserControl
         Body.IsVisible = Body.Children.Count > 0;
         UpdateCopyState();
         if (focused != null) Refocus(focused);
+    }
+
+    // ---- Claude in Chrome ----
+
+    private const string ScreenshotKey = "screenshot";
+
+    /// <summary>Whether a successful Claude in Chrome action has a body of its own: a line, a screenshot or an OUT box (a script keeps the generic one).</summary>
+    private static bool ChromeHasOwnBody(string action, ChatStrings strings) =>
+        action != "javascript_tool" && (action == "computer" || strings.ChromeLine(action) != null);
+
+    /// <summary>The call's input as indented JSON, like the file a Write got that is not a text; null without an object to show.</summary>
+    private static string? InputJson(JsonElement input) =>
+        input.ValueKind == JsonValueKind.Object
+            ? JsonSerializer.Serialize(input, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            })
+            : null;
+
+    /// <summary>
+    /// The thumbnail of a screenshot, 8 px under the line: 80 px high, as wide as its proportion gives up to 160 px, in a 1 px frame
+    /// with 8 px corners (the thumbnails of a message's images). A click, Enter or Space shows the image over the view. Null for an
+    /// image whose size cannot be read.
+    /// </summary>
+    private Control? Screenshot(ChatImage image, ChatStrings strings)
+    {
+        if (image.Width <= 0 || image.Height <= 0) return null;
+        var picture = new Image
+        {
+            // the size is known before the picture, so the list does not move when it comes
+            Width = Math.Min(ScreenshotMaxWidth, ScreenshotHeight * image.Width / image.Height),
+            Height = ScreenshotHeight,
+            Stretch = Stretch.UniformToFill,
+        };
+        var decoding = Screenshots.Load(image);
+        if (decoding.IsCompleted) picture.Source = decoding.Status == TaskStatus.RanToCompletion ? decoding.Result : null;
+        else
+        {
+            var generation = _generation;
+            decoding.ContinueWith(done => Dispatcher.UIThread.Post(() =>
+            {
+                if (generation == _generation && done.Status == TaskStatus.RanToCompletion) picture.Source = done.Result;
+            }), TaskScheduler.Default);
+        }
+        var clip = new Border { Child = picture };
+        clip.Classes.Add("ClaudeChatMessageImageClip");
+        var name = strings.ChromeScreenshot;
+        var button = new Button { Content = clip, Tag = ScreenshotKey, Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left };
+        button.Classes.Add("ClaudeChatButton");
+        button.Classes.Add("ClaudeChatMessageImage");
+        AutomationProperties.SetName(button, name);
+        ToolTip.SetTip(button, name);
+        button.GotFocus += (_, e) => _focusMethod = e.NavigationMethod;
+        button.Click += (_, _) => this.FindAncestorOfType<ClaudeChatView>()?.ShowPreview(image, name);
+        return button;
     }
 
     // ---- the line under a background agent's row ----
