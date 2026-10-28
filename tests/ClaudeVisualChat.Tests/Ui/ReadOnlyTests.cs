@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
 using Xunit;
@@ -161,6 +162,46 @@ public class ReadOnlyTests
         Assert.True(UiHelpers.Composer(view).IsEffectivelyVisible);
         Assert.True(UiHelpers.Prompt(view).IsEffectivelyVisible);
         Assert.Equal("draft", UiHelpers.Input(view).Text);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_read_only_view_shows_no_drop_overlay()
+    {
+        var c = new ChatConversation();
+        var (view, window) = Open(c);
+        var overlay = UiHelpers.DropOverlay(view);
+        var list = UiHelpers.ItemList(view);
+        var file = new AttachmentTests.FakeFile("one.png", UiHelpers.Png(8, 8));
+        var files = UiHelpers.Dragged(file);
+
+        // editable: the overlay comes up for a drag that is in progress
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, list);
+        Assert.True(overlay.IsVisible);
+
+        // read-only: a drag in progress loses it, and a new one does not bring it back
+        view.IsReadOnly = true;
+        UiHelpers.Pump();
+        Assert.False(overlay.IsVisible);
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, list);
+        var over = UiHelpers.Drag(DragDrop.DragOverEvent, files, list);
+        UiHelpers.Pump();
+        Assert.False(overlay.IsVisible);
+        Assert.DoesNotContain("Drop to attach as context", UiHelpers.Texts(view));
+        Assert.Equal(DragDropEffects.None, over.DragEffects); // nor does the view accept the drop
+
+        UiHelpers.Drag(DragDrop.DropEvent, files, list);
+        UiHelpers.Settle();
+        Assert.Empty(c.Attachments);
+        Assert.Equal(0, file.Opens); // not even read
+
+        // editable again: the overlay and the drop are back
+        view.IsReadOnly = false;
+        UiHelpers.Pump();
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, list);
+        Assert.True(overlay.IsVisible);
+        UiHelpers.Drag(DragDrop.DropEvent, files, list);
+        UiHelpers.PumpUntil(() => c.Attachments.Count == 1);
         window.Close();
     }
 }

@@ -144,6 +144,28 @@ internal static class UiHelpers
     public static TextBox Input(ClaudeChatView view) =>
         Composer(view).GetVisualDescendants().OfType<TextBox>().Single();
 
+    // ---- files dragged over the view ----
+
+    /// <summary>The layer over the whole view that asks for the drop (it is there, hidden, until a drag of files comes in).</summary>
+    public static Control DropOverlay(ClaudeChatView view) =>
+        view.GetVisualDescendants().OfType<Control>().Single(c => c.Classes.Contains("ClaudeChatDropOverlay"));
+
+    /// <summary>What a drag of these files carries.</summary>
+    public static DataObject Dragged(params Avalonia.Platform.Storage.IStorageItem[] files)
+    {
+        var data = new DataObject();
+        data.Set(DataFormats.Files, files);
+        return data;
+    }
+
+    /// <summary>One step of a drag, as the window raises it on the element under the pointer (it bubbles up to the view).</summary>
+    public static DragEventArgs Drag(RoutedEvent<DragEventArgs> step, IDataObject data, Interactive over, DragDropEffects effects = DragDropEffects.Copy)
+    {
+        var e = new DragEventArgs(step, data, over, default, KeyModifiers.None) { DragEffects = effects };
+        over.RaiseEvent(e);
+        return e;
+    }
+
     /// <summary>The one visible button under <paramref name="root"/> that shows <paramref name="text"/>, or is named so (an icon button).</summary>
     public static Button ButtonWithText(Visual root, string text) =>
         root.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible && (Texts(b).Contains(text) || AutomationProperties.GetName(b) == text));

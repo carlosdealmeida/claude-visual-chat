@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -184,8 +185,6 @@ internal partial class ChatComposer : UserControl
         ModelChip.Menu = ModelMenu;
         AddButton.Click += async (_, _) => await AttachFromPickerAsync();
         Input.PastingFromClipboard += OnPasting;
-        Box.AddHandler(DragDrop.DragOverEvent, OnDragOver);
-        Box.AddHandler(DragDrop.DropEvent, OnDrop);
         Strip.RemoveRequested += (_, image) => _tracked?.RemoveAttachment(image);
         Strip.RemoveFileRequested += (_, file) => _tracked?.RemoveFile(file);
         Strip.OpenRequested += (_, e) => PreviewRequested?.Invoke(this, e);
@@ -936,20 +935,11 @@ internal partial class ChatComposer : UserControl
         if (bytes != null) await AttachAsync(conversation, new[] { bytes });
     }
 
-    /// <summary>A drag of files: each one is sorted when dropped (an image, a file, or one refused with its reason).</summary>
-    private void OnDragOver(object? sender, DragEventArgs e)
-    {
-        e.DragEffects = AttachFiles.Dropped(e.Data).Count > 0 ? e.DragEffects & DragDropEffects.Copy : DragDropEffects.None;
-        e.Handled = true;
-    }
-
-    private async void OnDrop(object? sender, DragEventArgs e)
-    {
-        var conversation = _tracked;
-        var sources = AttachFiles.Dropped(e.Data);
-        e.Handled = true;
-        await AttachSourcesAsync(conversation, sources);
-    }
+    /// <summary>
+    /// Files dropped on the view (the view takes the drop wherever it falls, this box included): each one is sorted as it is when
+    /// picked (an image, a file, or one refused with its reason), and attached to the conversation shown when it fell.
+    /// </summary>
+    internal Task AttachDroppedAsync(IReadOnlyList<AttachSource> sources) => AttachSourcesAsync(_tracked, sources);
 
     /// <summary>
     /// Sorts what was picked or dropped: images go to the images, PDF, text and CSV files to the files, each with
@@ -965,6 +955,7 @@ internal partial class ChatComposer : UserControl
         }
         var images = new List<byte[]>();
         var maxImages = ImageFiles.ToRead(conversation);
+        var unsupported = new List<string>();
         Rejection? rejected = null;
         try
         {
@@ -975,9 +966,16 @@ internal partial class ChatComposer : UserControl
                     if (images.Count >= maxImages) continue; // it would be refused as too many anyway
                     images.Add(await AttachFiles.ReadImageAsync(source) ?? Array.Empty<byte>()); // unreadable: not an image
                 }
+                else if (!source.IsAttachableFile)
+                {
+                    // refused by its type: the notice names the types of all of them, once each, in the order they came
+                    var type = source.TypeName;
+                    if (!unsupported.Contains(type, StringComparer.OrdinalIgnoreCase)) unsupported.Add(type);
+                    rejected = Rejection.Unsupported(unsupported);
+                }
                 else
                 {
-                    var result = source.IsAttachableFile ? await AttachFiles.AddFileAsync(conversation, source) : AddFileResult.NotSupported;
+                    var result = await AttachFiles.AddFileAsync(conversation, source);
                     if (result != AddFileResult.Added) rejected = Rejection.Of(result, conversation);
                 }
             }
@@ -1029,14 +1027,20 @@ internal partial class ChatComposer : UserControl
         private readonly AddFileResult _file;
         private readonly long _maxFileBytes;
         private readonly int _maxFiles;
+        private readonly string[]? _types;
 
-        private Rejection(AddImageResult? image, AddFileResult file, long maxFileBytes, int maxFiles)
+        private Rejection(AddImageResult? image, AddFileResult file, long maxFileBytes, int maxFiles, string[]? types = null)
         {
             _image = image;
             _file = file;
             _maxFileBytes = maxFileBytes;
             _maxFiles = maxFiles;
+            _types = types;
         }
+
+        /// <summary>Files of kinds the box does not take: their extensions, or their names where they have none.</summary>
+        public static Rejection Unsupported(IEnumerable<string> types) =>
+            new Rejection(null, AddFileResult.NotSupported, 0, 0, types.ToArray());
 
         public static Rejection Of(AddImageResult image) => new Rejection(image, AddFileResult.Added, 0, 0);
 
@@ -1045,6 +1049,7 @@ internal partial class ChatComposer : UserControl
 
         public string? Text(ChatStrings strings)
         {
+            if (_types != null) return strings.FormatUnsupportedFileTypes(_types);
             if (_image != null)
             {
                 return _image switch

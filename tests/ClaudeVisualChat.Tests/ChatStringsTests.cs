@@ -135,6 +135,10 @@ public class ChatStringsTests
         Assert.Equal("Arquivo maior que 25 MB", Pt.FormatFileTooBig(25L * 1024 * 1024));
         Assert.Equal("Only PDF, text and CSV files", En.FileNotSupported);
         Assert.Equal("Só arquivos PDF, de texto e CSV", Pt.FileNotSupported);
+        Assert.Equal("Drop to attach as context", En.DropToAttach);
+        Assert.Equal("Solte para anexar como contexto", Pt.DropToAttach);
+        Assert.Equal("Unsupported file type(s): .zip, .exe", En.FormatUnsupportedFileTypes(new[] { ".zip", ".exe" }));
+        Assert.Equal("Tipo(s) de arquivo não suportado(s): README", Pt.FormatUnsupportedFileTypes(new[] { "README" }));
         Assert.Equal("Up to 5 files per message", En.FormatTooManyFiles(5));
         Assert.Equal("Até 5 arquivos por mensagem", Pt.FormatTooManyFiles(5));
         Assert.Equal("Sending 42%", En.FormatFileUploading(0.42));

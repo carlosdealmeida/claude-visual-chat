@@ -89,6 +89,11 @@
     </LinearGradientBrush>
     <!-- a message's thumbnail under the pointer: its frame at 70 % of descriptionForeground -->
     <SolidColorBrush x:Key="ClaudeChat.ThumbnailHoverBorder" Color="#B38C8C8C" />
+    <!-- the drop overlay over the view while files are dragged over it: the extension's orange at 15 %, its dashed line, and the
+         shadow of the pill with the label (the pill itself is the side bar's background) -->
+    <SolidColorBrush x:Key="ClaudeChat.DropFill" Color="#26D97757" />
+    <SolidColorBrush x:Key="ClaudeChat.DropBorder" Color="#D97757" />
+    <BoxShadows x:Key="ClaudeChat.DropLabelShadow">0 2 8 0 #00000026</BoxShadows>
     <!-- the image preview: the extension's backdrop and shadow; its close button is a menu's -->
     <SolidColorBrush x:Key="ClaudeChat.PreviewOverlay" Color="#D9000000" />
     <BoxShadows x:Key="ClaudeChat.PreviewShadow">0 4 24 0 #80000000</BoxShadows>
@@ -2535,6 +2540,29 @@
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
     <Setter Property="TextWrapping" Value="Wrap" />
     <Setter Property="Margin" Value="14,6,14,0" />
+  </Style>
+
+  <!-- files dragged over the view: the orange over all of it with a dashed 2 px line (inside the view: the line is drawn half in, half
+       out of the rectangle), and the label in a pill of the side bar's background in the middle. Taking no input: the drop is the view's -->
+  <Style Selector="Rectangle.ClaudeChatDropFrame">
+    <Setter Property="Margin" Value="1" />
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DropFill}" />
+    <Setter Property="Stroke" Value="{DynamicResource ClaudeChat.DropBorder}" />
+    <Setter Property="StrokeThickness" Value="2" />
+    <Setter Property="StrokeDashArray" Value="3,3" />
+  </Style>
+  <Style Selector="Border.ClaudeChatDropLabel">
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="16,8" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.DropLabelShadow}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatDropLabel > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
+    <Setter Property="FontWeight" Value="Medium" />
   </Style>
 
   <!-- the preview: the image over the whole view, 90 % of it at most, 8 px corners; a round close button on its corner -->

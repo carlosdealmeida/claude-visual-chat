@@ -303,6 +303,8 @@ public sealed record ChatStrings
         FileTooBig = "Arquivo maior que {0}",
         FileNotSupported = "Só arquivos PDF, de texto e CSV",
         TooManyFiles = "Até {0} arquivos por mensagem",
+        DropToAttach = "Solte para anexar como contexto",
+        UnsupportedFileTypes = "Tipo(s) de arquivo não suportado(s): {0}",
         FileUploading = "Enviando {0}%",
         AttachableFiles = "Imagens, PDF, texto e CSV",
         ContextTitle = "Uso do contexto",
@@ -1220,6 +1222,15 @@ public sealed record ChatStrings
     /// <summary>Shown when a message would carry too many files; <c>{0}</c> is how many it may carry.</summary>
     public string TooManyFiles { get; init; } = "Up to {0} files per message";
 
+    /// <summary>The label of the layer that covers the view while files are dragged over it.</summary>
+    public string DropToAttach { get; init; } = "Drop to attach as context";
+
+    /// <summary>
+    /// Shown when files were dropped that cannot be attached by their type; <c>{0}</c> is their extensions (<c>.zip, .exe</c>),
+    /// or the name of one that has none, separated by commas.
+    /// </summary>
+    public string UnsupportedFileTypes { get; init; } = "Unsupported file type(s): {0}";
+
     /// <summary>On a file's chip while the host sends it, instead of its size; <c>{0}</c> is the whole percentage.</summary>
     public string FileUploading { get; init; } = "Sending {0}%";
 
@@ -1547,6 +1558,8 @@ public sealed record ChatStrings
     }
 
     internal string FormatTooManyFiles(int maxFiles) => TooManyFiles.Replace("{0}", FormatNumber(maxFiles));
+
+    internal string FormatUnsupportedFileTypes(IEnumerable<string> types) => UnsupportedFileTypes.Replace("{0}", string.Join(", ", types));
 
     /// <summary>The upload's whole percentage, from 0 to 100.</summary>
     internal string FormatFileUploading(double progress)

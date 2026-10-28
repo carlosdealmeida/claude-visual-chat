@@ -528,6 +528,7 @@ public partial class ClaudeChatView : UserControl
         else if (change.Property == IsReadOnlyProperty && IsReadOnly)
         {
             SetValue(ViewIsReadOnlyProperty, true); // the thumbs under the replies go
+            HideDropOverlay();                      // a drag in progress is not taken here, and a new one asks for nothing
             Feedback.Hide();                        // a rating cannot go from here: the box closes, sending nothing
             BottomPanel.IsVisible = false;
             ListFade.IsVisible = false;         // there is no reply box to fade into
@@ -610,6 +611,10 @@ public partial class ClaudeChatView : UserControl
     {
         base.OnAttachedToVisualTree(e);
         _attached = true;
+        AddHandler(DragDrop.DragEnterEvent, OnDragEnter);
+        AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        AddHandler(DragDrop.DragLeaveEvent, OnDragLeave);
+        AddHandler(DragDrop.DropEvent, OnDrop);
         UpdateTouchSizes(); // the host may have swapped the resources after setting the layout
         Track(Conversation);
         // the pinned prompt as the list is now, once it is laid out (a list that did not move raises no scroll to say so)
@@ -646,7 +651,78 @@ public partial class ClaudeChatView : UserControl
     {
         base.OnDetachedFromVisualTree(e);
         _attached = false;
+        RemoveHandler(DragDrop.DragEnterEvent, OnDragEnter); // a drag cannot be followed from outside the window
+        RemoveHandler(DragDrop.DragOverEvent, OnDragOver);
+        RemoveHandler(DragDrop.DragLeaveEvent, OnDragLeave);
+        RemoveHandler(DragDrop.DropEvent, OnDrop);
+        HideDropOverlay();
         Track(null); // the conversation outlives the view: let go of its events
+    }
+
+    // ---- files dropped anywhere on the view ----
+
+    /// <summary>Bumped by every step of a drag that shows the overlay and by every hiding of it: a hide waiting its turn is for the step it was made at.</summary>
+    private int _dragStep;
+
+    /// <summary>The view takes a drop of files unless it is read-only; the reply box's own handlers are gone, this one attaches what falls on it.</summary>
+    private bool TakesDrop(DragEventArgs e) => _attached && !IsReadOnly && AttachFiles.Carries(e.Data);
+
+    private void OnDragEnter(object? sender, DragEventArgs e)
+    {
+        if (TakesDrop(e)) ShowDropOverlay();
+    }
+
+    /// <summary>A drag of files over the view, whatever is under it: copying, and the overlay (it is shown again if the enter was missed).</summary>
+    private void OnDragOver(object? sender, DragEventArgs e)
+    {
+        if (TakesDrop(e))
+        {
+            e.DragEffects &= DragDropEffects.Copy;
+            ShowDropOverlay();
+        }
+        else
+        {
+            e.DragEffects = DragDropEffects.None;
+            HideDropOverlay();
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// A drag leaves the element it was over, and a drag that goes from the list onto the reply box leaves the one and enters the other, both
+    /// raised on the way up to the view, the leave first. So the overlay is hidden a moment later, and a step of the drag that comes
+    /// meanwhile keeps it: only a drag that is gone from the view when that moment comes hides it.
+    /// </summary>
+    private void OnDragLeave(object? sender, DragEventArgs e)
+    {
+        if (!_attached || !DropOverlay.IsVisible) return;
+        var step = ++_dragStep;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_attached && step == _dragStep) HideDropOverlay();
+        }, DispatcherPriority.Background);
+    }
+
+    private async void OnDrop(object? sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        var takes = TakesDrop(e);
+        HideDropOverlay();
+        if (takes) await Composer.AttachDroppedAsync(AttachFiles.Dropped(e.Data));
+    }
+
+    private void ShowDropOverlay()
+    {
+        _dragStep++;
+        if (DropOverlay.IsVisible) return;
+        DropLabel.Text = Strings.DropToAttach;
+        DropOverlay.IsVisible = true;
+    }
+
+    private void HideDropOverlay()
+    {
+        _dragStep++;
+        if (DropOverlay.IsVisible) DropOverlay.IsVisible = false;
     }
 
     private void Track(ChatConversation? conversation)

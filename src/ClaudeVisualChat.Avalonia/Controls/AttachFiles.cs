@@ -10,7 +10,7 @@ using ClaudeVisualChat.Imaging;
 namespace ClaudeVisualChat.Controls;
 
 /// <summary>
-/// A file the user picked with the + button or dropped on the reply box: an image goes to the images, a PDF, text or
+/// A file the user picked with the + button or dropped on the view: an image goes to the images, a PDF, text or
 /// CSV file to the files, and any other is refused with its reason. A file on the disk is known by its path; one
 /// without (a sandboxed picker) only by its storage item, read through it.
 /// </summary>
@@ -34,6 +34,16 @@ internal sealed class AttachSource
     public bool IsImage => ImageFiles.IsImageName(Name);
 
     public bool IsAttachableFile => ChatFile.IsFileName(Name);
+
+    /// <summary>What names the kind of a file the box refuses: its extension (<c>.zip</c>, in lower case), else the file's name.</summary>
+    public string TypeName
+    {
+        get
+        {
+            var extension = Path.GetExtension(Name);
+            return string.IsNullOrEmpty(extension) || extension == "." ? Name : extension.ToLowerInvariant();
+        }
+    }
 
     public static AttachSource FromPath(string path) => new AttachSource(Path.GetFileName(path), path, null);
 
@@ -70,6 +80,18 @@ internal static class AttachFiles
     {
         "public.image", "com.adobe.pdf", "public.plain-text", "public.comma-separated-values-text", "public.json",
     };
+
+    /// <summary>True when a drag carries at least one file (folders do not count): what the drop overlay asks for.</summary>
+    public static bool Carries(IDataObject data)
+    {
+        var items = data.GetFiles();
+        if (items == null) return false;
+        foreach (var item in items)
+        {
+            if (item is IStorageFile) return true;
+        }
+        return false;
+    }
 
     /// <summary>Every file a drag carries (folders left out); what each one becomes is decided when it is dropped.</summary>
     public static List<AttachSource> Dropped(IDataObject data)

@@ -382,7 +382,7 @@ public class AttachmentTests
         Settle();
         Assert.Equal(2, c.Attachments.Count);
         Assert.DoesNotContain("Not an image", ui.Texts);
-        Assert.Contains("Only PDF, text and CSV files", ui.Texts); // a file of another kind says why it stayed out (0.4.0)
+        Assert.Contains("Unsupported file type(s): .docx", ui.Texts); // a file of another kind says why it stayed out, by its type (0.6.0)
         Assert.Empty(c.Files);
         Assert.Equal("", ui.Input.Text ?? "");
 
@@ -395,8 +395,211 @@ public class AttachmentTests
         ui.Window.Close();
     }
 
+    // ---- the drop overlay: the whole view takes files (0.6.0) ----
+
+    [AvaloniaFact]
+    public void Dragging_files_over_the_view_shows_drop_to_attach_as_context()
+    {
+        var ui = Open();
+        var overlay = UiHelpers.DropOverlay(ui.View);
+        var list = UiHelpers.ItemList(ui.View);
+        UiHelpers.Pump();
+        Assert.False(overlay.IsVisible); // there, hidden, until files are dragged in
+        Assert.False(overlay.IsHitTestVisible);
+
+        // a drag of text asks for nothing: no overlay, and the view says no
+        var text = new DataObject();
+        text.Set(DataFormats.Text, "just text");
+        UiHelpers.Drag(DragDrop.DragEnterEvent, text, list);
+        var refused = UiHelpers.Drag(DragDrop.DragOverEvent, text, list);
+        UiHelpers.Pump();
+        Assert.False(overlay.IsVisible);
+        Assert.Equal(DragDropEffects.None, refused.DragEffects);
+
+        // files coming in over the list: the whole view is the drop, and says so
+        var files = UiHelpers.Dragged(new FakeFile("one.png", Png(8, 8)));
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, list);
+        var over = UiHelpers.Drag(DragDrop.DragOverEvent, files, list, DragDropEffects.Copy | DragDropEffects.Move);
+        UiHelpers.Pump();
+        Assert.True(overlay.IsEffectivelyVisible);
+        Assert.Equal(DragDropEffects.Copy, over.DragEffects);
+        Assert.True(over.Handled);
+        Assert.Contains("Drop to attach as context", UiHelpers.Texts(overlay));
+        AssertLooksLikeTheExtensions(ui.View, overlay);
+
+        // the clicks go through it
+        var middle = ui.View.TranslatePoint(new Point(ui.View.Bounds.Width / 2, 200), ui.Window)!.Value;
+        var hit = Assert.IsAssignableFrom<Visual>(UiHelpers.HitTest(ui.Window, middle));
+        Assert.DoesNotContain(overlay, hit.GetSelfAndVisualAncestors());
+
+        // the touch layout shows the same thing, in its language
+        var touch = UiHelpers.TouchView(new ChatConversation());
+        var phone = UiHelpers.ShowPhone(touch);
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, UiHelpers.ItemList(touch));
+        UiHelpers.Pump();
+        var touchOverlay = UiHelpers.DropOverlay(touch);
+        Assert.True(touchOverlay.IsEffectivelyVisible);
+        Assert.Contains("Solte para anexar como contexto", UiHelpers.Texts(touchOverlay));
+        AssertLooksLikeTheExtensions(touch, touchOverlay);
+        phone.Close();
+        ui.Window.Close();
+    }
+
+    /// <summary>The extension's: 15 % of its orange over the view with a dashed line of 2 px, and a pill with the label.</summary>
+    private static void AssertLooksLikeTheExtensions(ClaudeChatView view, Control overlay)
+    {
+        Assert.InRange(overlay.Bounds.Width, view.Bounds.Width - 1, view.Bounds.Width + 1); // the whole view
+        Assert.InRange(overlay.Bounds.Height, view.Bounds.Height - 1, view.Bounds.Height + 1);
+        var frame = overlay.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Rectangle>().Single();
+        Assert.Equal(Avalonia.Media.Color.Parse("#26D97757"), Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(frame.Fill).Color);
+        Assert.Equal(Avalonia.Media.Color.Parse("#D97757"), Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(frame.Stroke).Color);
+        Assert.Equal(2, frame.StrokeThickness);
+        Assert.NotEmpty(frame.StrokeDashArray!);
+
+        var pill = overlay.GetVisualDescendants().OfType<Border>().Single();
+        Assert.Equal(new CornerRadius(6), pill.CornerRadius);
+        Assert.Equal(new Thickness(16, 8), pill.Padding);
+        var sideBar = Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(view.FindResource("ClaudeChat.Background"));
+        Assert.Equal(sideBar.Color, Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(pill.Background).Color);
+        Assert.Equal(1, pill.BoxShadow.Count);
+        var shadow = pill.BoxShadow[0];
+        Assert.Equal((0d, 2d, 8d, 0d), (shadow.OffsetX, shadow.OffsetY, shadow.Blur, shadow.Spread));
+        Assert.Equal(Avalonia.Media.Color.Parse("#00000026"), shadow.Color);
+        var label = pill.GetVisualDescendants().OfType<TextBlock>().Single();
+        Assert.Equal(Avalonia.Media.FontWeight.Medium, label.FontWeight);
+
+        // in the middle of the view; compared with the view, not with a measured text
+        var center = pill.TranslatePoint(new Point(pill.Bounds.Width / 2, pill.Bounds.Height / 2), view)!.Value;
+        Assert.InRange(center.X, view.Bounds.Width / 2 - 1, view.Bounds.Width / 2 + 1);
+        Assert.InRange(center.Y, view.Bounds.Height / 2 - 1, view.Bounds.Height / 2 + 1);
+    }
+
+    [AvaloniaFact]
+    public void Leaving_or_dropping_hides_the_overlay()
+    {
+        var c = new ChatConversation();
+        var ui = Open(c);
+        var overlay = UiHelpers.DropOverlay(ui.View);
+        var list = UiHelpers.ItemList(ui.View);
+        var files = UiHelpers.Dragged(new FakeFile("one.png", Png(8, 8)));
+
+        // out of the view: gone
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, list);
+        Assert.True(overlay.IsVisible);
+        UiHelpers.Drag(DragDrop.DragLeaveEvent, files, list);
+        UiHelpers.Pump();
+        Assert.False(overlay.IsVisible);
+
+        // from the list onto the reply box, inside the view: the window raises the leave of the one and the enter of the other, in
+        // that order, and the overlay stays (it is not hidden and shown again)
+        var changes = 0;
+        overlay.PropertyChanged += (_, e) => changes += e.Property == Visual.IsVisibleProperty ? 1 : 0;
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, list);
+        Assert.Equal(1, changes);
+        UiHelpers.Drag(DragDrop.DragLeaveEvent, files, list);
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, ui.Input);
+        UiHelpers.Pump();
+        UiHelpers.Settle();
+        Assert.True(overlay.IsVisible);
+        Assert.Equal(1, changes);
+        UiHelpers.Drag(DragDrop.DragOverEvent, files, ui.Input);
+        Assert.True(overlay.IsVisible);
+
+        // and back onto the list, and then really out of the view
+        UiHelpers.Drag(DragDrop.DragLeaveEvent, files, ui.Input);
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, list);
+        UiHelpers.Settle();
+        Assert.True(overlay.IsVisible);
+        UiHelpers.Drag(DragDrop.DragLeaveEvent, files, list);
+        UiHelpers.Settle();
+        Assert.False(overlay.IsVisible);
+
+        // a leave that was followed by the pointer coming back does not hide it later on
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, list);
+        UiHelpers.Drag(DragDrop.DragLeaveEvent, files, list);
+        UiHelpers.Drag(DragDrop.DragOverEvent, files, ui.Input); // the over alone brings it back
+        UiHelpers.Settle();
+        Assert.True(overlay.IsVisible);
+
+        // the drop hides it at once, wherever it fell
+        var drop = UiHelpers.Drag(DragDrop.DropEvent, files, ui.Input);
+        Assert.True(drop.Handled);
+        Assert.False(overlay.IsVisible);
+        PumpUntil(() => c.Attachments.Count == 1);
+        Settle();
+        Assert.False(overlay.IsVisible);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Dropping_on_the_list_attaches_like_dropping_on_the_box()
+    {
+        var c = new ChatConversation();
+        var ui = Open(c);
+        var list = UiHelpers.ItemList(ui.View);
+
+        var onList = new FakeFile("list.png", Png(40, 20));
+        UiHelpers.Drag(DragDrop.DragEnterEvent, UiHelpers.Dragged(onList), list);
+        UiHelpers.Drag(DragDrop.DropEvent, UiHelpers.Dragged(onList), list);
+        PumpUntil(() => c.Attachments.Count == 1 && onList.Disposed);
+        Assert.Equal(40, c.Attachments[0].Width);
+
+        // on the box, the text or the strip the view takes it too, once: the box no longer has a handler of its own that would
+        // attach it a second time
+        var onBox = new FakeFile("box.png", Png(30, 10));
+        UiHelpers.Drag(DragDrop.DropEvent, UiHelpers.Dragged(onBox), ui.Input);
+        var onFrame = new FakeFile("frame.png", Png(20, 10));
+        UiHelpers.Drag(DragDrop.DropEvent, UiHelpers.Dragged(onFrame), ui.Box);
+        PumpUntil(() => c.Attachments.Count == 3 && onBox.Disposed && onFrame.Disposed);
+        Settle();
+        Assert.Equal(new[] { 40, 30, 20 }, c.Attachments.Select(a => a.Width).ToArray());
+        Assert.Equal(1, onBox.Opens);
+        Assert.Equal(1, onFrame.Opens);
+
+        // over the box the drag is accepted all the same, and the view answers it
+        var over = UiHelpers.Drag(DragDrop.DragOverEvent, UiHelpers.Dragged(onBox), ui.Input, DragDropEffects.Copy | DragDropEffects.Move);
+        Assert.Equal(DragDropEffects.Copy, over.DragEffects);
+
+        // the drop goes to the conversation shown, and with none there is nothing to attach to
+        ui.View.Conversation = null;
+        UiHelpers.Pump();
+        var late = new FakeFile("late.png", Png(8, 8));
+        UiHelpers.Drag(DragDrop.DropEvent, UiHelpers.Dragged(late), list);
+        PumpUntil(() => late.Disposed);
+        Assert.Equal(3, c.Attachments.Count);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_unsupported_drop_names_the_file_types()
+    {
+        var c = new ChatConversation();
+        var ui = Open(c);
+        var list = UiHelpers.ItemList(ui.View);
+
+        // the ones the box would not take, by type, once each however many there are, in the order they came; a file without a
+        // type is named by its name; what can go in goes in
+        var drop = UiHelpers.Dragged(
+            new FakeFile("notes.docx", new byte[] { 1 }), new FakeFile("one.png", Png(8, 8)), new FakeFile("a.ZIP", new byte[] { 1 }),
+            new FakeFile("b.zip", new byte[] { 1 }), new FakeFile("README", new byte[] { 1 }));
+        UiHelpers.Drag(DragDrop.DropEvent, drop, list);
+        PumpUntil(() => c.Attachments.Count == 1 && ui.Texts.Contains("Unsupported file type(s): .docx, .zip, README"));
+        Assert.Empty(c.Files);
+
+        // the next drop that is all right takes the notice away
+        UiHelpers.Drag(DragDrop.DropEvent, UiHelpers.Dragged(new FakeFile("two.png", Png(8, 8))), list);
+        PumpUntil(() => c.Attachments.Count == 2);
+        Assert.DoesNotContain(ui.Texts, t => t.StartsWith("Unsupported", StringComparison.Ordinal));
+
+        // in Portuguese
+        ui.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Drag(DragDrop.DropEvent, UiHelpers.Dragged(new FakeFile("x.exe", new byte[] { 1 })), list);
+        PumpUntil(() => ui.Texts.Contains("Tipo(s) de arquivo não suportado(s): .exe"));
+        ui.Window.Close();
+    }
+
     /// <summary>A file the drop carries.</summary>
-    private sealed class FakeFile : IStorageFile
+    internal sealed class FakeFile : IStorageFile
     {
         private readonly byte[] _bytes;
 

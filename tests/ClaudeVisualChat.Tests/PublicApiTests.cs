@@ -97,6 +97,8 @@ public class PublicApiTests
             // the command palette's groups and rows (Task 32)
             "PaletteContext", "PaletteCustomize", "PaletteSettings", "PaletteSupport", "PaletteAttachFile", "PaletteSwitchModel",
             "PaletteAccountUsage", "PaletteHelpDocs",
+            // the drop overlay (Task 33)
+            "DropToAttach", "UnsupportedFileTypes",
         })
         {
             var property = typeof(ChatStrings).GetProperty(text);

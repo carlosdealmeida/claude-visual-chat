@@ -126,7 +126,7 @@ public sealed class FileAttachmentTests : IDisposable
             UiHelpers.PumpUntil(() => ui.Conversation.Files.Count == 1 && ui.Conversation.Attachments.Count == 1);
             Assert.Equal("paper.pdf", ui.Conversation.Files[0].Name);
             Assert.Equal(40, ui.Conversation.Attachments[0].Width);
-            Assert.Contains("Only PDF, text and CSV files", ui.Texts);
+            Assert.Contains("Unsupported file type(s): .zip", ui.Texts);
             Assert.Equal(0, bitmapRead);
             Assert.Equal("see ", ui.Input.Text); // nothing pasted as text
             ui.Window.Close();
@@ -273,7 +273,7 @@ public sealed class FileAttachmentTests : IDisposable
         var mixed = new DataObject();
         mixed.Set(DataFormats.Files, new IStorageItem[] { zip, more });
         ui.Input.RaiseEvent(new DragEventArgs(DragDrop.DropEvent, mixed, ui.Input, default, KeyModifiers.None) { DragEffects = DragDropEffects.Copy });
-        UiHelpers.PumpUntil(() => c.Files.Count == 3 && ui.Texts.Contains("Only PDF, text and CSV files"));
+        UiHelpers.PumpUntil(() => c.Files.Count == 3 && ui.Texts.Contains("Unsupported file type(s): .zip"));
 
         // over the count: the message names the limit
         c.MaxFiles = 3;
@@ -281,7 +281,7 @@ public sealed class FileAttachmentTests : IDisposable
         sixth.Set(DataFormats.Files, new IStorageItem[] { new LocalFile(Write("again.md", Encoding.UTF8.GetBytes("# x"))) });
         ui.Input.RaiseEvent(new DragEventArgs(DragDrop.DropEvent, sixth, ui.Input, default, KeyModifiers.None) { DragEffects = DragDropEffects.Copy });
         UiHelpers.PumpUntil(() => ui.Texts.Contains("Up to 3 files per message"));
-        Assert.DoesNotContain("Only PDF, text and CSV files", ui.Texts);
+        Assert.DoesNotContain("Unsupported file type(s): .zip", ui.Texts);
 
         // too big, in Portuguese
         c.MaxFileBytes = 1024 * 1024;

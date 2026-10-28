@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Templates;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
 using SkiaSharp;
@@ -1541,6 +1542,46 @@ public class DetachTests
         {
             CommandPalette.Actions.Remove(kept);
         }
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_drop_overlay_lets_go_when_the_view_leaves_and_works_again_when_back()
+    {
+        var c = Conversation();
+        var m = new Mounted(c);
+        var overlay = UiHelpers.DropOverlay(m.View);
+        var file = new AttachmentTests.FakeFile("one.png", Png(8, 8));
+        var files = UiHelpers.Dragged(file);
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, m.View);
+        Assert.True(overlay.IsVisible);
+
+        // taken out in the middle of a drag: the overlay goes, and the view takes no more of the drag
+        UiHelpers.Drag(DragDrop.DragLeaveEvent, files, m.View); // a hide waiting its turn finds nothing to do
+        m.Out();
+        UiHelpers.Settle();
+        Assert.False(overlay.IsVisible);
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, m.View);
+        UiHelpers.Drag(DragDrop.DragOverEvent, files, m.View);
+        UiHelpers.Drag(DragDrop.DropEvent, files, m.View);
+        UiHelpers.Settle();
+        Assert.False(overlay.IsVisible);
+        Assert.Empty(c.Attachments);
+        Assert.Equal(0, file.Opens);
+
+        // back: the same view takes a drag again, once
+        m.In();
+        UiHelpers.Drag(DragDrop.DragEnterEvent, files, m.View);
+        Assert.True(overlay.IsVisible);
+        UiHelpers.Drag(DragDrop.DropEvent, files, m.View);
+        Assert.False(overlay.IsVisible);
+        UiHelpers.PumpUntil(() => c.Attachments.Count == 1);
+        Assert.Equal(1, file.Opens);
+
+        // out and in again with no drag: nothing shows
+        m.Out();
+        m.In();
+        Assert.False(overlay.IsVisible);
         m.Window.Close();
     }
 }
