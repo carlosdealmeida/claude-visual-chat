@@ -1624,6 +1624,89 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
+    public void A_drag_on_the_pinned_prompt_is_no_click()
+    {
+        var (c, first, _) = TwoLongTurns();
+        var (view, window) = Open(c);
+        var sticky = Sticky(view);
+        ScrollRowTo(view, c.Items[20], 0);
+        Assert.Same(first, sticky.Item);
+        var bubble = sticky.Bubble;
+
+        // pressed on the bubble's padding, moved 30 px, let go on the bubble: a drag, nothing waits to scroll
+        var from = bubble.TranslatePoint(new Point(3, 2), window)!.Value;
+        var to = from + new Vector(30, 0);
+        window.MouseDown(from, MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(to, RawInputModifiers.LeftMouseButton);
+        window.MouseUp(to, MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.False(sticky.IsWaiting);
+
+        // the same press let go where it was (or a pixel or two off) is a click
+        window.MouseDown(from, MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(from + new Vector(2, 1), RawInputModifiers.LeftMouseButton);
+        window.MouseUp(from + new Vector(2, 1), MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.True(sticky.IsWaiting);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_finger_dragged_over_the_pinned_prompt_scrolls_the_list_once_its_own_text_does_not()
+    {
+        var (c, first, _) = TwoLongTurns(string.Join("\n", Enumerable.Range(1, 60).Select(i => "requirement " + i)));
+        first.IsTextExpanded = true;                                      // a bubble that scrolls inside
+        var (view, window) = Open(c);
+        var scroller = UiHelpers.Scroller(view);
+        var sticky = Sticky(view);
+        ScrollRowTo(view, c.Items[20], 0);
+        Assert.Same(first, sticky.Item);
+        var inner = sticky.Bubble.GetVisualDescendants().OfType<ScrollViewer>().First(s => s is not MessageAttachments);
+        var before = scroller.Offset.Y;
+
+        sticky.TouchPressed();                                            // (the headless window has no fingers: the band's own steps)
+        inner.Offset = new Vector(0, 50);                                 // the bubble's text took this move
+        sticky.TouchMoved(-30);
+        UiHelpers.Pump();
+        Assert.Equal(before, scroller.Offset.Y);
+        sticky.TouchMoved(-30);                                           // this one it did not take: the list scrolls with the finger
+        UiHelpers.Pump();
+        Assert.Equal(before + 30, scroller.Offset.Y, 0.5);
+        sticky.TouchMoved(10);                                            // and back down
+        UiHelpers.Pump();
+        Assert.Equal(before + 20, scroller.Offset.Y, 0.5);
+
+        view.ScrollListBy(-1e6);                                          // never past its ends
+        Assert.Equal(0, scroller.Offset.Y);
+        view.ScrollListBy(1e7);
+        Assert.Equal(scroller.Extent.Height - scroller.Viewport.Height, scroller.Offset.Y, 0.5);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Show_more_in_the_pinned_prompt_is_a_44_px_target_always_shown_in_the_touch_layout()
+    {
+        var (c, first, _) = TwoLongTurns(string.Join("\n", Enumerable.Range(1, 10).Select(i => "requirement " + i)));
+        var view = UiHelpers.TouchView(c);
+        var window = UiHelpers.ShowPhone(view);
+        var sticky = Sticky(view);
+        ScrollRowTo(view, c.Items[20], 0);
+        Assert.Same(first, sticky.Item);
+        var fold = sticky.Bubble.GetVisualDescendants().OfType<FoldedText>().Single();
+        var more = fold.ShowMoreButton;
+        Assert.True(more.IsEffectivelyVisible);
+        Assert.Equal(1, more.Opacity);
+        Assert.True(more.Bounds.Width >= 44 && more.Bounds.Height >= 44, more.Bounds.ToString());
+        var corner = more.TranslatePoint(new Point(2, 2), window)!.Value;  // a tap near the corner of its target
+        window.MouseDown(corner, MouseButton.Left, RawInputModifiers.None);
+        window.MouseUp(corner, MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.True(first.IsTextExpanded);
+        Assert.False(sticky.IsWaiting);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_wheel_over_the_pinned_prompt_scrolls_the_list()
     {
         var (c, first, _) = TwoLongTurns();

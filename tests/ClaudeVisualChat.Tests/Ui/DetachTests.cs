@@ -531,8 +531,11 @@ public class DetachTests
 
         UiHelpers.Click(m.Window, fold.ShowMoreButton);                   // opening, and taken out in the middle of it
         Assert.True(fold.IsAnimatingHeight);
+        Assert.True(fold.IsBackstopWaiting);
         m.Out();                                                          // nothing throws, and the animation stops
         Assert.False(fold.IsAnimatingHeight);
+        Assert.False(fold.IsBackstopWaiting);                             // and so does the timer that would end it
+        fold.EndAnimation();                                              // a late tick finds nothing to do
         Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick(); // a late frame finds nothing to do
         UiHelpers.Pump();
         prompt.IsTextExpanded = false;                                    // folded again while out
@@ -548,6 +551,15 @@ public class DetachTests
         m.Window.Close();
     }
 
+    /// <summary>Whether <paramref name="view"/> itself listens to the conversation's items changing.</summary>
+    private static bool ListensToItems(ChatConversation c, ClaudeChatView view)
+    {
+        var field = typeof(System.Collections.ObjectModel.ObservableCollection<ChatItem>)
+            .GetField("CollectionChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var handlers = (Delegate?)field!.GetValue(c.Items);
+        return handlers != null && handlers.GetInvocationList().Any(d => ReferenceEquals(d.Target, view));
+    }
+
     [AvaloniaFact]
     public void The_sticky_prompt_lets_go_while_the_view_is_away()
     {
@@ -557,6 +569,7 @@ public class DetachTests
         for (var i = 0; i < 40; i++) c.Items.Add(new AssistantTextItem { Text = "Paragraph " + i });
         var own = ItemHandlers(first);
         var m = new Mounted(c);
+        Assert.True(ListensToItems(c, m.View));                           // the view follows the list, for the search of the pinned prompt
         var list = UiHelpers.ItemList(m.View);
         var scroller = UiHelpers.Scroller(m.View);
         StickyPrompt Sticky() => m.View.GetVisualDescendants().OfType<StickyPrompt>().Single();
@@ -577,6 +590,7 @@ public class DetachTests
         m.Out();                                                          // nothing throws
         Assert.False(sticky.IsWaiting);
         Assert.True(ItemHandlers(first) < pinned);                        // and it lets go of the prompt
+        Assert.False(ListensToItems(c, m.View));                          // and the view of the list
         UiHelpers.Settle();
         first.IsTextExpanded = true;                                      // changed while out
         c.Items.Add(new AssistantTextItem { Text = "One more paragraph" });
@@ -587,6 +601,7 @@ public class DetachTests
         Assert.True(sticky.IsVisible);
         Assert.Same(first, sticky.Item);
         Assert.Equal(pinned, ItemHandlers(first));
+        Assert.True(ListensToItems(c, m.View));
         Assert.True(sticky.Bubble.GetVisualDescendants().OfType<FoldedText>().Single().IsExpanded);
         first.IsTextExpanded = false;                                     // and it follows the prompt again
         UiHelpers.Pump();

@@ -177,6 +177,8 @@ public partial class ClaudeChatView : UserControl
         Sticky.TurnRequested += (_, prompt) => ScrollTurnToTop(prompt);
         // the pinned prompt covers the top of the list: the wheel over it scrolls the list (once its own text has scrolled to its end)
         Sticky.AddHandler(PointerWheelChangedEvent, OnStickyWheel, RoutingStrategies.Bubble);
+        // and so does a finger dragged over it (the content follows the finger: down scrolls up)
+        Sticky.ListDragged += (_, dy) => ScrollListBy(-dy);
         Composer.Modes = AvailableModes;
         AddSheet.Modes = AvailableModes;
         Prompt.Modes = AvailableModes; // the plan card's option 1
@@ -970,10 +972,17 @@ public partial class ClaudeChatView : UserControl
     private void OnStickyWheel(object? sender, PointerWheelEventArgs e)
     {
         if (e.Handled || e.Delta.Y == 0) return;
-        var end = Math.Max(0, Scroller.Extent.Height - Scroller.Viewport.Height);
-        var y = Math.Max(0, Math.Min(end, Scroller.Offset.Y - e.Delta.Y * WheelStep));
-        Scroller.SetCurrentValue(ScrollViewer.OffsetProperty, new Vector(Scroller.Offset.X, y));
+        ScrollListBy(-e.Delta.Y * WheelStep);
         e.Handled = true;
+    }
+
+    /// <summary>Scrolls the list by <paramref name="dy"/> px (down is positive), within its ends: what the pinned prompt over it passes on.</summary>
+    internal void ScrollListBy(double dy)
+    {
+        if (dy == 0) return;
+        var end = Math.Max(0, Scroller.Extent.Height - Scroller.Viewport.Height);
+        var y = Math.Max(0, Math.Min(end, Scroller.Offset.Y + dy));
+        Scroller.SetCurrentValue(ScrollViewer.OffsetProperty, new Vector(Scroller.Offset.X, y));
     }
 
     /// <summary>What one notch of the wheel scrolls, as the list's own scroll viewer does.</summary>

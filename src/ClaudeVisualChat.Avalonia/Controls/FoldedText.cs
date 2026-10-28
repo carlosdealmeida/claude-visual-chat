@@ -6,6 +6,7 @@ using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Media;
+using Avalonia.Threading;
 
 namespace ClaudeVisualChat.Controls;
 
@@ -68,6 +69,12 @@ internal sealed class FoldedText : ContentControl
     private LinearGradientBrush? _fade;
     private FoldBody? _body;
 
+    /// <summary>
+    /// Ends an animation whose frames do not come (a host that draws no frames, or draws them late): the height is then where the
+    /// animation would have ended, a little after its time.
+    /// </summary>
+    private readonly DispatcherTimer _backstop = new DispatcherTimer { Interval = AnimationDuration + TimeSpan.FromMilliseconds(100) };
+
     public FoldedText()
     {
         ShowMoreButton = FoldButton("ClaudeChatShowMore");
@@ -75,6 +82,7 @@ internal sealed class FoldedText : ContentControl
         ShowMoreButton.Click += (_, _) => Toggle(true);
         ShowLessButton.Click += (_, _) => Toggle(false);
         Template = FoldTemplate;
+        _backstop.Tick += (_, _) => EndAnimation();
         Label();
     }
 
@@ -95,6 +103,23 @@ internal sealed class FoldedText : ContentControl
 
     /// <summary>True while the height changes after a click.</summary>
     internal bool IsAnimatingHeight => _animating;
+
+    /// <summary>True while the backstop waits to end the animation.</summary>
+    internal bool IsBackstopWaiting => _backstop.IsEnabled;
+
+    /// <summary>The backstop's tick: an animation still under way ends where it was going.</summary>
+    internal void EndAnimation()
+    {
+        var was = _animating;
+        StopAnimation();
+        if (was && _attached) _body?.InvalidateMeasure();
+    }
+
+    private void StopAnimation()
+    {
+        _animating = false;
+        _backstop.Stop();
+    }
 
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
 
@@ -126,13 +151,13 @@ internal sealed class FoldedText : ContentControl
     {
         base.OnDetachedFromVisualTree(e);
         _attached = false;
-        _animating = false; // a frame that comes later finds nothing to do; back, the height is where the animation would have ended
+        StopAnimation(); // a frame that comes later finds nothing to do, and the backstop does not wait; back, the height is where the animation would have ended
     }
 
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
-        _animating = false; // the list reuses the row for another prompt: drawn at once
+        StopAnimation(); // the list reuses the row for another prompt: drawn at once
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -141,7 +166,7 @@ internal sealed class FoldedText : ContentControl
         if (change.Property == IsExpandedProperty)
         {
             if (_clicked && _attached && _isFolded) Animate();
-            else _animating = false;
+            else StopAnimation();
             _body?.InvalidateMeasure();
         }
         else if (change.Property == StringsProperty)
@@ -179,9 +204,11 @@ internal sealed class FoldedText : ContentControl
         _from = _shown;
         _start = null;
         _progress = 0;
-        if (_animating) return; // a frame is already asked for
         var top = TopLevel.GetTopLevel(this);
         if (top == null) return; // no frames to move it: drawn at once
+        _backstop.Stop();
+        _backstop.Start(); // the whole time again, from here
+        if (_animating) return; // a frame is already asked for
         _animating = true;
         top.RequestAnimationFrame(OnFrame);
     }
@@ -191,7 +218,7 @@ internal sealed class FoldedText : ContentControl
         if (!_animating || !_attached) return;
         _start ??= time;
         _progress = Math.Min(1, (time - _start.Value).TotalSeconds / AnimationDuration.TotalSeconds);
-        if (_progress >= 1) _animating = false;
+        if (_progress >= 1) StopAnimation();
         _body?.InvalidateMeasure();
         if (_animating) TopLevel.GetTopLevel(this)?.RequestAnimationFrame(OnFrame);
     }
@@ -211,7 +238,7 @@ internal sealed class FoldedText : ContentControl
         presenter.Measure(new Size(available.Width, double.PositiveInfinity));
         _natural = presenter.DesiredSize.Height;
         _isFolded = _natural > FoldHeight + 0.5;
-        if (!_isFolded) _animating = false;
+        if (!_isFolded) StopAnimation();
         var expanded = IsExpanded;
         ShowMoreButton.IsVisible = _isFolded && !expanded;
         ShowLessButton.IsVisible = _isFolded && expanded;

@@ -142,6 +142,31 @@ public class FoldedTextTests
     }
 
     [AvaloniaFact]
+    public void An_animation_whose_frames_do_not_come_ends_where_it_was_going()
+    {
+        var c = new ChatConversation();
+        var prompt = new UserMessageItem(Lines(10));
+        c.Items.Add(prompt);
+        var (view, window) = Open(c);
+        var fold = Fold(view, prompt);
+
+        UiHelpers.Click(window, fold.ShowMoreButton);                     // no frames drawn after the click (none forced here)
+        Assert.True(fold.IsAnimatingHeight);
+        Assert.True(fold.IsBackstopWaiting);                              // a timer a little longer than the animation waits
+        fold.EndAnimation();                                              // its tick
+        UiHelpers.Pump();
+        Assert.False(fold.IsAnimatingHeight);
+        Assert.False(fold.IsBackstopWaiting);
+        Assert.True(fold.Bounds.Height > 150);                            // open, as the item says
+
+        UiHelpers.Click(window, fold.ShowLessButton);                     // with the frames, the animation ends it and the timer stops
+        FrameUntil(() => !fold.IsAnimatingHeight);
+        Assert.False(fold.IsBackstopWaiting);
+        Assert.Equal(60, fold.Bounds.Height, 0.5);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_open_state_lives_in_the_item_and_a_row_drawn_for_it_is_open_at_once()
     {
         var c = new ChatConversation();
