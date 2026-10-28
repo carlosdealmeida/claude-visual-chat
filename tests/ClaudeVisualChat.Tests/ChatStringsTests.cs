@@ -66,6 +66,8 @@ public class ChatStringsTests
         Assert.Equal("Copied to clipboard (0 characters, 1 line)", En.FormatCopied(""));
         Assert.Equal("Only 20 assistant messages available to copy", En.FormatCopyOnly(20));
         Assert.Equal("Só há 20 respostas do assistente para copiar", Pt.FormatCopyOnly(20));
+        Assert.Equal("Only 1 assistant messages available to copy", En.FormatCopyOnly(1));
+        Assert.Equal("Só há 1 resposta do assistente para copiar", Pt.FormatCopyOnly(1));
         Assert.Equal("Usage: /copy [N] where N is 1 (latest), 2, 3, … Got: {0}", En.FormatCopyUsage("{0}"));
         Assert.Equal("Uso: /copy [N], onde N é 1 (a mais recente), 2, 3, … Recebido: x", Pt.FormatCopyUsage("x"));
         Assert.Equal("Copy Claude's last response to clipboard (or /copy N for the Nth-latest)", En.CommandCopyDescription);

@@ -1809,6 +1809,52 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void A_copy_waiting_for_the_reply_is_forgotten_when_the_work_ends_without_a_turn_or_is_stopped()
+    {
+        // the message that made the conversation busy is taken back: no turn will end, and the next one is another's
+        var c = WithReplies("old");
+        var copies = Copies(c);
+        MessageSubmittedEventArgs? sent = null;
+        c.MessageSubmitted += (_, e) => sent = e;
+        c.Submit("work");
+        var work = sent!;
+        c.Submit("/copy");
+        Assert.Equal("Copying once the reply finishes", LastMeta(c));
+        Assert.True(c.UndoSubmit(work));
+        Assert.False(c.IsBusy);
+        c.Submit("later");
+        c.Items.Add(new AssistantTextItem { Text = "another reply" });
+        c.Apply(new TurnCompleted("success", false, 10, null, null, null));
+        Assert.Empty(copies);
+
+        // Stop: the person gave up on the reply the copy waited for
+        var stopped = WithReplies("old");
+        copies = Copies(stopped);
+        stopped.Submit("work");
+        stopped.Submit("/copy");
+        stopped.Stop();
+        stopped.Items.Add(new AssistantTextItem { Text = "cut short" });
+        stopped.Apply(new TurnCompleted("success", false, 10, null, null, null));
+        Assert.Empty(copies);
+    }
+
+    [Fact]
+    public void Copy_beyond_a_single_reply_says_so_in_the_singular_in_portuguese()
+    {
+        var c = WithReplies("one");
+        c.Strings = ChatStrings.PortugueseBrazil;
+        c.Submit("/copy 2");
+        Assert.Equal("Só há 1 resposta do assistente para copiar", LastMeta(c));
+        c = WithReplies("one", "two");
+        c.Strings = ChatStrings.PortugueseBrazil;
+        c.Submit("/copy 3");
+        Assert.Equal("Só há 2 respostas do assistente para copiar", LastMeta(c));
+        c = WithReplies("one");
+        c.Submit("/copy 2");
+        Assert.Equal("Only 1 assistant messages available to copy", LastMeta(c)); // the English text stays as the extension's
+    }
+
+    [Fact]
     public void Reporting_a_copy_says_the_characters_and_lines_or_that_it_failed()
     {
         var c = new ChatConversation();
@@ -1832,7 +1878,7 @@ public class ChatConversationTests
         var c = WithReplies("one");
         c.Strings = ChatStrings.PortugueseBrazil;
         c.Submit("/copy 2");
-        Assert.Equal("Só há 1 respostas do assistente para copiar", LastMeta(c));
+        Assert.Equal("Só há 1 resposta do assistente para copiar", LastMeta(c));
         c.ReportCopy(true, "a\nb");
         Assert.Equal("Copiado para a área de transferência (3 caracteres, 2 linhas)", LastMeta(c));
         c.Strings = null!;

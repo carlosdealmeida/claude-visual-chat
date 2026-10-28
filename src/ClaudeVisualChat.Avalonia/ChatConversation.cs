@@ -333,7 +333,11 @@ public sealed class ChatConversation : ChatObservableObject
         get => _isBusy;
         private set
         {
-            if (SetField(ref _isBusy, value) && !value) _sawThinkingTokens = false; // the session stopped: the next thought counts afresh
+            if (SetField(ref _isBusy, value) && !value)
+            {
+                _sawThinkingTokens = false; // the session stopped: the next thought counts afresh
+                _pendingCopy = null; // and no reply is coming for a /copy that waited: the turn that ends takes it first
+            }
         }
     }
 
@@ -1207,8 +1211,12 @@ public sealed class ChatConversation : ChatObservableObject
         return true;
     }
 
-    /// <summary>Asks the claude to stop; the turn ends when its result arrives.</summary>
-    public void Stop() => StopRequested?.Invoke(this, EventArgs.Empty);
+    /// <summary>Asks the claude to stop; the turn ends when its result arrives. A <c>/copy</c> that waited for the reply is dropped.</summary>
+    public void Stop()
+    {
+        _pendingCopy = null; // the person gave up on the reply it waited for
+        StopRequested?.Invoke(this, EventArgs.Empty);
+    }
 
     // ---- assistant blocks ----
 
@@ -2225,12 +2233,9 @@ public sealed class ChatConversation : ChatObservableObject
         _interruptedThisTurn = false;
         _autoModeAsked = false; // the claude answers a mode request at once: an error after the turn is about something else
         _unanswered.Clear();
+        var pendingCopy = _pendingCopy; // the turn's end is the one the copy waited for; IsBusy falling forgets it
         IsBusy = false;
-        if (_pendingCopy is int copy)
-        {
-            _pendingCopy = null;
-            CopyReply(copy);
-        }
+        if (pendingCopy is int copy) CopyReply(copy);
         // what is still held came after the turn's last request to the API: the claude has it, for its next turn
         ReleaseHeld(_held.Count);
     }

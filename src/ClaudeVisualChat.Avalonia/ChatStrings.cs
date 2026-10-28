@@ -241,6 +241,7 @@ public sealed record ChatStrings
         CopyDone = "Copiado para a área de transferência ({0} caracteres, {1})",
         CopyNothing = "Nenhuma resposta do assistente para copiar",
         CopyOnly = "Só há {0} respostas do assistente para copiar",
+        CopyOnlyOne = "Só há 1 resposta do assistente para copiar",
         CopyUsage = "Uso: /copy [N], onde N é 1 (a mais recente), 2, 3, … Recebido: {0}",
         CopyFailed = "Não foi possível copiar para a área de transferência",
         CopyWaiting = "Copiando quando a resposta terminar",
@@ -1018,6 +1019,12 @@ public sealed record ChatStrings
     /// <summary>The line after <c>/copy N</c> when there are fewer replies than N; <c>{0}</c> is how many there are.</summary>
     public string CopyOnly { get; init; } = "Only {0} assistant messages available to copy";
 
+    /// <summary>
+    /// The line after <c>/copy N</c> when there is only one reply: <see cref="CopyOnly"/> in the singular. The English text keeps
+    /// the plural, as the extension writes it.
+    /// </summary>
+    public string CopyOnlyOne { get; init; } = "Only 1 assistant messages available to copy";
+
     /// <summary>The line after <c>/copy</c> with an argument that is not a number from 1; <c>{0}</c> is what was typed.</summary>
     public string CopyUsage { get; init; } = "Usage: /copy [N] where N is 1 (latest), 2, 3, … Got: {0}";
 
@@ -1572,7 +1579,7 @@ public sealed record ChatStrings
     }
 
     /// <summary>The line after <c>/copy N</c> when only <paramref name="available"/> replies can be copied.</summary>
-    internal string FormatCopyOnly(int available) => CopyOnly.Replace("{0}", FormatNumber(available));
+    internal string FormatCopyOnly(int available) => available == 1 ? CopyOnlyOne : CopyOnly.Replace("{0}", FormatNumber(available));
 
     /// <summary>The line after <c>/copy</c> with the argument <paramref name="got"/>, which is not a number from 1.</summary>
     internal string FormatCopyUsage(string got) => CopyUsage.Replace("{0}", got);
