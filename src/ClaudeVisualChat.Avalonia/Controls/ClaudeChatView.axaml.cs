@@ -430,6 +430,7 @@ public partial class ClaudeChatView : UserControl
             BrowserBanner.Conversation = Conversation;
             RemoteControlBanner.Conversation = Conversation;
             TouchAgentsChip.Conversation = Conversation;
+            QueuedList.Conversation = Conversation;
             ContextPanel.Conversation = Conversation;
             UsagePanel.Conversation = Conversation;
             AgentMap.Conversation = Conversation;
@@ -505,12 +506,13 @@ public partial class ClaudeChatView : UserControl
 
     /// <summary>
     /// The agents chip at the end of the list is in the tree only in the touch layout; the desktop layout has the reply
-    /// box's, and one chip of each in its tree.
+    /// box's, and one chip of each in its tree. It goes right after the queued messages, so the footer keeps its order
+    /// (working row, queued messages, chip) however often the layout changes.
     /// </summary>
     private void ShowTouchAgents(bool touch)
     {
         var footer = FooterPanel.Children;
-        if (touch && !footer.Contains(TouchAgentsChip)) footer.Add(TouchAgentsChip);
+        if (touch && !footer.Contains(TouchAgentsChip)) footer.Insert(footer.IndexOf(QueuedList) + 1, TouchAgentsChip);
         else if (!touch) footer.Remove(TouchAgentsChip);
     }
 

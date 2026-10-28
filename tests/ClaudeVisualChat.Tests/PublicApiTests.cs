@@ -487,7 +487,7 @@ public class PublicApiTests
         var send = typeof(ClaudeVisualChat.Protocol.StdinMessages);
         foreach (var method in new[] { "ApplyEffort", "GetSettings", "GetContextUsage", "RemoteControl", "GetChromeStatus", "Initialize" })
             Assert.NotNull(send.GetMethod(method));
-        Assert.Equal(2, send.GetMethod("UserMessage")!.GetParameters().Length);
+        Assert.NotNull(send.GetMethod("UserMessage", new[] { typeof(string), typeof(System.Collections.Generic.IReadOnlyList<ChatImage>) }));
 
         // the models come from the conversation now
         var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
@@ -516,6 +516,42 @@ public class PublicApiTests
         Assert.Null(conversation.GetMethod("ReportCopy"));
         Assert.Null(conversation.GetProperty("Strings"));
         foreach (var name in new[] { "CommandCopyDescription", "CopyDone", "CopyNothing", "CopyOnly", "CopyUsage", "CopyFailed", "CopyWaiting" })
+        {
+            var property = typeof(ChatStrings).GetProperty(name);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+    }
+
+    [Fact]
+    public void The_queue_of_messages_sent_while_claude_works_exists()
+    {
+        // the messages held until the claude takes them (0.6.0): a list the host can read and follow, not replace
+        var queued = typeof(ChatConversation).GetProperty("QueuedMessages");
+        Assert.Equal(typeof(System.Collections.ObjectModel.ObservableCollection<UserMessageItem>), queued?.PropertyType);
+        Assert.Null(queued!.SetMethod);
+
+        // each message sent has a uuid, which the new overload writes for the claude to tell what became of it; the old one stays
+        var uuid = typeof(MessageSubmittedEventArgs).GetProperty("Uuid");
+        Assert.Equal(typeof(string), uuid?.PropertyType);
+        Assert.Null(uuid!.SetMethod);
+        var send = typeof(ClaudeVisualChat.Protocol.StdinMessages);
+        Assert.Equal(typeof(string), send.GetMethod("UserMessage", new[] { typeof(MessageSubmittedEventArgs) })?.ReturnType);
+        Assert.NotNull(send.GetMethod("UserMessage", new[] { typeof(string), typeof(System.Collections.Generic.IReadOnlyList<ChatImage>) }));
+
+        // what the claude says of it: command_lifecycle
+        var lifecycle = Library.GetExportedTypes().SingleOrDefault(t => t.FullName == "ClaudeVisualChat.Protocol.CommandLifecycle");
+        Assert.NotNull(lifecycle);
+        Assert.True(typeof(ClaudeVisualChat.Protocol.ClaudeEvent).IsAssignableFrom(lifecycle));
+        Assert.NotNull(lifecycle!.GetConstructor(new[] { typeof(string), typeof(string), typeof(bool) }));
+        Assert.Equal(typeof(string), lifecycle.GetProperty("CommandUuid")?.PropertyType);
+        Assert.Equal(typeof(string), lifecycle.GetProperty("State")?.PropertyType);
+        Assert.Equal(typeof(bool), lifecycle.GetProperty("RanAhead")?.PropertyType);
+
+        // the held notice is the conversation's business, and so is the list in the view
+        Assert.Null(typeof(UserMessageItem).GetProperty("QueuedNotice"));
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.QueuedMessageList", Library.GetExportedTypes().Select(t => t.FullName));
+        foreach (var name in new[] { "YouQueued", "MessageQueued", "RanAtOnce" })
         {
             var property = typeof(ChatStrings).GetProperty(name);
             Assert.Equal(typeof(string), property?.PropertyType);

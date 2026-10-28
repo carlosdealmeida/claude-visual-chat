@@ -56,6 +56,13 @@ public sealed class UserMessageItem : ChatItem
         get => _isTextExpanded;
         set => SetField(ref _isTextExpanded, value);
     }
+
+    /// <summary>
+    /// The line under the message while it is held in <see cref="ChatConversation.QueuedMessages"/> (it ran at once, while Claude
+    /// worked); a <see cref="MetaLineItem"/> under it once it goes into the list. Null for none. The conversation changes it by
+    /// putting the message back in its place in the queue, which is what the view follows.
+    /// </summary>
+    internal string? QueuedNotice { get; set; }
 }
 
 /// <summary>Text from Claude; grows while <see cref="IsStreaming"/>.</summary>

@@ -55,6 +55,14 @@ namespace ClaudeVisualChat.Protocol
                     return ParseResult(root);
                 case "rate_limit_event":
                     return EventReader.ReadRateLimit(root);
+                case "command_lifecycle":
+                    {
+                        var uuid = JsonHelpers.Str(root, "command_uuid");
+                        var state = JsonHelpers.Str(root, "state");
+                        return uuid == null || state == null
+                            ? None
+                            : new ClaudeEvent[] { new CommandLifecycle(uuid, state, JsonHelpers.Bool(root, "ran_ahead")) };
+                    }
                 default:
                     return None;
             }

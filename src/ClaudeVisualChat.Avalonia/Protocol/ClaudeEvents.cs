@@ -25,6 +25,14 @@ namespace ClaudeVisualChat.Protocol
 
     public sealed record StatusChanged(string? Status, string? PermissionMode) : ClaudeEvent;
 
+    /// <summary>
+    /// What became of a message written to the claude's stdin with a <c>uuid</c> (<c>command_lifecycle</c>, 2.1.310):
+    /// <paramref name="CommandUuid"/> is that uuid; <paramref name="State"/> is <c>queued</c>, <c>started</c>, <c>completed</c>,
+    /// <c>cancelled</c>, <c>discarded</c> or <c>refused</c>; <paramref name="RanAhead"/> is true for a command the claude ran at
+    /// once, while it was working (<c>ran_ahead</c>), false when not told.
+    /// </summary>
+    public sealed record CommandLifecycle(string CommandUuid, string State, bool RanAhead) : ClaudeEvent;
+
     /// <summary>A complete assistant block (one block per line).</summary>
     public sealed record AssistantBlock(string MessageId, string? ParentToolUseId, ContentBlock Block) : ClaudeEvent
     {

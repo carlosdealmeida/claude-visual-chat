@@ -189,6 +189,9 @@ public sealed record ChatStrings
         CopyUsage = "Uso: /copy [N], onde N é 1 (a mais recente), 2, 3, … Recebido: {0}",
         CopyFailed = "Não foi possível copiar para a área de transferência",
         CopyWaiting = "Copiando quando a resposta terminar",
+        YouQueued = "Você, na fila",
+        MessageQueued = "Mensagem na fila.",
+        RanAtOnce = "Rodou na hora, enquanto o Claude trabalhava.",
         CacheWarm = "Cache do prompt ativo, cerca de {0} min restantes.",
         CacheExpired = "Cache do prompt provavelmente expirado (parado há {0}).",
         CacheCompacted = "O cache do prompt não cobre a conversa resumida.",
@@ -830,6 +833,15 @@ public sealed record ChatStrings
 
     /// <summary>The line after <c>/copy</c> typed while Claude works: the copy waits for the reply to end.</summary>
     public string CopyWaiting { get; init; } = "Copying once the reply finishes";
+
+    /// <summary>What a screen reader says of a message held until Claude takes it, at the end of the list.</summary>
+    public string YouQueued { get; init; } = "You, queued";
+
+    /// <summary>What a screen reader says when a message sent while Claude works is held.</summary>
+    public string MessageQueued { get; init; } = "Message queued.";
+
+    /// <summary>The line under a held message that the claude ran at once, while it was working (a command such as <c>/status</c>).</summary>
+    public string RanAtOnce { get; init; } = "Ran at once, while Claude was working.";
 
     /// <summary>The prompt cache is still valid; <c>{0}</c> is the minutes left.</summary>
     public string CacheWarm { get; init; } = "Prompt cache warm, about {0} min left.";

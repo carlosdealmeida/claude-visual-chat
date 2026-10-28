@@ -22,6 +22,31 @@ namespace ClaudeVisualChat.Protocol
         public static string UserMessage(string text, IReadOnlyList<ChatImage>? images = null)
         {
             if (text == null) throw new ArgumentNullException(nameof(text));
+            return User(text, images, null);
+        }
+
+        /// <summary>
+        /// The message the user sent, as <see cref="UserMessage(string, IReadOnlyList{ChatImage})"/> writes its text and images,
+        /// with its <see cref="MessageSubmittedEventArgs.Uuid"/>: the claude then tells what became of it (<c>command_lifecycle</c>),
+        /// and a message held in <see cref="ChatConversation.QueuedMessages"/> goes into the list as soon as the claude takes it.
+        /// Each of its files that landed (<see cref="ChatFile.RemotePath"/>) is named by a line of its own after the text
+        /// (<see cref="AttachedFileLine.Format"/>), so write it once they all have.
+        /// </summary>
+        public static string UserMessage(MessageSubmittedEventArgs e)
+        {
+            if (e == null) throw new ArgumentNullException(nameof(e));
+            var text = e.Text;
+            foreach (var file in e.Files)
+            {
+                if (string.IsNullOrEmpty(file.RemotePath)) continue;
+                var marker = AttachedFileLine.Format(file.RemotePath!);
+                text = text.Length == 0 ? marker : text + "\n" + marker;
+            }
+            return User(text, e.Images, e.Uuid);
+        }
+
+        private static string User(string text, IReadOnlyList<ChatImage>? images, string? uuid)
+        {
             return Write(w =>
             {
                 w.WriteString("type", "user");
@@ -57,6 +82,7 @@ namespace ClaudeVisualChat.Protocol
                 w.WriteEndObject();
                 w.WriteNull("parent_tool_use_id");
                 w.WriteString("session_id", "default");
+                if (uuid != null) w.WriteString("uuid", uuid);
             });
         }
 

@@ -3130,4 +3130,123 @@ public class ChatViewTests
         Assert.Equal(Colors.Gold, Assert.IsAssignableFrom<ISolidColorBrush>(hello.Foreground).Color);
         window.Close();
     }
+
+    // ---- the queue (0.6.0) ----
+
+    private const string Requesting =
+        "{\"type\":\"system\",\"subtype\":\"status\",\"status\":\"requesting\",\"session_id\":\"s\"}";
+
+    /// <summary>A message sent from idle and Claude at work on it, with the time the messages get.</summary>
+    private static ChatConversation Working()
+    {
+        var c = new ChatConversation { Clock = () => new DateTimeOffset(2026, 10, 28, 9, 41, 0, TimeSpan.Zero) };
+        c.Submit("first");
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", JsonDocument.Parse("{\"command\":\"sleep 5\"}").RootElement.Clone())));
+        return c;
+    }
+
+    private static StackPanel FooterPanel(ClaudeChatView view) =>
+        view.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "FooterPanel");
+
+    private static QueuedMessageList QueuedList(ClaudeChatView view) =>
+        view.GetVisualDescendants().OfType<QueuedMessageList>().Single();
+
+    [AvaloniaFact]
+    public void Queued_messages_are_drawn_below_the_working_row_without_a_time()
+    {
+        var c = Working();
+        var (view, window) = Open(c);
+        c.Submit("a queued question");
+        c.Submit("and another");
+        UiHelpers.Pump();
+
+        var queued = QueuedList(view);
+        var working = WorkingRow(view);
+        Assert.True(working.IsEffectivelyVisible);
+        Assert.True(queued.IsEffectivelyVisible);
+        Assert.Equal(new[] { "a queued question", "and another" }, UiHelpers.Texts(queued));          // in the order sent
+        Assert.True(queued.TranslatePoint(default, view)!.Value.Y >= working.TranslatePoint(default, view)!.Value.Y + working.Bounds.Height - 1);
+        // the bubble of a message, without its time and without a date line; not in the list (so never pinned at the top)
+        Assert.Equal(2, queued.GetVisualDescendants().OfType<Border>().Count(b => b.Classes.Contains("ClaudeChatUser")));
+        Assert.DoesNotContain(queued.GetVisualDescendants().OfType<TextBlock>(), t => t.Classes.Contains("ClaudeChatStamp"));
+        Assert.Empty(queued.GetVisualDescendants().OfType<DateSeparator>());
+        Assert.DoesNotContain("a queued question", UiHelpers.Texts(view.GetVisualDescendants().OfType<VirtualizingStackPanel>().First()));
+        // what a screen reader hears
+        Assert.All(queued.Children, row => Assert.Equal("You, queued", AutomationProperties.GetName(row)));
+        Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(queued));
+        Assert.Equal("Message queued.", AutomationProperties.GetName(queued));
+
+        // the first request to the API after them takes them into the list, in the order sent
+        c.AppendLine(Requesting);
+        UiHelpers.Pump();
+        Assert.False(queued.IsVisible);
+        Assert.Empty(queued.Children);
+        var list = UiHelpers.Texts(view.GetVisualDescendants().OfType<VirtualizingStackPanel>().First());
+        Assert.True(list.IndexOf("a queued question") > list.IndexOf("first"));
+        Assert.True(list.IndexOf("and another") > list.IndexOf("a queued question"));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_queued_message_says_when_it_ran_at_once()
+    {
+        var sent = new List<MessageSubmittedEventArgs>();
+        var c = Working();
+        c.MessageSubmitted += (_, e) => sent.Add(e);
+        var (view, window) = Open(c, ChatStrings.PortugueseBrazil);
+        c.Submit("/status");
+        c.AppendLine("{\"type\":\"command_lifecycle\",\"command_uuid\":\"" + sent[0].Uuid + "\",\"state\":\"queued\",\"ran_ahead\":true}");
+        UiHelpers.Pump();
+
+        var queued = QueuedList(view);
+        var meta = queued.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Classes.Contains("ClaudeChatMetaLine"));
+        Assert.True(meta.IsEffectivelyVisible);
+        Assert.Equal("Rodou na hora, enquanto o Claude trabalhava.", meta.Text);
+        Assert.Equal("Você, na fila", AutomationProperties.GetName(Assert.Single(queued.Children)));
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void Queued_messages_keep_their_place_between_the_working_row_and_the_agents_chip_when_the_layout_changes(ChatLayout start)
+    {
+        var c = Working();
+        c.Apply(new AssistantBlock("m2", null, new ToolUseBlock("toolu_a", "Agent", JsonDocument.Parse("{\"description\":\"Look around\"}").RootElement.Clone())));
+        c.Submit("held");
+        var view = new ClaudeChatView { Conversation = c, Layout = start };
+        var window = start == ChatLayout.Touch ? UiHelpers.ShowPhone(view) : UiHelpers.Show(view);
+        var queued = QueuedList(view);
+
+        void Check(ChatLayout layout)
+        {
+            UiHelpers.Pump();
+            var footer = FooterPanel(view).Children;
+            Assert.Same(WorkingRow(view), footer[0]);
+            Assert.Same(queued, footer[1]);
+            if (layout == ChatLayout.Touch)
+            {
+                Assert.Equal(3, footer.Count);
+                Assert.IsType<AgentsChip>(footer[2]);
+            }
+            else
+            {
+                Assert.Equal(2, footer.Count);
+            }
+            Assert.Equal(new[] { "held" }, UiHelpers.Texts(queued));
+            Assert.True(queued.IsEffectivelyVisible);
+        }
+
+        Check(start);
+        var other = start == ChatLayout.Touch ? ChatLayout.Desktop : ChatLayout.Touch;
+        view.Layout = other;
+        Check(other);
+        view.Layout = start;
+        Check(start);
+        c.Submit("held too");                                            // and what comes after goes in the same place
+        UiHelpers.Pump();
+        Assert.Same(queued, FooterPanel(view).Children[1]);
+        Assert.Equal(new[] { "held", "held too" }, UiHelpers.Texts(queued));
+        window.Close();
+    }
 }

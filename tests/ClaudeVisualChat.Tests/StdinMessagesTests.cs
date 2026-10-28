@@ -51,6 +51,44 @@ public class StdinMessagesTests
     }
 
     [Fact]
+    public void User_message_with_the_event_args_writes_its_uuid()
+    {
+        var e = new MessageSubmittedEventArgs(Tricky);
+        var line = StdinMessages.UserMessage(e);
+
+        var root = Parse(line);
+        Assert.Equal(new[] { "type", "message", "parent_tool_use_id", "session_id", "uuid" }, Names(root));
+        Assert.Equal(e.Uuid, root.GetProperty("uuid").GetString());
+        // the rest is what the text alone writes
+        Assert.Equal(StdinMessages.UserMessage(Tricky), line.Substring(0, line.IndexOf(",\"uuid\"", StringComparison.Ordinal)) + "}");
+
+        // with images: the same blocks as the text and images write
+        var png = new ChatImage("image/png", "QUJD");
+        var withImage = new MessageSubmittedEventArgs("oi", new[] { png });
+        Assert.Equal(Canonical(Parse(StdinMessages.UserMessage("oi", new[] { png })).GetProperty("message")),
+            Canonical(Parse(StdinMessages.UserMessage(withImage)).GetProperty("message")));
+
+        // with files: each one that landed is named by a line after the text
+        var c = new ChatConversation();
+        MessageSubmittedEventArgs? sent = null;
+        c.MessageSubmitted += (_, s) => sent = s;
+        c.AddFile("a.txt", System.Text.Encoding.UTF8.GetBytes("a"));
+        c.AddFile("b.csv", System.Text.Encoding.UTF8.GetBytes("b"));
+        c.Submit("read them");
+        sent!.Files[0].RemotePath = "/up/a.txt";
+        sent.Files[1].RemotePath = "/up/b.csv";
+        Assert.Equal("read them\n[attached file: /up/a.txt]\n[attached file: /up/b.csv]",
+            Parse(StdinMessages.UserMessage(sent)).GetProperty("message").GetProperty("content").GetString());
+        c.AddFile("c.txt", System.Text.Encoding.UTF8.GetBytes("c"));
+        c.AddFile("d.txt", System.Text.Encoding.UTF8.GetBytes("d"));
+        c.Submit("");                                                   // nothing typed: the lines alone
+        sent.Files[1].RemotePath = "/up/d.txt";                         // one that has not landed is not named
+        Assert.Equal("[attached file: /up/d.txt]",
+            Parse(StdinMessages.UserMessage(sent)).GetProperty("message").GetProperty("content").GetString());
+        Assert.Throws<ArgumentNullException>(() => StdinMessages.UserMessage((MessageSubmittedEventArgs)null!));
+    }
+
+    [Fact]
     public void Control_requests_have_the_checked_shape()
     {
         Assert.Equal("{\"type\":\"control_request\",\"request_id\":\"init-1\",\"request\":{\"subtype\":\"initialize\"}}",
@@ -235,6 +273,6 @@ public class StdinMessagesTests
     public void Null_arguments_are_rejected()
     {
         Assert.Throws<ArgumentNullException>(() => StdinMessages.PermissionResponse(null!));
-        Assert.Throws<ArgumentNullException>(() => StdinMessages.UserMessage(null!));
+        Assert.Throws<ArgumentNullException>(() => StdinMessages.UserMessage((string)null!)); // a bare null names no overload since 0.6.0
     }
 }

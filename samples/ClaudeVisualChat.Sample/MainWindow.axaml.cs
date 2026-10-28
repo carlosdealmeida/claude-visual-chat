@@ -245,7 +245,7 @@ public partial class MainWindow : Window
                    + (e.Files.Count > 0 ? " + " + e.Files.Count + " file(s)" : "");
         if (e.Files.Count == 0)
         {
-            Add(what, StdinMessages.UserMessage(e.Text, e.Images));
+            Add(what, StdinMessages.UserMessage(e)); // with its uuid: the claude tells when it takes a message sent while it works
             return;
         }
         // the files go to the claude's machine first; the message follows, naming each one on a line of its own
@@ -260,7 +260,6 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task UploadAsync(ChatConversation conversation, MessageSubmittedEventArgs e)
     {
-        var markers = new System.Collections.Generic.List<string>();
         foreach (var file in e.Files)
         {
             for (var step = 0; step <= 20; step++)
@@ -270,10 +269,9 @@ public partial class MainWindow : Window
                 await Task.Delay(150);
             }
             file.RemotePath = Recordings.WorkingDirectory + @"\.uploads\" + file.Name;
-            markers.Add(AttachedFileLine.Format(file.RemotePath));
         }
-        var text = e.Text.Length == 0 ? string.Join("\n", markers) : e.Text + "\n" + string.Join("\n", markers);
-        Add("Files sent: " + string.Join(", ", e.Files.Select(f => f.RemotePath)), StdinMessages.UserMessage(text, e.Images));
+        // the text, one marker line per file where it landed, and the message's uuid
+        Add("Files sent: " + string.Join(", ", e.Files.Select(f => f.RemotePath)), StdinMessages.UserMessage(e));
     }
 
     /// <summary>The made-up session leaves a file in the reply box, for the user to send.</summary>

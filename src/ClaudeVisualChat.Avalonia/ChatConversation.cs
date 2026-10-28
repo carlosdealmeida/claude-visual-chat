@@ -42,6 +42,13 @@ public sealed class ChatConversation : ChatObservableObject
     private readonly List<MessageSubmittedEventArgs> _echoes = new List<MessageSubmittedEventArgs>();
     /// <summary>Messages sent since the conversation was idle, while the claude has not answered: they alone keep it busy.</summary>
     private readonly List<MessageSubmittedEventArgs> _unanswered = new List<MessageSubmittedEventArgs>();
+    /// <summary>The messages of <see cref="QueuedMessages"/> as they were sent, in the same order.</summary>
+    private readonly List<MessageSubmittedEventArgs> _held = new List<MessageSubmittedEventArgs>();
+    /// <summary>
+    /// The claude tells what became of the messages sent with their uuid (<c>command_lifecycle</c>): it says when it takes each held
+    /// one, so a request to the API no longer releases them.
+    /// </summary>
+    private bool _claudeTellsLifecycle;
     /// <summary>Agents a session file left without an end: a task line from the live claude brings them back to running.</summary>
     private readonly HashSet<AgentInfo> _agentsStoppedByHistory = new HashSet<AgentInfo>();
     /// <summary>An agent was added or its state changed since the agents were last looked at (see <see cref="Apply"/>).</summary>
@@ -275,6 +282,18 @@ public sealed class ChatConversation : ChatObservableObject
     public long MaxFileBytes { get; set; } = 25L * 1024 * 1024;
 
     public ObservableCollection<ChatItem> Items { get; } = new ObservableCollection<ChatItem>();
+
+    /// <summary>
+    /// The messages sent while Claude works on a turn (<see cref="Submit"/>), oldest first: the host sent them at once, and the
+    /// claude has not taken them yet. The view shows them at the end of the list, under "Working…". Each one moves to
+    /// <see cref="Items"/> when the claude takes it: when it says so for the message's uuid (<c>command_lifecycle</c>: "started"
+    /// takes it and every earlier one; "completed", "cancelled", "discarded" or "refused" that one alone), when it repeats the
+    /// message, or else, all of them together, at the first request to the API after they were sent (the claude takes a message
+    /// sent during a turn into that turn) or at the turn's end. <see cref="UndoSubmit"/>, <see cref="Clear"/> and
+    /// <see cref="LoadTranscript"/> take them out. Empty while <see cref="EchoSubmittedMessages"/> is false. Read it, do not
+    /// change it.
+    /// </summary>
+    public ObservableCollection<UserMessageItem> QueuedMessages { get; } = new ObservableCollection<UserMessageItem>();
 
     /// <summary>
     /// The subagents of the conversation, the newest first: each Agent call, filled by the claude's task lines and by
@@ -622,6 +641,11 @@ public sealed class ChatConversation : ChatObservableObject
                 break;
             case StatusChanged status:
                 if (status.PermissionMode != null) PermissionMode = status.PermissionMode;
+                // one per request to the API: the claude takes what was sent during the turn into the next one (the recording of 2.1.310)
+                if (status.Status == "requesting" && !_claudeTellsLifecycle) ReleaseHeld(_held.Count);
+                break;
+            case CommandLifecycle lifecycle:
+                OnCommandLifecycle(lifecycle);
                 break;
             case AssistantBlock block:
                 OnAssistantBlock(block);
@@ -713,10 +737,12 @@ public sealed class ChatConversation : ChatObservableObject
         UpdateRunningAgents();
     }
 
-    /// <summary>Empties the items (and their bookmarks), the agents and the pending requests. Session details stay.</summary>
+    /// <summary>Empties the items (and their bookmarks), the queued messages, the agents and the pending requests. Session details stay.</summary>
     public void Clear()
     {
         Items.Clear();
+        _held.Clear();
+        if (QueuedMessages.Count > 0) QueuedMessages.Clear();
         _bookmarks.Clear(); // they were items of the list
         _pendingCopy = null;
         Agents.Clear();
@@ -744,7 +770,9 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>
     /// Sends a message with the <see cref="Attachments"/> and the <see cref="Files"/>, which it empties; blank text is
-    /// ignored unless there is an image or a file. Works while busy: the claude queues it.
+    /// ignored unless there is an image or a file. Works while busy: the claude queues it. Sent while Claude works on a turn, the
+    /// message waits in <see cref="QueuedMessages"/> until the claude takes it; sent while idle, or before the claude answered the
+    /// message that made it busy, it goes to <see cref="Items"/> at once.
     /// </summary>
     public bool Submit(string text)
     {
@@ -762,13 +790,24 @@ public sealed class ChatConversation : ChatObservableObject
         Files.Clear();
         var submitted = new MessageSubmittedEventArgs(text, images, files) { Owner = this };
         _cacheAnchor = _clock();
+        // the messages that alone keep the conversation busy are the ones the claude has not started on: those show at once
+        var unanswered = !IsBusy || _unanswered.Count > 0;
         if (EchoSubmittedMessages)
         {
             submitted.Item = new UserMessageItem(text, images, files) { Timestamp = _clock() };
-            Items.Add(submitted.Item);
+            if (unanswered)
+            {
+                Items.Add(submitted.Item);
+            }
+            else
+            {
+                // Claude works on a turn: the message waits until the claude takes it
+                _held.Add(submitted);
+                QueuedMessages.Add(submitted.Item);
+            }
             _echoes.Add(submitted);
         }
-        if (!IsBusy || _unanswered.Count > 0) _unanswered.Add(submitted);
+        if (unanswered) _unanswered.Add(submitted);
         IsBusy = true;
         MessageSubmitted?.Invoke(this, submitted);
         return true;
@@ -910,7 +949,7 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>
     /// Takes back a message the host could not deliver (no connection, refused, a file that did not get through): its
-    /// images and files go back to the reply box when it holds none, it leaves <see cref="Items"/>, the
+    /// images and files go back to the reply box when it holds none, it leaves <see cref="Items"/> (or <see cref="QueuedMessages"/>), the
     /// conversation stops waiting for its repetition, and <see cref="IsBusy"/> goes back to false when only the
     /// messages sent while idle kept it busy and the claude has not answered since. Raises <see cref="SubmitUndone"/>
     /// with the text, even after <see cref="Clear"/> or <see cref="LoadTranscript"/>. Works inside
@@ -921,7 +960,16 @@ public sealed class ChatConversation : ChatObservableObject
         if (submitted == null) throw new ArgumentNullException(nameof(submitted));
         if (!ReferenceEquals(submitted.Owner, this) || submitted.Undone) return false;
         submitted.Undone = true;
-        if (submitted.Item != null) Items.Remove(submitted.Item);
+        var held = _held.IndexOf(submitted);
+        if (held >= 0)
+        {
+            _held.RemoveAt(held);
+            QueuedMessages.RemoveAt(held);
+        }
+        else if (submitted.Item != null)
+        {
+            Items.Remove(submitted.Item);
+        }
         // the images go back to the reply box unless it already holds others
         if (Attachments.Count == 0)
         {
@@ -1422,7 +1470,7 @@ public sealed class ChatConversation : ChatObservableObject
         if (e.ParentToolUseId == null && _echoes.Count > 0
             && (_echoes[0].Text == text || _echoes[0].Text.TrimEnd('\r', '\n') == shown))
         {
-            _echoes.RemoveAt(0); // the claude repeated what Submit already shows
+            DropEcho(); // the claude repeated what Submit already shows
             return;
         }
         List<ChatFile>? files = null;
@@ -1435,10 +1483,65 @@ public sealed class ChatConversation : ChatObservableObject
         var text = "/" + e.Name + (e.Arguments.Length == 0 ? "" : " " + e.Arguments);
         if (_echoes.Count > 0 && _echoes[0].Text == text)
         {
-            _echoes.RemoveAt(0); // the claude repeated what Submit already shows
+            DropEcho(); // the claude repeated what Submit already shows
             return;
         }
         Items.Add(new UserMessageItem(text));
+    }
+
+    /// <summary>The claude repeated the oldest sent message: it is not waited for any longer, and if it was held, the claude took it and every earlier one.</summary>
+    private void DropEcho()
+    {
+        var echo = _echoes[0];
+        _echoes.RemoveAt(0);
+        var held = _held.IndexOf(echo);
+        if (held >= 0) ReleaseHeld(held + 1);
+    }
+
+    // ---- the queue ----
+
+    /// <summary>What the claude says of a message sent with its uuid: it takes held ones, or ran one at once.</summary>
+    private void OnCommandLifecycle(CommandLifecycle e)
+    {
+        _claudeTellsLifecycle = true;
+        var index = _held.FindIndex(h => h.Uuid == e.CommandUuid);
+        if (index < 0) return;
+        var item = _held[index].Item!;
+        if (e.RanAhead)
+        {
+            // it ran while Claude worked, and stays held until the claude says it is done
+            if (item.QueuedNotice != null) return;
+            item.QueuedNotice = Strings.RanAtOnce;
+            QueuedMessages[index] = item; // the view follows the queue
+            return;
+        }
+        switch (e.State)
+        {
+            case "started":
+                ReleaseHeld(index + 1);
+                break;
+            case "completed":
+            case "cancelled":
+            case "discarded":
+            case "refused":
+                ReleaseAt(index);
+                break;
+        }
+    }
+
+    /// <summary>The <paramref name="count"/> oldest held messages go into the list, in the order they were sent.</summary>
+    private void ReleaseHeld(int count)
+    {
+        for (var i = 0; i < count && _held.Count > 0; i++) ReleaseAt(0);
+    }
+
+    private void ReleaseAt(int index)
+    {
+        var item = _held[index].Item!;
+        _held.RemoveAt(index);
+        QueuedMessages.RemoveAt(index);
+        Items.Add(item);
+        if (item.QueuedNotice != null) Items.Add(new MetaLineItem(item.QueuedNotice));
     }
 
     // ---- agents ----
@@ -1916,6 +2019,8 @@ public sealed class ChatConversation : ChatObservableObject
             _pendingCopy = null;
             CopyReply(copy);
         }
+        // what is still held came after the turn's last request to the API: the claude has it, for its next turn
+        ReleaseHeld(_held.Count);
     }
 
     /// <summary>

@@ -231,6 +231,25 @@
     <StreamGeometry x:Key="ClaudeChat.Icon.ThumbUp">M2.5,7 L4.5,7 L4.5,14 L2.5,14 Z M4.5,7.5 L7,2.5 C7.8,2.5 8.5,3.2 8.5,4 L8.5,6.5 L12.3,6.5 C13.1,6.5 13.7,7.2 13.5,8 L12.6,12.8 C12.5,13.5 11.9,14 11.2,14 L4.5,14</StreamGeometry>
     <StreamGeometry x:Key="ClaudeChat.Icon.ThumbDown">M2.5,9 L4.5,9 L4.5,2 L2.5,2 Z M4.5,8.5 L7,13.5 C7.8,13.5 8.5,12.8 8.5,12 L8.5,9.5 L12.3,9.5 C13.1,9.5 13.7,8.8 13.5,8 L12.6,3.2 C12.5,2.5 11.9,2 11.2,2 L4.5,2</StreamGeometry>
 
+    <!-- a message held until the claude takes it (the end of the list, under "Working…"): the bubble of a sent message, without
+         its time, its date line or any action -->
+    <DataTemplate x:Key="ClaudeChat.QueuedMessageTemplate" DataType="cvc:UserMessageItem">
+      <StackPanel Classes="ClaudeChatUserTurn"
+                  Classes.touch="{Binding $parent[controls:ClaudeChatView].Layout, Converter={x:Static controls:ChatConverters.IsTouch}}">
+        <Border Classes="ClaudeChatUser">
+          <StackPanel>
+            <controls:MessageAttachments Images="{Binding Images}" Files="{Binding Files}"
+                                         Classes.alone="{Binding Text, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+            <controls:FoldedText IsExpanded="{Binding IsTextExpanded, Mode=TwoWay}"
+                                 IsVisible="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+              <SelectableTextBlock Classes="ClaudeChatUserText"
+                                   Text="{Binding Text, Converter={x:Static controls:ChatConverters.Clip}}" />
+            </controls:FoldedText>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </DataTemplate>
+
     <!-- one template per item; the list picks the one that matches -->
     <controls:ChatItemTemplates x:Key="ClaudeChat.ItemTemplates">
 

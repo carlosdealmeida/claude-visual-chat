@@ -76,6 +76,17 @@ public class ChatStringsTests
     }
 
     [Fact]
+    public void The_queue_texts()
+    {
+        Assert.Equal("You, queued", En.YouQueued);
+        Assert.Equal("Você, na fila", Pt.YouQueued);
+        Assert.Equal("Message queued.", En.MessageQueued);
+        Assert.Equal("Mensagem na fila.", Pt.MessageQueued);
+        Assert.Equal("Ran at once, while Claude was working.", En.RanAtOnce);
+        Assert.Equal("Rodou na hora, enquanto o Claude trabalhava.", Pt.RanAtOnce);
+    }
+
+    [Fact]
     public void Texts_in_both_languages()
     {
         Assert.Equal("+9,988 lines", En.FormatMoreLines(9988));

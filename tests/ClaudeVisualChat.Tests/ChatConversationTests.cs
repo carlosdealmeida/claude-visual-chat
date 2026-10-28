@@ -2110,4 +2110,238 @@ public class ChatConversationTests
         c.Clear();
         Assert.Equal(ChatBrowserStatus.Error, c.BrowserStatus);
     }
+
+    // ---- the queue: messages sent while Claude works (0.6.0) ----
+
+    private const string Requesting =
+        "{\"type\":\"system\",\"subtype\":\"status\",\"status\":\"requesting\",\"session_id\":\"s\"}";
+
+    private const string ResultLine =
+        "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":10,\"total_cost_usd\":0.001,\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
+
+    private static string Lifecycle(string uuid, string state, bool ranAhead = false) =>
+        "{\"type\":\"command_lifecycle\",\"command_uuid\":\"" + uuid + "\",\"state\":\"" + state + "\""
+        + (ranAhead ? ",\"ran_ahead\":true" : "") + ",\"uuid\":\"x\",\"session_id\":\"s\"}";
+
+    /// <summary>A message sent from idle, and Claude at work on it: what is sent now waits.</summary>
+    private static ChatConversation Working(List<MessageSubmittedEventArgs>? sent = null)
+    {
+        var c = new ChatConversation();
+        if (sent != null) c.MessageSubmitted += (_, e) => sent.Add(e);
+        c.Submit("first");
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"sleep 5\"}"))));
+        return c;
+    }
+
+    private static List<string> Texts(IEnumerable<UserMessageItem> items) => items.Select(u => u.Text).ToList();
+
+    [Fact]
+    public void A_message_sent_while_busy_waits_in_queued_messages()
+    {
+        var sent = new List<MessageSubmittedEventArgs>();
+        var c = Working(sent);
+        Assert.True(c.Submit("second"));
+
+        Assert.Equal(new[] { "second" }, Texts(c.QueuedMessages));
+        Assert.DoesNotContain(c.Items, i => i is UserMessageItem { Text: "second" });
+        Assert.Same(sent[1].Item, c.QueuedMessages[0]);                // the item the host's message is
+        Assert.Equal(2, sent.Count);                                   // it goes to the host at once all the same
+        Assert.True(c.IsBusy);
+
+        // sent from idle, or while the claude has not answered yet (the rule of the unanswered messages): to the list at once
+        var idle = new ChatConversation();
+        idle.Submit("one");
+        idle.Submit("two");
+        Assert.Empty(idle.QueuedMessages);
+        Assert.Equal(new[] { "user:one", "user:two" }, idle.Items.Select(Describe));
+
+        // a conversation that shows no sent message holds none either
+        var quiet = new ChatConversation { EchoSubmittedMessages = false };
+        quiet.Apply(new AssistantBlock("m1", null, new TextContentBlock("working")));
+        quiet.Submit("more");
+        Assert.Empty(quiet.QueuedMessages);
+    }
+
+    [Fact]
+    public void The_next_turn_releases_the_oldest_queued_message()
+    {
+        // the recording (2.1.310): the second message, sent while the Bash request waited, is taken into the turn under way. The first
+        // request to the API after it was sent is where it goes into the list; no turn of its own, no result of its own
+        var lines = FixtureFiles.StreamLines("queued");
+        var c = new ChatConversation();
+        c.Submit("Run the shell command 'sleep 5 && echo done > done.txt' and then say done in one word.");
+        var ask = Array.FindIndex(lines, l => LineType(l) == "control_request");
+        var secondRequest = Array.FindLastIndex(lines, l => l.Contains("\"status\": \"requesting\""));
+        Assert.True(ask > 0 && secondRequest > ask);
+        for (var i = 0; i <= ask; i++) c.AppendLine(lines[i]);           // the first request of the turn came before: it counts for nothing
+
+        c.Submit("After that, say the word second in one line.");
+        Assert.Single(c.QueuedMessages);
+        c.AnswerPermission(c.CurrentPermission!, PermissionDecision.Allow);
+        for (var i = ask + 1; i < secondRequest; i++) c.AppendLine(lines[i]); // the command runs, its result comes back
+        Assert.Single(c.QueuedMessages);
+
+        c.AppendLine(lines[secondRequest]);
+        Assert.Empty(c.QueuedMessages);
+        for (var i = secondRequest + 1; i < lines.Length; i++) c.AppendLine(lines[i]);
+        Assert.Equal(
+            new[]
+            {
+                "user:Run the shell command 'sleep 5 && echo done > done.txt' and then say done in one word.",
+                "tool:Bash:sleep 5 && echo done > done.txt:Succeeded:0",
+                "user:After that, say the word second in one line.",
+                "thinking:",
+                "text:second",
+                "footer:False",
+            },
+            c.Items.Select(Describe));
+        Assert.False(c.IsBusy);
+    }
+
+    [Fact]
+    public void A_request_releases_every_queued_message_in_order()
+    {
+        var c = Working();
+        c.Submit("a");
+        c.Submit("b");
+        Assert.Equal(new[] { "a", "b" }, Texts(c.QueuedMessages));
+
+        c.AppendLine(Requesting);
+        Assert.Empty(c.QueuedMessages);
+        Assert.Equal(new[] { "user:first", "tool:Bash:sleep 5:Running:0", "user:a", "user:b" }, c.Items.Select(Describe));
+        Assert.True(c.IsBusy);                                          // the turn goes on
+
+        // a status that is no request (the mode) leaves the queue alone
+        c.Submit("c");
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"status\",\"status\":null,\"permissionMode\":\"acceptEdits\"}");
+        Assert.Equal(new[] { "c" }, Texts(c.QueuedMessages));
+    }
+
+    [Fact]
+    public void A_turn_end_without_a_request_releases_the_queued_messages()
+    {
+        var c = Working();
+        c.Submit("a");
+        c.Submit("b");
+        c.AppendLine(ResultLine);
+        Assert.Empty(c.QueuedMessages);
+        Assert.Equal(new[] { "user:first", "tool:Bash:sleep 5:Running:0", "footer:False", "user:a", "user:b" }, c.Items.Select(Describe));
+        Assert.False(c.IsBusy);                                         // the busy state stays the claude's
+    }
+
+    [Fact]
+    public void A_started_lifecycle_releases_that_message_and_every_earlier_one()
+    {
+        var sent = new List<MessageSubmittedEventArgs>();
+        var c = Working(sent);
+        c.Submit("a");
+        c.Submit("b");
+        c.Submit("c");
+        c.Submit("d");
+
+        c.AppendLine(Lifecycle("not-one-of-them", "started"));
+        Assert.Equal(4, c.QueuedMessages.Count);
+        c.AppendLine(Lifecycle(sent[2].Uuid, "started"));               // "b": it and "a"
+        Assert.Equal(new[] { "c", "d" }, Texts(c.QueuedMessages));
+        Assert.Equal(new[] { "first", "a", "b" }, Texts(c.Items.OfType<UserMessageItem>()));
+
+        // with a host that sends the uuid, the claude says when it takes each one: a request to the API no longer releases them
+        c.AppendLine(Requesting);
+        Assert.Equal(new[] { "c", "d" }, Texts(c.QueuedMessages));
+
+        c.AppendLine(Lifecycle(sent[4].Uuid, "discarded"));             // "d" alone, ahead of "c"
+        Assert.Equal(new[] { "c" }, Texts(c.QueuedMessages));
+        Assert.Equal("d", c.Items.OfType<UserMessageItem>().Last().Text);
+        foreach (var state in new[] { "completed", "cancelled", "refused" })
+        {
+            c.Submit(state);
+            c.AppendLine(Lifecycle(sent.Last().Uuid, state));
+            Assert.Equal(new[] { "c" }, Texts(c.QueuedMessages));
+            Assert.Equal(state, c.Items.OfType<UserMessageItem>().Last().Text);
+        }
+        c.AppendLine(Lifecycle(sent[3].Uuid, "queued"));                // only queued: it stays
+        Assert.Equal(new[] { "c" }, Texts(c.QueuedMessages));
+
+        c.AppendLine(ResultLine);                                       // and the turn end takes the rest
+        Assert.Empty(c.QueuedMessages);
+    }
+
+    [Fact]
+    public void A_command_that_ran_at_once_says_so_under_its_message()
+    {
+        var sent = new List<MessageSubmittedEventArgs>();
+        var c = Working(sent);
+        c.Strings = ChatStrings.PortugueseBrazil;
+        c.Submit("/status");
+        c.AppendLine(Lifecycle(sent[1].Uuid, "queued", ranAhead: true));
+        var held = Assert.Single(c.QueuedMessages);                     // it ran, and is still held until the claude says it is done
+        Assert.Equal(ChatStrings.PortugueseBrazil.RanAtOnce, held.QueuedNotice);
+
+        c.AppendLine(Lifecycle(sent[1].Uuid, "completed"));
+        Assert.Empty(c.QueuedMessages);
+        Assert.Equal(new[] { "user:/status", "MetaLineItem" }, c.Items.Skip(2).Select(Describe));
+        Assert.Equal(ChatStrings.PortugueseBrazil.RanAtOnce, ((MetaLineItem)c.Items.Last()).Text);
+    }
+
+    [Fact]
+    public void Undo_submit_takes_a_queued_message_back()
+    {
+        var sent = new List<MessageSubmittedEventArgs>();
+        var undone = new List<string>();
+        var c = Working(sent);
+        c.SubmitUndone += (_, e) => undone.Add(e.Text);
+        c.Submit("a");
+        c.Submit("b");
+
+        Assert.True(c.UndoSubmit(sent[1]));
+        Assert.Equal(new[] { "b" }, Texts(c.QueuedMessages));
+        Assert.Equal(new[] { "a" }, undone);
+        Assert.True(c.IsBusy);                                          // the claude still works
+        Assert.False(c.UndoSubmit(sent[1]));
+
+        c.AppendLine(Requesting);
+        Assert.Equal(new[] { "first", "b" }, Texts(c.Items.OfType<UserMessageItem>()));
+    }
+
+    [Fact]
+    public void Clearing_or_loading_a_session_empties_the_queue()
+    {
+        var c = Working();
+        c.Submit("a");
+        c.Clear();
+        Assert.Empty(c.QueuedMessages);
+        c.AppendLine(Requesting);
+        Assert.Empty(c.Items);                                          // what was held is gone, not released later
+
+        var loaded = Working();
+        loaded.Submit("a");
+        loaded.LoadTranscript(FixtureFiles.TranscriptLines("bash"));
+        Assert.Empty(loaded.QueuedMessages);
+        Assert.DoesNotContain(loaded.Items, i => i is UserMessageItem { Text: "a" });
+    }
+
+    [Fact]
+    public void The_claude_repeating_a_queued_message_releases_it()
+    {
+        var c = Working();
+        c.AppendLine(UserOi.Replace("\"oi\"", "\"first\""));            // the first one's repetition: dropped, as ever
+        c.Submit("oi");
+        c.AppendLine(UserOi);                                           // a stream that repeats the messages took it
+        Assert.Empty(c.QueuedMessages);
+        Assert.Equal(new[] { "first", "oi" }, Texts(c.Items.OfType<UserMessageItem>()));
+    }
+
+    [Fact]
+    public void Every_message_sent_has_its_own_uuid()
+    {
+        var sent = new List<MessageSubmittedEventArgs>();
+        var c = new ChatConversation();
+        c.MessageSubmitted += (_, e) => sent.Add(e);
+        c.Submit("a");
+        c.Submit("b");
+        Assert.True(Guid.TryParse(sent[0].Uuid, out _));
+        Assert.True(Guid.TryParse(sent[1].Uuid, out _));
+        Assert.NotEqual(sent[0].Uuid, sent[1].Uuid);
+        Assert.True(Guid.TryParse(new MessageSubmittedEventArgs("by hand").Uuid, out _));
+    }
 }

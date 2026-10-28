@@ -1193,4 +1193,43 @@ public class DetachTests
         Assert.Equal(2, map.GetVisualDescendants().OfType<Button>().Count(b => b.Classes.Contains("ClaudeChatAgentRow") && b.IsEffectivelyVisible));
         m.Window.Close();
     }
+
+    /// <summary>Who listens to the queue (a notice on a held message comes as the queue's change too).</summary>
+    private static int QueueHandlers(ChatConversation c) =>
+        ((Delegate?)typeof(System.Collections.ObjectModel.ObservableCollection<UserMessageItem>)
+            .GetField("CollectionChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(c.QueuedMessages))?.GetInvocationList().Length ?? 0;
+
+    [AvaloniaFact]
+    public void The_queued_messages_let_go_while_out_and_come_back_as_they_are_now()
+    {
+        var c = Conversation();
+        var sent = new List<MessageSubmittedEventArgs>();
+        c.MessageSubmitted += (_, e) => sent.Add(e);
+        c.Submit("first");
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"sleep 5\"}"))));
+        c.Submit("held one");
+        var own = QueueHandlers(c);
+        var m = new Mounted(c);
+        var list = m.View.GetVisualDescendants().OfType<QueuedMessageList>().Single();
+        Assert.Equal(new[] { "held one" }, UiHelpers.Texts(list));
+        Assert.True(QueueHandlers(c) > own);
+
+        m.Out();                                                           // taken out: nothing throws, the queue is let go
+        Assert.Equal(own, QueueHandlers(c));
+        c.Submit("held two");                                              // while out: one more, the first one taken,
+        c.AppendLine("{\"type\":\"command_lifecycle\",\"command_uuid\":\"" + sent[1].Uuid + "\",\"state\":\"completed\"}");
+        c.AppendLine("{\"type\":\"command_lifecycle\",\"command_uuid\":\"" + sent[2].Uuid + "\",\"state\":\"queued\",\"ran_ahead\":true}"); // the other ran at once
+        UiHelpers.Pump();
+
+        m.In();                                                            // back: the queue as it is now
+        Assert.Equal(new[] { "held two", m.View.Strings.RanAtOnce }, UiHelpers.Texts(list));
+        Assert.True(QueueHandlers(c) > own);
+
+        // and it follows the conversation again
+        c.AppendLine("{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":10,\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}");
+        UiHelpers.Pump();
+        Assert.False(list.IsVisible);
+        m.Window.Close();
+    }
 }

@@ -21,6 +21,23 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void Command_lifecycle_gives_what_became_of_a_sent_message()
+        {
+            var parser = new StreamJsonParser();
+            var started = Assert.IsType<CommandLifecycle>(Assert.Single(parser.Parse(
+                "{\"type\":\"command_lifecycle\",\"command_uuid\":\"c-1\",\"state\":\"started\",\"uuid\":\"u\",\"session_id\":\"s\"}")));
+            Assert.Equal(new CommandLifecycle("c-1", "started", false), started);
+
+            var ranAhead = Assert.IsType<CommandLifecycle>(Assert.Single(parser.Parse(
+                "{\"type\":\"command_lifecycle\",\"command_uuid\":\"c-2\",\"state\":\"queued\",\"ran_ahead\":true}")));
+            Assert.Equal(new CommandLifecycle("c-2", "queued", true), ranAhead);
+
+            // without the message's uuid or a state it says nothing
+            Assert.Empty(parser.Parse("{\"type\":\"command_lifecycle\",\"state\":\"started\"}"));
+            Assert.Empty(parser.Parse("{\"type\":\"command_lifecycle\",\"command_uuid\":\"c-3\"}"));
+        }
+
+        [Fact]
         public void Assistant_line_gives_one_block_event()
         {
             var parser = new StreamJsonParser();

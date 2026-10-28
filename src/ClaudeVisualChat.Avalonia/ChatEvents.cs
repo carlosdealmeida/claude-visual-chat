@@ -44,10 +44,17 @@ public sealed class MessageSubmittedEventArgs : EventArgs
         Text = text ?? "";
         Images = images ?? Array.Empty<ChatImage>();
         Files = files ?? Array.Empty<ChatFile>();
+        Uuid = Guid.NewGuid().ToString();
     }
 
     /// <summary>What the user wrote; the files are not named in it (see <see cref="Files"/>).</summary>
     public string Text { get; }
+
+    /// <summary>
+    /// A new id for the message, made when it is sent. <see cref="Protocol.StdinMessages.UserMessage(MessageSubmittedEventArgs)"/>
+    /// writes it, and the claude names the message by it when it tells what became of it (<c>command_lifecycle</c>).
+    /// </summary>
+    public string Uuid { get; }
 
     /// <summary>The images sent with the message; empty when there are none.</summary>
     public IReadOnlyList<ChatImage> Images { get; }
