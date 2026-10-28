@@ -328,6 +328,43 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void A_folded_card_comes_back_folded_after_the_view_returns()
+    {
+        var c = Conversation();
+        c.Apply(new PermissionRequested("r1", "Bash", "Bash", null, "t1", J("{\"command\":\"ls -la\"}"), null));
+        var m = new Mounted(c);
+        var prompt = UiHelpers.Prompt(m.View);
+        UiHelpers.Pump();
+        var fold = prompt.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("ClaudeChatPermissionFold"));
+        UiHelpers.Click(m.Window, fold);
+        Assert.True(prompt.IsFolded);
+
+        m.Out();                                                           // taken out folded: nothing throws
+        Assert.False(prompt.IsTicking);
+        m.In();                                                            // back: the same request, still folded
+
+        Assert.True(prompt.IsFolded);
+        Assert.Same(c.CurrentPermission, prompt.Request);
+        Assert.DoesNotContain("ls -la", UiHelpers.Texts(prompt));
+        Assert.Contains("Allow this bash command?", UiHelpers.Texts(prompt));
+        Assert.Equal("Expand", Avalonia.Automation.AutomationProperties.GetName(fold));
+        UiHelpers.Click(m.Window, fold);                                   // and it unfolds as ever
+        Assert.False(prompt.IsFolded);
+        Assert.Contains("ls -la", UiHelpers.Texts(prompt));
+
+        // a request that came while it was out is another one: it shows unfolded
+        UiHelpers.Click(m.Window, fold);
+        Assert.True(prompt.IsFolded);
+        m.Out();
+        c.AnswerPermission(c.CurrentPermission!, PermissionDecision.Deny, null);
+        c.Apply(new PermissionRequested("r2", "Bash", "Bash", null, "t2", J("{\"command\":\"pwd\"}"), null));
+        m.In();
+        Assert.False(prompt.IsFolded);
+        Assert.Contains("pwd", UiHelpers.Texts(prompt));
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_request_that_came_while_out_shows_when_back()
     {
         var m = new Mounted(Conversation());

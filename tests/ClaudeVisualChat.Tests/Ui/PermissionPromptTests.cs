@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Media;
@@ -1310,5 +1311,173 @@ public class PermissionPromptTests
         Assert.True(ui.Frame.IsEffectivelyVisible);
         Assert.DoesNotContain("Waiting for permission…", UiHelpers.Texts(ui.View));
         ui.Window.Close();
+    }
+
+    // ---- folding the card to read the conversation behind it ----
+
+    private static Button FoldButton(Control root) => root.GetVisualDescendants().OfType<Button>()
+        .Single(b => b.Classes.Contains("ClaudeChatPermissionFold") && b.IsEffectivelyVisible);
+
+    private static PermissionRequested BashWithNote(string id) =>
+        Request(id, "Bash", "{\"command\":\"dotnet build\",\"description\":\"Builds the solution\"}", Suggestions);
+
+    [AvaloniaFact]
+    public void Collapse_leaves_only_the_title_and_focuses_the_button()
+    {
+        var c = new ChatConversation();
+        c.Apply(BashWithNote("r1"));
+        var ui = Open(c);
+        UiHelpers.Pump();
+        var button = FoldButton(ui.Prompt);
+        Assert.Equal("Collapse", AutomationProperties.GetName(button));
+        Assert.False(ui.Prompt.IsFolded);
+        Assert.Contains("dotnet build", ui.Texts);
+        Assert.NotNull(ui.DenyField);
+        // 20 px, 4 px from the top and from the right of the card
+        Assert.Equal(20, button.Bounds.Width, 1);
+        var at = button.TranslatePoint(default, ui.Frame)!.Value;
+        Assert.Equal(4, at.Y, 1);
+        Assert.Equal(4, ui.Frame.Bounds.Width - (at.X + 20), 1);
+        var open = ui.Frame.Bounds.Height;
+
+        UiHelpers.Click(ui.Window, button);
+
+        Assert.True(ui.Prompt.IsFolded);
+        Assert.Contains(RunCommand, ui.Texts);                                     // the title stays...
+        foreach (var gone in new[] { "dotnet build", "Builds the solution", "Esc to cancel", "Yes", No }) Assert.DoesNotContain(gone, ui.Texts);
+        Assert.Empty(ui.Options);                                                   // ...and nothing else: no options,
+        Assert.Null(ui.DenyField);                                                  // and the reply box stays hidden
+        Assert.True(ui.Frame.Bounds.Height < open / 2);
+        Assert.Equal("Expand", AutomationProperties.GetName(button));
+        Assert.Same(button, UiHelpers.Focused(ui.Window));                          // the keyboard is on the button
+        var title = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatPermissionTitle"));
+        Assert.Equal(TextWrapping.NoWrap, title.TextWrapping);                      // one line, with an ellipsis
+        Assert.Equal(TextTrimming.CharacterEllipsis, title.TextTrimming);
+        var folded = button.TranslatePoint(default, ui.Frame)!.Value;
+        Assert.Equal(8, folded.Y, 1);                                               // 8 px from the top, folded
+
+        UiHelpers.Click(ui.Window, button);
+        Assert.False(ui.Prompt.IsFolded);
+        Assert.Contains("dotnet build", ui.Texts);
+        Assert.NotNull(ui.DenyField);
+        Assert.Equal("Collapse", AutomationProperties.GetName(button));
+        Assert.Empty(ui.Answers);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Folded_esc_does_not_refuse()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "dotnet build", Suggestions));
+        var ui = Open(c);
+        UiHelpers.Pump();
+        UiHelpers.Click(ui.Window, FoldButton(ui.Prompt));
+        var unhandled = UiHelpers.UnhandledKeys(ui.Window);
+
+        UiHelpers.Press(ui.Window, Key.Escape);
+        UiHelpers.Press(ui.Window, Key.D1);                                         // nor does a digit answer
+        UiHelpers.Press(ui.Window, Key.Down);
+
+        Assert.Empty(ui.Answers);
+        Assert.NotNull(ui.Conversation.CurrentPermission);
+        Assert.Contains(Key.Escape, unhandled);                                     // the keys went on to the page
+        Assert.Contains(Key.D1, unhandled);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Folded_keys_scroll_the_conversation_behind_the_card()
+    {
+        var c = new ChatConversation();
+        for (var i = 0; i < 100; i++) c.Items.Add(new UserMessageItem("message " + i));
+        c.Apply(Bash("r1", "dotnet build", Suggestions));
+        var ui = Open(c);
+        UiHelpers.Pump();
+        var scroller = UiHelpers.Scroller(ui.View);
+        UiHelpers.Click(ui.Window, FoldButton(ui.Prompt));
+        scroller.ScrollToEnd();
+        UiHelpers.Pump();
+        var end = scroller.Offset.Y;
+        Assert.True(end > 0);
+
+        UiHelpers.Press(ui.Window, Key.PageUp);
+        Assert.True(scroller.Offset.Y < end);
+        UiHelpers.Press(ui.Window, Key.Home);
+        Assert.Equal(0, scroller.Offset.Y, 1);
+        Assert.Empty(ui.Answers);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_new_request_appears_unfolded()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "git status", Suggestions));
+        c.Apply(Bash("r2", "git log", Suggestions));
+        var ui = Open(c);
+        UiHelpers.Pump();
+        UiHelpers.Click(ui.Window, FoldButton(ui.Prompt));
+        Assert.True(ui.Prompt.IsFolded);
+
+        c.AnswerPermission(c.CurrentPermission!, PermissionDecision.Deny, null);     // the next one comes
+        UiHelpers.Pump();
+
+        Assert.Equal("r2", ui.Prompt.Request!.RequestId);
+        Assert.False(ui.Prompt.IsFolded);
+        Assert.Contains("git log", ui.Texts);
+        Assert.Equal(3, ui.Options.Count);
+        Assert.Equal("Collapse", AutomationProperties.GetName(FoldButton(ui.Prompt)));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Expanding_arms_the_options_again_for_half_a_second()
+    {
+        var clock = new ManualClock();
+        var c = new ChatConversation();
+        var ui = Open(c, clock: clock);
+        c.Apply(Bash("r1", "dotnet build", Suggestions));
+        UiHelpers.Pump();
+        clock.Advance(1000);
+        ui.Prompt.Tick();
+        Assert.All(ui.Options, o => Assert.Equal(1, o.Opacity, 2));                 // armed
+
+        var button = FoldButton(ui.Prompt);
+        UiHelpers.Click(ui.Window, button);                                         // fold
+        clock.Advance(5000);
+        UiHelpers.Click(ui.Window, button);                                         // unfold: the options count as new
+        Assert.True(ui.Prompt.IsTicking);
+        Assert.All(ui.Options, o => Assert.Equal(0.5, o.Opacity, 2));
+        clock.Advance(499);
+        ui.Prompt.Tick();
+        UiHelpers.Click(ui.Window, ui.Option("Yes"));
+        Assert.Empty(ui.Answers);
+
+        clock.Advance(1);
+        ui.Prompt.Tick();
+        Assert.All(ui.Options, o => Assert.Equal(1, o.Opacity, 2));
+        UiHelpers.Click(ui.Window, ui.Option("Yes"));
+        Assert.Equal(PermissionDecision.Allow, Assert.Single(ui.Answers).Decision);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_touch_layout_has_no_fold_button()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "dotnet build", Suggestions));
+        var view = UiHelpers.TouchView(c);
+        var window = UiHelpers.ShowPhone(view);
+        UiHelpers.Pump();
+        var prompt = UiHelpers.Prompt(view);
+
+        Assert.True(prompt.IsEffectivelyVisible);
+        Assert.DoesNotContain(prompt.GetVisualDescendants().OfType<Button>(),
+            b => b.Classes.Contains("ClaudeChatPermissionFold") && b.IsEffectivelyVisible);
+        Assert.DoesNotContain("Recolher", UiHelpers.ButtonNames(prompt));
+        Assert.DoesNotContain("Collapse", UiHelpers.ButtonNames(prompt));
+        Assert.False(prompt.IsFolded);
+        window.Close();
     }
 }

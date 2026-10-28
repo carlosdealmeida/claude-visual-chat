@@ -7,76 +7,86 @@
 
     <!-- the reply box's frame: 8 px corners, 8 px inside; the active border with the focus inside -->
     <Border Name="Frame" Classes="ClaudeChatPermission">
-      <StackPanel>
-        <DockPanel>
-          <TextBlock Name="MoreText" Classes="ClaudeChatPermissionMore" DockPanel.Dock="Right" />
-          <TextBlock Name="TitleText" Classes="ClaudeChatPermissionTitle" />
-        </DockPanel>
+      <Grid>
+        <StackPanel>
+          <DockPanel Name="Header" Classes="ClaudeChatPermissionHeader">
+            <TextBlock Name="MoreText" Classes="ClaudeChatPermissionMore" DockPanel.Dock="Right" />
+            <TextBlock Name="TitleText" Classes="ClaudeChatPermissionTitle" />
+          </DockPanel>
 
-        <!-- the desktop card's lines under the title: a command's description, a skill's note, description and arguments -->
-        <StackPanel Name="NotesPanel" Classes="ClaudeChatPermissionNotes" />
+          <!-- everything under the title, hidden while the card is folded -->
+          <StackPanel Name="Body">
 
-        <!-- what the tool will do: the command, the url, the query, or the file's diff, and the input of any other tool; a long one
-             scrolls inside (200 px, 240 in the touch layout, where the code binds ClaudeChat.PromptDetailPeekHeight instead while the
-             field of option 3 is open) -->
-        <ScrollViewer Name="DetailScroller" MaxHeight="{DynamicResource ClaudeChat.PromptDetailMaxHeight}"
-                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-          <StackPanel>
-            <Border Name="SummaryBox" Classes="ClaudeChatPermissionSummary">
-              <SelectableTextBlock Name="SummaryText" Classes="ClaudeChatPermissionSummaryText" />
-            </Border>
-            <!-- a second box: the domains a web search keeps to or leaves out -->
-            <Border Name="ExtraBox" Classes="ClaudeChatPermissionSummary" IsVisible="False">
-              <SelectableTextBlock Name="ExtraText" Classes="ClaudeChatPermissionSummaryText" />
-            </Border>
-            <StackPanel Name="DiffPanel" />
-            <!-- any other tool: "Details", folded, over its input as indented JSON -->
-            <ToggleButton Name="DetailsButton" Classes="ClaudeChatDisclosure ClaudeChatPermissionDetails" IsVisible="False">
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Name="DetailsText" Classes="ClaudeChatPermissionDetailsText" />
-                <Path Classes="ClaudeChatPermissionDetailsChevron" />
+            <!-- the desktop card's lines under the title: a command's description, a skill's note, description and arguments -->
+            <StackPanel Name="NotesPanel" Classes="ClaudeChatPermissionNotes" />
+
+            <!-- what the tool will do: the command, the url, the query, or the file's diff, and the input of any other tool; a long one
+                 scrolls inside (200 px, 240 in the touch layout, where the code binds ClaudeChat.PromptDetailPeekHeight instead while the
+                 field of option 3 is open) -->
+            <ScrollViewer Name="DetailScroller" MaxHeight="{DynamicResource ClaudeChat.PromptDetailMaxHeight}"
+                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <StackPanel>
+                <Border Name="SummaryBox" Classes="ClaudeChatPermissionSummary">
+                  <SelectableTextBlock Name="SummaryText" Classes="ClaudeChatPermissionSummaryText" />
+                </Border>
+                <!-- a second box: the domains a web search keeps to or leaves out -->
+                <Border Name="ExtraBox" Classes="ClaudeChatPermissionSummary" IsVisible="False">
+                  <SelectableTextBlock Name="ExtraText" Classes="ClaudeChatPermissionSummaryText" />
+                </Border>
+                <StackPanel Name="DiffPanel" />
+                <!-- any other tool: "Details", folded, over its input as indented JSON -->
+                <ToggleButton Name="DetailsButton" Classes="ClaudeChatDisclosure ClaudeChatPermissionDetails" IsVisible="False">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Name="DetailsText" Classes="ClaudeChatPermissionDetailsText" />
+                    <Path Classes="ClaudeChatPermissionDetailsChevron" />
+                  </StackPanel>
+                </ToggleButton>
+                <Border Name="DetailsBox" Classes="ClaudeChatPermissionJson" IsVisible="False">
+                  <SelectableTextBlock Name="DetailsJson" Classes="ClaudeChatPermissionJsonText" />
+                </Border>
               </StackPanel>
-            </ToggleButton>
-            <Border Name="DetailsBox" Classes="ClaudeChatPermissionJson" IsVisible="False">
-              <SelectableTextBlock Name="DetailsJson" Classes="ClaudeChatPermissionJsonText" />
-            </Border>
+            </ScrollViewer>
+
+            <!-- the answers, 8 px apart; 2 only when the claude offers to remember it; the selected one in the accent (in the touch
+                 layout, none is selected and the first, "primary", is always the accent). On the desktop the numbers are those of the
+                 visible options, in order, and none shows with default_to_no (class noNumbers); for 500 ms after the card comes they
+                 are drawn disabled (class arming) -->
+            <StackPanel Name="Options" Classes="ClaudeChatPermissionOptions">
+              <Button Name="YesButton" Classes="ClaudeChatButton ClaudeChatOption primary selected">
+                <Grid ColumnDefinitions="Auto,*">
+                  <TextBlock Name="YesNumber" Classes="ClaudeChatOptionNumber" Text="1" />
+                  <TextBlock Grid.Column="1" Name="YesText" Classes="ClaudeChatOptionText" />
+                </Grid>
+              </Button>
+              <Button Name="AlwaysButton" Classes="ClaudeChatButton ClaudeChatOption">
+                <Grid ColumnDefinitions="Auto,*">
+                  <TextBlock Name="AlwaysNumber" Classes="ClaudeChatOptionNumber" Text="2" />
+                  <TextBlock Grid.Column="1" Name="AlwaysText" Classes="ClaudeChatOptionText" />
+                </Grid>
+              </Button>
+              <Button Name="NoButton" Classes="ClaudeChatButton ClaudeChatOption">
+                <Grid ColumnDefinitions="Auto,*">
+                  <TextBlock Name="NoNumber" Classes="ClaudeChatOptionNumber" Text="3" />
+                  <TextBlock Grid.Column="1" Name="NoText" Classes="ClaudeChatOptionText" />
+                </Grid>
+              </Button>
+            </StackPanel>
+
+            <!-- what to tell Claude: on the desktop always here, under the options, and "No" sends it; in the touch layout it opens under
+                 option 3, and a button under it sends it, as Enter does (hidden otherwise) -->
+            <TextBox Name="DenyBox" Classes="ClaudeChatField" IsVisible="False" />
+            <Button Name="DenySendButton" Classes="ClaudeChatButton ClaudeChatDenySend" IsVisible="False">
+              <TextBlock Name="DenySendText" />
+            </Button>
+            <!-- the desktop's hint under the field -->
+            <TextBlock Name="HintText" Classes="ClaudeChatPermissionHint" IsVisible="False" />
           </StackPanel>
-        </ScrollViewer>
-
-        <!-- the answers, 8 px apart; 2 only when the claude offers to remember it; the selected one in the accent (in the touch
-             layout, none is selected and the first, "primary", is always the accent). On the desktop the numbers are those of the
-             visible options, in order, and none shows with default_to_no (class noNumbers); for 500 ms after the card comes they
-             are drawn disabled (class arming) -->
-        <StackPanel Name="Options" Classes="ClaudeChatPermissionOptions">
-          <Button Name="YesButton" Classes="ClaudeChatButton ClaudeChatOption primary selected">
-            <Grid ColumnDefinitions="Auto,*">
-              <TextBlock Name="YesNumber" Classes="ClaudeChatOptionNumber" Text="1" />
-              <TextBlock Grid.Column="1" Name="YesText" Classes="ClaudeChatOptionText" />
-            </Grid>
-          </Button>
-          <Button Name="AlwaysButton" Classes="ClaudeChatButton ClaudeChatOption">
-            <Grid ColumnDefinitions="Auto,*">
-              <TextBlock Name="AlwaysNumber" Classes="ClaudeChatOptionNumber" Text="2" />
-              <TextBlock Grid.Column="1" Name="AlwaysText" Classes="ClaudeChatOptionText" />
-            </Grid>
-          </Button>
-          <Button Name="NoButton" Classes="ClaudeChatButton ClaudeChatOption">
-            <Grid ColumnDefinitions="Auto,*">
-              <TextBlock Name="NoNumber" Classes="ClaudeChatOptionNumber" Text="3" />
-              <TextBlock Grid.Column="1" Name="NoText" Classes="ClaudeChatOptionText" />
-            </Grid>
-          </Button>
         </StackPanel>
-
-        <!-- what to tell Claude: on the desktop always here, under the options, and "No" sends it; in the touch layout it opens under
-             option 3, and a button under it sends it, as Enter does (hidden otherwise) -->
-        <TextBox Name="DenyBox" Classes="ClaudeChatField" IsVisible="False" />
-        <Button Name="DenySendButton" Classes="ClaudeChatButton ClaudeChatDenySend" IsVisible="False">
-          <TextBlock Name="DenySendText" />
+        <!-- fold / unfold: 20 px, at the card's top right (desktop only; the touch layout's request does not fold) -->
+        <Button Name="FoldButton" Classes="ClaudeChatButton ClaudeChatPermissionFold" HorizontalAlignment="Right" VerticalAlignment="Top">
+          <Path Classes="ClaudeChatPermissionFoldIcon" />
         </Button>
-        <!-- the desktop's hint under the field -->
-        <TextBlock Name="HintText" Classes="ClaudeChatPermissionHint" IsVisible="False" />
-      </StackPanel>
+      </Grid>
     </Border>
   </StackPanel>
 </UserControl>

@@ -482,6 +482,27 @@ public partial class ClaudeChatView : UserControl
     private void OnKeyDownNotTaken(object? sender, KeyEventArgs e)
     {
         if (IsPanelEsc(e)) ClosePanel(e);
+        else if (Prompt.IsFolded && Prompt.IsKeyboardFocusWithin) ScrollConversation(e);
+    }
+
+    /// <summary>
+    /// The folded card answers no key, so the keys that scroll a page reach the conversation behind it: the arrows, Page Up and
+    /// Page Down, Home and End.
+    /// </summary>
+    private void ScrollConversation(KeyEventArgs e)
+    {
+        if (e.Handled || e.KeyModifiers != KeyModifiers.None) return;
+        switch (e.Key)
+        {
+            case Key.Up: Scroller.LineUp(); break;
+            case Key.Down: Scroller.LineDown(); break;
+            case Key.PageUp: Scroller.PageUp(); break;
+            case Key.PageDown: Scroller.PageDown(); break;
+            case Key.Home: Scroller.ScrollToHome(); break;
+            case Key.End: Scroller.ScrollToEnd(); break;
+            default: return;
+        }
+        e.Handled = true;
     }
 
     private bool IsPanelEsc(KeyEventArgs e) =>

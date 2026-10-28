@@ -87,6 +87,8 @@ public sealed record ChatStrings
         PermissionDetails = "Detalhes",
         PermissionRefuse = "Não",
         PermissionEscToCancel = "Esc para cancelar",
+        PermissionCollapse = "Recolher",
+        PermissionExpand = "Expandir",
         WaitingForPermission = "Aguardando permissão…",
         AllowAlwaysOneRule = "Sim, permitir {0} para {1}",
         AllowAlwaysTwoRules = "Sim, permitir {0} e {1} para {2}",
@@ -421,6 +423,12 @@ public sealed record ChatStrings
 
     /// <summary>The hint under the desktop card's field.</summary>
     public string PermissionEscToCancel { get; init; } = "Esc to cancel";
+
+    /// <summary>The name of the desktop card's button that folds it to its title, to read the conversation behind it.</summary>
+    public string PermissionCollapse { get; init; } = "Collapse";
+
+    /// <summary>The name of the same button while the card is folded.</summary>
+    public string PermissionExpand { get; init; } = "Expand";
 
     /// <summary>Above the reply box, while a request waits for the typing in it to pause.</summary>
     public string WaitingForPermission { get; init; } = "Waiting for permission…";

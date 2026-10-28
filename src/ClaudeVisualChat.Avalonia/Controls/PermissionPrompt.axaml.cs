@@ -8,6 +8,7 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Automation;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -39,6 +40,10 @@ internal interface IPromptClock
 /// No answer reaches a request the user has not seen: keys and clicks on the options are ignored for <see cref="SettleTime"/>
 /// after a request comes on screen (drawn disabled meanwhile, on the desktop), and a key held down answers once, until it is
 /// released (the keyboard's repeat).
+/// </para>
+/// <para>
+/// A button at the card's top right folds it to its title (<see cref="IsFolded"/>), so that the conversation behind it can be read:
+/// folded, Esc refuses nothing and the other keys go on to the page. Unfolding arms the options again for <see cref="SettleTime"/>.
 /// </para>
 /// <para>
 /// In the touch layout (pseudo-class <c>:touch</c>) the request is the 0.5.0 one: the title is a short question ("Edit
@@ -102,6 +107,12 @@ internal partial class PermissionPrompt : UserControl
     /// <summary>True while the detail's height is bound to <see cref="DetailPeekKey"/> (see <see cref="UpdateDenyField"/>).</summary>
     private bool _peeking;
 
+    /// <summary>True while the desktop's card is folded to its title (see <see cref="IsFolded"/>).</summary>
+    private bool _folded;
+
+    /// <summary>The last request on screen; it stays when the prompt leaves the window, so that the same request is no new one.</summary>
+    private PendingPermission? _lastRequest;
+
     /// <summary>The answer key that went down in the prompt and has not come up yet (the 11.0 events tell no repeat).</summary>
     private Key? _heldKey;
 
@@ -129,6 +140,7 @@ internal partial class PermissionPrompt : UserControl
             // the field opens only after the pause, but the request may come back on screen with it open (the view leaves read-only)
             if (Settled) Refuse();
         };
+        FoldButton.Click += (_, _) => SetFolded(!_folded);
         DetailsButton.PropertyChanged += (_, e) =>
         {
             if (e.Property == ToggleButton.IsCheckedProperty) UpdateDetails();
@@ -191,6 +203,12 @@ internal partial class PermissionPrompt : UserControl
     /// </summary>
     internal Func<DateTimeOffset?>? LastTyped { get; set; }
 
+    /// <summary>
+    /// True while the desktop's card is folded to its title, so that the conversation behind it can be read (the button at its top
+    /// right). It belongs to the request: a new one appears unfolded. The touch layout's request does not fold.
+    /// </summary>
+    internal bool IsFolded => _folded;
+
     /// <summary>True while the timer runs: the desktop's card arming, or waiting for the typing to pause.</summary>
     internal bool IsTicking => _timer.IsEnabled;
 
@@ -235,6 +253,11 @@ internal partial class PermissionPrompt : UserControl
     internal void FocusFirstOption()
     {
         if (_waiting) return;
+        if (_folded)
+        {
+            FoldButton.Focus(NavigationMethod.Tab); // folded, only the button is left to have it
+            return;
+        }
         // a prompt never shown before has no template yet, so its buttons are not on screen: lay it out first
         if (!YesButton.IsAttachedToVisualTree()) TopLevel.GetTopLevel(this)?.UpdateLayout();
         if (YesButton.IsAttachedToVisualTree())
@@ -278,7 +301,7 @@ internal partial class PermissionPrompt : UserControl
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         if (_request == null || e.KeyModifiers != KeyModifiers.None) return;
-        var digit = OptionOf(e.Key) != 0;
+        var digit = !_folded && OptionOf(e.Key) != 0; // folded, the digits are the page's
         if (digit && InDenyField) return; // text in the field, free to repeat
         if (digit || e.Key == Key.Enter) _heldKey = e.Key; // Enter clicks the focused option
     }
@@ -314,10 +337,12 @@ internal partial class PermissionPrompt : UserControl
     private void UpdateTouch()
     {
         PseudoClasses.Set(":touch", IsTouch);
+        if (IsTouch) _folded = false;
         if (IsTouch && _waiting) StopWaiting();
         UpdateSelected();
         Refresh();
         UpdateDenyField();
+        UpdateFold();
         UpdateArming();
         UpdateTimer();
     }
@@ -325,8 +350,9 @@ internal partial class PermissionPrompt : UserControl
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        // only plain keys: Ctrl+1 and the like belong to the app, and what is typed in the field is text
-        if (e.Handled || _request == null || e.KeyModifiers != KeyModifiers.None || InDenyField)
+        // only plain keys: Ctrl+1 and the like belong to the app, and what is typed in the field is text; a folded card has no
+        // answers, so the keys, Esc too, go on to the page
+        if (e.Handled || _request == null || e.KeyModifiers != KeyModifiers.None || InDenyField || _folded)
             return;
         if (IsTouch) OnTouchKeyDown(e);
         else OnCardKeyDown(e);
@@ -450,11 +476,15 @@ internal partial class PermissionPrompt : UserControl
         if (changed)
         {
             _request = request;
+            // a request that comes back after the prompt left the window is the same one, and stays folded
+            if (!ReferenceEquals(request, _lastRequest)) _folded = false;
+            if (request != null) _lastRequest = request;
             _shownAt = Clock.Now;
             _waiting = request != null && TypedJustNow();
             ResetDenyField();
             DetailsButton.IsChecked = false;
             Fill();
+            UpdateFold();
             DetailScroller.SetCurrentValue(ScrollViewer.OffsetProperty, default(Vector)); // a new request starts at its top
         }
         UpdateMorePending();
@@ -486,6 +516,36 @@ internal partial class PermissionPrompt : UserControl
         WaitingText.IsVisible = _waiting;
     }
 
+    /// <summary>
+    /// Folds the desktop's card to its title, or opens it again; the new state moves the keyboard to the button, and an open card
+    /// is armed anew (its options take no key or click for <see cref="SettleTime"/>), as when it first came.
+    /// </summary>
+    private void SetFolded(bool folded)
+    {
+        if (IsTouch || _request == null || folded == _folded) return;
+        _folded = folded;
+        UpdateFold();
+        if (!FoldButton.IsFocused) FoldButton.Focus(NavigationMethod.Tab);
+        if (!folded) RestartPause();
+    }
+
+    /// <summary>
+    /// The card as the fold leaves it: folded, only the title shows, on one line; the button names the other state, and the
+    /// touch layout has none.
+    /// </summary>
+    private void UpdateFold()
+    {
+        var strings = Strings;
+        var name = _folded ? strings.PermissionExpand : strings.PermissionCollapse;
+        Body.IsVisible = !_folded;
+        Frame.Classes.Set("folded", _folded);
+        FoldButton.Classes.Set("folded", _folded);
+        FoldButton.IsVisible = !IsTouch;
+        Header.Classes.Set("foldable", !IsTouch);
+        AutomationProperties.SetName(FoldButton, name);
+        ToolTip.SetTip(FoldButton, name);
+    }
+
     /// <summary>The desktop card's options are drawn disabled until it is armed.</summary>
     private void UpdateArming() => Options.Classes.Set("arming", !IsTouch && _request != null && !_waiting && !Settled);
 
@@ -506,6 +566,7 @@ internal partial class PermissionPrompt : UserControl
         HintText.Text = strings.PermissionEscToCancel;
         WaitingText.Text = strings.WaitingForPermission;
         DetailsText.Text = strings.PermissionDetails;
+        UpdateFold();
         Fill();
         UpdateMorePending();
     }
