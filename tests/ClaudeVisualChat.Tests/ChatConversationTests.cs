@@ -2860,6 +2860,61 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void The_agent_message_the_cli_writes_is_a_card_though_its_line_is_meta()
+    {
+        // the real line: origin peer with the task of the subagent, and isMeta
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith(
+            TaggedMessageTests.RealAgentMessage,
+            "{\"kind\":\"peer\",\"from\":\"a104223c975e455f4\",\"senderTaskId\":\"a104223c975e455f4\",\"name\":\"general-purpose\",\"body\":\"Task 6 question\"}",
+            "\"isMeta\":true,"));
+
+        var card = Assert.IsType<ExternalMessageItem>(Assert.Single(c.Items));
+        Assert.Equal("agent", card.Kind);
+        Assert.Equal("general-purpose", card.Sender);
+        Assert.StartsWith("Task 6 question on R19:", card.Preview, StringComparison.Ordinal);
+        Assert.Contains("(Allow -> Approved, Deny -> Rejected)", card.Body);
+        Assert.DoesNotContain("agent-message", card.Body);
+    }
+
+    [Fact]
+    public void A_meta_line_is_a_card_only_when_its_origin_fits()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith(CrossSession, extra: "\"isMeta\":true,"));                                  // no origin: stays out, as before
+        c.AppendLine(UserLineWith(CrossSession, "{\"kind\":\"human\"}", "\"isMeta\":true,"));                // does not fit: stays out
+        c.AppendLine(UserLineWith("<teammate-message>\nhi\n</teammate-message>", "{\"kind\":\"peer\"}", "\"isMeta\":true,"));
+        Assert.Empty(c.Items);
+
+        c.AppendLine(UserLineWith(CrossSession, "{\"kind\":\"peer\",\"name\":\"Ana\"}", "\"isMeta\":true,"));
+        Assert.Equal("Ana", Assert.IsType<ExternalMessageItem>(Assert.Single(c.Items)).Sender);
+    }
+
+    [Fact]
+    public void A_cross_session_message_with_the_note_of_an_agent_of_this_session_needs_that_agent()
+    {
+        var c = new ChatConversation();
+        var text = "<cross-session-message from=\"s1\">\nhi\n</cross-session-message>\n\n" +
+                   "That \"other Claude session\" is an agent working inside this same session — so this was not typed by your user.";
+        c.AppendLine(UserLineWith(text, "{\"kind\":\"peer\",\"name\":\"s1\"}"));
+
+        Assert.IsType<UserMessageItem>(Assert.Single(c.Items));                   // the note and the origin disagree: the text it was
+    }
+
+    [Fact]
+    public void A_cross_session_message_without_a_name_is_a_card_from_a_peer()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith("<cross-session-message>\nhi\n</cross-session-message>", "{\"kind\":\"peer\"}"));
+        c.AppendLine(UserLineWith("<cross-session-message from-name=\"Ana Lima\">\nhi\n</cross-session-message>", "{\"kind\":\"peer\"}"));
+
+        Assert.Equal("peer", Assert.IsType<ExternalMessageItem>(c.Items[0]).Sender);   // the generic name the card already had
+        var named = Assert.IsType<ExternalMessageItem>(c.Items[1]);
+        Assert.Equal("Ana-Lima", named.Sender);
+        Assert.Equal("Ana Lima", named.SenderName);
+    }
+
+    [Fact]
     public void A_wrapped_notice_is_a_card_only_without_an_origin()
     {
         var c = new ChatConversation();

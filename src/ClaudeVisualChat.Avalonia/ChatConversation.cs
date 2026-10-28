@@ -1538,7 +1538,14 @@ public sealed class ChatConversation : ChatObservableObject
                 Place(ExternalMessage(notice, null, null), e.ParentToolUseId);
             return;
         }
-        if (e.IsMeta) return;
+        if (e.IsMeta)
+        {
+            // the claude marks a message from an agent or another session as meta (it is no prompt of the user's); its origin still
+            // says who sent it, and then it is a card. Any other meta line stays out, as before
+            if (e.Origin != null && TaggedMessage.Read(text) is { } meta && ExternalCardFor(e, meta) is { } metaCard)
+                Place(metaCard, e.ParentToolUseId);
+            return;
+        }
         // the summary of a compaction is the card's, not a message: the session file marks it, and the live line says it is synthetic
         // right after the boundary
         if (e.IsCompactSummary || (e.IsSynthetic && _compaction != null))
@@ -1584,7 +1591,7 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>
     /// Whether the origin of a line is the sender the message claims. A message from a channel needs a channel's origin. A message
     /// from an agent needs a peer that is a task of this session (the origin names the task); a message from another session needs a
-    /// peer that is not. Anything else (a human's line, say) does not fit.
+    /// peer that is not, and no note saying the sender is an agent of this session. Anything else (a human's line, say) does not fit.
     /// </summary>
     private static bool OriginFits(MessageOrigin origin, TaggedMessage message)
     {
@@ -1595,7 +1602,8 @@ public sealed class ChatConversation : ChatObservableObject
             case TaggedMessage.AgentKind:
                 return origin.Kind == "peer" && !string.IsNullOrEmpty(origin.SenderTaskId);
             case TaggedMessage.CrossSessionKind:
-                return origin.Kind == "peer" && string.IsNullOrEmpty(origin.SenderTaskId);
+                // a note that calls the sender an agent of this session contradicts an origin with no task
+                return origin.Kind == "peer" && string.IsNullOrEmpty(origin.SenderTaskId) && message.Tail != TaggedMessage.DescendantTail;
             default:
                 return false;
         }

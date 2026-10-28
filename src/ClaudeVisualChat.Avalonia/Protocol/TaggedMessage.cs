@@ -31,16 +31,19 @@ namespace ClaudeVisualChat.Protocol
     /// <remarks>
     /// <para>How it reads. <see cref="LightMarkup"/> scans the text into elements (an open tag, its attributes, the raw text up to its close
     /// tag). The name of the first tag picks a <see cref="Shape"/> from <see cref="Shapes"/>, a table that says, for each block the claude
-    /// writes, its kind, its family, the attributes it may have and must have, which attribute names the sender, and the line that may lead
-    /// it. One reader per family then checks what the table says and builds the message:</para>
+    /// writes, its kind, its family, the attributes it may have and must have, which attribute names the sender, the lines that may lead
+    /// it and the notes that may follow it. One reader per family then checks what the table says and builds the message:</para>
     /// <list type="bullet">
-    /// <item><b>message</b> (<c>agent-message</c>, <c>cross-session-message</c>, <c>channel</c>): the body sits on lines of its own; a lead
-    /// line may come before the tag, and then the note that warns it is not from the user must follow, after a blank line;</item>
+    /// <item><b>message</b> (<c>agent-message</c>, <c>cross-session-message</c>, <c>channel</c>): the body sits on lines of its own and is
+    /// kept raw (the claude does not escape it); a lead line may come before the tag, and then one of the shape's notes must follow, after
+    /// a blank line;</item>
     /// <item><b>notice</b> (<c>teammate-message</c>, <c>tick</c>…): any attributes, any content, nothing around it;</item>
     /// <item><b>output</b> (<c>bash-stdout</c>, <c>bash-stderr</c>, <c>bash-exit-code</c>): one to three of them side by side, each once;</item>
     /// <item><b>task</b> (<c>task-notification</c>): parts named in <see cref="TaskParts"/>, its summary required; a part or a shape it does
-    /// not know keeps the notice as raw text.</item>
+    /// not know keeps the notice as raw text; its parts are decoded (the claude escapes them).</item>
     /// </list>
+    /// <para>Every part the card shows goes through <see cref="Displayable"/>: no escape sequences, no controls, no
+    /// <c>persisted-output</c> wrapper.</para>
     /// <para>Limits it sets itself: names of up to 64 characters and up to 32 attributes (<see cref="LightMarkup"/>), up to 64 pieces inside
     /// a task notice and 16 inside one of its lists, numbers in a usage of up to 19 digits.</para>
     /// </remarks>
@@ -64,8 +67,24 @@ namespace ClaudeVisualChat.Protocol
         /// <summary><see cref="Tail"/> when the note that says the message is not from the user follows the block.</summary>
         public const string PeerTail = "peer";
 
-        /// <summary>How the note after a message from a peer or a channel starts.</summary>
-        private const string NoteStart = "IMPORTANT: This is NOT from your user";
+        /// <summary><see cref="Tail"/> when the note that says the sender is an agent working inside this same session follows the block.</summary>
+        public const string DescendantTail = "descendant";
+
+        /// <summary>The notes that may follow a message, after a blank line: how each starts, and the <see cref="Tail"/> it gives.</summary>
+        private static readonly KeyValuePair<string, string>[] Notes =
+        {
+            new KeyValuePair<string, string>("IMPORTANT: This is NOT from your user", PeerTail),
+            new KeyValuePair<string, string>("That \"other Claude session\" is an agent working inside this same session", DescendantTail),
+        };
+
+        /// <summary>What a lead line may say before its colon, besides its stem: the message came while the claude was busy.</summary>
+        private const string WhileWorking = " while you were working";
+
+        /// <summary>The stems of the lead lines of a message from a peer (an agent of this session or another session).</summary>
+        private static readonly string[] PeerLeads = { "Another Claude session sent a message", "A peer session sent a message" };
+
+        /// <summary>A wrapper the claude puts around a long output it kept in a file; a part that is wholly inside one is shown without it.</summary>
+        private const string PersistedOutputTag = "persisted-output";
 
         /// <summary>The section names of a task notice: what text follows it, and text inside it that is none of its parts.</summary>
         private const string AfterLabel = "after-notification";
@@ -107,7 +126,7 @@ namespace ClaudeVisualChat.Protocol
         /// <summary>The attributes of the tag in the order written, their values decoded.</summary>
         public IReadOnlyList<KeyValuePair<string, string>> Attributes { get; private init; } = Array.Empty<KeyValuePair<string, string>>();
 
-        /// <summary>What follows the block: <see cref="NoTail"/> or <see cref="PeerTail"/>.</summary>
+        /// <summary>What follows the block: <see cref="NoTail"/>, <see cref="PeerTail"/> or <see cref="DescendantTail"/>.</summary>
         public string Tail { get; private init; } = NoTail;
 
         /// <summary>The parts, for the card that does not know the sender: lead, body and note of a message; the parts of a notice.</summary>
@@ -151,8 +170,14 @@ namespace ClaudeVisualChat.Protocol
             /// <summary>The attributes that name the sender, the first one present winning.</summary>
             public string[] Sender { get; init; } = Array.Empty<string>();
 
-            /// <summary>The line that may come before the tag; <c>{name}</c> stands for the value of that attribute.</summary>
-            public string? Lead { get; init; }
+            /// <summary>
+            /// The stems of the lines that may come before the tag; <c>{name}</c> stands for the value of that attribute. A line is the
+            /// stem and ":", or the stem, <see cref="WhileWorking"/> and ":".
+            /// </summary>
+            public string[] Leads { get; init; } = Array.Empty<string>();
+
+            /// <summary>The <see cref="Tail"/> values of the notes that may follow the block.</summary>
+            public string[] Tails { get; init; } = Array.Empty<string>();
 
             /// <summary>For an output: the name of its part.</summary>
             public string? Part { get; init; }
@@ -163,15 +188,17 @@ namespace ClaudeVisualChat.Protocol
             ["agent-message"] = new Shape(Family.Message, AgentKind)
             {
                 Allowed = new[] { "from" }, Required = "from", Sender = new[] { "from" },
+                Leads = PeerLeads, Tails = new[] { PeerTail, DescendantTail },
             },
             ["cross-session-message"] = new Shape(Family.Message, CrossSessionKind)
             {
-                Allowed = new[] { "from", "from-session", "from-name", "from-mode", "hop-chain" }, Required = "from",
-                Sender = new[] { "from-name", "from" }, Lead = "Another Claude session sent a message:",
+                Allowed = new[] { "from", "from-session", "from-name", "from-mode", "hop-chain" },
+                Sender = new[] { "from-name", "from" }, Leads = PeerLeads, Tails = new[] { PeerTail, DescendantTail },
             },
             ["channel"] = new Shape(Family.Message, ChannelKind)
             {
-                Required = "source", Sender = new[] { "source" }, Lead = "A message arrived from {source}:",
+                Required = "source", Sender = new[] { "source" }, Leads = new[] { "A message arrived from {source}" },
+                Tails = new[] { PeerTail },
             },
             ["teammate-message"] = new Shape(Family.Notice, "teammate-message"),
             ["tick"] = new Shape(Family.Notice, "tick"),
@@ -239,7 +266,7 @@ namespace ClaudeVisualChat.Protocol
 
             var tag = LightMarkup.TagAt(text, at, end);
             if (tag == null || !Shapes.TryGetValue(tag.Name, out var shape)) return null;
-            if (lead != null && shape.Lead == null) return null;
+            if (lead != null && shape.Leads.Length == 0) return null;
             switch (shape.Family)
             {
                 case Family.Message: return ReadMessage(text, at, end, lead, shape);
@@ -258,35 +285,42 @@ namespace ClaudeVisualChat.Protocol
             var from = element.ContentStart;
             var to = element.ContentEnd;
             if (!SkipLineBreak(text, ref from, to, forward: true) || !SkipLineBreak(text, ref to, from, forward: false)) return null;
-            var body = LightMarkup.Unescape(text.Substring(from, to - from));
-            if (HoldsOpenTag(body, element.Name)) return null; // a block inside the block
+            // the claude writes the body as it came, unescaped: it is kept raw, and checked raw for a block inside the block
+            var rawBody = text.Substring(from, to - from);
+            if (HoldsOpenTag(rawBody, element.Name)) return null;
 
-            if (lead != null && lead != LeadFor(shape, element)) return null;
+            if (lead != null && !LeadFits(lead, shape, element)) return null;
 
-            // after the block: nothing, or the note after a blank line; a lead comes only with the note
+            // after the block: nothing, or one of the shape's notes after a blank line; a lead comes only with a note
             string? note = null;
+            var tail = NoTail;
             if (element.End < end)
             {
-                if (text[element.End] != '\n' && text[element.End] != '\r') return null;
-                note = text.Substring(element.End, end - element.End).Trim();
-                if (!note.StartsWith(NoteStart, StringComparison.Ordinal)) return null;
+                var i = element.End;
+                if (!SkipLineBreak(text, ref i, end, forward: true)) return null;
+                while (i < end && (text[i] == ' ' || text[i] == '\t')) i++;
+                if (!SkipLineBreak(text, ref i, end, forward: true)) return null;
+                note = text.Substring(i, end - i).Trim();
+                tail = TailOfNote(note, shape);
+                if (tail == null) return null;
             }
             else if (lead != null)
             {
                 return null;
             }
 
+            var body = Displayable(rawBody);
             var sections = new List<TaggedSection>(3);
-            if (lead != null) sections.Add(new TaggedSection(null, lead));
+            if (lead != null) sections.Add(new TaggedSection(null, Displayable(lead)));
             sections.Add(new TaggedSection(null, body));
-            if (note != null) sections.Add(new TaggedSection(null, note));
+            if (note != null) sections.Add(new TaggedSection(null, Displayable(note)));
             return new TaggedMessage
             {
                 Kind = shape.Kind,
                 FromName = SenderNamed(element, shape),
                 Body = body,
                 Attributes = element.Attributes,
-                Tail = note == null ? NoTail : PeerTail,
+                Tail = tail,
                 Sections = sections,
             };
         }
@@ -295,7 +329,7 @@ namespace ClaudeVisualChat.Protocol
         {
             var element = LightMarkup.ElementAt(text, at, end);
             if (element == null || element.End != end) return null;
-            var content = StripOuterBreaks(LightMarkup.Unescape(element.RawContent));
+            var content = Displayable(LightMarkup.Unescape(element.RawContent));
             return new TaggedMessage
             {
                 Kind = shape.Kind,
@@ -323,7 +357,7 @@ namespace ClaudeVisualChat.Protocol
                 if (!Shapes.TryGetValue(element.Name, out var shape) || shape.Family != Family.Output || !seen.Add(element.Name)) return null;
                 if (element.Attributes.Count > 0) return null;
                 kind ??= shape.Kind;
-                sections.Add(new TaggedSection(shape.Part, StripOuterBreaks(LightMarkup.Unescape(element.RawContent))));
+                sections.Add(new TaggedSection(shape.Part, Displayable(LightMarkup.Unescape(element.RawContent))));
             }
             if (kind == null) return null;
             return new TaggedMessage
@@ -350,10 +384,11 @@ namespace ClaudeVisualChat.Protocol
             {
                 if (node.Element is not { } part)
                 {
-                    if (!IsBlank(node.Text)) sections.Add(new TaggedSection(OtherTextLabel, node.Text!.Trim()));
+                    if (!IsBlank(node.Text)) sections.Add(new TaggedSection(OtherTextLabel, Displayable(node.Text!).Trim()));
                     continue;
                 }
-                var value = StripOuterBreaks(LightMarkup.Unescape(part.RawContent));
+                // the claude escapes the parts of a task notice: they are decoded
+                var value = Displayable(LightMarkup.Unescape(part.RawContent));
                 if (part.Name == "summary" && summary == null) summary = value;
                 if (!TaskParts.TryGetValue(part.Name, out var fill) || !seen.Add(part.Name) || part.Attributes.Count > 0)
                 {
@@ -378,9 +413,15 @@ namespace ClaudeVisualChat.Protocol
             if (!known)
             {
                 sections.Clear();
-                sections.Add(new TaggedSection(null, text.Substring(element.Start, element.End - element.Start)));
+                sections.Add(new TaggedSection(null, Displayable(text.Substring(element.Start, element.End - element.Start))));
             }
-            if (element.End < end) sections.Add(new TaggedSection(AfterLabel, text.Substring(element.End, end - element.End).Trim()));
+            if (element.End < end)
+            {
+                // what follows may be anything but another notice, or a second close of this one
+                var after = text.Substring(element.End, end - element.End);
+                if (HoldsOpenTag(after, element.Name) || after.IndexOf("</" + element.Name, StringComparison.Ordinal) >= 0) return null;
+                sections.Add(new TaggedSection(AfterLabel, Displayable(after).Trim()));
+            }
             return new TaggedMessage
             {
                 Kind = TaskKind,
@@ -407,7 +448,7 @@ namespace ClaudeVisualChat.Protocol
                 }
                 if (fact.Attributes.Count > 0 || !seen.Add(fact.Name)) return null;
                 // every value is decoded, the path and the branch of a worktree alike
-                var value = LightMarkup.Unescape(fact.RawContent).Trim();
+                var value = Displayable(LightMarkup.Unescape(fact.RawContent)).Trim();
                 if (fill == Fill.Numbers ? !AllDigits(value) : SpansLines(value)) return null;
                 facts.Add(new TaggedSection(fact.Name, value));
             }
@@ -435,16 +476,72 @@ namespace ClaudeVisualChat.Protocol
             return null;
         }
 
-        /// <summary>The lead line the shape expects for this element, its <c>{name}</c> filled with that attribute's value.</summary>
-        private static string? LeadFor(Shape shape, MarkupElement element)
+        /// <summary>Whether the line before the tag is one of the shape's leads: a stem, its <c>{name}</c> filled, then ":" or <see cref="WhileWorking"/> and ":".</summary>
+        private static bool LeadFits(string lead, Shape shape, MarkupElement element)
         {
-            var lead = shape.Lead;
-            if (lead == null) return null;
-            var open = lead.IndexOf('{');
-            var close = open < 0 ? -1 : lead.IndexOf('}', open + 1);
-            if (close < 0) return lead;
-            var value = element.Attribute(lead.Substring(open + 1, close - open - 1));
-            return value == null ? null : lead.Substring(0, open) + value + lead.Substring(close + 1);
+            foreach (var pattern in shape.Leads)
+            {
+                var stem = Filled(pattern, element);
+                if (stem == null || !lead.StartsWith(stem, StringComparison.Ordinal)) continue;
+                var rest = lead.Substring(stem.Length);
+                if (rest == ":" || rest == WhileWorking + ":") return true;
+            }
+            return false;
+        }
+
+        /// <summary>The stem with its <c>{name}</c> replaced by the value of that attribute; null when the tag lacks it.</summary>
+        private static string? Filled(string stem, MarkupElement element)
+        {
+            var open = stem.IndexOf('{');
+            var close = open < 0 ? -1 : stem.IndexOf('}', open + 1);
+            if (close < 0) return stem;
+            var value = element.Attribute(stem.Substring(open + 1, close - open - 1));
+            return value == null ? null : stem.Substring(0, open) + value + stem.Substring(close + 1);
+        }
+
+        /// <summary>The <see cref="Tail"/> a note gives when the shape takes it; null when the text is no note the shape takes.</summary>
+        private static string? TailOfNote(string note, Shape shape)
+        {
+            foreach (var known in Notes)
+            {
+                if (note.StartsWith(known.Key, StringComparison.Ordinal) && Array.IndexOf(shape.Tails, known.Value) >= 0) return known.Value;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// A part as the card shows it: no terminal escape sequences, no control characters but line feeds and tabs (a carriage return
+        /// before a line feed goes, a lone one becomes a line feed), without a <c>persisted-output</c> wrapper around the whole of it,
+        /// and without line breaks at its ends.
+        /// </summary>
+        private static string Displayable(string text)
+        {
+            var stripped = AnsiText.Strip(text ?? "");
+            var sb = new StringBuilder(stripped.Length);
+            for (var i = 0; i < stripped.Length; i++)
+            {
+                var c = stripped[i];
+                if (c == '\r')
+                {
+                    if (i + 1 >= stripped.Length || stripped[i + 1] != '\n') sb.Append('\n');
+                    continue;
+                }
+                if (c == '\n' || c == '\t' || !char.IsControl(c)) sb.Append(c);
+            }
+            return StripOuterBreaks(Unwrapped(sb.ToString(), PersistedOutputTag));
+        }
+
+        /// <summary>The inside of the text when the whole of it (white space aside) is one <c>&lt;name&gt;…&lt;/name&gt;</c>; else the text.</summary>
+        private static string Unwrapped(string text, string name)
+        {
+            var open = "<" + name + ">";
+            var close = "</" + name + ">";
+            var trimmed = text.Trim();
+            if (trimmed.Length < open.Length + close.Length
+                || !trimmed.StartsWith(open, StringComparison.Ordinal) || !trimmed.EndsWith(close, StringComparison.Ordinal))
+                return text;
+            var inner = trimmed.Substring(open.Length, trimmed.Length - open.Length - close.Length);
+            return inner.IndexOf(open, StringComparison.Ordinal) >= 0 || inner.IndexOf(close, StringComparison.Ordinal) >= 0 ? text : inner;
         }
 
         /// <summary>Moves <paramref name="i"/> over one line break (<c>\n</c> or <c>\r\n</c>) toward <paramref name="bound"/>; false when none stands there.</summary>
@@ -549,16 +646,16 @@ namespace ClaudeVisualChat.Protocol
         {
             if (string.IsNullOrEmpty(body)) return "";
             var text = AnsiText.Strip(body);
-            var i = 0;
-            while (i <= text.Length)
+            var lineStart = 0;
+            while (lineStart < text.Length)
             {
-                var lineEnd = text.IndexOf('\n', i);
+                var lineEnd = text.IndexOf('\n', lineStart);
                 if (lineEnd < 0) lineEnd = text.Length;
-                var line = OneLine(text.Substring(i, lineEnd - i));
+                var line = OneLine(text.Substring(lineStart, lineEnd - lineStart));
                 if (line.Length > 0) return Clip(line, PreviewLength);
-                i = lineEnd + 1;
+                lineStart = lineEnd + 1;
             }
-            return "";
+            return ""; // no line with text (an empty text after the escapes went among them)
         }
 
         /// <summary>The text with invisible characters dropped, every control and run of white space made one space, the ends trimmed.</summary>
