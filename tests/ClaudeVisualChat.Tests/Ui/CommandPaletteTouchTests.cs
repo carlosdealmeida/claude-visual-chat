@@ -26,7 +26,8 @@ public class CommandPaletteTouchTests
         public Opened(bool touch)
         {
             Conversation = TouchSamples.Opus();
-            Conversation.Commands = Enumerable.Range(1, 20).Select(i => new ChatCommand("cmd" + i, "Command number " + i, "")).ToArray();
+            // the commands are listed by name: 1 to 9, then letters, so that their order is the number's
+            Conversation.Commands = Enumerable.Range(1, 20).Select(i => new ChatCommand("cmd" + (i < 10 ? i.ToString() : ((char)('a' + i - 10)).ToString()), "Command number " + i, "")).ToArray();
             Conversation.MessageSubmitted += (_, e) => Sent.Add(e.Text);
             Conversation.CommandInvoked += (_, e) => Invoked.Add(e.Name);
             View = touch ? UiHelpers.TouchView(Conversation) : new ClaudeChatView { Conversation = Conversation };
@@ -43,12 +44,16 @@ public class CommandPaletteTouchTests
         public List<string> Sent { get; } = new List<string>();
         public List<string> Invoked { get; } = new List<string>();
 
-        /// <summary>A "/" typed in the empty box opens the palette without a filter field: scrolling is the only way to the later commands.</summary>
+        /// <summary>
+        /// A "/" typed in the empty box opens the palette without a filter field, and "cmd" after it keeps the 20 commands alone (the
+        /// actions have no "cmd"): scrolling is the only way to the later ones.
+        /// </summary>
         public void OpenTyped()
         {
             UiHelpers.Input(View).Focus();
             UiHelpers.Type(Window, "/");
             Assert.True(Palette.IsOpen);
+            UiHelpers.Type(Window, "cmd");
         }
 
         public List<Border> Rows => Palette.Child!.GetVisualDescendants().OfType<Border>()
@@ -56,7 +61,7 @@ public class CommandPaletteTouchTests
 
         public ScrollViewer List => Palette.Child!.GetVisualDescendants().OfType<ScrollViewer>().First();
 
-        public Border Row(string label) => Rows.Single(r => UiHelpers.Texts(r).Single() == label);
+        public Border Row(string label) => Rows.Single(r => UiHelpers.Texts(r).First() == label);   // an action row has its value after its name
 
         /// <summary>A point of the row, <paramref name="down"/> px under its middle, in the window's coordinates.</summary>
         public Point At(Border row, double down = 0) =>
@@ -230,7 +235,7 @@ public class CommandPaletteTouchTests
         var ui = new Opened(touch: true);
         ui.OpenTyped();
         var list = ui.List;
-        Assert.True(list.Extent.Height > list.Viewport.Height);          // 25 rows of 44 px under a ceiling of 300
+        Assert.True(list.Extent.Height > list.Viewport.Height);          // 20 rows of 44 px under a ceiling of 300
         Assert.Equal(0, list.Offset.Y);
         var at = ui.At(ui.Row("/cmd2"));
 

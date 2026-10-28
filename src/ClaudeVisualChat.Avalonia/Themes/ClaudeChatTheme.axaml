@@ -2227,12 +2227,14 @@
     <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.EffortThumbShadow}" />
   </Style>
 
-  <!-- the palette's rows that are not commands: the value at the right (the model, the level) in the secondary color, 12 px
+  <!-- the palette's rows that are not commands: the value at the right (the model, the level) in the secondary color, .9em at 70 % opacity, 6 px
        after the label; and the switch, a track of 32 x 18 with 9 px corners in the input's border color, in the accent when on, and
        a thumb of 14 px in the text's color that slides from 2 px to 16 px in 0.15 s -->
   <Style Selector="Border.ClaudeChatMenu TextBlock.ClaudeChatMenuValue">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
-    <Setter Property="Margin" Value="12,0,0,0" />
+    <Setter Property="FontSize" Value="11.7" />
+    <Setter Property="Opacity" Value="0.7" />
+    <Setter Property="Margin" Value="6,0,0,0" />
     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>

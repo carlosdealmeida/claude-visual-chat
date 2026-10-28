@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Input.Raw;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
@@ -58,6 +60,9 @@ public class CommandPaletteTests
         public string? Active => Menu.GetVisualDescendants().OfType<Border>()
             .Where(b => b.IsEffectivelyVisible && b.Classes.Contains("ClaudeChatMenuItem") && b.Classes.Contains("active"))
             .Select(b => b.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatMenuLabel")).Text).SingleOrDefault();
+
+        /// <summary>The slash commands listed, top to bottom.</summary>
+        public List<string> Commands => Labels.Where(l => l.StartsWith("/", StringComparison.Ordinal)).ToList();
 
         public TextBox? Filter => Menu.GetVisualDescendants().OfType<TextBox>().SingleOrDefault(t => t.IsEffectivelyVisible);
 
@@ -113,9 +118,10 @@ public class CommandPaletteTests
         Assert.True(ui.Palette.IsOpen);
         Assert.Null(ui.Filter);
         Assert.True(ui.Input.IsFocused);
-        Assert.Equal(9, ui.Labels.Count);
-        // all of them, in the claude's order, then the conversation's own with their descriptions; the actions are not in this list
-        Assert.Equal(new[] { "/compact", "/hello", "/help", "/context", "/usage", "/remote-control", "/rc", "/chrome", "/copy" }, ui.Labels);
+        // every group, unfiltered, as in the extension: the actions, and the slash commands in their place, in alphabetical order
+        Assert.Equal(new[] { "Context", "Model", "Slash Commands" }, Headers(ui));
+        Assert.Equal(new[] { "Attach file…", "Account & usage…" }, ui.Labels.Where(l => !l.StartsWith("/", StringComparison.Ordinal)));
+        Assert.Equal(new[] { "/chrome", "/compact", "/context", "/copy", "/hello", "/help", "/rc", "/remote-control", "/usage" }, ui.Commands);
         Assert.Equal("Show context usage", ToolTip.GetTip(Row(ui, "/context")));
         Assert.Equal("Say hello", ToolTip.GetTip(Row(ui, "/hello")));
         Assert.Equal("Copy Claude's last response to clipboard (or /copy N for the Nth-latest)", ToolTip.GetTip(Row(ui, "/copy")));
@@ -194,7 +200,7 @@ public class CommandPaletteTests
 
         // the arrows move the mark, round the ends; Enter with no row marked sends what was typed
         ui.Slash("he");
-        Assert.Equal(new[] { "/hello", "/help", "/compact", "/chrome", "/copy" }, ui.Labels); // "the" in their descriptions
+        Assert.Equal(new[] { "/hello", "/help", "/chrome", "/compact", "/copy" }, ui.Commands); // "the" in their descriptions, in alphabetical order
         Assert.Equal("/hello", ui.Active);
         ui.Press(Key.Up);
         Assert.Equal("/copy", ui.Active);
@@ -247,19 +253,19 @@ public class CommandPaletteTests
             new ChatCommand("cost", "Show the cost of the session", "")));
 
         ui.Slash("co");
-        // the names that start with it, in the claude's order; then the names that have it; then the descriptions
+        // the names that start with it, alphabetically; then the names that have it; then the descriptions
         // (the conversation's own commands come after the claude's, rc and chrome by their texts)
-        Assert.Equal(new[] { "/compact", "/context", "/cost", "/copy", "/account", "/remote-control", "/review", "/rc", "/chrome" }, ui.Labels);
+        Assert.Equal(new[] { "/compact", "/context", "/copy", "/cost", "/account", "/remote-control", "/chrome", "/rc", "/review" }, ui.Commands);
 
         UiHelpers.Type(ui.Window, "st");
         // the exact name first, then the one whose description has the word
-        Assert.Equal(new[] { "/cost", "/compact" }, ui.Labels);
+        Assert.Equal(new[] { "/cost", "/compact" }, ui.Commands);
         Assert.Equal("/cost", ui.Active);
 
         // the case does not matter, and the conversation's own commands are found by their texts
         ui.Input.Clear();
         ui.Slash("BROWSER");
-        Assert.Equal(new[] { "/chrome" }, ui.Labels);
+        Assert.Equal(new[] { "/chrome" }, ui.Commands);
         ui.Window.Close();
     }
 
@@ -548,11 +554,19 @@ public class CommandPaletteTests
         Assert.DoesNotContain(ui.Labels, l => l.StartsWith("/", StringComparison.Ordinal));
         ui.Press(Key.Escape);
 
-        // a "/" typed in the box is looking for a command: the commands alone, without the groups of actions
+        // a "/" typed in the box lists every group, Slash Commands in its place, as the extension does; text after it filters them all
         ui.Type("/");
-        Assert.Equal(new[] { "Slash Commands" }, Headers(ui));
+        Assert.Equal(new[] { "Context", "Model", "Slash Commands", "Support" }, Headers(ui));
         Assert.Contains("/review", ui.Labels);
-        Assert.DoesNotContain("Attach file…", ui.Labels);
+        Assert.Contains("Attach file…", ui.Labels);
+        UiHelpers.Type(ui.Window, "rev");
+        Assert.Equal(new[] { "Slash Commands" }, Headers(ui));
+        Assert.Equal(new[] { "/review" }, ui.Labels);
+        UiHelpers.Press(ui.Window, Key.Escape);
+        ui.Input.Clear();
+        ui.Slash("att");
+        Assert.Equal(new[] { "Context" }, Headers(ui));       // the filter runs every group, and a group with no match is not there
+        Assert.Equal(new[] { "Attach file…" }, ui.Labels);
         ui.Window.Close();
     }
 
@@ -572,6 +586,7 @@ public class CommandPaletteTests
         UiHelpers.Click(ui.Window, ui.SlashButton);
         Assert.Equal("Support", Headers(ui).Last());
         UiHelpers.Click(ui.Window, Row(ui, "View help docs"));
+        Assert.Equal("https://code.claude.com/docs/en/vs-code", CommandPalette.HelpDocsUrl);   // what the extension opens
         Assert.Equal(new[] { CommandPalette.HelpDocsUrl }, links);
         Assert.False(ui.Palette.IsOpen);
         Assert.True(ui.Input.IsFocused);
@@ -691,16 +706,82 @@ public class CommandPaletteTests
             Assert.True(host.Bounds.Width >= 43.5 && host.Bounds.Height >= 43.5, host.Bounds.ToString());
             var track = all.OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatSwitch"));
             Assert.Equal(new Size(32, 18), track.Bounds.Size);                // the track is the same
+            // taps one after the other on the same switch are a double click to the pointer, and each of them counts: on, off, on
             UiHelpers.Click(window, host);
             Assert.True(on);
             Assert.True(palette.IsOpen);
             Assert.Contains("on", track.Classes);
+            UiHelpers.Click(window, host);
+            Assert.False(on);
+            Assert.DoesNotContain("on", track.Classes);
+            UiHelpers.Click(window, host);
+            Assert.True(on);
+            Assert.Contains("on", track.Classes);
+            Assert.True(palette.IsOpen);
+
+            // a press that moves past the tap threshold before it lifts is no tap
+            var from = host.TranslatePoint(new Point(host.Bounds.Width / 2, host.Bounds.Height / 2), window)!.Value;
+            window.MouseMove(from, RawInputModifiers.None);
+            window.MouseDown(from, MouseButton.Left, RawInputModifiers.None);
+            window.MouseMove(from + new Vector(0, 16), RawInputModifiers.LeftMouseButton);
+            window.MouseUp(from + new Vector(0, 16), MouseButton.Left, RawInputModifiers.None);
+            UiHelpers.Pump();
+            Assert.True(on);
             window.Close();
         }
         finally
         {
             CommandPalette.Actions.Remove(tested);
         }
+    }
+
+    [AvaloniaFact]
+    public void Touch_taps_one_after_the_other_on_the_effort_row_go_through_the_levels()
+    {
+        var c = Complete();
+        var asked = new List<string?>();
+        c.EffortRequested += (_, e) => asked.Add(e.Effort);
+        var view = UiHelpers.TouchView(c);
+        var window = UiHelpers.ShowPhone(view);
+        var composer = UiHelpers.Composer(view);
+        var palette = composer.GetLogicalDescendants().OfType<CommandPalette>().Single();
+        composer.OpenCommands();
+        UiHelpers.Pump();
+        var effort = palette.Child!.GetVisualDescendants().OfType<Border>()
+            .Single(b => b.IsEffectivelyVisible && b.Classes.Contains("ClaudeChatMenuItem") && b.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "Esforço"));
+        UiHelpers.Click(window, effort);
+        UiHelpers.Click(window, effort);
+        UiHelpers.Click(window, effort);
+        Assert.Equal(new[] { "xhigh", "max", "low" }, asked);   // from high, round the end; none of the taps is lost
+        Assert.True(palette.IsOpen);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Slash_commands_are_in_alphabetical_order_without_a_filter_and_the_filter_ranks_inside_its_groups()
+    {
+        var ui = Open(WithCommands(
+            new ChatCommand("zeta", "Last", ""), new ChatCommand("Alpha", "First", ""), new ChatCommand("beta", "Second", "")));
+        ui.Type("/");
+        // no culture of the machine decides: the names, ignoring the case, then as written
+        Assert.Equal(new[] { "/Alpha", "/beta", "/chrome", "/context", "/copy", "/rc", "/remote-control", "/usage", "/zeta" }, ui.Commands);
+        UiHelpers.Type(ui.Window, "eta");   // both have it inside the name: the filter keeps the alphabetical order inside the group
+        Assert.Equal(new[] { "/beta", "/zeta" }, ui.Commands);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_row_run_from_a_typed_slash_takes_the_typed_text_away()
+    {
+        var ui = Open();
+        ui.Slash("usa");
+        Assert.Equal("Account & usage…", ui.Active);   // the groups come in their order: the model's before the commands
+        ui.Press(Key.Enter);
+        Assert.Equal(new[] { "usage" }, ui.Invoked);
+        Assert.Equal("", ui.Input.Text ?? "");
+        Assert.False(ui.Palette.IsOpen);
+        Assert.Empty(ui.Sent);
+        ui.Window.Close();
     }
 
     private static Border Row(Opened ui, string label) =>

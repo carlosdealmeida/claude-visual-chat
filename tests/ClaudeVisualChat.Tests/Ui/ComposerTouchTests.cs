@@ -773,13 +773,13 @@ public class ComposerTouchTests
         Assert.True(PaletteFilter(palette).Bounds.Height >= 44);          // with its filter field, a finger's height too
         UiHelpers.Type(window, "re");                                     // and the slash commands once something is typed in it
         Assert.Contains("/review", PaletteRows(palette).Select(r => UiHelpers.Texts(r).First()));
-        Assert.All(PaletteRows(palette), r => Assert.True(r.Bounds.Height >= 44, r.Bounds.Height.ToString()));          // with its filter field, a finger's height too
+        Assert.All(PaletteRows(palette), r => Assert.True(r.Bounds.Height >= 44, r.Bounds.Height.ToString()));          // and so are the commands that come with it
         composer.ClosePopups();
 
         UiHelpers.Input(view).Focus();
         UiHelpers.Type(window, "/");                                      // …and by a "/" typed in the empty box
         rows = PaletteRows(palette);
-        Assert.Equal(c.PaletteCommands.Count, rows.Count);
+        Assert.Equal(4 + c.PaletteCommands.Count, rows.Count);                 // every group: the four actions, then the commands
         Assert.All(rows, r => Assert.True(r.Bounds.Height >= 44, r.Bounds.Height.ToString()));
         UiHelpers.Type(window, "rev");                                    // filtered: the rows left are as tall
         rows = PaletteRows(palette);
