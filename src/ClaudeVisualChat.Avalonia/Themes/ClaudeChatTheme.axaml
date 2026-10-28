@@ -349,6 +349,82 @@
         <controls:ToolCallView />
       </DataTemplate>
 
+      <!-- the Focus view's fold of a run of steps: in the timeline, its dot green (red after a failure) and blinking while a step is under
+           way; "3 tool calls · 1 failed" (or the live label, its count after it in bold at half) and a chevron of 1em, at .8 under the
+           pointer and .65 pressed. Closed, the rows of its subagents at work under it; open, the steps themselves and "Collapse" -->
+      <DataTemplate DataType="controls:FocusFoldItem">
+        <controls:ChatTimelineRow Classes="succeeded"
+                                  Classes.failed="{Binding State.HasFailed}"
+                                  Classes.running="{Binding State.IsLive}">
+          <StackPanel>
+            <ToggleButton Classes="ClaudeChatDisclosure interactive ClaudeChatFocusHead" HorizontalAlignment="Left"
+                          IsChecked="{Binding IsExpanded, Mode=TwoWay}">
+              <StackPanel Classes="ClaudeChatFocusSummary" Orientation="Horizontal">
+                <TextBlock Classes="ClaudeChatFocusLabel">
+                  <TextBlock.Text>
+                    <MultiBinding Converter="{x:Static controls:ChatConverters.FocusLabel}">
+                      <Binding Path="State" />
+                      <Binding Path="$parent[controls:ClaudeChatView].Strings" />
+                    </MultiBinding>
+                  </TextBlock.Text>
+                </TextBlock>
+                <TextBlock Classes="ClaudeChatFocusCount" IsVisible="{Binding State.HasLiveLabel}">
+                  <TextBlock.Text>
+                    <MultiBinding Converter="{x:Static controls:ChatConverters.FocusCount}">
+                      <Binding Path="State" />
+                      <Binding Path="$parent[controls:ClaudeChatView].Strings" />
+                    </MultiBinding>
+                  </TextBlock.Text>
+                </TextBlock>
+                <Viewbox Classes="ClaudeChatFocusChevron">
+                  <Path Classes="ClaudeChatChevron" />
+                </Viewbox>
+              </StackPanel>
+            </ToggleButton>
+            <StackPanel Classes="ClaudeChatFocusAgents">
+              <StackPanel.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                  <Binding Path="State.HasAgents" />
+                  <Binding Path="!IsExpanded" />
+                </MultiBinding>
+              </StackPanel.IsVisible>
+              <ItemsControl ItemsSource="{Binding State.Agents}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="controls:FocusAgentRow">
+                    <StackPanel Classes="ClaudeChatFocusAgent">
+                      <TextBlock Classes="ClaudeChatFocusAgentLine" Text="{Binding Line}" />
+                      <TextBlock Classes="ClaudeChatFocusAgentStats"
+                                 IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock.Text>
+                          <MultiBinding Converter="{x:Static controls:ChatConverters.FocusAgentStats}">
+                            <Binding />
+                            <Binding Path="$parent[controls:ClaudeChatView].Strings" />
+                          </MultiBinding>
+                        </TextBlock.Text>
+                      </TextBlock>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Classes="ClaudeChatFocusMore" IsVisible="{Binding State.HasMoreAgents}">
+                <TextBlock.Text>
+                  <MultiBinding Converter="{x:Static controls:ChatConverters.FocusMoreAgents}">
+                    <Binding Path="State.MoreAgents" />
+                    <Binding Path="$parent[controls:ClaudeChatView].Strings" />
+                  </MultiBinding>
+                </TextBlock.Text>
+              </TextBlock>
+            </StackPanel>
+            <StackPanel Classes="ClaudeChatFocusSteps" IsVisible="{Binding IsExpanded}">
+              <ItemsControl Classes="ClaudeChatItems" ItemsSource="{Binding Items}" />
+              <ToggleButton Classes="ClaudeChatDisclosure interactive ClaudeChatFocusCollapse" HorizontalAlignment="Left"
+                            IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                            Content="{Binding $parent[controls:ClaudeChatView].Strings.FocusCollapse}" />
+            </StackPanel>
+          </StackPanel>
+        </controls:ChatTimelineRow>
+      </DataTemplate>
+
       <!-- the end of a turn: the row of actions under the answer (copy, bookmark and, with the host, the thumbs), then the line of
            duration, tokens and cost; in the touch layout (the class touch) the button that copies the answer instead of both, with
            the host's actions of the row beside it. The text keeps its own visibility (from its text), and so do the row and the copy
@@ -753,6 +829,61 @@
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
     <Setter Property="Margin" Value="0,4,0,0" />
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+
+  <!-- the Focus view's fold: its line sits like a thought's; the label in the secondary color, the count after a live label in bold at
+       half; the chevron 1em; the whole head at .8 under the pointer and .65 pressed -->
+  <Style Selector="ToggleButton.ClaudeChatFocusHead:pointerover">
+    <Setter Property="Opacity" Value="0.8" />
+  </Style>
+  <Style Selector="ToggleButton.ClaudeChatFocusHead:pressed">
+    <Setter Property="Opacity" Value="0.65" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatFocusSummary">
+    <Setter Property="Spacing" Value="4" />
+    <Setter Property="Margin" Value="0,2,0,0" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatFocusLabel, TextBlock.ClaudeChatFocusCount">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatFocusCount">
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Opacity" Value="0.5" />
+  </Style>
+  <Style Selector="Viewbox.ClaudeChatFocusChevron">
+    <Setter Property="Width" Value="{DynamicResource ClaudeChat.FontSize}" />
+    <Setter Property="Height" Value="{DynamicResource ClaudeChat.FontSize}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- the subagents at work under a closed fold: each its line, and under it its numbers at .85em -->
+  <Style Selector="StackPanel.ClaudeChatFocusAgents">
+    <Setter Property="Margin" Value="0,4,0,0" />
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatFocusAgent">
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatFocusAgentLine">
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatFocusAgentStats, TextBlock.ClaudeChatFocusMore">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.SmallLineHeight}" />
+  </Style>
+  <!-- open: the steps under the head, then "Collapse" in the secondary color -->
+  <Style Selector="StackPanel.ClaudeChatFocusSteps">
+    <Setter Property="Margin" Value="0,4,0,0" />
+  </Style>
+  <Style Selector="ToggleButton.ClaudeChatFocusCollapse">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  </Style>
+  <Style Selector="ToggleButton.ClaudeChatFocusCollapse:pointerover">
+    <Setter Property="Opacity" Value="0.8" />
   </Style>
 
   <Style Selector="TextBlock.ClaudeChatFooter">

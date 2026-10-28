@@ -28,6 +28,22 @@ internal static class ChatConverters
     public static readonly IValueConverter FullTime = new FuncValueConverter<object?, string?>(value =>
         value is DateTimeOffset time ? ChatStrings.FormatFullTime(time) : null);
 
+    /// <summary>(<see cref="FocusFoldState"/>, <see cref="ChatStrings"/>) → a Focus fold's label: its live one, or its count.</summary>
+    public static readonly IMultiValueConverter FocusLabel =
+        new StringsConverter<FocusFoldState>((state, strings) => strings.FormatFocusLabel(state));
+
+    /// <summary>(<see cref="FocusFoldState"/>, <see cref="ChatStrings"/>) → a Focus fold's count, which follows its live label.</summary>
+    public static readonly IMultiValueConverter FocusCount =
+        new StringsConverter<FocusFoldState>((state, strings) => strings.FormatFocusCount(state));
+
+    /// <summary>(the agents without a row, <see cref="ChatStrings"/>) → "+3 more agents".</summary>
+    public static readonly IMultiValueConverter FocusMoreAgents =
+        new StringsConverter<int>((count, strings) => strings.FormatFocusMoreAgents(count));
+
+    /// <summary>(<see cref="FocusAgentRow"/>, <see cref="ChatStrings"/>) → "1.2k tokens · 3 tools · 1m 5s".</summary>
+    public static readonly IMultiValueConverter FocusAgentStats =
+        new StringsConverter<FocusAgentRow>((row, strings) => strings.FormatFocusAgentStats(row));
+
     public static readonly IValueConverter IsTurnFailed = new FuncValueConverter<NoticeKind, bool>(kind => kind == NoticeKind.TurnFailed);
 
     /// <summary>

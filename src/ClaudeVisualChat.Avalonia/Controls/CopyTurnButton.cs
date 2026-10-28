@@ -120,11 +120,14 @@ internal sealed class CopyTurnButton : Button
         _timer.Start(); // a second copy gives the check another 1.5 s
     }
 
-    /// <summary>What Claude wrote in the turn this button ends; empty when the turn wrote nothing.</summary>
+    /// <summary>
+    /// What Claude wrote in the turn this button ends; empty when the turn wrote nothing. Read in the conversation's items, not in the
+    /// list's rows, which the Focus view folds.
+    /// </summary>
     private string Answer()
     {
         if (!(DataContext is TurnFooterItem footer)) return "";
-        var items = this.FindAncestorOfType<ItemsControl>()?.ItemsSource as IList<ChatItem>;
+        IList<ChatItem>? items = this.FindAncestorOfType<ClaudeChatView>()?.Conversation?.Items;
         var index = items == null ? -1 : items.IndexOf(footer);
         return items == null || index < 0 ? "" : ChatTurns.AnswerText(items, index);
     }

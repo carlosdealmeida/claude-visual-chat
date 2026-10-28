@@ -36,7 +36,8 @@ namespace ClaudeVisualChat.Controls;
 /// down opens "What went wrong?" over the view, under the Diff View (Esc, Skip or its × close it), and its link shows while the host listens
 /// to <see cref="ChatConversation.LinkRequested"/>. A prompt taller than 60 px folds behind "Show more" (open or folded as its
 /// <see cref="UserMessageItem.IsTextExpanded"/> says), and the prompt of the turn on screen stays pinned at the top of the list until the
-/// next prompt pushes it out; a click on it brings the start of its turn back to the top. What the user does comes back as the
+/// next prompt pushes it out; a click on it brings the start of its turn back to the top. With <see cref="FocusView"/> (Ctrl+Alt+F, or
+/// the command menu's switch) each run of tool calls and thoughts of a round is one row that opens to them. What the user does comes back as the
 /// conversation's events. A key is marked handled only when the view acts on it, so the app's own shortcuts keep
 /// working. Colors and fonts come from the <c>ClaudeChat.*</c> resources, which can be redefined in
 /// <see cref="StyledElement.Resources"/>; the default colors are those of VS Code's "Dark 2026" theme, and
@@ -162,6 +163,16 @@ public partial class ClaudeChatView : UserControl
     public static readonly StyledProperty<bool> ReduceMotionProperty =
         AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(ReduceMotion), false, inherits: true);
 
+    /// <summary>
+    /// True to show the Focus view, like the extension's: in each round, every run of tool calls, their results and thoughts is one row
+    /// ("3 tool calls · 1 failed", "Running Bash…" while one runs) that opens to them, and only the prompts, Claude's text, the latest
+    /// TodoWrite, a background agent's call and the other lines stay in sight; the subagents at work show as rows under their fold, and a
+    /// step waiting for permission opens its fold. False (the default) shows every row. Ctrl+Alt+F and the command menu's "Focus view"
+    /// switch turn it on and off. The extension's <c>claudeCode.focusView</c>; a host that keeps that setting sets this, the view saves nothing.
+    /// </summary>
+    public static readonly StyledProperty<bool> FocusViewProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(FocusView));
+
     /// <summary>True while the conversation is busy; inherited, so a running tool's dot blinks only then.</summary>
     internal static readonly StyledProperty<bool> IsWorkingProperty =
         AvaloniaProperty.Register<ClaudeChatView, bool>("IsWorking", inherits: true);
@@ -221,6 +232,12 @@ public partial class ClaudeChatView : UserControl
 
     private ChatConversation? _tracked;
     private bool _attached;
+
+    /// <summary>The Focus view's list, while <see cref="FocusView"/> is on.</summary>
+    private FocusProjection? _focusList;
+
+    /// <summary>What the list shows, while followed (in the window).</summary>
+    private INotifyCollectionChanged? _listSource;
     private bool _isSheetOpen;
 
     /// <summary>A request came while the Diff View covered the view and would have taken the keyboard: it gets it when that closes.</summary>
@@ -314,6 +331,7 @@ public partial class ClaudeChatView : UserControl
         }
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnKeyDownNotTaken, RoutingStrategies.Bubble);
+        FocusViewToggleRequested += (_, _) => FocusView = !FocusView;
     }
 
     /// <summary>The user pressed Ctrl+Alt+F: the Focus view turns on or off (the view's part in it is wired where the Focus view is).</summary>
@@ -422,6 +440,13 @@ public partial class ClaudeChatView : UserControl
         set => SetValue(ShowTimestampsProperty, value);
     }
 
+    /// <summary>Folds each round's tool activity into one row (see <see cref="FocusViewProperty"/>). False by default.</summary>
+    public bool FocusView
+    {
+        get => GetValue(FocusViewProperty);
+        set => SetValue(FocusViewProperty, value);
+    }
+
     /// <summary>
     /// True while a sheet of the touch layout is on screen (see <see cref="IsSheetOpenProperty"/>). It follows every way a sheet
     /// opens and closes: the user, <see cref="DismissSheet"/>, <see cref="CloseTopLayer"/>, a permission request, another
@@ -500,7 +525,7 @@ public partial class ClaudeChatView : UserControl
         base.OnPropertyChanged(change);
         if (change.Property == ConversationProperty)
         {
-            ItemList.ItemsSource = Conversation?.Items;
+            UpdateItemsSource();
             _stickToEnd = true;
             ForgetAnchor(); // its item was the other conversation's
             QueueScrollToEnd();
@@ -547,6 +572,12 @@ public partial class ClaudeChatView : UserControl
             PlanDocument.ViewIsReadOnly = false;
             Composer.ViewIsReadOnly = false;
             Prompt.RestartPause(); // a request that came back must not be answered by a stray key
+        }
+        else if (change.Property == FocusViewProperty)
+        {
+            UpdateItemsSource();
+            ForgetAnchor(); // the rows changed under it
+            QueueScrollToEnd(); // a list that followed its end still does
         }
         else if (change.Property == DictationProperty)
         {
@@ -734,25 +765,66 @@ public partial class ClaudeChatView : UserControl
                 _tracked.PropertyChanged -= OnConversationChanged;
                 _tracked.CopyRequested -= OnCopyRequested;
                 _tracked.MessageSubmitted -= OnMessageSubmitted;
-                _tracked.Items.CollectionChanged -= OnItemsChanged;
             }
             _tracked = conversation;
-            ForgetPrompt(); // what the search for the pinned prompt knew was about the list as it was while followed
             if (_tracked != null)
             {
                 _tracked.PropertyChanged += OnConversationChanged;
                 _tracked.CopyRequested += OnCopyRequested;
                 _tracked.MessageSubmitted += OnMessageSubmitted;
-                _tracked.Items.CollectionChanged += OnItemsChanged;
                 _tracked.Strings = Strings; // the lines it says itself come in this view's language
             }
         }
+        // the Focus view's list follows the conversation only while the view is in the window, and reads it whole when it comes back
+        if (_attached) _focusList?.Start();
+        else _focusList?.Stop();
+        TrackListSource();
         // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
         if (_attached)
         {
             UpdateWorking();
             CloseBlockedPanel();
         }
+    }
+
+    /// <summary>
+    /// What the list shows: the conversation's items, or with <see cref="FocusView"/> the Focus view's list made over them (a new one for
+    /// another conversation, which follows it while the view is in the window).
+    /// </summary>
+    private void UpdateItemsSource()
+    {
+        var conversation = Conversation;
+        if (FocusView && conversation != null)
+        {
+            if (_focusList == null || !ReferenceEquals(_focusList.Conversation, conversation))
+            {
+                _focusList?.Stop();
+                _focusList = new FocusProjection(conversation);
+            }
+            if (_attached) _focusList.Start();
+            ItemList.ItemsSource = _focusList;
+        }
+        else
+        {
+            _focusList?.Stop();
+            _focusList = null;
+            ItemList.ItemsSource = conversation?.Items;
+        }
+        TrackListSource();
+    }
+
+    /// <summary>
+    /// Follows the changes of what the list shows (the search for the pinned prompt reads its places), only while in the window. Another
+    /// list, or none, makes the search start over.
+    /// </summary>
+    private void TrackListSource()
+    {
+        var source = _attached ? ItemList.ItemsSource as INotifyCollectionChanged : null;
+        if (ReferenceEquals(source, _listSource)) return;
+        if (_listSource != null) _listSource.CollectionChanged -= OnItemsChanged;
+        _listSource = source;
+        if (_listSource != null) _listSource.CollectionChanged += OnItemsChanged;
+        ForgetPrompt(); // what the search for the pinned prompt knew was about the list as it was while followed
     }
 
     /// <summary>

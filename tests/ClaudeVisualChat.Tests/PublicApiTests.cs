@@ -323,6 +323,35 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_focus_view_api_exists()
+    {
+        // the extension's claudeCode.focusView (0.6.0): a property of the view, off by default
+        var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
+        var property = view.GetProperty("FocusView");
+        Assert.Equal(typeof(bool), property?.PropertyType);
+        Assert.True(property!.SetMethod!.IsPublic);
+        var field = view.GetField("FocusViewProperty");
+        Assert.Equal(typeof(Avalonia.StyledProperty<bool>), field?.FieldType);
+        Assert.False(((Avalonia.StyledProperty<bool>)field!.GetValue(null)!).GetDefaultValue(view));
+        // its texts, init only
+        foreach (var text in new[]
+                 {
+                     "PaletteFocusView", "PaletteFocusViewTip", "FocusToolCalls", "FocusToolCallsOne", "FocusFailed", "FocusHiddenSteps",
+                     "FocusHiddenStepsOne", "FocusThinkingNow", "FocusRunning", "FocusWaitingForPermission", "FocusWaitingForAnswer",
+                     "FocusCollapse", "FocusMoreAgents", "FocusAgentTools", "FocusAgentToolsOne",
+                 })
+        {
+            var strings = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), strings?.PropertyType);
+            Assert.Contains(strings!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+        }
+        // the projection and its fold stay the library's own
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.FocusProjection", names);
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.FocusFoldItem", names);
+    }
+
+    [Fact]
     public void The_response_actions_api_exists()
     {
         // the actions under a reply (0.6.0): the bookmark and the line's uuid on the reply, a link event for the host and the rating

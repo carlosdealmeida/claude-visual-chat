@@ -1584,4 +1584,64 @@ public class DetachTests
         Assert.False(overlay.IsVisible);
         m.Window.Close();
     }
+
+    /// <summary>Who listens to the conversation's list, to its requests, and to its steps and their agents.</summary>
+    private static int FocusHandlers(ChatConversation c)
+    {
+        const System.Reflection.BindingFlags field = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        int Count(object target, Type owner, string name) =>
+            ((Delegate?)owner.GetField(name, field)!.GetValue(target))?.GetInvocationList().Length ?? 0;
+        var count = Count(c.Items, typeof(System.Collections.ObjectModel.ObservableCollection<ChatItem>), "CollectionChanged")
+                    + Count(c.PendingPermissions, typeof(System.Collections.ObjectModel.ObservableCollection<PendingPermission>), "CollectionChanged");
+        foreach (var item in c.Items) count += Count(item, typeof(ChatObservableObject), "PropertyChanged");
+        foreach (var agent in c.Agents) count += Count(agent, typeof(ChatObservableObject), "PropertyChanged");
+        return count;
+    }
+
+    [AvaloniaFact]
+    public void The_focus_projection_lets_go_of_the_items_while_the_view_is_away()
+    {
+        var c = Conversation();
+        c.Items.Add(new UserMessageItem("go"));
+        c.Items.Add(new ThinkingItem { DurationMs = 2000 });
+        var bash = new ToolCallItem { Name = "Bash", Status = ToolStatus.Running, ToolUseId = "t1" };
+        c.Items.Add(bash);
+        var own = FocusHandlers(c); // the conversation's own, before any view
+        var m = new Mounted(c);
+        m.View.FocusView = true;
+        UiHelpers.Pump();
+        var list = UiHelpers.ItemList(m.View);
+        var projection = Assert.IsType<FocusProjection>(list.ItemsSource);
+        Assert.True(projection.IsStarted);
+        Assert.True(FocusHandlers(c) > own);
+        Assert.Contains("Running Bash…", UiHelpers.Texts(m.View));
+
+        m.Out();
+        Assert.Equal(own, FocusHandlers(c)); // the projection let go of the list, the requests, the steps
+        Assert.False(projection.IsStarted);
+        Assert.Same(projection, list.ItemsSource); // leaving drew nothing
+
+        // what changes while out is drawn when back: the fold is read again, whole
+        bash.Status = ToolStatus.Succeeded;
+        c.Items.Add(new ToolCallItem { Name = "Read", Status = ToolStatus.Succeeded, ToolUseId = "t2" });
+        c.Items.Add(new AssistantTextItem { Text = "Done." });
+        UiHelpers.Pump();
+        Assert.Equal(2, projection.Count);
+        m.In();
+        Assert.True(projection.IsStarted);
+        Assert.Same(projection, list.ItemsSource);
+        Assert.Equal(3, projection.Count);
+        Assert.Contains("3 hidden steps", UiHelpers.Texts(m.View));
+        Assert.DoesNotContain("Running Bash…", UiHelpers.Texts(m.View));
+        Assert.Contains("Done.", UiHelpers.MarkdownText(m.View));
+
+        // out with the Focus view turned off meanwhile: back, every row
+        m.Out();
+        m.View.FocusView = false; // the list takes the conversation's items again (Avalonia's list follows them, as it always did)
+        Assert.False(projection.IsStarted);
+        m.In();
+        Assert.Same(c.Items, list.ItemsSource);
+        Assert.Equal(2, m.View.GetVisualDescendants().OfType<ToolCallView>().Count(t => t.IsEffectivelyVisible));
+        m.Window.Close();
+    }
 }

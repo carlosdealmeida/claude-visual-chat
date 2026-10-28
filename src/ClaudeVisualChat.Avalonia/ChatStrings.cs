@@ -249,6 +249,21 @@ public sealed record ChatStrings
         PaletteSwitchModel = "Trocar de modelo…",
         PaletteAccountUsage = "Conta e uso…",
         PaletteHelpDocs = "Ver a documentação de ajuda",
+        PaletteFocusView = "Modo foco",
+        PaletteFocusViewTip = "Mostrar só os seus prompts e as respostas do Claude",
+        FocusToolCalls = "{0} chamadas de ferramenta",
+        FocusToolCallsOne = "1 chamada de ferramenta",
+        FocusFailed = " · {0} com falha",
+        FocusHiddenSteps = "{0} passos ocultos",
+        FocusHiddenStepsOne = "1 passo oculto",
+        FocusThinkingNow = "Pensando…",
+        FocusRunning = "Executando {0}…",
+        FocusWaitingForPermission = "Aguardando permissão…",
+        FocusWaitingForAnswer = "Aguardando a sua resposta…",
+        FocusCollapse = "Recolher",
+        FocusMoreAgents = "+{0} agentes a mais",
+        FocusAgentTools = "{0} ferramentas",
+        FocusAgentToolsOne = "1 ferramenta",
         CommandContextDescription = "Mostrar o uso do contexto",
         CommandUsageDescription = "Mostrar os limites de uso do plano",
         CommandRemoteControlDescription = "Ligar ou desligar o Remote Control",
@@ -1068,6 +1083,54 @@ public sealed record ChatStrings
     /// <summary>The command menu's row that opens the documentation, when the host opens links.</summary>
     public string PaletteHelpDocs { get; init; } = "View help docs";
 
+    /// <summary>The command menu's switch of the Focus view (<see cref="Controls.ClaudeChatView.FocusView"/>).</summary>
+    public string PaletteFocusView { get; init; } = "Focus view";
+
+    /// <summary>The tooltip of that switch.</summary>
+    public string PaletteFocusViewTip { get; init; } = "Show only your prompts and Claude's responses";
+
+    /// <summary>A fold of the Focus view that stands for tool calls only: <c>{0}</c> is how many (2 or more).</summary>
+    public string FocusToolCalls { get; init; } = "{0} tool calls";
+
+    /// <summary>The same for one.</summary>
+    public string FocusToolCallsOne { get; init; } = "1 tool call";
+
+    /// <summary>What follows the count of a fold when calls failed: <c>{0}</c> is how many.</summary>
+    public string FocusFailed { get; init; } = " · {0} failed";
+
+    /// <summary>A fold that stands for steps of more than one kind (calls and thoughts): <c>{0}</c> is how many (2 or more).</summary>
+    public string FocusHiddenSteps { get; init; } = "{0} hidden steps";
+
+    /// <summary>The same for one.</summary>
+    public string FocusHiddenStepsOne { get; init; } = "1 hidden step";
+
+    /// <summary>
+    /// A fold of thoughts only, while one arrives; once they end it reads <see cref="ThoughtFor"/> (at least 1 s), or <see cref="Thinking"/>
+    /// when their length is unknown.
+    /// </summary>
+    public string FocusThinkingNow { get; init; } = "Thinking…";
+
+    /// <summary>A fold while one of its tools runs: <c>{0}</c> is the tool's name. Its count follows it, in bold.</summary>
+    public string FocusRunning { get; init; } = "Running {0}…";
+
+    /// <summary>A fold while a permission request of one of its steps waits (it opens by itself).</summary>
+    public string FocusWaitingForPermission { get; init; } = "Waiting for permission…";
+
+    /// <summary>A fold while a question of one of its steps (AskUserQuestion) waits.</summary>
+    public string FocusWaitingForAnswer { get; init; } = "Waiting for your answer…";
+
+    /// <summary>What ends an open fold, and closes it.</summary>
+    public string FocusCollapse { get; init; } = "Collapse";
+
+    /// <summary>Under the rows of a fold's subagents at work, those without a row: <c>{0}</c> is how many (2 or more).</summary>
+    public string FocusMoreAgents { get; init; } = "+{0} more agents";
+
+    /// <summary>The tools a subagent at work called, in its row: <c>{0}</c> is how many (2 or more).</summary>
+    public string FocusAgentTools { get; init; } = "{0} tools";
+
+    /// <summary>The same for one.</summary>
+    public string FocusAgentToolsOne { get; init; } = "1 tool";
+
     /// <summary>What the context command does, in the menu.</summary>
     public string CommandContextDescription { get; init; } = "Show context usage";
 
@@ -1587,6 +1650,51 @@ public sealed record ChatStrings
     {
         var seconds = (long)Math.Floor(Math.Max(0, milliseconds) / 1000.0 + 0.5);
         return ThoughtFor.Replace("{0}", seconds.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// The label of a fold of the Focus view, from what it stands for: "3 tool calls · 1 failed"; for thoughts only "Thinking…", "Thought
+    /// for 4s" (at least 1 s) or "Thinking"; else "5 hidden steps", with the failures too. While a step is under way, the live label
+    /// ("Running Bash…", "Waiting for permission…", "Waiting for your answer…"), which <see cref="FormatFocusCount"/> follows.
+    /// </summary>
+    internal string FormatFocusLabel(Controls.FocusFoldState state)
+    {
+        switch (state.Live)
+        {
+            case Controls.FocusLive.Permission: return FocusWaitingForPermission;
+            case Controls.FocusLive.Answer: return FocusWaitingForAnswer;
+            case Controls.FocusLive.Running:
+                var name = state.RunningTool ?? "";
+                return FocusRunning.Replace("{0}", ToolPresentation.McpName(name) is { } mcp ? mcp.Tool : name);
+            default: return FormatFocusCount(state);
+        }
+    }
+
+    /// <summary>The count of a fold, without its live label: "3 tool calls · 1 failed", "Thought for 4s", "5 hidden steps".</summary>
+    internal string FormatFocusCount(Controls.FocusFoldState state)
+    {
+        var failed = state.FailedCount > 0 ? FocusFailed.Replace("{0}", FormatNumber(state.FailedCount)) : "";
+        if (state.ThinkingCount == 0 && state.ToolCount > 0)
+            return (state.ToolCount == 1 ? FocusToolCallsOne : FocusToolCalls.Replace("{0}", FormatNumber(state.ToolCount))) + failed;
+        if (state.ToolCount == 0 && state.ThinkingCount > 0 && state.ThinkingCount == state.StepCount)
+        {
+            if (state.IsThinking) return FocusThinkingNow;
+            return state.ThoughtMs is long ms ? FormatThoughtFor(Math.Max(1000, ms)) : Thinking;
+        }
+        return (state.StepCount == 1 ? FocusHiddenStepsOne : FocusHiddenSteps.Replace("{0}", FormatNumber(state.StepCount))) + failed;
+    }
+
+    /// <summary>"+3 more agents".</summary>
+    internal string FormatFocusMoreAgents(int count) => FocusMoreAgents.Replace("{0}", FormatNumber(count));
+
+    /// <summary>The second line of a subagent's row in a fold: "1.2k tokens · 3 tools · 1m 5s", what is known of it.</summary>
+    internal string FormatFocusAgentStats(Controls.FocusAgentRow row)
+    {
+        var parts = new List<string>(3);
+        if (row.Tokens is long tokens) parts.Add(FormatAgentTokens(tokens));
+        if (row.Tools is int tools) parts.Add(tools == 1 ? FocusAgentToolsOne : FocusAgentTools.Replace("{0}", FormatNumber(tools)));
+        if (row.DurationMs is long ms) parts.Add(FormatAgentTime(ms));
+        return string.Join(Separator, parts);
     }
 
     /// <summary>" · 1.2k tokens": what follows "Thinking..." while the claude counts; the count is whole below 1,000, else thousands with a decimal.</summary>

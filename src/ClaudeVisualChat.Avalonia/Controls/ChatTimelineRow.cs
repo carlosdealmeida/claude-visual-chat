@@ -51,11 +51,11 @@ internal sealed class ChatTimelineRow : ContentControl
     protected override Type StyleKeyOverride => typeof(ChatTimelineRow);
 
     /// <summary>
-    /// Entries of the timeline: text, thinking, tool calls and what a command printed (drawn without a dot, the line
-    /// passing by it); the rest (the user's message, notices) breaks a run.
+    /// Entries of the timeline: text, thinking, tool calls, the Focus view's folds of them and what a command printed (drawn without a
+    /// dot, the line passing by it); the rest (the user's message, notices) breaks a run.
     /// </summary>
     internal static bool IsTimeline(object? item) =>
-        item is AssistantTextItem || item is ThinkingItem || item is ToolCallItem || item is CommandOutputItem;
+        item is AssistantTextItem || item is ThinkingItem || item is ToolCallItem || item is FocusFoldItem || item is CommandOutputItem;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -89,11 +89,20 @@ internal sealed class ChatTimelineRow : ContentControl
 
     private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e) => UpdatePlace();
 
-    /// <summary>Reads the entries before and after this one; outside a list, the row stands alone.</summary>
+    /// <summary>
+    /// Reads the entries before and after this one; outside a list, the row stands alone. In the conversation's list the row's place is
+    /// the one the list gave its container (<see cref="ChatItemList.IndexProperty"/>), so a long list costs no search; a subagent's list,
+    /// whose rows inherit the place of the row they are in, is searched.
+    /// </summary>
     private void UpdatePlace()
     {
         var items = _owner?.Items;
-        var index = items == null || DataContext == null ? -1 : items.IndexOf(DataContext);
+        var index = -1;
+        if (items != null && DataContext != null)
+        {
+            var given = _owner is ChatItemList ? GetValue(ChatItemList.IndexProperty) : -1;
+            index = given >= 0 && given < items.Count && ReferenceEquals(items[given], DataContext) ? given : items.IndexOf(DataContext);
+        }
         var before = index > 0 && IsTimeline(items![index - 1]);
         var after = index >= 0 && index + 1 < items!.Count && IsTimeline(items[index + 1]);
         PseudoClasses.Set(":first", index == 0);

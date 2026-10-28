@@ -104,7 +104,7 @@ internal abstract class ChatMenuPopup : Popup
 
 /// <summary>
 /// The command palette, like the extension's, in groups (<see cref="PaletteSection"/>): the <see cref="Actions"/> (attach a file, the
-/// model, the effort, the usage, the docs) and "Slash Commands", the conversation's
+/// model, the effort, the usage, the Focus view's switch, the docs) and "Slash Commands", the conversation's
 /// <see cref="ChatConversation.PaletteCommands"/>, each as <c>/name</c> with its description in the tooltip. A group with nothing
 /// to show is not there, and a divider of 1 px opens each one after the first. The / button opens it with a filter field that takes
 /// the keyboard, and without a filter it lists the actions only; a "/" typed in the empty reply box opens it with every group, the slash
@@ -203,6 +203,12 @@ internal sealed class CommandPalette : ChatMenuPopup
         new PaletteAction(PaletteSection.Model, "Account & usage…", view => view.Conversation?.Submit("/usage"))
         {
             Text = strings => strings.PaletteAccountUsage,
+        },
+        // the Focus view, a switch: the palette stays open and the thumb slides
+        new PaletteAction(PaletteSection.Settings, "Focus view", view => view.FocusView = !view.FocusView, view => view.FocusView)
+        {
+            Text = strings => strings.PaletteFocusView,
+            Tip = strings => strings.PaletteFocusViewTip,
         },
         // only where the host opens links
         new PaletteAction(PaletteSection.Support, "View help docs", view => view.Conversation?.RequestLink(HelpDocsUrl))
@@ -470,6 +476,7 @@ internal sealed class CommandPalette : ChatMenuPopup
         dock.Children.Add(label);
         var row = new Border { Child = dock };
         row.Classes.Add("ClaudeChatMenuItem");
+        if (action.Tip?.Invoke(strings) is { Length: > 0 } tip) ToolTip.SetTip(row, tip);
         Wire(row, index, () => Run(action), action.IsOn != null || action.KeepsOpen);
         return row;
     }

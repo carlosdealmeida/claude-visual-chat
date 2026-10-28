@@ -768,7 +768,7 @@ public class ComposerTouchTests
         composer.OpenCommands();                                          // opened as the "+" sheet's Commands row opens it…
         UiHelpers.Pump();
         var rows = PaletteRows(palette);
-        Assert.Equal(4, rows.Count);                                      // from the button, the actions (attach, model, effort, usage), in their groups
+        Assert.Equal(5, rows.Count);                                      // from the button, the actions (attach, model, effort, usage, Focus view), in their groups
         Assert.All(rows, r => Assert.True(r.Bounds.Height >= 44, r.Bounds.Height.ToString()));
         Assert.True(PaletteFilter(palette).Bounds.Height >= 44);          // with its filter field, a finger's height too
         UiHelpers.Type(window, "re");                                     // and the slash commands once something is typed in it
@@ -779,7 +779,7 @@ public class ComposerTouchTests
         UiHelpers.Input(view).Focus();
         UiHelpers.Type(window, "/");                                      // …and by a "/" typed in the empty box
         rows = PaletteRows(palette);
-        Assert.Equal(4 + c.PaletteCommands.Count, rows.Count);                 // every group: the four actions, then the commands
+        Assert.Equal(5 + c.PaletteCommands.Count, rows.Count);                 // every group: the five actions, then the commands
         Assert.All(rows, r => Assert.True(r.Bounds.Height >= 44, r.Bounds.Height.ToString()));
         UiHelpers.Type(window, "rev");                                    // filtered: the rows left are as tall
         rows = PaletteRows(palette);
@@ -795,7 +795,7 @@ public class ComposerTouchTests
         UiHelpers.Pump();
         var desktopPalette = desktopComposer.GetLogicalDescendants().OfType<CommandPalette>().Single();
         var desktopRows = PaletteRows(desktopPalette);
-        Assert.Equal(4, desktopRows.Count);
+        Assert.Equal(5, desktopRows.Count);
         Assert.All(desktopRows, r => Assert.True(r.Bounds.Height < 44, r.Bounds.Height.ToString()));
         Assert.True(PaletteFilter(desktopPalette).Bounds.Height < 44);
     }

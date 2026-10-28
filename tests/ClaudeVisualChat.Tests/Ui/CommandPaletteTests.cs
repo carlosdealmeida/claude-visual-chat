@@ -106,7 +106,7 @@ public class CommandPaletteTests
         Assert.True(ui.Filter.IsFocused);
         // with no filter the button lists the actions only; the slash commands come once something is typed in the field
         Assert.DoesNotContain("Slash Commands", UiHelpers.Texts(ui.Menu));
-        Assert.Equal(new[] { "Attach file…", "Account & usage…" }, ui.Labels);
+        Assert.Equal(new[] { "Attach file…", "Account & usage…", "Focus view" }, ui.Labels);
         UiHelpers.Type(ui.Window, "hel");
         Assert.Contains("Slash Commands", UiHelpers.Texts(ui.Menu));
         Assert.Equal(new[] { "/hello", "/help" }, ui.Labels);
@@ -119,8 +119,8 @@ public class CommandPaletteTests
         Assert.Null(ui.Filter);
         Assert.True(ui.Input.IsFocused);
         // every group, unfiltered, as in the extension: the actions, and the slash commands in their place, in alphabetical order
-        Assert.Equal(new[] { "Context", "Model", "Slash Commands" }, Headers(ui));
-        Assert.Equal(new[] { "Attach file…", "Account & usage…" }, ui.Labels.Where(l => !l.StartsWith("/", StringComparison.Ordinal)));
+        Assert.Equal(new[] { "Context", "Model", "Settings", "Slash Commands" }, Headers(ui));
+        Assert.Equal(new[] { "Attach file…", "Account & usage…", "Focus view" }, ui.Labels.Where(l => !l.StartsWith("/", StringComparison.Ordinal)));
         Assert.Equal(new[] { "/chrome", "/compact", "/context", "/copy", "/hello", "/help", "/rc", "/remote-control", "/usage" }, ui.Commands);
         Assert.Equal("Show context usage", ToolTip.GetTip(Row(ui, "/context")));
         Assert.Equal("Say hello", ToolTip.GetTip(Row(ui, "/hello")));
@@ -327,7 +327,7 @@ public class CommandPaletteTests
         UiHelpers.Pump();
         UiHelpers.Click(ui.Window, UiHelpers.ButtonWithText(ui.Composer, "Mostrar o menu de comandos (/)"));
         Assert.Equal("Filtrar comandos…", ui.Filter!.Watermark);
-        Assert.Equal(new[] { "Anexar arquivo…", "Conta e uso…" }, ui.Labels);
+        Assert.Equal(new[] { "Anexar arquivo…", "Conta e uso…", "Modo foco" }, ui.Labels);
         Assert.Contains("Contexto", UiHelpers.Texts(ui.Menu));
         Assert.Contains("Modelo", UiHelpers.Texts(ui.Menu));
         UiHelpers.Type(ui.Window, "cont");
@@ -503,10 +503,10 @@ public class CommandPaletteTests
         UiHelpers.Click(ui.Window, ui.SlashButton);
         UiHelpers.Type(ui.Window, "e");   // the filter keeps the rows with an "e": a row of each group has one
 
-        // the groups in their order, the empty ones (Customize, Settings) not there, a divider of 1 px with 4 px around it between them
-        Assert.Equal(new[] { "Context", "Model", "Slash Commands", "Support" }, Headers(ui));
+        // the groups in their order, the empty one (Customize) not there, a divider of 1 px with 4 px around it between them
+        Assert.Equal(new[] { "Context", "Model", "Settings", "Slash Commands", "Support" }, Headers(ui));
         var dividers = Dividers(ui);
-        Assert.Equal(3, dividers.Count);
+        Assert.Equal(4, dividers.Count);
         Assert.All(dividers, d =>
         {
             Assert.Equal(1, d.Bounds.Height, 1);
@@ -521,7 +521,7 @@ public class CommandPaletteTests
 
         // inside a group the order is the filter's: the name that starts with it, then the ones that have it, in the list's order
         Assert.Equal(new[] { "Effort", "Switch model…", "Account & usage…" },
-            labels.Where(l => l != "Attach file…" && l != "View help docs" && !l.StartsWith("/", StringComparison.Ordinal)));
+            labels.Where(l => l != "Attach file…" && l != "View help docs" && l != "Focus view" && !l.StartsWith("/", StringComparison.Ordinal)));
 
         // the model on the right of its row, the level on the right of the effort's
         Assert.Equal("Opus 5.5", Value(Row(ui, "Switch model…")));
@@ -531,9 +531,9 @@ public class CommandPaletteTests
         // without models neither the model nor the effort has a row; what is left of the group stays
         var bare = Open();
         UiHelpers.Click(bare.Window, bare.SlashButton);
-        Assert.Equal(new[] { "Attach file…", "Account & usage…" }, bare.Labels);
-        Assert.Equal(new[] { "Context", "Model" }, Headers(bare));
-        Assert.Single(Dividers(bare));
+        Assert.Equal(new[] { "Attach file…", "Account & usage…", "Focus view" }, bare.Labels);
+        Assert.Equal(new[] { "Context", "Model", "Settings" }, Headers(bare));
+        Assert.Equal(2, Dividers(bare).Count);
         bare.Window.Close();
     }
 
@@ -556,7 +556,7 @@ public class CommandPaletteTests
 
         // a "/" typed in the box lists every group, Slash Commands in its place, as the extension does; text after it filters them all
         ui.Type("/");
-        Assert.Equal(new[] { "Context", "Model", "Slash Commands", "Support" }, Headers(ui));
+        Assert.Equal(new[] { "Context", "Model", "Settings", "Slash Commands", "Support" }, Headers(ui));
         Assert.Contains("/review", ui.Labels);
         Assert.Contains("Attach file…", ui.Labels);
         UiHelpers.Type(ui.Window, "rev");
@@ -702,10 +702,14 @@ public class CommandPaletteTests
             var rows = all.OfType<Border>().Where(b => b.IsEffectivelyVisible && b.Classes.Contains("ClaudeChatMenuItem")).ToList();
             Assert.All(rows, r => Assert.InRange(r.Bounds.Height, 43.5, 46));   // the rows of the 0.5.0: 44 px, the switch's target inside them
 
-            var host = all.OfType<Panel>().Single(p => p.IsEffectivelyVisible && p.Classes.Contains("ClaudeChatSwitchHost"));
+            // the test's switch (the Focus view's is another in the group)
+            var testRow = rows.Single(r => r.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Classes.Contains("ClaudeChatMenuLabel") && t.Text == "Test switch"));
+            var host = testRow.GetVisualDescendants().OfType<Panel>().Single(p => p.IsEffectivelyVisible && p.Classes.Contains("ClaudeChatSwitchHost"));
             Assert.True(host.Bounds.Width >= 43.5 && host.Bounds.Height >= 43.5, host.Bounds.ToString());
-            var track = all.OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatSwitch"));
+            var track = testRow.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatSwitch"));
             Assert.Equal(new Size(32, 18), track.Bounds.Size);                // the track is the same
+            testRow.BringIntoView();                                          // under the Focus view's row: the list may have to scroll to it
+            UiHelpers.Pump();
             // taps one after the other on the same switch are a double click to the pointer, and each of them counts: on, off, on
             UiHelpers.Click(window, host);
             Assert.True(on);

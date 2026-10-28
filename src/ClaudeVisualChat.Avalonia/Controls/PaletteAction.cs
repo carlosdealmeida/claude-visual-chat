@@ -34,4 +34,7 @@ internal sealed record PaletteAction(string Section, string Label, Action<Claude
 
     /// <summary>The palette stays open after the row acts (a switch always does).</summary>
     internal bool KeepsOpen { get; init; }
+
+    /// <summary>The row's tooltip in the strings' language; none when null.</summary>
+    internal Func<ChatStrings, string>? Tip { get; init; }
 }
