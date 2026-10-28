@@ -1640,6 +1640,96 @@ public class ChatViewTests
         window.Close();
     }
 
+    // ---- /copy: the meta line ----
+
+    private static ChatConversation WithOneReply(string reply)
+    {
+        var c = new ChatConversation();
+        c.Items.Add(new UserMessageItem("question"));
+        c.Items.Add(new AssistantTextItem { Text = reply });
+        c.Items.Add(new TurnFooterItem(null, null, null, null, false));
+        return c;
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Copy_reports_characters_and_lines_in_a_meta_line(bool touch)
+    {
+        var copied = new List<string>();
+        ChatClipboard.Override = text => { copied.Add(text); return System.Threading.Tasks.Task.CompletedTask; };
+        try
+        {
+            var c = WithOneReply("line one\nline two");
+            var view = touch ? UiHelpers.TouchView(c) : new ClaudeChatView { Conversation = c };
+            var window = touch ? UiHelpers.ShowPhone(view) : UiHelpers.Show(view);
+
+            c.Submit("/copy");
+            UiHelpers.Pump();
+
+            Assert.Equal(new[] { "line one\nline two" }, copied);
+            var item = Assert.IsType<MetaLineItem>(c.Items.Last());
+            Assert.Equal(touch ? "Copiado para a área de transferência (17 caracteres, 2 linhas)" : "Copied to clipboard (17 characters, 2 lines)", item.Text);
+
+            // the line: italic, the secondary color at 80%, 8 px of padding, 4 px over and under, and selectable
+            var line = view.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Classes.Contains("ClaudeChatMetaLine"));
+            Assert.Equal(item.Text, line.Text);
+            Assert.Equal(FontStyle.Italic, line.FontStyle);
+            Assert.Equal(0.8, line.Opacity);
+            Assert.Equal(new Thickness(8), line.Padding);
+            Assert.Equal(new Thickness(0, 4), line.Margin);
+            Assert.Equal(Assert.IsAssignableFrom<ISolidColorBrush>(Resource(view, "ClaudeChat.ForegroundMuted")).Color,
+                Assert.IsAssignableFrom<ISolidColorBrush>(line.Foreground).Color);
+
+            // not in the timeline: no row with a dot and a line, and it breaks no run
+            Assert.Null(line.FindAncestorOfType<ChatTimelineRow>());
+            Assert.False(ChatTimelineRow.IsTimeline(item));
+            var answer = view.GetVisualDescendants().OfType<ChatTimelineRow>().Single(r => r.DataContext is AssistantTextItem);
+            Assert.True(line.TranslatePoint(default, view)!.Value.Y > answer.TranslatePoint(default, view)!.Value.Y, "it comes after the answer");
+            window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    [AvaloniaFact]
+    public void Copy_says_so_when_the_clipboard_refuses_and_the_line_is_text_of_the_list()
+    {
+        ChatClipboard.Override = _ => throw new InvalidOperationException("refused");
+        try
+        {
+            var c = WithOneReply("hello");
+            var (view, window) = Open(c);
+            c.Submit("/copy");
+            UiHelpers.Pump();
+            Assert.Equal("Could not copy to clipboard", Assert.IsType<MetaLineItem>(c.Items.Last()).Text);
+            Assert.Contains(view.GetVisualDescendants().OfType<SelectableTextBlock>(),
+                t => t.Classes.Contains("ClaudeChatMetaLine") && t.Text == "Could not copy to clipboard" && t.IsEffectivelyVisible);
+            window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    [AvaloniaFact]
+    public void Copy_lines_follow_the_language_of_the_view_when_it_changes()
+    {
+        var copied = new List<string>();
+        ChatClipboard.Override = text => { copied.Add(text); return System.Threading.Tasks.Task.CompletedTask; };
+        try
+        {
+            var c = WithOneReply("hello");
+            var (view, window) = Open(c);
+            c.Submit("/copy 2");
+            Assert.Equal("Only 1 assistant messages available to copy", Assert.IsType<MetaLineItem>(c.Items.Last()).Text);
+            view.Strings = ChatStrings.PortugueseBrazil;
+            c.Submit("/copy");
+            UiHelpers.Pump();
+            Assert.Equal("Copiado para a área de transferência (5 caracteres, 1 linha)", Assert.IsType<MetaLineItem>(c.Items.Last()).Text);
+            Assert.Single(copied);
+            window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
     // ---- Bash and PowerShell: the copy button on the command's row ----
 
     private const string LongCommand = "cd build\nmake -j8 && echo 'built'\necho done # a long comment to cut the line";

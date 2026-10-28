@@ -182,6 +182,13 @@ public sealed record ChatStrings
         CommandUsageDescription = "Mostrar os limites de uso do plano",
         CommandRemoteControlDescription = "Ligar ou desligar o Remote Control",
         CommandChromeDescription = "Conectar ou desconectar o navegador",
+        CommandCopyDescription = "Copiar a última resposta do Claude (ou /copy N para a N-ésima mais recente)",
+        CopyDone = "Copiado para a área de transferência ({0} caracteres, {1})",
+        CopyNothing = "Nenhuma resposta do assistente para copiar",
+        CopyOnly = "Só há {0} respostas do assistente para copiar",
+        CopyUsage = "Uso: /copy [N], onde N é 1 (a mais recente), 2, 3, … Recebido: {0}",
+        CopyFailed = "Não foi possível copiar para a área de transferência",
+        CopyWaiting = "Copiando quando a resposta terminar",
         CacheWarm = "Cache do prompt ativo, cerca de {0} min restantes.",
         CacheExpired = "Cache do prompt provavelmente expirado (parado há {0}).",
         CacheCompacted = "O cache do prompt não cobre a conversa resumida.",
@@ -798,6 +805,27 @@ public sealed record ChatStrings
     /// <summary>What the browser command does, in the menu.</summary>
     public string CommandChromeDescription { get; init; } = "Connect or disconnect the browser";
 
+    /// <summary>What the copy command does, in the menu.</summary>
+    public string CommandCopyDescription { get; init; } = "Copy Claude's last response to clipboard (or /copy N for the Nth-latest)";
+
+    /// <summary>The line after <c>/copy</c> worked; <c>{0}</c> is the count of characters and <c>{1}</c> the lines, <see cref="OneLine"/> or <see cref="Lines"/>.</summary>
+    public string CopyDone { get; init; } = "Copied to clipboard ({0} characters, {1})";
+
+    /// <summary>The line after <c>/copy</c> when no reply is finished yet.</summary>
+    public string CopyNothing { get; init; } = "No assistant message to copy";
+
+    /// <summary>The line after <c>/copy N</c> when there are fewer replies than N; <c>{0}</c> is how many there are.</summary>
+    public string CopyOnly { get; init; } = "Only {0} assistant messages available to copy";
+
+    /// <summary>The line after <c>/copy</c> with an argument that is not a number from 1; <c>{0}</c> is what was typed.</summary>
+    public string CopyUsage { get; init; } = "Usage: /copy [N] where N is 1 (latest), 2, 3, … Got: {0}";
+
+    /// <summary>The line after <c>/copy</c> when the clipboard refused the text.</summary>
+    public string CopyFailed { get; init; } = "Could not copy to clipboard";
+
+    /// <summary>The line after <c>/copy</c> typed while Claude works: the copy waits for the reply to end.</summary>
+    public string CopyWaiting { get; init; } = "Copying once the reply finishes";
+
     /// <summary>The prompt cache is still valid; <c>{0}</c> is the minutes left.</summary>
     public string CacheWarm { get; init; } = "Prompt cache warm, about {0} min left.";
 
@@ -1222,6 +1250,23 @@ public sealed record ChatStrings
 
     /// <summary>"47 lines", "1 line".</summary>
     internal string FormatLines(int lines) => lines == 1 ? OneLine : Lines.Replace("{0}", FormatNumber(lines));
+
+    /// <summary>The line after a copy: the characters (UTF-16 units) and the lines (the line feeds plus one) of <paramref name="text"/>.</summary>
+    internal string FormatCopied(string text)
+    {
+        var lines = 1;
+        foreach (var c in text)
+        {
+            if (c == '\n') lines++;
+        }
+        return CopyDone.Replace("{0}", FormatNumber(text.Length)).Replace("{1}", FormatLines(lines));
+    }
+
+    /// <summary>The line after <c>/copy N</c> when only <paramref name="available"/> replies can be copied.</summary>
+    internal string FormatCopyOnly(int available) => CopyOnly.Replace("{0}", FormatNumber(available));
+
+    /// <summary>The line after <c>/copy</c> with the argument <paramref name="got"/>, which is not a number from 1.</summary>
+    internal string FormatCopyUsage(string got) => CopyUsage.Replace("{0}", got);
 
     /// <summary>The line under a Glob: "No files found", "Found 1 file", "Found 3 files".</summary>
     internal string FormatFilesFound(int files) =>

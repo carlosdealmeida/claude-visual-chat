@@ -57,6 +57,25 @@ public class ChatStringsTests
     }
 
     [Fact]
+    public void Copy_texts_in_both_languages()
+    {
+        Assert.Equal("Copied to clipboard (5 characters, 1 line)", En.FormatCopied("hello"));
+        Assert.Equal("Copiado para a área de transferência (5 caracteres, 1 linha)", Pt.FormatCopied("hello"));
+        Assert.Equal("Copied to clipboard (38,557 characters, 3 lines)", En.FormatCopied(new string('x', 38555) + "\n\n"));
+        Assert.Equal("Copiado para a área de transferência (38.557 caracteres, 3 linhas)", Pt.FormatCopied(new string('x', 38555) + "\n\n"));
+        Assert.Equal("Copied to clipboard (0 characters, 1 line)", En.FormatCopied(""));
+        Assert.Equal("Only 20 assistant messages available to copy", En.FormatCopyOnly(20));
+        Assert.Equal("Só há 20 respostas do assistente para copiar", Pt.FormatCopyOnly(20));
+        Assert.Equal("Usage: /copy [N] where N is 1 (latest), 2, 3, … Got: {0}", En.FormatCopyUsage("{0}"));
+        Assert.Equal("Uso: /copy [N], onde N é 1 (a mais recente), 2, 3, … Recebido: x", Pt.FormatCopyUsage("x"));
+        Assert.Equal("Copy Claude's last response to clipboard (or /copy N for the Nth-latest)", En.CommandCopyDescription);
+        Assert.Equal("No assistant message to copy", En.CopyNothing);
+        Assert.Equal("Could not copy to clipboard", En.CopyFailed);
+        Assert.Equal("Copying once the reply finishes", En.CopyWaiting);
+        Assert.Equal("Copiando quando a resposta terminar", Pt.CopyWaiting);
+    }
+
+    [Fact]
     public void Texts_in_both_languages()
     {
         Assert.Equal("+9,988 lines", En.FormatMoreLines(9988));

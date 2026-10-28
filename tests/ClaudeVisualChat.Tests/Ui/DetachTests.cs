@@ -598,6 +598,47 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void A_copy_is_asked_of_the_view_only_while_it_is_in()
+    {
+        var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();
+        var copied = new List<string>();
+        ChatClipboard.Override = text => { copied.Add(text); return System.Threading.Tasks.Task.CompletedTask; };
+        try
+        {
+            var c = Conversation();
+            c.Items.Add(new UserMessageItem("question"));
+            c.Items.Add(new AssistantTextItem { Text = "the answer" });
+            c.Items.Add(new TurnFooterItem(null, null, null, null, false));
+            var m = new Mounted(c);
+
+            m.Out();                                                       // out: nobody writes to a clipboard, and nothing is said
+            c.Submit("/copy");
+            UiHelpers.Pump();
+            Assert.Empty(copied);
+            Assert.Empty(c.Items.OfType<MetaLineItem>());
+
+            m.In();                                                        // back: it copies, and the line is drawn
+            c.Submit("/copy");
+            UiHelpers.Pump();
+            Assert.Equal(new[] { "the answer" }, copied);
+            Assert.Equal("Copied to clipboard (10 characters, 1 line)", Assert.Single(c.Items.OfType<MetaLineItem>()).Text);
+            Assert.Contains(m.View.GetVisualDescendants().OfType<SelectableTextBlock>(), t => t.Classes.Contains("ClaudeChatMetaLine"));
+
+            // the clipboard answers after the view left: the line is the conversation's, so it is said, and drawn when the view is back
+            ChatClipboard.Override = text => { copied.Add(text); return gate.Task; };
+            c.Submit("/copy");
+            m.Out();
+            gate.SetResult(true);
+            UiHelpers.Pump();
+            Assert.Equal(2, c.Items.OfType<MetaLineItem>().Count());
+            m.In();
+            Assert.Equal(2, m.View.GetVisualDescendants().OfType<SelectableTextBlock>().Count(t => t.Classes.Contains("ClaudeChatMetaLine")));
+            m.Window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    [AvaloniaFact]
     public void The_code_block_copy_check_timer_stops_when_the_view_leaves()
     {
         var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();

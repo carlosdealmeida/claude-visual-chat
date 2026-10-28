@@ -100,9 +100,10 @@ public class CommandPaletteTests
         Assert.True(ui.Filter.IsFocused);
         Assert.Contains("Slash Commands", UiHelpers.Texts(ui.Menu));
         // all of them, in the claude's order, then the conversation's own with their descriptions
-        Assert.Equal(new[] { "/compact", "/hello", "/help", "/context", "/usage", "/remote-control", "/rc", "/chrome" }, ui.Labels);
+        Assert.Equal(new[] { "/compact", "/hello", "/help", "/context", "/usage", "/remote-control", "/rc", "/chrome", "/copy" }, ui.Labels);
         Assert.Equal("Show context usage", ToolTip.GetTip(Row(ui, "/context")));
         Assert.Equal("Say hello", ToolTip.GetTip(Row(ui, "/hello")));
+        Assert.Equal("Copy Claude's last response to clipboard (or /copy N for the Nth-latest)", ToolTip.GetTip(Row(ui, "/copy")));
         UiHelpers.Click(ui.Window, ui.SlashButton);
         Assert.False(ui.Palette.IsOpen);
 
@@ -111,7 +112,7 @@ public class CommandPaletteTests
         Assert.True(ui.Palette.IsOpen);
         Assert.Null(ui.Filter);
         Assert.True(ui.Input.IsFocused);
-        Assert.Equal(8, ui.Labels.Count);
+        Assert.Equal(9, ui.Labels.Count);
         UiHelpers.Type(ui.Window, "hel");
         Assert.Equal("/hello", ui.Labels[0]);
         Assert.Equal(new[] { "/hello", "/help" }, ui.Labels);
@@ -187,10 +188,10 @@ public class CommandPaletteTests
 
         // the arrows move the mark, round the ends; Enter with no row marked sends what was typed
         ui.Slash("he");
-        Assert.Equal(new[] { "/hello", "/help", "/compact", "/chrome" }, ui.Labels); // "the" in their descriptions
+        Assert.Equal(new[] { "/hello", "/help", "/compact", "/chrome", "/copy" }, ui.Labels); // "the" in their descriptions
         Assert.Equal("/hello", ui.Active);
         ui.Press(Key.Up);
-        Assert.Equal("/chrome", ui.Active);
+        Assert.Equal("/copy", ui.Active);
         ui.Press(Key.Down);
         Assert.Equal("/hello", ui.Active);
         ui.Press(Key.Down);
@@ -241,7 +242,7 @@ public class CommandPaletteTests
         ui.Slash("co");
         // the names that start with it, in the claude's order; then the names that have it; then the descriptions
         // (the conversation's own commands come after the claude's, rc and chrome by their texts)
-        Assert.Equal(new[] { "/compact", "/context", "/cost", "/account", "/remote-control", "/review", "/rc", "/chrome" }, ui.Labels);
+        Assert.Equal(new[] { "/compact", "/context", "/cost", "/copy", "/account", "/remote-control", "/review", "/rc", "/chrome" }, ui.Labels);
 
         UiHelpers.Type(ui.Window, "st");
         // the exact name first, then the one whose description has the word

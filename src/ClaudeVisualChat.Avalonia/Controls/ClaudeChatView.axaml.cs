@@ -404,6 +404,7 @@ public partial class ClaudeChatView : UserControl
         else if (change.Property == StringsProperty)
         {
             WorkingText.Text = Strings.Working;
+            if (_tracked != null) _tracked.Strings = Strings;
         }
         else if (change.Property == AvailableModesProperty)
         {
@@ -484,9 +485,18 @@ public partial class ClaudeChatView : UserControl
     {
         if (!ReferenceEquals(conversation, _tracked))
         {
-            if (_tracked != null) _tracked.PropertyChanged -= OnConversationChanged;
+            if (_tracked != null)
+            {
+                _tracked.PropertyChanged -= OnConversationChanged;
+                _tracked.CopyRequested -= OnCopyRequested;
+            }
             _tracked = conversation;
-            if (_tracked != null) _tracked.PropertyChanged += OnConversationChanged;
+            if (_tracked != null)
+            {
+                _tracked.PropertyChanged += OnConversationChanged;
+                _tracked.CopyRequested += OnCopyRequested;
+                _tracked.Strings = Strings; // the lines it says itself come in this view's language
+            }
         }
         // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
         if (_attached)
@@ -494,6 +504,17 @@ public partial class ClaudeChatView : UserControl
             UpdateWorking();
             CloseBlockedPanel();
         }
+    }
+
+    /// <summary>
+    /// <c>/copy</c>: writes the reply to the clipboard and tells the conversation how it went, which says it in a line. The line is
+    /// the conversation's, so it comes even if the view left meanwhile.
+    /// </summary>
+    private async void OnCopyRequested(object? sender, string text)
+    {
+        if (sender is not ChatConversation conversation) return;
+        var ok = await ChatClipboard.SetTextAsync(this, text);
+        conversation.ReportCopy(ok, text);
     }
 
     private void OnConversationChanged(object? sender, PropertyChangedEventArgs e)

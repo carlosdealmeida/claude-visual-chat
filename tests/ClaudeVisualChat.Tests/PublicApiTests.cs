@@ -454,4 +454,31 @@ public class PublicApiTests
         Assert.Null(view.GetField("AvailableModelsProperty"));
         Assert.NotNull(view.GetProperty("AvailableModes"));
     }
+
+    [Fact]
+    public void The_meta_line_and_the_copy_command_exist()
+    {
+        // the line the conversation says about its own commands (0.6.0): public, with a text that cannot be changed from outside
+        var meta = Library.GetExportedTypes().SingleOrDefault(t => t.FullName == "ClaudeVisualChat.MetaLineItem");
+        Assert.NotNull(meta);
+        Assert.True(meta!.IsSealed);
+        Assert.True(typeof(ChatItem).IsAssignableFrom(meta));
+        Assert.NotNull(meta.GetConstructor(new[] { typeof(string) }));
+        var text = meta.GetProperty("Text");
+        Assert.Equal(typeof(string), text?.PropertyType);
+        Assert.Null(text!.SetMethod);
+        Assert.Contains("copy", ChatConversation.LocalCommands);
+
+        // the copy and what it says stay between the conversation and its view
+        var conversation = typeof(ChatConversation);
+        Assert.Null(conversation.GetEvent("CopyRequested"));
+        Assert.Null(conversation.GetMethod("ReportCopy"));
+        Assert.Null(conversation.GetProperty("Strings"));
+        foreach (var name in new[] { "CommandCopyDescription", "CopyDone", "CopyNothing", "CopyOnly", "CopyUsage", "CopyFailed", "CopyWaiting" })
+        {
+            var property = typeof(ChatStrings).GetProperty(name);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+    }
 }

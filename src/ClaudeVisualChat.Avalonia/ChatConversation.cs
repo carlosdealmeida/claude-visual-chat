@@ -28,8 +28,11 @@ public sealed class ChatConversation : ChatObservableObject
     private const string ExitPlanModeTool = "ExitPlanMode";
     private const string AutoMode = "auto";
     private const string AcceptEditsMode = "acceptEdits";
-    private static readonly string[] LocalCommandNames = { "context", "usage", "remote-control", "rc", "chrome" };
+    private static readonly string[] LocalCommandNames = { "context", "usage", "remote-control", "rc", "chrome", "copy" };
     private static readonly IReadOnlyList<string> LocalCommandList = new System.Collections.ObjectModel.ReadOnlyCollection<string>(LocalCommandNames);
+
+    /// <summary>How many of the latest finished replies <c>/copy N</c> counts.</summary>
+    private const int CopyableReplies = 20;
 
     private readonly Dictionary<string, ToolCallItem> _tools = new Dictionary<string, ToolCallItem>();
     private readonly HashSet<ToolCallItem> _nestedTools = new HashSet<ToolCallItem>();
@@ -80,6 +83,8 @@ public sealed class ChatConversation : ChatObservableObject
     private string? _remoteControlError;
 
     private readonly ObservableCollection<AssistantTextItem> _bookmarks = new ObservableCollection<AssistantTextItem>();
+    private ChatStrings _strings = ChatStrings.English;
+    private int? _pendingCopy; // the N of a /copy typed while Claude works
     private EventHandler<LinkRequestedEventArgs>? _linkRequested;
     private EventHandler<FeedbackRequestedEventArgs>? _feedbackRequested;
 
@@ -122,6 +127,22 @@ public sealed class ChatConversation : ChatObservableObject
     /// <see cref="Submit"/>: the host acts on it (the Remote Control, the browser); nothing goes to the claude.
     /// </summary>
     public event EventHandler<CommandInvokedEventArgs>? CommandInvoked;
+
+    /// <summary>
+    /// Raised by <c>/copy</c> with the text of the reply to copy: the view writes it to the clipboard and answers with
+    /// <see cref="ReportCopy"/>. Without a view listening, nothing is copied and nothing is said.
+    /// </summary>
+    internal event EventHandler<string>? CopyRequested;
+
+    /// <summary>
+    /// The texts of the lines the conversation says itself (<see cref="MetaLineItem"/>): the view that shows it sets its own, so they
+    /// come in its language; English until then. A line already in the list stays as it was said.
+    /// </summary>
+    internal ChatStrings Strings
+    {
+        get => _strings;
+        set => _strings = value ?? ChatStrings.English;
+    }
 
     public event EventHandler? StopRequested;
 
@@ -697,6 +718,7 @@ public sealed class ChatConversation : ChatObservableObject
     {
         Items.Clear();
         _bookmarks.Clear(); // they were items of the list
+        _pendingCopy = null;
         Agents.Clear();
         _agentsStoppedByHistory.Clear();
         if (PendingPermissions.Count > 0) PendingPermissions.Clear();
@@ -1000,7 +1022,59 @@ public sealed class ChatConversation : ChatObservableObject
         arguments ??= "";
         if (name == "context") ShownPanel = ChatPanel.Context;
         else if (name == "usage") ShownPanel = ChatPanel.Usage;
+        else if (name == "copy") Copy(arguments);
         CommandInvoked?.Invoke(this, new CommandInvokedEventArgs(name, arguments));
+    }
+
+    /// <summary>
+    /// <c>/copy [N]</c>: the Nth-latest finished reply (a turn's <see cref="ChatTurns.AnswerText"/>, 1 being the latest) goes to
+    /// <see cref="CopyRequested"/>. A line says what is wrong with an argument or with the count; while Claude works, the
+    /// copy waits for the turn to end and takes the reply it writes.
+    /// </summary>
+    private void Copy(string arguments)
+    {
+        var text = arguments.Trim();
+        var n = 1;
+        if (text.Length > 0 && (!int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out n) || n < 1))
+        {
+            Items.Add(new MetaLineItem(Strings.FormatCopyUsage(text)));
+            return;
+        }
+        if (IsBusy)
+        {
+            _pendingCopy = n;
+            Items.Add(new MetaLineItem(Strings.CopyWaiting));
+            return;
+        }
+        CopyReply(n);
+    }
+
+    private void CopyReply(int n)
+    {
+        var replies = FinishedReplies();
+        if (replies.Count == 0) Items.Add(new MetaLineItem(Strings.CopyNothing));
+        else if (n > replies.Count) Items.Add(new MetaLineItem(Strings.FormatCopyOnly(replies.Count)));
+        else CopyRequested?.Invoke(this, replies[n - 1]);
+    }
+
+    /// <summary>The answers of the latest turns that wrote something, up to the 20 <c>/copy</c> counts, the latest first.</summary>
+    private List<string> FinishedReplies()
+    {
+        var replies = new List<string>();
+        for (var i = Items.Count - 1; i >= 0 && replies.Count < CopyableReplies; i--)
+        {
+            if (Items[i] is not TurnFooterItem) continue;
+            var answer = ChatTurns.AnswerText(Items, i);
+            if (answer.Length > 0) replies.Add(answer);
+        }
+        return replies;
+    }
+
+    /// <summary>What came of the write the view did for <see cref="CopyRequested"/>: a line with the size of the <paramref name="text"/>, or that the clipboard refused it.</summary>
+    internal void ReportCopy(bool ok, string text)
+    {
+        if (text == null) throw new ArgumentNullException(nameof(text));
+        Items.Add(new MetaLineItem(ok ? Strings.FormatCopied(text) : Strings.CopyFailed));
     }
 
     /// <summary>Asks the host to disconnect the browser (raises <see cref="BrowserDisconnectRequested"/>) unless it is off; the state changes when the host sets it.</summary>
@@ -1837,6 +1911,11 @@ public sealed class ChatConversation : ChatObservableObject
         _autoModeAsked = false; // the claude answers a mode request at once: an error after the turn is about something else
         _unanswered.Clear();
         IsBusy = false;
+        if (_pendingCopy is int copy)
+        {
+            _pendingCopy = null;
+            CopyReply(copy);
+        }
     }
 
     /// <summary>

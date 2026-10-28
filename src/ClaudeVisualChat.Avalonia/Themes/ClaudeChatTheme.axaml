@@ -363,6 +363,11 @@
         </controls:ChatTimelineRow>
       </DataTemplate>
 
+      <!-- what the conversation says about its own commands (/copy): a line, not part of the timeline -->
+      <DataTemplate DataType="cvc:MetaLineItem">
+        <SelectableTextBlock Classes="ClaudeChatMetaLine" Text="{Binding Text}" />
+      </DataTemplate>
+
     </controls:ChatItemTemplates>
   </Styles.Resources>
 
@@ -836,6 +841,15 @@
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
     <Setter Property="Margin" Value="0,8" />
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+  <!-- a meta line: italic, the secondary color at 80%, 8 px of padding, 4 px over and under, selectable -->
+  <Style Selector="SelectableTextBlock.ClaudeChatMetaLine">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontStyle" Value="Italic" />
+    <Setter Property="Opacity" Value="0.8" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Padding" Value="8" />
+    <Setter Property="Margin" Value="0,4" />
   </Style>
   <Style Selector="TextBlock.ClaudeChatNotice.failed">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Error}" />

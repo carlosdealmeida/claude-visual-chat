@@ -350,3 +350,17 @@ public sealed class CommandOutputItem : ChatItem
 
     public string Text { get; }
 }
+
+/// <summary>
+/// A line the conversation says to the user about a command or an event of its own (what <c>/copy</c> did): italic, in the
+/// secondary color, selectable. It has no part in the timeline.
+/// </summary>
+public sealed class MetaLineItem : ChatItem
+{
+    public MetaLineItem(string text)
+    {
+        Text = text ?? "";
+    }
+
+    public string Text { get; }
+}

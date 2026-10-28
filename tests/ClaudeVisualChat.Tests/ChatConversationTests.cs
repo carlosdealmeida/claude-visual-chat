@@ -1624,7 +1624,7 @@ public class ChatConversationTests
         var names = c.PaletteCommands.Select(x => x.Name).ToList();
         Assert.DoesNotContain("doctor", names);
         Assert.Contains("hello", names);
-        foreach (var local in new[] { "context", "usage", "remote-control", "chrome" })
+        foreach (var local in new[] { "context", "usage", "remote-control", "chrome", "copy" })
             Assert.Contains(local, names);
         Assert.Equal(names.Count, names.Distinct().Count());
     }
@@ -1635,9 +1635,204 @@ public class ChatConversationTests
         var c = new ChatConversation();
         c.Commands = new[] { new ChatCommand("context", "Show current context usage", "") };
         Assert.Equal("Show current context usage", c.PaletteCommands.Single(x => x.Name == "context").Description);
-        Assert.Equal(new[] { "context", "usage", "remote-control", "rc", "chrome" }, ChatConversation.LocalCommands);
+    }
+
+    [Fact]
+    public void Local_commands_are_context_usage_remote_control_rc_chrome_and_copy()
+    {
+        Assert.Equal(new[] { "context", "usage", "remote-control", "rc", "chrome", "copy" }, ChatConversation.LocalCommands);
         Assert.IsNotType<string[]>(ChatConversation.LocalCommands);
         Assert.Throws<NotSupportedException>(() => ((System.Collections.Generic.IList<string>)ChatConversation.LocalCommands)[0] = "x");
+    }
+
+    // ---- /copy ----
+
+    private static ChatConversation WithReplies(params string[] replies)
+    {
+        var c = new ChatConversation();
+        foreach (var reply in replies)
+        {
+            c.Items.Add(new UserMessageItem("question"));
+            if (reply.Length > 0) c.Items.Add(new AssistantTextItem { Text = reply });
+            c.Items.Add(new TurnFooterItem(null, null, null, null, false));
+        }
+        return c;
+    }
+
+    private static List<string> Copies(ChatConversation c)
+    {
+        var copies = new List<string>();
+        c.CopyRequested += (_, text) => copies.Add(text);
+        return copies;
+    }
+
+    private static string LastMeta(ChatConversation c) => c.Items.OfType<MetaLineItem>().Last().Text;
+
+    [Fact]
+    public void Copy_without_a_number_copies_the_latest_reply()
+    {
+        var c = WithReplies("first", "second", "third");
+        var copies = Copies(c);
+        Assert.True(c.Submit("/copy"));
+        Assert.Equal(new[] { "third" }, copies);
+        Assert.Empty(c.Items.OfType<MetaLineItem>()); // the line comes with the result of the write
+        Assert.False(c.IsBusy);                        // nothing goes to the claude
+    }
+
+    [Fact]
+    public void Copy_two_copies_the_second_latest_reply()
+    {
+        var c = WithReplies("first", "second", "third");
+        var copies = Copies(c);
+        c.Submit("/copy 2");
+        c.Submit("/copy  3 ");
+        Assert.Equal(new[] { "second", "first" }, copies);
+    }
+
+    [Fact]
+    public void Copy_takes_the_whole_answer_of_the_turn_as_the_copy_button_does()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(new UserMessageItem("q"));
+        c.Items.Add(new AssistantTextItem { Text = "one" });
+        c.Items.Add(new ToolCallItem { Name = "Bash" });
+        c.Items.Add(new AssistantTextItem { Text = "two" });
+        c.Items.Add(new TurnFooterItem(null, null, null, null, false));
+        c.Items.Add(new MetaLineItem("a line between"));
+        var copies = Copies(c);
+        c.Submit("/copy");
+        Assert.Equal(new[] { ChatTurns.AnswerText(c.Items, 4) }, copies);
+        Assert.Equal("one\n\ntwo", copies[0]);
+    }
+
+    [Fact]
+    public void Copy_does_not_count_a_turn_that_wrote_nothing_or_one_still_running()
+    {
+        var c = WithReplies("first", "", "third");
+        c.Items.Add(new UserMessageItem("again"));
+        c.Items.Add(new AssistantTextItem { Text = "being written" }); // no footer yet: not finished
+        var copies = Copies(c);
+        c.Submit("/copy 2");
+        Assert.Equal(new[] { "first" }, copies);
+        c.Submit("/copy 3");
+        Assert.Equal("Only 2 assistant messages available to copy", LastMeta(c));
+    }
+
+    [Fact]
+    public void Copy_with_no_reply_says_no_assistant_message_to_copy()
+    {
+        var c = new ChatConversation();
+        var copies = Copies(c);
+        c.Submit("/copy");
+        Assert.Equal("No assistant message to copy", LastMeta(c));
+        c.Items.Add(new UserMessageItem("q"));
+        c.Items.Add(new TurnFooterItem(null, null, null, null, false)); // a turn without text is no reply
+        c.Submit("/copy 2");
+        Assert.Equal("No assistant message to copy", LastMeta(c));
+        Assert.Empty(copies);
+    }
+
+    [Fact]
+    public void Copy_beyond_the_replies_says_how_many_there_are_and_counts_only_the_latest_20()
+    {
+        var c = WithReplies("one", "two");
+        var copies = Copies(c);
+        c.Submit("/copy 3");
+        Assert.Equal("Only 2 assistant messages available to copy", LastMeta(c));
+        Assert.Empty(copies);
+
+        var many = WithReplies(Enumerable.Range(1, 25).Select(i => "reply " + i).ToArray());
+        copies = Copies(many);
+        many.Submit("/copy 20");
+        Assert.Equal(new[] { "reply 6" }, copies);
+        many.Submit("/copy 21");
+        Assert.Equal("Only 20 assistant messages available to copy", LastMeta(many));
+        Assert.Single(copies);
+    }
+
+    [Theory]
+    [InlineData("x")]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("+1")]
+    [InlineData("1.5")]
+    [InlineData("2 3")]
+    [InlineData("99999999999999999999")]
+    public void Copy_with_a_bad_argument_shows_the_usage(string argument)
+    {
+        var c = WithReplies("one");
+        var copies = Copies(c);
+        c.Submit("/copy " + argument);
+        Assert.Equal("Usage: /copy [N] where N is 1 (latest), 2, 3, … Got: " + argument, LastMeta(c));
+        Assert.Empty(copies);
+    }
+
+    [Fact]
+    public void Copy_while_busy_waits_for_the_reply_to_finish()
+    {
+        var c = WithReplies("old");
+        var copies = Copies(c);
+        c.Submit("work");
+        Assert.True(c.IsBusy);
+        c.Submit("/copy");
+        Assert.Equal("Copying once the reply finishes", LastMeta(c));
+        Assert.Empty(copies);
+
+        c.Items.Add(new AssistantTextItem { Text = "new" }); // the reply being written
+        c.Apply(new TurnCompleted("success", false, 10, null, null, null));
+        Assert.Equal(new[] { "new" }, copies);               // the reply that finished, not the one before
+        Assert.False(c.IsBusy);
+
+        c.Apply(new TurnCompleted("success", false, 10, null, null, null));
+        Assert.Single(copies);                               // once: the wish was spent
+    }
+
+    [Fact]
+    public void Copy_while_busy_with_a_bad_argument_says_so_at_once_and_clearing_forgets_the_wait()
+    {
+        var c = WithReplies("old");
+        var copies = Copies(c);
+        c.Submit("work");
+        c.Submit("/copy x");
+        Assert.StartsWith("Usage: /copy [N]", LastMeta(c));
+        Assert.Empty(copies);
+
+        c.Submit("/copy 2");
+        c.Clear(); // the wait belonged to the conversation that went
+        c.Items.Add(new AssistantTextItem { Text = "other" });
+        c.Apply(new TurnCompleted("success", false, 10, null, null, null));
+        Assert.Empty(copies);
+    }
+
+    [Fact]
+    public void Reporting_a_copy_says_the_characters_and_lines_or_that_it_failed()
+    {
+        var c = new ChatConversation();
+        c.ReportCopy(true, "hello");
+        Assert.Equal("Copied to clipboard (5 characters, 1 line)", LastMeta(c));
+        c.ReportCopy(true, "a\nb\n\nc");
+        Assert.Equal("Copied to clipboard (6 characters, 4 lines)", LastMeta(c));
+        c.ReportCopy(true, "\U0001F600"); // an emoji is two UTF-16 units
+        Assert.Equal("Copied to clipboard (2 characters, 1 line)", LastMeta(c));
+        c.ReportCopy(true, new string('x', 1234));
+        Assert.Equal("Copied to clipboard (1,234 characters, 1 line)", LastMeta(c));
+        c.ReportCopy(false, "hello");
+        Assert.Equal("Could not copy to clipboard", LastMeta(c));
+        Assert.Equal(5, c.Items.Count);
+        Assert.All(c.Items, item => Assert.IsType<MetaLineItem>(item));
+    }
+
+    [Fact]
+    public void Copy_lines_come_in_the_language_of_the_strings_given()
+    {
+        var c = WithReplies("one");
+        c.Strings = ChatStrings.PortugueseBrazil;
+        c.Submit("/copy 2");
+        Assert.Equal("Só há 1 respostas do assistente para copiar", LastMeta(c));
+        c.ReportCopy(true, "a\nb");
+        Assert.Equal("Copiado para a área de transferência (3 caracteres, 2 linhas)", LastMeta(c));
+        c.Strings = null!;
+        Assert.Same(ChatStrings.English, c.Strings);
     }
 
     [Fact]
