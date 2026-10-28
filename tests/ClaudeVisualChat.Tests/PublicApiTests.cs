@@ -89,6 +89,18 @@ public class PublicApiTests
         foreach (var text in new[] { "ContextSection", "ContextWindow", "PercentUsed", "TokensOfWindow", "PlanUsage", "Refresh" })
             Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
 
+        // the reply box's field name, and the notice of the invisible characters taken out of the text (0.6.0)
+        foreach (var text in new[]
+        {
+            "MessageInput", "InvisibleRemovedOne", "InvisibleRemoved", "InvisibleReview", "InvisibleReviewCtrl", "InvisibleEmpty",
+            "InvisiblePasted", "DismissNotice",
+        })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+
         // the host's back button, which does not arrive as Esc on Android: it closes what is on top and says whether it did
         var close = view.GetMethod("CloseTopLayer");
         Assert.NotNull(close);
