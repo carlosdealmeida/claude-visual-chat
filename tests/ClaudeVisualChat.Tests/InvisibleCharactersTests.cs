@@ -99,6 +99,7 @@ public class InvisibleCharactersTests
         var heart = U(0x2764, 0xFE0F);
         var text = U(0x2600, 0xFE0E);
         var keycap = "1" + U(0xFE0F, 0x20E3);
+        Assert.Equal(("1 ", 1), InvisibleCharacters.Clean("1" + U(0xFE0F) + " "));               // a digit alone is no emoji
         Assert.Equal((heart, 0), InvisibleCharacters.Clean(heart));
         Assert.Equal((text, 0), InvisibleCharacters.Clean(text));
         Assert.Equal((keycap, 0), InvisibleCharacters.Clean(keycap));
@@ -122,6 +123,28 @@ public class InvisibleCharactersTests
         var r = InvisibleCharacters.Clean(twoLines);
         Assert.Equal(hebrew + Rlm + "\nabc\n" + hebrew + Lrm, r.Text);
         Assert.Equal(1, r.Removed);
+    }
+
+    [Fact]
+    public void Clean_reduces_a_run_of_direction_marks_to_one()
+    {
+        var hebrew = U(0x05E9, 0x05DC, 0x05D5, 0x05DD);
+        // fifty pairs of marks after Hebrew letters is a message hidden in binary: one mark stays, 99 go
+        var hidden = hebrew + string.Concat(Enumerable.Repeat(Lrm + Rlm, 50)) + " end";
+        var r = InvisibleCharacters.Clean(hidden);
+        Assert.Equal(hebrew + Rlm + " end", r.Text);
+        Assert.Equal(99, r.Removed);
+
+        // the same inside the line, with the Arabic letter mark, and after another invisible character that stays
+        var arabic = U(0x0645, 0x0631, 0x062D, 0x0628, 0x0627);
+        var middle = InvisibleCharacters.Clean(arabic + string.Concat(Enumerable.Repeat(U(0x061C), 20)) + arabic);
+        Assert.Equal(arabic + U(0x061C) + arabic, middle.Text);
+        Assert.Equal(19, middle.Removed);
+        // a mark followed by a combining mark is not kept either: the mark would take the accent from its letter
+        Assert.Equal((hebrew + U(0x05B0), 1), InvisibleCharacters.Clean(hebrew + Rlm + U(0x05B0)));
+        // marks apart from each other, each with a letter after it, all stay
+        var spaced = hebrew + Rlm + " " + hebrew + Lrm + " " + hebrew;
+        Assert.Equal((spaced, 0), InvisibleCharacters.Clean(spaced));
     }
 
     [Fact]
@@ -264,16 +287,14 @@ public class InvisibleCharactersTests
     }
 
     [Fact]
-    public void A_paste_the_limit_cuts_in_two_goes_as_the_part_inside_it()
+    public void A_paste_the_limit_cuts_in_two_is_not_sent_as_one()
     {
         var pastes = new LongPastes();
         var paste = string.Concat(Enumerable.Repeat("0123456789", 100));
         pastes.Remember(paste);
         var text = "head " + paste;
         Assert.Equal(new[] { paste }, pastes.In(text, text.Length));
-        var cut = pastes.In(text, 5 + 300);
-        Assert.Equal(new[] { paste.Substring(0, 300) }, cut);
-        Assert.Empty(pastes.In(text, 5 + 10));            // under twenty characters inside the limit: not a paste any more
+        Assert.Empty(pastes.In(text, 5 + 300));            // the limit cuts it in two: it is not whole in what is sent
     }
 
     [Fact]

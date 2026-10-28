@@ -53,29 +53,16 @@ internal sealed class LongPastes
     }
 
     /// <summary>
-    /// The pastes that are in <paramref name="text"/>, once each, as far as <paramref name="limit"/> characters of it go. One the limit
-    /// cuts in two goes as the part inside it, when that part is still at least 20 characters.
+    /// The pastes that are in <paramref name="text"/> whole, once each, within its first <paramref name="limit"/> characters (what is
+    /// sent): one that the limit cuts in two is not one any more.
     /// </summary>
     internal List<string> In(string text, int limit)
     {
         var found = new List<string>();
-        var cut = new List<string>();
         foreach (var paste in _pastes)
         {
-            for (var at = text.IndexOf(paste, StringComparison.Ordinal); at >= 0 && at < limit; at = text.IndexOf(paste, at + paste.Length, StringComparison.Ordinal))
-            {
-                if (at + paste.Length <= limit)
-                {
-                    if (!found.Contains(paste)) found.Add(paste);
-                    continue;
-                }
-                var part = Truncate(paste, limit - at).TrimEnd();
-                if (part.Length >= MinimumLength && !cut.Contains(part)) cut.Add(part);
-            }
-        }
-        foreach (var part in cut)
-        {
-            if (!found.Contains(part)) found.Add(part);
+            var at = text.IndexOf(paste, StringComparison.Ordinal);
+            if (at >= 0 && at + paste.Length <= limit && !found.Contains(paste)) found.Add(paste);
         }
         return found;
     }

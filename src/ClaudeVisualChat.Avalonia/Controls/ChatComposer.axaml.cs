@@ -127,8 +127,8 @@ internal partial class ChatComposer : UserControl
     /// <summary>True while a recalled prompt (or the draft, coming back) is put in the box, so the change is not the user's typing.</summary>
     private bool _recalling;
 
-    /// <summary>The long pastes made in this box, to tell which of them a message still has.</summary>
-    private readonly LongPastes _pastes = new LongPastes();
+    /// <summary>The long pastes made in each conversation, to tell which of them a message still has; they go with the conversation.</summary>
+    private readonly ConditionalWeakTable<ChatConversation, LongPastes> _pastes = new ConditionalWeakTable<ChatConversation, LongPastes>();
 
     /// <summary>The notice of the invisible characters taken out: how many and what follows; null when there is none.</summary>
     private (int Removed, InvisibleNoticeKind Kind)? _notice;
@@ -712,7 +712,7 @@ internal partial class ChatComposer : UserControl
             ShowNotice(removed, HasSomethingToSend ? InvisibleNoticeKind.Review : InvisibleNoticeKind.Empty);
             return;
         }
-        var pastes = _pastes.In(text, InvisibleCharacters.PasteLimit);
+        var pastes = _pastes.GetOrCreateValue(conversation).In(text, InvisibleCharacters.PasteLimit);
         var message = LongPastes.Truncate(text, InvisibleCharacters.PasteLimit);
         if (message.Length < text.Length) message += LongPastes.TruncationNotice;
         // cleared first: a host that refuses the message at once (UndoSubmit inside MessageSubmitted) gets it back here
@@ -776,9 +776,9 @@ internal partial class ChatComposer : UserControl
     /// <summary>
     /// Ctrl+V: text wins, so text copied with a picture (a browser, Word) pastes as text. With no text, files copied in
     /// Explorer or a file manager are attached as a drop would attach them (an image file to the images, a PDF, text or
-    /// CSV file to the files, any other refused with its reason), else an image (a bitmap) is attached. On Windows this
-    /// happens instead of the paste; elsewhere the text box pastes, and what is found with no text is attached. Each
-    /// gesture attaches to the conversation shown when it began.
+    /// CSV file to the files, any other refused with its reason), else an image (a bitmap) is attached. Text is pasted by
+    /// the box itself (<see cref="PasteTextAsync"/>) on every platform, so that it goes in clean; where the clipboard cannot be asked at
+    /// once (not Windows) it is read first to see what it holds. Each gesture attaches to the conversation shown when it began.
     /// </summary>
     private void OnPasting(object? sender, RoutedEventArgs e)
     {
@@ -827,7 +827,7 @@ internal partial class ChatComposer : UserControl
         var head = LongPastes.Truncate(pasted!, InvisibleCharacters.PasteLimit);
         var (clean, removed) = InvisibleCharacters.Clean(head);
         Input.SelectedText = clean + pasted!.Substring(head.Length);
-        _pastes.Remember(clean);
+        if (conversation != null) _pastes.GetOrCreateValue(conversation).Remember(clean);
         if (removed > 0) ShowNotice(removed, InvisibleNoticeKind.Pasted);
     }
 
@@ -848,21 +848,26 @@ internal partial class ChatComposer : UserControl
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard == null) return;
         var files = false;
+        var text = false;
         try
         {
             foreach (var format in await clipboard.GetFormatsAsync())
             {
                 if (format == DataFormats.Text || format.StartsWith("text/", StringComparison.Ordinal) || format == "UTF8_STRING")
                 {
-                    await PasteTextAsync(conversation);
-                    return;
+                    text = true;
+                    break;
                 }
                 files |= format == DataFormats.Files;
             }
         }
         catch (Exception)
         {
-            await PasteTextAsync(conversation); // the formats cannot be read: the text, if the clipboard gives it, is what the person pasted
+            text = true; // the formats cannot be read: the text, if the clipboard gives it, is what the person pasted
+        }
+        if (text)
+        {
+            await PasteTextAsync(conversation);
             return;
         }
         if (files)

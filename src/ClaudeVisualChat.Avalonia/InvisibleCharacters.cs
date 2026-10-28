@@ -47,6 +47,7 @@ internal static class InvisibleCharacters
         var removed = 0;
         var previous = -1; // the last character kept, and its category
         var previousCategory = UnicodeCategory.OtherNotAssigned;
+        var previousInvisible = false; // the last character kept is one of the list that the text needed
         var line = new Line();
         var i = 0;
         while (i < lines.Length)
@@ -63,7 +64,7 @@ internal static class InvisibleCharacters
             {
                 line = new Line { Start = i };
             }
-            else if (cp < 0x20 && cp != '\t' || cp >= 0x7F && cp <= 0x9F || IsInvisible(cp) && !KeptInContext(lines, at, i, cp, previous, previousCategory, line))
+            else if (cp < 0x20 && cp != '\t' || cp >= 0x7F && cp <= 0x9F || IsInvisible(cp) && !KeptInContext(lines, at, i, cp, previous, previousCategory, previousInvisible, line))
             {
                 removed++;
                 continue;
@@ -80,6 +81,7 @@ internal static class InvisibleCharacters
             result.Append(lines, at, length);
             previous = cp;
             previousCategory = CharUnicodeInfo.GetUnicodeCategory(lines, at);
+            previousInvisible = IsInvisible(cp);
         }
         return (removed == 0 ? lines : result.ToString(), removed);
     }
@@ -149,7 +151,8 @@ internal static class InvisibleCharacters
     }
 
     /// <summary>True when the text needs this character where it is (see the remarks of the class).</summary>
-    private static bool KeptInContext(string text, int at, int after, int cp, int previous, UnicodeCategory previousCategory, Line line)
+    private static bool KeptInContext(
+        string text, int at, int after, int cp, int previous, UnicodeCategory previousCategory, bool previousInvisible, Line line)
     {
         var next = NextCodePoint(text, after);
         var afterLetter = next >= 0 && IsLetterOrMarkAt(text, after);
@@ -166,10 +169,11 @@ internal static class InvisibleCharacters
             case 0x200E: // left-to-right mark, right-to-left mark, Arabic letter mark: on a line that has right-to-left letters
             case 0x200F:
             case 0x061C:
-                return HasRtl(text, at, line);
+                // one mark at most in a row: a run of them is how a message is hidden, and the text needs one
+                return !previousInvisible && !(next >= 0 && (IsInvisible(next) || IsMarkAt(text, after))) && HasRtl(text, at, line);
             case 0xFE0E: // text and emoji presentation after an emoji
             case 0xFE0F:
-                return previous >= 0 && (IsPictographic(previous) || IsKeycapBase(previous) || (previous >= 0x1F1E6 && previous <= 0x1F1FF));
+                return previous >= 0 && (IsPictographic(previous) || (IsKeycapBase(previous) && next == 0x20E3) || (previous >= 0x1F1E6 && previous <= 0x1F1FF));
         }
         return false;
     }
@@ -235,6 +239,14 @@ internal static class InvisibleCharacters
         }
         line.HasRtl = found;
         return found;
+    }
+
+    private static bool IsMarkAt(string text, int index)
+    {
+        if (index >= text.Length) return false;
+        var category = CharUnicodeInfo.GetUnicodeCategory(text, index);
+        return category == UnicodeCategory.NonSpacingMark || category == UnicodeCategory.SpacingCombiningMark
+            || category == UnicodeCategory.EnclosingMark;
     }
 
     private static bool IsLetterAt(string text, int index)
