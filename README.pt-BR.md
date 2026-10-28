@@ -450,6 +450,11 @@ uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O q
   comando imprimiu numa linha só) e `ExternalMessageItem` (uma mensagem de outro agente, de outra sessão ou de um canal,
   ou o aviso de uma tarefa, onde antes vinha um `UserMessageItem` com a marcação crua). A view tem um modelo para cada
   um; um app com modelos próprios também precisa deles.
+- **Quem mandou um `ExternalMessageItem`** vem do `origin` da linha: quando há um, a mensagem só vira cartão se esse
+  `origin` for o remetente que a mensagem diz (senão, `human` por exemplo, continua texto do usuário); sem nenhum, o
+  cartão diz "Remetente não registrado", e uma linha meta sem `origin` fica de fora. Ao vivo, o claude só escreve o
+  `origin` nas linhas que repete, e os arquivos de sessão o gravam; por isso, por um relay que não as repete, como o do
+  Kairós, esses cartões só aparecem a partir de um histórico.
 - **A linha de trabalho** segue o `ChatConversation.Status` (o que o `system/status` diz: "Compactando...") e o
   `IsRunningStartupHooks` ("Executando os hooks de início...").
 - **Onde difere da extensão:** sem realce de sintaxe; as linhas antigas de ferramenta não são podadas (a extensão

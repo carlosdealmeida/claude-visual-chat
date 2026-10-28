@@ -444,6 +444,11 @@ a star and verbs. Nothing to set up for those. What your app may want to know:
   printed in one line) and `ExternalMessageItem` (a message from another agent, another session or a channel, or a
   task's notice, where a `UserMessageItem` with the raw markup used to be). The view has a template for each; an app
   with templates of its own needs them too.
+- **Who sent an `ExternalMessageItem`** comes from the line's `origin`: when it has one, the message is a card only if
+  that `origin` is the sender the message claims (otherwise, `human` say, it stays the user's text); with none, the card
+  reads "Sender not recorded", and a meta line with none stays out. The claude writes `origin` live only on the lines it
+  replays, and session files write it, so through a relay that does not replay them, such as the Kairos one, these cards
+  come only from a history.
 - **The working line** follows `ChatConversation.Status` (what `system/status` says: "Compacting...") and
   `IsRunningStartupHooks` ("Running start-up hooks...").
 - **Where it differs from the extension:** no syntax highlighting; the old tool rows are not pruned (the extension

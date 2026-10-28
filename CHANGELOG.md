@@ -140,8 +140,8 @@ All notable changes to this project are written here. The format follows
 - `/copy` and `/copy N` copy Claude's last reply (or the Nth-latest of the last 20; a turn's whole text, as the copy
   button takes it) to the clipboard and say how much was copied ("Copied to clipboard (N characters, M lines)"). Typed
   while Claude works, the copy waits for the turn to end; Stop, or the work ending without a turn's end (a message taken
-  back with `UndoSubmit`), drops it. `copy` joins `ChatConversation.LocalCommands`: it raises `CommandInvoked` too,
-  which the host may ignore.
+  back with `UndoSubmit`), drops it, with the line "Copy cancelled". `copy` joins `ChatConversation.LocalCommands`: it
+  raises `CommandInvoked` too, which the host may ignore.
 - `MetaLineItem`: a line the conversation says about its own commands and events (what `/copy` did, a hook that blocked
   the prompt, a background agent that finished), in italics and the secondary color, selectable, outside the timeline.
 - A prompt taller than 60 px folds behind "Show more" (inside the bubble, at the bottom right: under the pointer or the
@@ -192,20 +192,23 @@ All notable changes to this project are written here. The format follows
 - `ExternalMessageItem`: a message from another agent, another session or a channel, the notice of a task and the
   wrapped notices of the claude (a teammate's message, terminal output, a tick, MCP updates) are a line in italics,
   "Message from @maria: the first words…", that opens to the sender, the extra attributes and the body; a task's notice
-  opens to a list of its parts. A message is a card only from the sender its line's `origin` claims, and one without an
-  `origin` reads "Sender not recorded" (so does every card where the lines carry no `origin`, as through the Kairos
-  relay). `MessageOrigin` and `UserBlock.Origin` (`init`). A background agent that ends live adds a meta line with the
-  first line of its summary.
+  opens to a list of its parts. When its line has an `origin`, a message is a card only if that `origin` is the sender
+  the message claims (a channel for a channel, a peer with a task for an agent, a peer without one for another session);
+  any other `origin`, such as `human`, leaves it the user's text. A message whose line has no `origin` is a card that
+  reads "Sender not recorded", and a meta line with none (the agent message the CLI writes) stays out, as before. The
+  claude writes `origin` live only on the lines it replays (session files write it), so through a relay that does not
+  replay them, such as the Kairos one, these cards come only from a history. `MessageOrigin` and `UserBlock.Origin`
+  (`init`). A background agent that ends live adds a meta line with the first line of its summary.
 - New `ChatStrings` texts, in English and Portuguese: `CopyResponse`, `CopyResponseToClipboard`, `BookmarkResponse`,
   `RemoveBookmark`, `GoodResponse`, `BadResponse`, `FeedbackLearnHow`, `FeedbackThanks`, `FeedbackLearnHowShort`,
   `FeedbackTitle`, `FeedbackPlaceholder`, `FeedbackSkip`, `FeedbackSend`; `CommandCopyDescription`, `CopyDone`,
   `CopyNothing`, `CopyOnly`, `CopyOnlyOne` (its singular, "Só há 1 resposta..." in Portuguese), `CopyUsage`,
-  `CopyFailed`, `CopyWaiting`; `ShowMore`, `ShowLess`; `MonthNames`, `DateFormat`, `DateWithYearFormat`; `YouQueued`,
-  `MessageQueued`, `RanAtOnce`; `ThinkingNow`, `ThinkingTokensEstimate`, `CompactedChat`, `CompactedChatShort`,
-  `CompactionNoSummary`; `WorkingVerbs`, `CompactingLine`, `CompactingAnnouncement`, `StartupHooksLine`,
-  `WorkingAnnouncement`; `SwitchedTo`, `SwitchedModel`; `MessageFromPeer`, `MessageFromChannel`, `MessageFromSender`,
-  `SenderNotRecorded`, `TaggedNothing` and the names of a task's parts and of the wrapped notices (`TaggedTaskId` to
-  `TaggedCommandCaveat`; `TaggedTokens` is the same in both languages).
+  `CopyFailed`, `CopyWaiting`, `CopyCancelled`; `ShowMore`, `ShowLess`; `MonthNames`, `DateFormat`,
+  `DateWithYearFormat`; `YouQueued`, `MessageQueued`, `RanAtOnce`; `ThinkingNow`, `ThinkingTokensEstimate`,
+  `CompactedChat`, `CompactedChatShort`, `CompactionNoSummary`; `WorkingVerbs`, `CompactingLine`,
+  `CompactingAnnouncement`, `StartupHooksLine`, `WorkingAnnouncement`; `SwitchedTo`, `SwitchedModel`; `MessageFromPeer`,
+  `MessageFromChannel`, `MessageFromSender`, `SenderNotRecorded`, `TaggedNothing` and the names of a task's parts and of
+  the wrapped notices (`TaggedTaskId` to `TaggedCommandCaveat`; `TaggedTokens` is the same in both languages).
 - New theme resources: `ClaudeChat.DisabledForeground` (the date line; also in "Dark Modern"),
   `ClaudeChat.WorkingGlyphFontSize`, `ClaudeChat.WorkingRowHeight`, `ClaudeChat.FeedbackFieldHeight`, the icons
   `ClaudeChat.Icon.Bookmark`, `ClaudeChat.Icon.ThumbUp` and `ClaudeChat.Icon.ThumbDown`, and the template
@@ -321,9 +324,11 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
 - A code block still open while a reply arrives is drawn as code up to its end, where it was plain text until its
   closing fence came.
 - "At the end" of the list means within 50 px, where it meant within 4. Coming back down that close by the user's own
-  move makes the list follow its end again from there, and the next rows take it to the end; any scroll up from the very
-  end stops following. While the list does not follow, the first row on screen stays in place when rows change above it,
-  and the move that keeps it there is not taken for the user scrolling down.
+  move makes the list follow its end again from there, without a jump, even over rows of unlike heights whose estimate
+  the move changes; the next rows take it to the end. Reaching the very end the list estimated before (the End key, the
+  scroll bar at its bottom) goes on to the real end. Any scroll up from the very end stops following. While the list
+  does not follow, the first row on screen stays in place when rows change above it, and the move that keeps it there is
+  not taken for the user scrolling down.
 - The thinking line reads "Thinking..." (with dots) while Claude thinks; "Thinking" stays for a finished thought with no
   known duration.
 - The working line has the star and the verbs where it had a dot and "Working...": `ChatStrings.Working` is no longer
