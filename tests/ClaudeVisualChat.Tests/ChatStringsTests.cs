@@ -493,4 +493,21 @@ public class ChatStringsTests
         Assert.Equal(("Select text to add comments on the plan", "Selecione um trecho para comentar o plano"),
             (En.PlanSelectToComment, Pt.PlanSelectToComment));
     }
+
+    [Fact]
+    public void Plan_comment_texts()
+    {
+        Assert.Equal(("Add Comment", "Comentar"), (En.PlanAddComment, Pt.PlanAddComment));
+        Assert.Equal(("Add your feedback.", "Escreva seu comentário."), (En.PlanCommentPlaceholder, Pt.PlanCommentPlaceholder));
+        Assert.Equal(("Cancel", "Cancelar"), (En.PlanCommentCancel, Pt.PlanCommentCancel));
+        Assert.Equal(("Comments (2)", "Comentários (2)"), (En.FormatPlanComments(2), Pt.FormatPlanComments(2)));
+        Assert.Equal(("Remove comment", "Remover comentário"), (En.PlanRemoveComment, Pt.PlanRemoveComment));
+        Assert.Equal(("Continue planning", "Continuar planejando"), (En.PlanContinuePlanning, Pt.PlanContinuePlanning));
+        Assert.Equal(("1 comment will be included as feedback", "1 comentário irá junto como retorno"),
+            (En.FormatPlanCommentsIncluded(1), Pt.FormatPlanCommentsIncluded(1)));
+        Assert.Equal(("2 comments will be included as feedback", "2 comentários irão junto como retorno"),
+            (En.FormatPlanCommentsIncluded(2), Pt.FormatPlanCommentsIncluded(2)));
+        Assert.Equal("1,200 comments will be included as feedback", En.FormatPlanCommentsIncluded(1200));
+        Assert.Equal(("Send feedback and keep planning", "Enviar retorno e continuar planejando"), (En.PlanSendFeedback, Pt.PlanSendFeedback));
+    }
 }

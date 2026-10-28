@@ -49,7 +49,9 @@ internal interface IPromptClock
 /// An <c>ExitPlanMode</c> request is the plan card: "Accept this plan?" with no plan text, and the options "Yes, and use auto mode"
 /// (or "Yes, and auto-accept", when the view offers no auto mode: <see cref="Modes"/>), "Yes, and manually approve edits" and
 /// "No, keep planning". A "Yes" asks for the next mode and approves (<see cref="ChatConversation.ApprovePlan"/>); "No" with nothing
-/// written sends <see cref="StayInPlanMode"/>. The touch layout asks the same in its own flow.
+/// written sends <see cref="StayInPlanMode"/>. With comments on the plan (<see cref="PlanReview.Comments"/>) the card is "Continue
+/// planning": the list of comments over the title, each with a × that takes it away, and one answer, "Send feedback and keep
+/// planning", which refuses with <see cref="PlanReview.Feedback"/> and clears them. The touch layout asks the same in its own flow.
 /// </para>
 /// <para>
 /// In the touch layout (pseudo-class <c>:touch</c>) the request is the 0.5.0 one: the title is a short question ("Edit
@@ -75,7 +77,10 @@ internal partial class PermissionPrompt : UserControl
     internal const int MaxDenyLength = 4000;
 
     /// <summary>What "No, keep planning" tells the claude when nothing is written in the field (the extension's sentence).</summary>
-    internal const string StayInPlanMode = "User chose to stay in plan mode and continue planning";
+    internal const string StayInPlanMode = PlanReview.StayInPlanMode;
+
+    /// <summary>The longest passage of a comment the card shows whole.</summary>
+    internal const int MaxCommentQuoteLength = 80;
 
     private const string PlanTool = "ExitPlanMode";
 
@@ -127,6 +132,12 @@ internal partial class PermissionPrompt : UserControl
 
     /// <summary>The answer key that went down in the prompt and has not come up yet (the 11.0 events tell no repeat).</summary>
     private Key? _heldKey;
+
+    /// <summary>The plan on screen whose comments the card lists (listened to only in the window).</summary>
+    private PlanReview? _watchedPlan;
+
+    /// <summary>The plan on screen has comments: the card is "Continue planning", with the list and one answer.</summary>
+    private bool _withComments;
 
     public PermissionPrompt()
     {
@@ -276,7 +287,11 @@ internal partial class PermissionPrompt : UserControl
     private bool Settled => Clock.Now - _shownAt >= (IsTouch ? TouchSettleTime : SettleTime);
 
     /// <summary>The option the desktop's card starts on: "No" with <c>default_to_no</c>, else option 1.</summary>
-    private Button StartOption => !IsTouch && _request is { DefaultToNo: true } ? NoButton : YesButton;
+    private Button StartOption => _withComments || (!IsTouch && _request is { DefaultToNo: true }) ? NoButton : YesButton;
+
+    /// <summary>The conversation's plan under review when it is the request on screen; else null.</summary>
+    private PlanReview? PlanOnScreen =>
+        IsPlan && _tracked?.CurrentPlan is { } plan && ReferenceEquals(plan.Request, _request) ? plan : null;
 
     /// <summary>A panel is open (Esc closes it first: it is on top of the card).</summary>
     private bool PanelOpen => _tracked is { ShownPanel: not ChatPanel.None };
@@ -438,6 +453,14 @@ internal partial class PermissionPrompt : UserControl
     private void OnTouchKeyDown(KeyEventArgs e)
     {
         var option = OptionOf(e.Key);
+        if (_withComments)
+        {
+            // the one answer, "Send feedback and keep planning", opens the field, whose button sends
+            if (option != 1) return;
+            e.Handled = true;
+            if (Settled) OpenDenyField();
+            return;
+        }
         if (option == 0 || option > 3 || (option == 2 && !AlwaysButton.IsVisible)) return;
         e.Handled = true; // a handled key types no character, so the 3 never lands in the field
         if (!Settled) return; // too soon: the user has not seen this request yet
@@ -466,7 +489,8 @@ internal partial class PermissionPrompt : UserControl
     /// <summary>The options on screen, in order.</summary>
     private List<Button> VisibleOptions()
     {
-        var options = new List<Button> { YesButton };
+        var options = new List<Button>();
+        if (YesButton.IsVisible) options.Add(YesButton);
         if (AlwaysButton.IsVisible) options.Add(AlwaysButton);
         options.Add(NoButton);
         return options;
@@ -527,12 +551,31 @@ internal partial class PermissionPrompt : UserControl
             }
         }
         // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
+        WatchComments();
         if (_attached) Update();
     }
 
     private void OnConversationChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ChatConversation.CurrentPermission)) Update();
+    }
+
+    /// <summary>Listens to the comments of the plan on screen while in the window, and to no other plan's.</summary>
+    private void WatchComments()
+    {
+        var plan = _attached ? PlanOnScreen : null;
+        if (ReferenceEquals(plan, _watchedPlan)) return;
+        if (_watchedPlan != null) _watchedPlan.Comments.CollectionChanged -= OnCommentsChanged;
+        _watchedPlan = plan;
+        if (_watchedPlan != null) _watchedPlan.Comments.CollectionChanged += OnCommentsChanged;
+    }
+
+    /// <summary>A comment came or went: the card changes with it; a keyboard that was on a × that went goes to the answer.</summary>
+    private void OnCommentsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        var hadFocus = IsKeyboardFocusWithin;
+        Fill();
+        if (hadFocus && !IsKeyboardFocusWithin) FocusFirstOption();
     }
 
     private void OnPendingChanged(object? sender, NotifyCollectionChangedEventArgs e) => Update();
@@ -553,6 +596,7 @@ internal partial class PermissionPrompt : UserControl
             _waiting = request != null && TypedJustNow();
             ResetDenyField();
             DetailsButton.IsChecked = false;
+            WatchComments();
             Fill();
             UpdateFold();
             DetailScroller.SetCurrentValue(ScrollViewer.OffsetProperty, default(Vector)); // a new request starts at its top
@@ -608,6 +652,7 @@ internal partial class PermissionPrompt : UserControl
         var strings = Strings;
         var name = _folded ? strings.PermissionExpand : strings.PermissionCollapse;
         Body.IsVisible = !_folded;
+        CommentsPanel.IsVisible = _withComments && !_folded;
         Frame.Classes.Set("folded", _folded);
         FoldButton.Classes.Set("folded", _folded);
         FoldButton.IsVisible = !IsTouch;
@@ -649,8 +694,14 @@ internal partial class PermissionPrompt : UserControl
         var request = _request;
         var strings = Strings;
         var plan = IsPlan;
+        var comments = PlanOnScreen?.Comments;
+        _withComments = comments is { Count: > 0 };
+        FillComments(comments, strings);
+        YesButton.IsVisible = !_withComments; // with comments, the one answer is "Send feedback and keep planning"
+        NoButton.Classes.Set("primary", _withComments);
         YesText.Text = plan ? (PlanFirstMode == "auto" ? strings.PlanYesAutoMode : strings.PlanYesAutoAccept) : strings.PermissionYes;
-        NoText.Text = plan ? strings.PlanKeepPlanning : IsTouch ? strings.PermissionNo : strings.PermissionRefuse;
+        NoText.Text = _withComments ? strings.PlanSendFeedback
+            : plan ? strings.PlanKeepPlanning : IsTouch ? strings.PermissionNo : strings.PermissionRefuse;
         FillAlways(request, strings);
         var detail = "";
         if (request != null)
@@ -665,7 +716,7 @@ internal partial class PermissionPrompt : UserControl
         SummaryText.Text = detail;
         SummaryBox.IsVisible = detail.Length > 0;
         ExtraBox.IsVisible = !string.IsNullOrEmpty(ExtraText.Text);
-        AlwaysButton.IsVisible = request != null && (plan || request.CanAllowAlways); // a plan's option 2 approves by hand
+        AlwaysButton.IsVisible = request != null && !_withComments && (plan || request.CanAllowAlways); // a plan's option 2 approves by hand
         HintText.IsVisible = !IsTouch;
         UpdateNumbers();
         UpdateDetails();
@@ -747,7 +798,15 @@ internal partial class PermissionPrompt : UserControl
                 AddDiff(request, strings);
                 break;
             case ToolKind.Plan:
-                SetTitle(strings.PlanAccept); // already a question; the plan's text is not the card's
+                if (_withComments)
+                {
+                    SetTitle(strings.PlanContinuePlanning);
+                    AddNote(strings.FormatPlanCommentsIncluded(PlanOnScreen!.Comments.Count), muted: true);
+                }
+                else
+                {
+                    SetTitle(strings.PlanAccept); // already a question; the plan's text is not the card's
+                }
                 detail = "";
                 break;
             default:
@@ -794,6 +853,12 @@ internal partial class PermissionPrompt : UserControl
                 return InputString(request, "query") ?? "";
             case PlanTool:
                 // the plan itself is not in the card (the extension shows it beside the chat)
+                if (_withComments)
+                {
+                    SetTitle(strings.PlanContinuePlanning);
+                    AddNote(strings.FormatPlanCommentsIncluded(PlanOnScreen!.Comments.Count), muted: true);
+                    return "";
+                }
                 SetTitle(strings.PlanAccept);
                 AddNote(strings.PlanCommentHint, muted: true);
                 return "";
@@ -827,6 +892,37 @@ internal partial class PermissionPrompt : UserControl
         var line = new TextBlock { Text = text };
         line.Classes.Add(muted ? "ClaudeChatPermissionDescription" : "ClaudeChatPermissionNote");
         NotesPanel.Children.Add(line);
+    }
+
+    /// <summary>
+    /// The plan's comments over the title: "Comments (N)", then, for each one, its passage in straight quotes (cut at
+    /// <see cref="MaxCommentQuoteLength"/> characters and "…") over its words, with a × that takes it away ("Remove comment").
+    /// </summary>
+    private void FillComments(IList<PlanComment>? comments, ChatStrings strings)
+    {
+        CommentsList.Children.Clear();
+        CommentsPanel.IsVisible = _withComments && !_folded;
+        if (comments == null || comments.Count == 0) return;
+        CommentsTitle.Text = strings.FormatPlanComments(comments.Count);
+        var plan = PlanOnScreen;
+        foreach (var comment in comments)
+        {
+            var quote = new TextBlock { Text = "\"" + PlanReview.Clip(comment.Quote, MaxCommentQuoteLength) + "\"" };
+            quote.Classes.Add("ClaudeChatPlanCommentRowQuote");
+            var words = new TextBlock { Text = comment.Text };
+            words.Classes.Add("ClaudeChatPlanCommentRowText");
+            var remove = new Button { Content = new TextBlock { Text = "×" } };
+            remove.Classes.Add("ClaudeChatButton");
+            remove.Classes.Add("ClaudeChatPlanCommentRemove");
+            AutomationProperties.SetName(remove, strings.PlanRemoveComment);
+            ToolTip.SetTip(remove, strings.PlanRemoveComment);
+            var taken = comment;
+            remove.Click += (_, _) => plan?.RemoveComment(taken);
+            DockPanel.SetDock(remove, Dock.Right);
+            var row = new Border { Child = new DockPanel { Children = { remove, new StackPanel { Children = { quote, words } } } } };
+            row.Classes.Add("ClaudeChatPlanCommentRow");
+            CommentsList.Children.Add(row);
+        }
     }
 
     /// <summary>A skill's description, from the commands the claude lists; null when it does not list it.</summary>
@@ -870,7 +966,7 @@ internal partial class PermissionPrompt : UserControl
     private void UpdateNumbers()
     {
         var number = 1;
-        YesNumber.Text = (number++).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (YesButton.IsVisible) YesNumber.Text = (number++).ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (AlwaysButton.IsVisible || IsTouch) AlwaysNumber.Text = (number++).ToString(System.Globalization.CultureInfo.InvariantCulture);
         NoNumber.Text = IsTouch ? "3" : number.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Options.Classes.Set("noNumbers", !IsTouch && _request is { DefaultToNo: true });
@@ -999,6 +1095,13 @@ internal partial class PermissionPrompt : UserControl
     private void Refuse()
     {
         var text = DenyBox.Text;
+        if (PlanOnScreen is { Comments.Count: > 0 } plan)
+        {
+            // the plan's comments go as feedback, with what the field says, and are cleared once sent
+            Answer(PermissionDecision.Deny, plan.Feedback(text));
+            plan.Comments.Clear();
+            return;
+        }
         if (string.IsNullOrWhiteSpace(text))
         {
             Answer(PermissionDecision.Deny, IsPlan ? StayInPlanMode : null);

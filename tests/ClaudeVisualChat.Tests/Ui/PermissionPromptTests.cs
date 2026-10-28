@@ -1670,4 +1670,151 @@ public class PermissionPromptTests
         Assert.Equal(2, sent.Count);
         ui.Window.Close();
     }
+
+    // ---- the plan card with comments (Task 8) ----
+
+    private const string ContinuePlanning = "Continue planning";
+    private const string SendFeedback = "Send feedback and keep planning";
+
+    private static List<Button> CommentCrosses(Control root) => root.GetVisualDescendants().OfType<Button>()
+        .Where(b => b.Classes.Contains("ClaudeChatPlanCommentRemove") && b.IsEffectivelyVisible).ToList();
+
+    [AvaloniaFact]
+    public void With_comments_the_card_offers_only_send_feedback_and_keep_planning()
+    {
+        var c = new ChatConversation();
+        var sent = Sent(c);
+        c.Apply(ExitPlanMode());
+        var ui = Open(c);
+        var plan = c.CurrentPlan!;
+        plan.AddComment("Edit notes.md", "Plan: add a line", "Say which line");
+        UiHelpers.Pump();
+        Assert.Contains("1 comment will be included as feedback", ui.Texts);
+        Assert.Contains("Comments (1)", ui.Texts);
+
+        plan.AddComment(new string('x', 100), null, "Shorter");
+        UiHelpers.Pump();
+        Assert.Contains(ContinuePlanning, ui.Texts);
+        Assert.Contains("2 comments will be included as feedback", ui.Texts);
+        Assert.DoesNotContain(PlanTitle, ui.Texts);
+        Assert.DoesNotContain("Select text in the preview to add comments", ui.Texts);
+        Assert.Contains("Comments (2)", ui.Texts);
+        Assert.Contains("\"Edit notes.md\"", ui.Texts);                           // the passage in straight quotes…
+        Assert.Contains("\"" + new string('x', 80) + "…\"", ui.Texts);            // …cut at 80 characters
+        Assert.Contains("Say which line", ui.Texts);
+        Assert.Equal(new[] { SendFeedback }, ui.Options.Select(o => UiHelpers.Texts(o).Last()).ToArray()); // both "Yes" are gone
+        Assert.Equal(new[] { "1" }, ui.Numbers);
+        Assert.Contains("selected", ui.Options[0].Classes);                       // filled, as the option the keys start on
+        var crosses = CommentCrosses(ui.Prompt);
+        Assert.Equal(2, crosses.Count);
+        Assert.All(crosses, x => Assert.Equal("Remove comment", ToolTip.GetTip(x)));
+
+        // the list is over the title
+        var listTitle = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Comments (2)");
+        var title = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatPermissionTitle"));
+        Assert.True(listTitle.TranslatePoint(default, ui.Prompt)!.Value.Y < title.TranslatePoint(default, ui.Prompt)!.Value.Y);
+
+        // key 2 goes to the field; key 1 sends the feedback, with what the field says and the comments
+        ui.Options[0].Focus();
+        UiHelpers.Press(ui.Window, Key.D2);
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Type(ui.Window, "Also rename it");
+        ui.Options[0].Focus();
+        UiHelpers.Press(ui.Window, Key.D1);
+        Assert.Equal(new[]
+        {
+            "deny:r1:Also rename it\n\nComments on the plan:\n[Re: \"Edit notes.md\"] Say which line\n[Re: \"" + new string('x', 100) + "\"] Shorter",
+        }, sent);
+        Assert.Empty(plan.Comments);                                              // sent: cleared
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Esc_and_enter_in_the_field_send_the_comments_too()
+    {
+        var c = new ChatConversation();
+        var sent = Sent(c);
+        c.Apply(ExitPlanMode("r1"));
+        var ui = Open(c);
+        ui.View.CloseTopLayer();                                                  // the plan's document out of the way
+        c.CurrentPlan!.AddComment("Edit notes.md", null, "Which line?");
+        UiHelpers.Pump();
+        ui.Options[0].Focus();
+        UiHelpers.Press(ui.Window, Key.Escape);                                   // Esc is the card's "No": the feedback
+        Assert.Equal("deny:r1:" + StayInPlanMode + "\n\nComments on the plan:\n[Re: \"Edit notes.md\"] Which line?", Assert.Single(sent));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_cross_removes_a_comment()
+    {
+        var c = new ChatConversation();
+        c.Apply(ExitPlanMode());
+        var ui = Open(c);
+        var plan = c.CurrentPlan!;
+        plan.AddComment("Edit notes.md", null, "First");
+        plan.AddComment("Edit notes.md", null, "Second");
+        UiHelpers.Pump();
+
+        UiHelpers.Click(ui.Window, CommentCrosses(ui.Prompt)[0]);
+        Assert.Equal("Second", Assert.Single(plan.Comments).Text);
+        Assert.Contains("Comments (1)", ui.Texts);
+        Assert.DoesNotContain("First", ui.Texts);
+        Assert.True(ui.Prompt.IsKeyboardFocusWithin);                             // the keyboard did not go with the ×
+
+        UiHelpers.Click(ui.Window, CommentCrosses(ui.Prompt)[0]);                 // the last one: the plan card as it was
+        Assert.Empty(plan.Comments);
+        Assert.Contains(PlanTitle, ui.Texts);
+        Assert.DoesNotContain(ContinuePlanning, ui.Texts);
+        Assert.Empty(CommentCrosses(ui.Prompt));
+        Assert.Equal(new[] { PlanAuto, PlanManual, PlanKeep }, ui.Options.Select(o => UiHelpers.Texts(o).Last()).ToArray());
+        Assert.Equal(new[] { "1", "2", "3" }, ui.Numbers);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Folded_the_card_hides_its_comments()
+    {
+        var c = new ChatConversation();
+        c.Apply(ExitPlanMode());
+        var ui = Open(c);
+        c.CurrentPlan!.AddComment("Edit notes.md", null, "First");
+        UiHelpers.Pump();
+        UiHelpers.Click(ui.Window, FoldButton(ui.Prompt));
+        Assert.DoesNotContain("Comments (1)", ui.Texts);
+        Assert.Contains(ContinuePlanning, ui.Texts);                              // the title stays
+        UiHelpers.Click(ui.Window, FoldButton(ui.Prompt));
+        Assert.Contains("Comments (1)", ui.Texts);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Touch_with_comments_the_one_answer_opens_the_field_that_sends_them()
+    {
+        var c = new ChatConversation();
+        var sent = Sent(c);
+        c.Apply(ExitPlanMode());
+        var view = UiHelpers.TouchView(c);
+        view.Prompt.Clock = new SlowClock();
+        var window = UiHelpers.ShowPhone(view);
+        var prompt = UiHelpers.Prompt(view);
+        var pt = ChatStrings.PortugueseBrazil;
+        c.CurrentPlan!.AddComment("Edit notes.md", null, "Qual linha?");
+        UiHelpers.Pump();
+
+        Assert.Contains(pt.PlanContinuePlanning, UiHelpers.Texts(prompt));
+        Assert.Contains(pt.FormatPlanComments(1), UiHelpers.Texts(prompt));
+        var answers = prompt.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("ClaudeChatOption") && b.IsEffectivelyVisible).ToList();
+        var only = Assert.Single(answers);
+        Assert.Equal(pt.PlanSendFeedback, UiHelpers.Texts(only).Last());
+        Assert.Contains("primary", only.Classes);                                // the accent, as the first answer is there
+        var cross = Assert.Single(CommentCrosses(prompt));
+        Assert.True(cross.Bounds.Width >= 44 && cross.Bounds.Height >= 44, "the × is " + cross.Bounds.Size);
+
+        UiHelpers.Click(window, only);                                            // the field opens, with its "Send"
+        UiHelpers.Type(window, "Mais curto");
+        UiHelpers.Click(window, UiHelpers.ButtonWithText(prompt, pt.Send));
+        Assert.Equal("deny:r1:Mais curto\n\nComments on the plan:\n[Re: \"Edit notes.md\"] Qual linha?", Assert.Single(sent));
+        window.Close();
+    }
 }

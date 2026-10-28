@@ -420,6 +420,49 @@ public class DetachTests
         m.Window.Close();
     }
 
+    /// <summary>Handlers on the comments of <paramref name="plan"/>: the document's and the card's, while they are in the window.</summary>
+    private static int CommentHandlers(PlanReview plan)
+    {
+        var field = typeof(System.Collections.ObjectModel.ObservableCollection<PlanComment>)
+            .GetField("CollectionChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        return ((Delegate?)field.GetValue(plan.Comments))?.GetInvocationList().Length ?? 0;
+    }
+
+    [AvaloniaFact]
+    public void The_plan_comment_box_and_the_comments_come_back_after_the_view_returns()
+    {
+        var c = Conversation();
+        var own = Handlers(c);
+        c.Apply(new PermissionRequested("r1", "ExitPlanMode", "ExitPlanMode", null, "t1", J("{\"plan\":\"# Rewrite the parser\\n\\nIntro line.\"}"), null));
+        var m = new Mounted(c);
+        var plan = c.CurrentPlan!;
+        var box = m.View.GetVisualDescendants().OfType<PlanCommentBox>().Single();
+        var prompt = UiHelpers.Prompt(m.View);
+        plan.AddComment("Intro", "Rewrite the parser", "Say more");
+        box.Open(new PlanCommentRequest(plan, "Intro line.", new Avalonia.Rect(24, 60, 60, 22)));
+        box.Field.Text = "half a thought";
+        UiHelpers.Pump();
+        Assert.Equal(2, CommentHandlers(plan));                            // the document and the card listen to the comments
+
+        m.Out();                                                           // taken out with the box open: nothing throws
+        Assert.Equal(own, Handlers(c));                                    // and it let go of the conversation…
+        Assert.Equal(0, CommentHandlers(plan));                            // …and of the plan's comments
+        plan.AddComment("line", null, "While out");                        // a comment added meanwhile
+        m.In();                                                            // back: the box as it was, the card with both comments
+        Assert.True(box.IsOpen);
+        Assert.Equal("half a thought", box.Field.Text);
+        Assert.Equal(2, CommentHandlers(plan));
+        Assert.Contains(m.View.Strings.FormatPlanComments(2), UiHelpers.Texts(prompt));
+
+        // the plan answered while out: the box is closed when back
+        m.Out();
+        c.ApprovePlan(c.CurrentPermission!, "default");
+        m.In();
+        Assert.False(box.IsOpen);
+        Assert.True(CommentHandlers(plan) <= 1);                           // the card let go of it (the document keeps its last plan)
+        m.Window.Close();
+    }
+
     [AvaloniaFact]
     public void A_request_that_came_while_out_shows_when_back()
     {

@@ -101,6 +101,15 @@ public sealed record ChatStrings
         PlanStayedInPlanMode = "Continuou no modo de plano",
         PlanReadyForReview = "Pronto para revisão",
         PlanSelectToComment = "Selecione um trecho para comentar o plano",
+        PlanAddComment = "Comentar",
+        PlanCommentPlaceholder = "Escreva seu comentário.",
+        PlanCommentCancel = "Cancelar",
+        PlanComments = "Comentários ({0})",
+        PlanRemoveComment = "Remover comentário",
+        PlanContinuePlanning = "Continuar planejando",
+        PlanOneCommentIncluded = "1 comentário irá junto como retorno",
+        PlanCommentsIncluded = "{0} comentários irão junto como retorno",
+        PlanSendFeedback = "Enviar retorno e continuar planejando",
         WaitingForPermission = "Aguardando permissão…",
         AllowAlwaysOneRule = "Sim, permitir {0} para {1}",
         AllowAlwaysTwoRules = "Sim, permitir {0} e {1} para {2}",
@@ -480,6 +489,33 @@ public sealed record ChatStrings
 
     /// <summary>The line under it.</summary>
     public string PlanSelectToComment { get; init; } = "Select text to add comments on the plan";
+
+    /// <summary>The button under a passage selected in the plan's document, and the comment box's button that adds the comment.</summary>
+    public string PlanAddComment { get; init; } = "Add Comment";
+
+    /// <summary>The placeholder of the comment box's field.</summary>
+    public string PlanCommentPlaceholder { get; init; } = "Add your feedback.";
+
+    /// <summary>The comment box's button that closes it without a comment.</summary>
+    public string PlanCommentCancel { get; init; } = "Cancel";
+
+    /// <summary>The title of the comments' list in the plan card; <c>{0}</c> is how many there are.</summary>
+    public string PlanComments { get; init; } = "Comments ({0})";
+
+    /// <summary>The name and tooltip of the × that takes a comment away.</summary>
+    public string PlanRemoveComment { get; init; } = "Remove comment";
+
+    /// <summary>The plan card's title while it has comments.</summary>
+    public string PlanContinuePlanning { get; init; } = "Continue planning";
+
+    /// <summary>The line under that title with one comment.</summary>
+    public string PlanOneCommentIncluded { get; init; } = "1 comment will be included as feedback";
+
+    /// <summary>The same with more; <c>{0}</c> is how many.</summary>
+    public string PlanCommentsIncluded { get; init; } = "{0} comments will be included as feedback";
+
+    /// <summary>The plan card's only answer while it has comments: refuses the plan with them as feedback.</summary>
+    public string PlanSendFeedback { get; init; } = "Send feedback and keep planning";
 
     /// <summary>Above the reply box, while a request waits for the typing in it to pause.</summary>
     public string WaitingForPermission { get; init; } = "Waiting for permission…";
@@ -1036,6 +1072,13 @@ public sealed record ChatStrings
     internal string FormatUseToolQuestion(string toolName) => PermissionUseToolQuestion.Replace("{0}", toolName ?? "");
 
     internal string FormatMorePending(int count) => MorePending.Replace("{0}", FormatNumber(count));
+
+    /// <summary><see cref="PlanComments"/> with the count: "Comments (2)".</summary>
+    internal string FormatPlanComments(int count) => PlanComments.Replace("{0}", FormatNumber(count));
+
+    /// <summary>"1 comment will be included as feedback", or <see cref="PlanCommentsIncluded"/> with the count.</summary>
+    internal string FormatPlanCommentsIncluded(int count) =>
+        count == 1 ? PlanOneCommentIncluded : PlanCommentsIncluded.Replace("{0}", FormatNumber(count));
 
     /// <summary><see cref="AllowAlwaysMoreRules"/> with the count: "2 more".</summary>
     internal string FormatAllowAlwaysMore(int count) => AllowAlwaysMoreRules.Replace("{0}", FormatNumber(count));

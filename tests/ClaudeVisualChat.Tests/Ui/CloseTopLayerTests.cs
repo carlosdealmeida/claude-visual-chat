@@ -672,4 +672,136 @@ public class CloseTopLayerTests
         Assert.True(ui.Input.IsFocused);
         ui.Window.Close();
     }
+
+    // ---- the plan's document under the passing layers, and its comment box over them (0.6.0, R4b) ----
+
+    private static PermissionRequested PlanRequest(string id = "r1") =>
+        new PermissionRequested(id, "ExitPlanMode", "ExitPlanMode", null, "t-" + id, J("{\"plan\":\"# Rewrite the parser\\n\\nIntro line.\"}"), null);
+
+    /// <summary>The middle of <paramref name="control"/> belongs to <paramref name="over"/>: it is drawn over it there.</summary>
+    private static void AssertCovers(Window window, Control over, Control control)
+    {
+        UiHelpers.DrawFrames();
+        var middle = control.TranslatePoint(new Point(control.Bounds.Width / 2, Math.Min(control.Bounds.Height / 2, 60)), window)!.Value;
+        var hit = window.InputHitTest(middle) as Visual;
+        Assert.True(hit != null && (ReferenceEquals(hit, over) || over.IsVisualAncestorOf(hit)), "the point is " + (hit?.GetType().Name ?? "nothing"));
+    }
+
+    [AvaloniaFact]
+    public void Close_top_layer_closes_the_map_over_the_plan_document_before_the_document()
+    {
+        var c = new ChatConversation();
+        c.Apply(PlanRequest());
+        var ui = new Opened(c, ChatLayout.Desktop);
+        var document = ui.View.GetVisualDescendants().OfType<PlanDocumentPanel>().Single();
+        Assert.True(document.IsOpen);
+
+        c.ShowAgents();                                                      // the map opened with the document open: over it, whole
+        UiHelpers.Pump();
+        Assert.True(ui.Map.IsVisible);
+        AssertCovers(ui.Window, ui.Map, document);
+        var mapClose = ui.Map.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible);
+        AssertReachable(ui.Window, mapClose);
+
+        Assert.True(ui.View.CloseTopLayer());                                // the map first…
+        Assert.False(ui.Map.IsVisible);
+        Assert.True(document.IsOpen);
+        Assert.True(ui.View.CloseTopLayer());                                // …then the document
+        Assert.False(document.IsOpen);
+        Assert.False(ui.View.CloseTopLayer());
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Close_top_layer_and_esc_close_the_usage_panel_over_the_plan_document_before_the_document()
+    {
+        var c = TouchSamples.Opus();
+        c.Apply(PlanRequest());
+        var ui = new Opened(c, ChatLayout.Desktop);
+        var document = ui.View.GetVisualDescendants().OfType<PlanDocumentPanel>().Single();
+        var panel = ui.View.GetVisualDescendants().OfType<UsagePanel>().Single();
+
+        c.InvokeCommand("usage", "");                                        // /usage with the document open: over it, whole
+        UiHelpers.Pump();
+        Assert.True(panel.IsVisible);
+        var panelRect = new Rect(panel.TranslatePoint(default, ui.View)!.Value, panel.Bounds.Size);
+        var documentRect = new Rect(document.TranslatePoint(default, ui.View)!.Value, document.Bounds.Size);
+        Assert.True(panelRect.Intersects(documentRect), panelRect + " / " + documentRect); // where they meet…
+        AssertReachable(ui.Window, panel);                                   // …the panel is the one on top
+        Assert.True(ui.View.CloseTopLayer());
+        Assert.Equal(ChatPanel.None, c.ShownPanel);
+        Assert.True(document.IsOpen);
+        Assert.True(ui.View.CloseTopLayer());
+        Assert.False(document.IsOpen);
+
+        // the same with Esc, the card's option having the keyboard: the panel, then the document, then the card's "No"
+        var answers = new List<string>();
+        c.PermissionAnswered += (_, e) => answers.Add(e.Request.RequestId);
+        UiHelpers.Click(ui.Window, UiHelpers.ButtonWithText(ui.Prompt, ui.Strings.PlanKeepPlanning)); // refused: r1 goes, the document stays closed
+        c.Apply(PlanRequest("r2"));
+        UiHelpers.Pump();
+        Assert.True(document.IsOpen);
+        c.InvokeCommand("usage", "");
+        UiHelpers.Pump();
+        ui.Prompt.FocusFirstOption();
+        UiHelpers.Press(ui.Window, Key.Escape);
+        Assert.Equal(ChatPanel.None, c.ShownPanel);
+        Assert.True(document.IsOpen);
+        UiHelpers.Press(ui.Window, Key.Escape);
+        Assert.False(document.IsOpen);
+        Assert.Equal(new[] { "r1" }, answers);
+        UiHelpers.Press(ui.Window, Key.Escape);
+        Assert.Equal(new[] { "r1", "r2" }, answers);
+        ui.Window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void Close_top_layer_closes_the_comment_box_over_the_map_and_the_document_first(ChatLayout layout)
+    {
+        var c = new ChatConversation();
+        c.Apply(PlanRequest());
+        var ui = new Opened(c, layout);
+        var document = ui.View.GetVisualDescendants().OfType<PlanDocumentPanel>().Single();
+        var box = ui.View.GetVisualDescendants().OfType<PlanCommentBox>().Single();
+        c.ShowAgents();
+        UiHelpers.Pump();
+        box.Open(new PlanCommentRequest(c.CurrentPlan!, "Intro", new Rect(24, 60, 40, 22)));
+        UiHelpers.Pump();
+        var frame = box.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatPlanCommentBox"));
+        AssertReachable(ui.Window, frame);                                   // over the map
+        Assert.False(ui.View.IsSheetOpen);                                   // no sheet
+
+        Assert.True(ui.View.CloseTopLayer());                                // the box…
+        Assert.False(box.IsOpen);
+        Assert.True(ui.Map.IsVisible);
+        Assert.True(ui.View.CloseTopLayer());                                // …the map…
+        Assert.False(ui.Map.IsVisible);
+        Assert.True(document.IsOpen);
+        Assert.True(ui.View.CloseTopLayer());                                // …the document
+        Assert.False(document.IsOpen);
+        Assert.False(ui.View.CloseTopLayer());
+        Assert.NotNull(ui.Prompt.Request);                                   // and the request is still there to answer
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Close_top_layer_closes_a_sheet_over_the_comment_box_first()
+    {
+        var c = TouchSamples.Opus();
+        c.Apply(PlanRequest());
+        var ui = new Opened(c);
+        var box = ui.View.GetVisualDescendants().OfType<PlanCommentBox>().Single();
+        box.Open(new PlanCommentRequest(c.CurrentPlan!, "Intro", new Rect(24, 60, 40, 22)));
+        ui.View.ShowPreview(ChatImage.FromBytes(UiHelpers.Png(300, 200), "image/png"), "image.png");
+        UiHelpers.Pump();
+        Assert.True(ui.Preview.IsVisible);
+        Assert.True(ui.View.CloseTopLayer());
+        Assert.False(ui.Preview.IsVisible);
+        Assert.True(box.IsOpen);
+        Assert.True(ui.View.CloseTopLayer());
+        Assert.False(box.IsOpen);
+        ui.Window.Close();
+    }
 }

@@ -647,6 +647,22 @@
     <Setter Property="Padding" Value="16,0,4,0" />
   </Style>
 
+  <!-- the comments on the plan: "Add Comment", the comment box's buttons and the × of a comment in the card are targets of 44 px -->
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatPlanAddComment">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="Padding" Value="16,0" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
+  </Style>
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatPlanCommentCancel, controls|ClaudeChatView:touch Button.ClaudeChatPlanCommentAdd">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="Padding" Value="16,0" />
+  </Style>
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatPlanCommentRemove">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
   <!-- the rows of the Agent map: the desktop's fixed lines (17 and 15 px) are for its 13 px text, and would cut the descenders of the
        phone's 15 px; these keep them whole -->
   <Style Selector="controls|ClaudeChatView:touch TextBlock.ClaudeChatAgentRowTitle">

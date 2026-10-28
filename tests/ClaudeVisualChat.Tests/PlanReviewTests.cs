@@ -116,4 +116,132 @@ public class PlanReviewTests
         Assert.Equal("p.md", ToolPresentation.Summary("ExitPlanMode", J(Input("# Plan", "C:\\plans\\p.md")), null));
         Assert.Equal("", ToolPresentation.Summary("ExitPlanMode", J(Input("# Plan")), null)); // not the plan's text
     }
+
+    // ---- the comments on the plan (Task 8) ----
+
+    private const string Stay = "User chose to stay in plan mode and continue planning";
+
+    [Fact]
+    public void Feedback_lists_each_comment_under_comments_on_the_plan()
+    {
+        var plan = Review("# Plan\n\n## Steps\n\nUse a table");
+        plan.AddComment("Use a table", "Steps", "Prefer a list");
+        Assert.Equal(Stay + "\n\nComments on the plan:\n[Re: \"Use a table\"] Prefer a list", plan.Feedback(null));
+
+        plan.AddComment("  Steps  ", null, "  Name them  ");                              // trimmed
+        Assert.Equal("Shorter, please\n\nComments on the plan:\n[Re: \"Use a table\"] Prefer a list\n[Re: \"Steps\"] Name them",
+            plan.Feedback("  Shorter, please \n"));
+        Assert.Equal(Stay + "\n\nComments on the plan:\n[Re: \"Use a table\"] Prefer a list\n[Re: \"Steps\"] Name them", plan.Feedback("   "));
+        Assert.Equal(new PlanComment("Steps", null, "Name them"), plan.Comments[1]);
+        Assert.Equal("Steps", plan.Comments[0].Heading);
+    }
+
+    [Fact]
+    public void Long_quotes_are_shortened_so_the_feedback_fits_four_thousand_characters()
+    {
+        var plan = Review("# Plan");
+        foreach (var letter in "abc") plan.AddComment(new string(letter, 3000), null, "Comment " + letter);
+
+        var feedback = plan.Feedback(null);
+        Assert.True(feedback.Length <= 4000, "the feedback has " + feedback.Length);
+        Assert.True(feedback.Length >= 3990, "the quotes were cut more than needed: " + feedback.Length);
+        var lines = feedback.Split('\n');
+        Assert.Equal(Stay, lines[0]);
+        Assert.Equal("Comments on the plan:", lines[2]);
+        var quotes = lines.Skip(3).Select(l => l.Substring(6, l.IndexOf("\"] ", System.StringComparison.Ordinal) - 6)).ToList();
+        Assert.Equal(3, quotes.Count);
+        Assert.All(quotes, q => Assert.EndsWith("…", q));                                  // every quote is cut…
+        Assert.Single(quotes.Select(q => q.Length).Distinct());                            // …to the same length
+        for (var i = 0; i < 3; i++) Assert.EndsWith("\"] Comment " + "abc"[i], lines[3 + i]); // the comments whole
+
+        // short quotes stay whole; only the long one is cut
+        plan = Review("# Plan");
+        plan.AddComment("short", null, "ok");
+        plan.AddComment(new string('x', 5000), null, "too long");
+        feedback = plan.Feedback(null);
+        Assert.True(feedback.Length <= 4000);
+        Assert.Contains("[Re: \"short\"] ok", feedback);
+        Assert.Contains("…\"] too long", feedback);
+        Assert.Equal(4000, plan.Feedback(null, 4000).Length);
+    }
+
+    [Fact]
+    public void Long_comments_and_a_long_typed_text_are_cut_after_the_quotes()
+    {
+        // the comments are too long even with every quote cut to "…": they are cut next, to the same length
+        var plan = Review("# Plan");
+        plan.AddComment(new string('q', 100), null, new string('a', 3000));
+        plan.AddComment(new string('r', 100), null, new string('b', 3000));
+        var feedback = plan.Feedback("keep it short");
+        Assert.True(feedback.Length <= 4000, "the feedback has " + feedback.Length);
+        Assert.StartsWith("keep it short\n\nComments on the plan:\n[Re: \"…\"] aaa", feedback);  // the quotes first, to "…"
+        Assert.Contains("\n[Re: \"…\"] bbb", feedback);
+        Assert.EndsWith("…", feedback);
+        var comments = feedback.Split('\n').Skip(3).Select(l => l.Substring("[Re: \"…\"] ".Length)).ToList();
+        Assert.Single(comments.Select(c => c.Length).Distinct());
+
+        // a typed text over the ceiling: the quotes and comments go down to "…", then the text is cut
+        plan = Review("# Plan");
+        plan.AddComment("Use a table", null, "Prefer a list");
+        feedback = plan.Feedback(new string('t', 5000));
+        Assert.Equal(4000, feedback.Length);
+        Assert.EndsWith("\n\nComments on the plan:\n[Re: \"…\"] …", feedback);
+        Assert.StartsWith("ttt", feedback);
+
+        // so many comments that even all of them at "…" do not fit: the message itself is cut, at 4,000
+        plan = Review("# Plan");
+        for (var i = 0; i < 400; i++) plan.AddComment("q" + i, null, "c" + i);
+        Assert.True(plan.Feedback(null).Length <= 4000);
+    }
+
+    [Fact]
+    public void No_cut_parts_a_surrogate_pair()
+    {
+        var emoji = "\U0001F600";                                                           // two chars
+        var plan = Review("# Plan");
+        plan.AddComment(string.Concat(Enumerable.Repeat(emoji, 3000)), null, string.Concat(Enumerable.Repeat(emoji, 10)));
+        foreach (var max in new[] { 200, 201, 202, 203 })
+        {
+            var feedback = plan.Feedback(string.Concat(Enumerable.Repeat(emoji, 3000)), max);
+            Assert.True(feedback.Length <= max);
+            for (var i = 0; i < feedback.Length; i++)
+            {
+                if (char.IsHighSurrogate(feedback[i])) Assert.True(i + 1 < feedback.Length && char.IsLowSurrogate(feedback[i + 1]), "a high surrogate alone at " + i + " (max " + max + ")");
+                if (char.IsLowSurrogate(feedback[i])) Assert.True(i > 0 && char.IsHighSurrogate(feedback[i - 1]), "a low surrogate alone at " + i + " (max " + max + ")");
+            }
+        }
+        Assert.Equal("a…", PlanReview.Shorten("a" + emoji + "b", 3));                      // never half of the pair
+        Assert.Equal("a" + emoji + "…", PlanReview.Shorten("a" + emoji + "bc", 4));
+    }
+
+    [Fact]
+    public void An_empty_comment_is_ignored()
+    {
+        var plan = Review("# Plan");
+        plan.AddComment("Use a table", "Plan", "");
+        plan.AddComment("Use a table", "Plan", "   \n ");
+        Assert.Empty(plan.Comments);
+        Assert.Equal(Stay, plan.Feedback(null));                                           // no comments: only the first line
+        Assert.Equal("Do it again", plan.Feedback(" Do it again "));
+
+        // a plan only to read takes no comments
+        var history = PlanReview.ReadOnly(J(Input("# Plan")))!;
+        history.AddComment("Plan", null, "Nice");
+        Assert.Empty(history.Comments);
+    }
+
+    [Fact]
+    public void Remove_comment_takes_that_very_comment()
+    {
+        var plan = Review("# Plan");
+        plan.AddComment("Plan", null, "Same");
+        plan.AddComment("Plan", null, "Same");
+        var second = plan.Comments[1];
+        Assert.Equal(plan.Comments[0], second);                                            // equal words…
+        plan.RemoveComment(second);
+        Assert.Single(plan.Comments);
+        Assert.NotSame(second, plan.Comments[0]);                                          // …but the one asked for goes
+        plan.RemoveComment(second);                                                         // gone already: nothing
+        Assert.Single(plan.Comments);
+    }
 }

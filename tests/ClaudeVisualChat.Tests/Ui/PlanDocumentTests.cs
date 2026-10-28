@@ -172,10 +172,12 @@ public class PlanDocumentTests
         Assert.Contains("ClaudeChatPlanDocument", markdown.Classes);
         Assert.Equal(14, markdown.FontSize);
 
-        var blocks = markdown.GetVisualDescendants().OfType<CTextBlock>().ToList();
+        // the blocks the user can select (0.6.0, Task 8): each of the Markdown's text blocks, but the list markers
+        var blocks = markdown.GetVisualDescendants().OfType<PlanTextBlock>().ToList();
+        Assert.DoesNotContain(markdown.GetVisualDescendants().OfType<CTextBlock>(), t => !t.Classes.Contains("ListMarker"));
         var h1 = blocks.Single(b => b.Classes.Contains("Heading1"));
         var h2 = blocks.Single(b => b.Classes.Contains("Heading2"));
-        var paragraph = blocks.First(b => b.Text == "Intro line.");
+        var paragraph = blocks.First(b => b.Words == "Intro line.");
         Assert.Equal(14 * 1.6, h1.FontSize, 3);
         Assert.Equal(14 * 1.3, h2.FontSize, 3);
         Assert.Equal(Avalonia.Media.FontWeight.SemiBold, h1.FontWeight);
@@ -411,6 +413,287 @@ public class PlanDocumentTests
         Assert.False(ui.Document.IsOpen);
         Assert.Single(ui.Sent);
         UiHelpers.KeyUp(ui.Window, Key.Escape);
+        ui.Window.Close();
+    }
+
+    // ---- the comments on the plan (Task 8) ----
+
+    private static PlanTextBlock Block(Opened ui, string words) => ui.Document.Blocks.First(b => b.Words == words);
+
+    /// <summary>The middle of character <paramref name="index"/> of <paramref name="block"/>, a little to the left or to the right of it.</summary>
+    private static Point CharPoint(PlanTextBlock block, int index, bool right, Visual root)
+    {
+        var rect = block.TextLayout.HitTestTextRange(index, 1).First();
+        var x = right ? rect.Right - rect.Width * 0.4 : rect.Left + rect.Width * 0.4; // well inside the glyph: its edge may fall outside the block
+        return block.TranslatePoint(new Point(block.Padding.Left + x, block.Padding.Top + rect.Top + rect.Height / 2), root)!.Value;
+    }
+
+    /// <summary>Drags the mouse over the characters <paramref name="from"/> to <paramref name="to"/> (not included) of the block.</summary>
+    private static void Select(Window window, PlanTextBlock block, int from, int to)
+    {
+        block.BringIntoView(); // the card grows with each comment, and the document over the list gets shorter
+        UiHelpers.Pump();
+        UiHelpers.DrawFrames(); // what is under the pointer is found in the last frame drawn
+        var start = CharPoint(block, from, right: false, window);
+        var end = CharPoint(block, to - 1, right: true, window);
+        window.MouseMove(start, RawInputModifiers.None);
+        window.MouseDown(start, MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(end, RawInputModifiers.LeftMouseButton);
+        window.MouseUp(end, MouseButton.Left, RawInputModifiers.LeftMouseButton);
+        UiHelpers.Pump();
+    }
+
+    /// <summary>Within a pixel: the layout rounds to pixels what the text measures.</summary>
+    private static void Near(double expected, double actual) =>
+        Assert.True(Math.Abs(expected - actual) <= 1, "expected " + expected + ", got " + actual);
+
+    private static Button? AddCommentButton(Opened ui) =>
+        ui.Document.GetVisualDescendants().OfType<Button>().SingleOrDefault(b => b.Classes.Contains("ClaudeChatPlanAddComment") && b.IsEffectivelyVisible);
+
+    /// <summary>"Add Comment", brought into sight first: under a passage at the bottom of the document, it scrolls with it.</summary>
+    private static void ClickAddComment(Opened ui)
+    {
+        var add = AddCommentButton(ui) ?? throw new InvalidOperationException("no Add Comment on screen");
+        add.BringIntoView();
+        UiHelpers.Pump();
+        UiHelpers.DrawFrames();
+        UiHelpers.Click(ui.Window, add);
+    }
+
+    private static PlanCommentBox CommentBox(Opened ui) => ui.View.GetVisualDescendants().OfType<PlanCommentBox>().Single();
+
+    private static Border BoxFrame(Opened ui) =>
+        CommentBox(ui).GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatPlanCommentBox"));
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void Selecting_text_in_the_plan_offers_add_comment(ChatLayout layout)
+    {
+        var ui = new Opened(Planning(), layout);
+        var strings = ui.Strings;
+        var plan = ui.Conversation.CurrentPlan!;
+        var intro = Block(ui, "Intro line.");
+        Assert.Null(AddCommentButton(ui));                                                 // nothing selected: nothing offered
+
+        Select(ui.Window, intro, 0, 5);                                                    // "Intro"
+        Assert.Equal((0, 5), intro.SelectedRange);
+        var add = AddCommentButton(ui);
+        Assert.NotNull(add);
+        Assert.Equal(strings.PlanAddComment, UiHelpers.Texts(add!).Single());
+        var selection = intro.SelectionBounds!.Value;
+        var bottomLeft = intro.TranslatePoint(selection.BottomLeft, ui.Window)!.Value;
+        var addAt = add!.TranslatePoint(default, ui.Window)!.Value;
+        Near(bottomLeft.X, addAt.X);                                            // under its bottom left corner…
+        Near(bottomLeft.Y + 6, addAt.Y);                                        // …6 px down
+        if (layout == ChatLayout.Touch) Assert.True(add.Bounds.Height >= 44, "Add Comment is " + add.Bounds.Size);
+
+        // the box: 8 px under the passage, 320 px wide, the passage, the field with the keyboard, "Cancel" and "Add Comment"
+        UiHelpers.Click(ui.Window, add);
+        var box = CommentBox(ui);
+        Assert.True(box.IsOpen);
+        Assert.Null(AddCommentButton(ui));
+        Assert.Equal("Intro", box.QuoteText);
+        Assert.True(box.Field.IsFocused);
+        Assert.Equal(strings.PlanCommentPlaceholder, box.Field.Watermark);
+        var frame = BoxFrame(ui);
+        Near(320, frame.Bounds.Width);
+        var frameAt = frame.TranslatePoint(default, ui.Window)!.Value;
+        Near(bottomLeft.Y + 8, frameAt.Y);
+        Near(bottomLeft.X, frameAt.X);
+        var cancel = UiHelpers.ButtonWithText(box, strings.PlanCommentCancel);
+        var confirm = UiHelpers.ButtonWithText(box, strings.PlanAddComment);
+        Assert.True(cancel.TranslatePoint(default, frame)!.Value.X < confirm.TranslatePoint(default, frame)!.Value.X); // "Cancel", then "Add Comment"
+        if (layout == ChatLayout.Touch)
+        {
+            Assert.True(cancel.Bounds.Height >= 44 && confirm.Bounds.Height >= 44, "the box's buttons are " + cancel.Bounds.Size + " and " + confirm.Bounds.Size);
+            UiHelpers.Press(ui.Window, Key.Enter);                                         // the phone's Enter breaks the line
+            Assert.True(box.IsOpen);
+        }
+        UiHelpers.Type(ui.Window, "Say more");
+        if (layout == ChatLayout.Desktop) UiHelpers.Press(ui.Window, Key.Enter);          // Enter adds
+        else UiHelpers.Click(ui.Window, confirm);
+        Assert.False(box.IsOpen);
+
+        var comment = Assert.Single(plan.Comments);
+        Assert.Equal("Intro", comment.Quote);
+        Assert.Equal(RewriteTitle, comment.Heading);                                       // the nearest heading above it
+        Assert.Equal("Say more", comment.Text.Trim());
+
+        // the passage is marked and followed by a circle numbered 1, the comment in its tooltip
+        var marked = intro.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Where(r => r.Classes.Contains("ClaudeChatPlanMarked")).ToList();
+        Assert.Equal("Intro", string.Concat(marked.Select(r => r.Text)));
+        var circle = intro.Inlines!.OfType<Avalonia.Controls.Documents.InlineUIContainer>().Single().Child;
+        Assert.Equal("1", UiHelpers.Texts(circle).Single());
+        Assert.Equal(comment.Text, ToolTip.GetTip(circle));
+        Assert.Equal("Intro line.", intro.Words);                                          // the circle is no word of the block
+
+        // and the card is "Continue planning"
+        Assert.Contains(strings.PlanContinuePlanning, UiHelpers.Texts(ui.Prompt));
+        Assert.Contains(strings.FormatPlanComments(1), UiHelpers.Texts(ui.Prompt));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_selection_after_a_comment_and_across_inline_code_quotes_the_words()
+    {
+        var ui = new Opened(Planning());
+        var intro = Block(ui, "Intro line.");
+        Select(ui.Window, intro, 0, 5);
+        ClickAddComment(ui);
+        UiHelpers.Type(ui.Window, "First");
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        // after the circle, the places of the block still give its words: "line" is at 7 to 11 of the drawn text, 6 to 10 of the words
+        Select(ui.Window, intro, 7, 11);
+        ClickAddComment(ui);
+        Assert.Equal("line", CommentBox(ui).QuoteText);
+        UiHelpers.Type(ui.Window, "Second");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        var plan = ui.Conversation.CurrentPlan!;
+        Assert.Equal(new[] { "Intro", "line" }, plan.Comments.Select(c => c.Quote).ToArray());
+        Assert.Equal(new[] { "1", "2" }, intro.Inlines!.OfType<Avalonia.Controls.Documents.InlineUIContainer>().Select(c => UiHelpers.Texts(c.Child).Single()).ToArray());
+
+        // a block with inline code: the code is a run of its own, and a selection over it quotes the plain words, filed under the
+        // heading over the list
+        var read = ui.Document.Blocks.First(b => b.Words.StartsWith("Read ", StringComparison.Ordinal));
+        Assert.Equal("Read parser.cs", read.Words);
+        Assert.Contains(read.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), r => r.Classes.Contains("ClaudeChatPlanCode") && r.Text == "parser.cs");
+        Select(ui.Window, read, 0, read.Words.Length);
+        ClickAddComment(ui);
+        Assert.Equal("Read parser.cs", CommentBox(ui).QuoteText);
+        UiHelpers.Press(ui.Window, Key.Enter);                                             // an empty comment adds nothing, and the box stays
+        Assert.True(CommentBox(ui).IsOpen);
+        Assert.Equal(2, plan.Comments.Count);
+        UiHelpers.Type(ui.Window, "Third");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal("Steps", plan.Comments[2].Heading);
+
+        // Esc closes the box only: the document stays, and nothing is sent
+        Select(ui.Window, read, 0, 4);
+        ClickAddComment(ui);
+        Assert.True(CommentBox(ui).IsOpen);
+        UiHelpers.Press(ui.Window, Key.Escape);
+        Assert.False(CommentBox(ui).IsOpen);
+        Assert.True(ui.Document.IsOpen);
+        Assert.Equal(3, plan.Comments.Count);
+        Assert.Empty(ui.Sent);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_plan_that_takes_no_comments_offers_none()
+    {
+        // a history: the plan opened again from its row is only to read
+        var ui = new Opened(UiHelpers.Recording("plan", "transcript"));
+        UiHelpers.Click(ui.Window, ui.PlanRow().Header);
+        Assert.True(ui.Document.IsOpen);
+        var block = ui.Document.Blocks.First(b => b.Words.Length > 8 && !b.IsHeading);
+        Select(ui.Window, block, 0, 5);
+        Assert.NotNull(block.SelectedRange);                                               // it can be selected (and copied)…
+        Assert.Null(AddCommentButton(ui));                                                 // …but not commented on
+        ui.Window.Close();
+
+        // refused: the plan stays on screen, without its banner and without comments
+        ui = new Opened(Planning());
+        UiHelpers.Click(ui.Window, ui.Option(ui.Strings.PlanKeepPlanning));
+        Select(ui.Window, Block(ui, "Intro line."), 0, 5);
+        Assert.Null(AddCommentButton(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_cross_removes_a_comment_and_its_mark()
+    {
+        var ui = new Opened(Planning());
+        var intro = Block(ui, "Intro line.");
+        Select(ui.Window, intro, 0, 5);
+        ClickAddComment(ui);
+        UiHelpers.Type(ui.Window, "First");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        var read = ui.Document.Blocks.First(b => b.Words.StartsWith("Read ", StringComparison.Ordinal));
+        Select(ui.Window, read, 0, 4);
+        ClickAddComment(ui);
+        UiHelpers.Type(ui.Window, "Second");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Single(intro.Marks);
+        Assert.Equal(2, read.Marks.Single().Number);
+
+        var crosses = ui.Prompt.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("ClaudeChatPlanCommentRemove") && b.IsEffectivelyVisible).ToList();
+        Assert.Equal(2, crosses.Count);
+        Assert.Equal(ui.Strings.PlanRemoveComment, ToolTip.GetTip(crosses[0]));
+        UiHelpers.Click(ui.Window, crosses[0]);
+        Assert.Equal("Second", Assert.Single(ui.Conversation.CurrentPlan!.Comments).Text);
+        Assert.Empty(intro.Marks);                                                         // its mark goes with it
+        Assert.Equal(1, read.Marks.Single().Number);                                       // and the other one is number 1 now
+        Assert.Contains(ui.Strings.FormatPlanCommentsIncluded(1), UiHelpers.Texts(ui.Prompt));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Sending_the_feedback_clears_the_comments_and_their_marks()
+    {
+        var ui = new Opened(Planning());
+        var intro = Block(ui, "Intro line.");
+        Select(ui.Window, intro, 0, 5);
+        ClickAddComment(ui);
+        UiHelpers.Type(ui.Window, "Say more");
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        UiHelpers.Click(ui.Window, ui.Option(ui.Strings.PlanSendFeedback));
+        Assert.Equal(new[] { "deny:r1:User chose to stay in plan mode and continue planning\n\nComments on the plan:\n[Re: \"Intro\"] Say more" }, ui.Sent);
+        Assert.True(ui.Document.IsOpen);                                                   // a refusal keeps the document
+        Assert.Empty(intro.Marks);
+        ui.Window.Close();
+    }
+
+    // ---- what the review of Task 7 asked for ----
+
+    [AvaloniaFact]
+    public void A_request_without_the_plans_text_opens_no_empty_document()
+    {
+        var c = new ChatConversation();
+        c.Apply(new StatusChanged(null, "plan"));
+        c.Apply(new PermissionRequested("r1", "ExitPlanMode", "ExitPlanMode", null, "t-r1", J("{}"), null));
+        var ui = new Opened(c);
+        Assert.NotNull(c.CurrentPlan);                                                     // the card asks about it…
+        Assert.Contains(ui.Strings.PlanAccept, UiHelpers.Texts(ui.Prompt));
+        Assert.False(ui.Document.IsOpen);                                                  // …but there is nothing to show
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_document_that_opened_by_itself_closes_when_the_view_becomes_read_only()
+    {
+        var ui = new Opened(Planning());
+        Assert.True(ui.Document.IsOpen);
+        ui.View.IsReadOnly = true;
+        UiHelpers.Pump();
+        Assert.False(ui.Document.IsOpen);
+
+        // the comment box closes with it
+        ui.View.IsReadOnly = false;
+        UiHelpers.Click(ui.Window, ui.PlanRow().Header);
+        Select(ui.Window, Block(ui, "Intro line."), 0, 5);
+        ClickAddComment(ui);
+        Assert.True(CommentBox(ui).IsOpen);
+        ui.View.IsReadOnly = true;
+        UiHelpers.Pump();
+        Assert.False(CommentBox(ui).IsOpen);
+        Assert.Empty(ui.Conversation.CurrentPlan!.Comments);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Touch_a_tap_on_the_row_title_opens_the_plan_again()
+    {
+        var ui = new Opened(UiHelpers.Recording("plan", "transcript"), ChatLayout.Touch);
+        Assert.False(ui.Document.IsOpen);
+        UiHelpers.Click(ui.Window, ui.PlanRow().Header);
+        Assert.True(ui.Document.IsOpen);
+        Assert.Contains(RecordedTitle, UiHelpers.Texts(ui.Document));
+        Assert.True(ui.View.CloseTopLayer());                                              // the host's back button closes it
+        Assert.False(ui.Document.IsOpen);
         ui.Window.Close();
     }
 }

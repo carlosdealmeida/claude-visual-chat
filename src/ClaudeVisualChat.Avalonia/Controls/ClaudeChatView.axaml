@@ -31,6 +31,11 @@
           </controls:ChatItemList.Footer>
         </controls:ChatItemList>
       </ScrollViewer>
+      <!-- the plan of an ExitPlanMode request, as a document over the list only (the extension's tab beside the chat): the card
+           under it stays in sight and answerable. It is long and stays open, so every passing layer opened after it comes over it:
+           the /context and /usage panels, the Agent map, the comment box, the sheets and the preview, in the order the host's back
+           button closes them -->
+      <controls:PlanDocumentPanel Name="PlanDocument" />
       <!-- /context and /usage: over the end of the list, as wide as the reply box at most; also while read-only. Not in the
            touch layout, where the usage sheet shows them -->
       <controls:ContextPanel Name="ContextPanel" Classes="ClaudeChatPanelPlace"
@@ -53,10 +58,9 @@
       </StackPanel>
       <!-- the Agent map, over the whole view; also while read-only -->
       <controls:AgentMapPanel Name="AgentMap" Grid.RowSpan="3" />
-      <!-- the plan of an ExitPlanMode request, as a document over the list only (the extension's tab beside the chat): the card
-           under it stays in sight and answerable. Over the Agent map, under the sheets and the preview, in the order the host's
-           back button closes them -->
-      <controls:PlanDocumentPanel Name="PlanDocument" />
+      <!-- the box where the user writes a comment on a passage of the plan: over the list, under the passage; over the panels and the
+           Agent map, under the sheets and the preview -->
+      <controls:PlanCommentBox Name="PlanComment" />
       <!-- the touch layout's sheets, which rise from the bottom over the whole view and the Agent map; closed, each one is an
            empty hidden layer that draws nothing and takes no input, which is all the desktop layout has of them. The usage
            sheet is the last: it opens by itself when

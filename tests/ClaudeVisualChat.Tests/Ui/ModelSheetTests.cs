@@ -247,8 +247,9 @@ public class ModelSheetTests
 
         var layers = ((Grid)ui.Sheet.Parent!).Children;
         var at = layers.IndexOf(ui.Sheet);
-        Assert.IsType<PlanDocumentPanel>(layers[at - 1]);                // over the plan's document (0.6.0)…
+        Assert.IsType<PlanCommentBox>(layers[at - 1]);                   // over the plan's comment box (0.6.0)…
         Assert.IsType<AgentMapPanel>(layers[at - 2]);                    // …and the Agent map under it…
+        Assert.True(layers.IndexOf(layers.OfType<PlanDocumentPanel>().Single()) < layers.IndexOf(layers.OfType<ContextPanel>().Single())); // the plan's document under all of them
         var preview = layers.IndexOf(layers.OfType<ImagePreview>().Single());
         Assert.All(layers.OfType<ChatSheet>(), sheet => Assert.True(layers.IndexOf(sheet) < preview));   // …and, like every sheet, under the preview of an image
 

@@ -185,6 +185,25 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_plan_comment_api_exists()
+    {
+        // the comments on the plan (0.6.0): their texts; the controls and the comment itself stay internal
+        foreach (var text in new[]
+        {
+            "PlanAddComment", "PlanCommentPlaceholder", "PlanCommentCancel", "PlanComments", "PlanRemoveComment",
+            "PlanContinuePlanning", "PlanOneCommentIncluded", "PlanCommentsIncluded", "PlanSendFeedback",
+        })
+        {
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        }
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.DoesNotContain("ClaudeVisualChat.PlanComment", names);
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.PlanCommentBox", names);
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.PlanTextBlock", names);
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.PlanCommentRequest", names);
+    }
+
+    [Fact]
     public void The_dictation_interface_is_documented()
     {
         // the XML documentation travels in the package, beside the dll: a member without a summary shows nothing in the host's IntelliSense

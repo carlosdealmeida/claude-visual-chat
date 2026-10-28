@@ -9,6 +9,14 @@
     <Border Name="Frame" Classes="ClaudeChatPermission">
       <Grid>
         <StackPanel>
+          <!-- a plan's comments, over the title: "Comments (N)" and the list, which scrolls; each comment its passage, its words and a × -->
+          <StackPanel Name="CommentsPanel" Classes="ClaudeChatPlanComments" IsVisible="False">
+            <TextBlock Name="CommentsTitle" Classes="ClaudeChatPlanCommentsTitle" />
+            <ScrollViewer Name="CommentsScroller" MaxHeight="{DynamicResource ClaudeChat.PlanCommentsMaxHeight}"
+                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <StackPanel Name="CommentsList" />
+            </ScrollViewer>
+          </StackPanel>
           <DockPanel Name="Header" Classes="ClaudeChatPermissionHeader">
             <TextBlock Name="MoreText" Classes="ClaudeChatPermissionMore" DockPanel.Dock="Right" />
             <TextBlock Name="TitleText" Classes="ClaudeChatPermissionTitle" />

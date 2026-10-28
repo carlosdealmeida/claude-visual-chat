@@ -1,7 +1,15 @@
 using System;
+using System.Collections.ObjectModel;
+using System.Text;
 using System.Text.Json;
 
 namespace ClaudeVisualChat;
+
+/// <summary>
+/// A comment of the user on a passage of a plan: the passage (<paramref name="Quote"/>, trimmed), the nearest heading above it
+/// (<paramref name="Heading"/>, if any) and what the user wrote about it (<paramref name="Text"/>).
+/// </summary>
+internal sealed record PlanComment(string Quote, string? Heading, string Text);
 
 /// <summary>How the user answered a plan (<see cref="PlanReview.Outcome"/>).</summary>
 internal enum PlanOutcome
@@ -26,6 +34,17 @@ internal sealed class PlanReview : ChatObservableObject
 
     /// <summary>The longest heading that is the plan's title; a longer one leaves it <see cref="DefaultTitle"/>.</summary>
     internal const int MaxTitleLength = 200;
+
+    /// <summary>What a refusal tells the claude when nothing is written (the extension's sentence); the feedback's first line then.</summary>
+    internal const string StayInPlanMode = "User chose to stay in plan mode and continue planning";
+
+    /// <summary>The line over the comments in the feedback.</summary>
+    internal const string CommentsHeader = "Comments on the plan:";
+
+    /// <summary>The most a refusal carries (the host's contract), the feedback with its comments too.</summary>
+    internal const int MaxFeedbackLength = 4000;
+
+    private const string Ellipsis = "…";
 
     private PlanOutcome? _outcome;
 
@@ -81,6 +100,109 @@ internal sealed class PlanReview : ChatObservableObject
     {
         get => _outcome;
         set => SetField(ref _outcome, value);
+    }
+
+    /// <summary>
+    /// The user's comments on passages of the plan, in the order they were added; empty for a plan only to read
+    /// (<see cref="IsReadOnly"/>). The plan card lists them, and its feedback carries them (<see cref="Feedback"/>).
+    /// </summary>
+    internal ObservableCollection<PlanComment> Comments { get; } = new ObservableCollection<PlanComment>();
+
+    /// <summary>
+    /// Adds a comment on <paramref name="quote"/> (the passage, trimmed), under <paramref name="heading"/> (the nearest heading
+    /// above it, if any). A comment with no text, and any comment on a plan only to read, is ignored.
+    /// </summary>
+    internal void AddComment(string quote, string? heading, string text)
+    {
+        if (IsReadOnly || string.IsNullOrWhiteSpace(text)) return;
+        Comments.Add(new PlanComment((quote ?? "").Trim(), heading, text.Trim()));
+    }
+
+    /// <summary>Takes <paramref name="comment"/> away: this very one, not another with the same words.</summary>
+    internal void RemoveComment(PlanComment comment)
+    {
+        for (var i = 0; i < Comments.Count; i++)
+        {
+            if (!ReferenceEquals(Comments[i], comment)) continue;
+            Comments.RemoveAt(i);
+            return;
+        }
+    }
+
+    /// <summary>
+    /// The refusal that sends the comments: the typed text (or <see cref="StayInPlanMode"/> when nothing is typed), a blank line,
+    /// "Comments on the plan:" and a line per comment, <c>[Re: "passage"] comment</c>. Never longer than <paramref name="maxLength"/>
+    /// (the host carries 4,000 characters of a refusal at most): the passages are shortened first, all to the same length and each
+    /// with "…"; then, if that is not enough, the comments; then the typed text; and, in the last resort, the message itself. No cut
+    /// parts a surrogate pair. (The extension sends each passage whole.)
+    /// </summary>
+    internal string Feedback(string? typed, int maxLength = MaxFeedbackLength)
+    {
+        var text = string.IsNullOrWhiteSpace(typed) ? StayInPlanMode : typed!.Trim();
+        if (Comments.Count == 0) return Shorten(text, maxLength);
+        var longestQuote = 1;
+        var longestComment = 1;
+        foreach (var comment in Comments)
+        {
+            longestQuote = Math.Max(longestQuote, comment.Quote.Length);
+            longestComment = Math.Max(longestComment, comment.Text.Length);
+        }
+
+        var whole = Compose(text, int.MaxValue, int.MaxValue, int.MaxValue);
+        if (whole.Length <= maxLength) return whole;
+        if (Compose(text, 1, int.MaxValue, int.MaxValue).Length <= maxLength)
+            return Compose(text, Longest(longestQuote, cap => Compose(text, cap, int.MaxValue, int.MaxValue).Length <= maxLength), int.MaxValue, int.MaxValue);
+        if (Compose(text, 1, 1, int.MaxValue).Length <= maxLength)
+            return Compose(text, 1, Longest(longestComment, cap => Compose(text, 1, cap, int.MaxValue).Length <= maxLength), int.MaxValue);
+        if (Compose(text, 1, 1, 1).Length <= maxLength)
+            return Compose(text, 1, 1, Longest(text.Length, cap => Compose(text, 1, 1, cap).Length <= maxLength));
+        return Shorten(Compose(text, 1, 1, 1), maxLength);
+    }
+
+    /// <summary>The longest cap from 1 to <paramref name="most"/> with which the message fits (it fits with 1).</summary>
+    private static int Longest(int most, Func<int, bool> fits)
+    {
+        int low = 1, high = most;
+        while (low < high)
+        {
+            var middle = low + (high - low + 1) / 2;
+            if (fits(middle)) low = middle;
+            else high = middle - 1;
+        }
+        return low;
+    }
+
+    private string Compose(string text, int quoteCap, int commentCap, int textCap)
+    {
+        var message = new StringBuilder(Shorten(text, textCap)).Append("\n\n").Append(CommentsHeader);
+        foreach (var comment in Comments)
+            message.Append("\n[Re: \"").Append(Shorten(comment.Quote, quoteCap)).Append("\"] ").Append(Shorten(comment.Text, commentCap));
+        return message.ToString();
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> when it has at most <paramref name="cap"/> characters; else its start and "…", <paramref name="cap"/>
+    /// characters in all, never ending on half of a surrogate pair.
+    /// </summary>
+    internal static string Shorten(string text, int cap)
+    {
+        if (text.Length <= cap) return text;
+        if (cap <= 1) return Ellipsis;
+        var take = cap - 1;
+        if (char.IsHighSurrogate(text[take - 1])) take--;
+        return text.Substring(0, take) + Ellipsis;
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> when it has at most <paramref name="length"/> characters; else its first <paramref name="length"/>
+    /// (one less rather than half of a surrogate pair) and "…": how the comment box and the card show a passage.
+    /// </summary>
+    internal static string Clip(string text, int length)
+    {
+        if (text.Length <= length) return text;
+        var take = length;
+        if (take > 0 && char.IsHighSurrogate(text[take - 1])) take--;
+        return text.Substring(0, take) + Ellipsis;
     }
 
     private static string? PlanText(JsonElement input) =>

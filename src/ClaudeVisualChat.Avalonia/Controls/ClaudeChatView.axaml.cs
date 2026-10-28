@@ -22,7 +22,9 @@ namespace ClaudeVisualChat.Controls;
 /// (Esc closes it, or goes back from an agent's card to the list). Over the list alone, the plan of an <c>ExitPlanMode</c> request
 /// as a document, which comes by itself with the request and leaves the card under it to be answered; it closes when the plan is
 /// approved, stays after a refusal, and Esc or its × closes it (the first Esc: only an Esc with the card on top is the card's "No");
-/// the plan's row in the timeline opens it again. What the user does comes back as the
+/// the plan's row in the timeline opens it again. A passage selected in it offers "Add Comment", which opens a box over the passage
+/// for the comment (Esc closes the box first); with comments, the card's one answer sends them as feedback. The panels and the Agent
+/// map opened over the document come over it, and close before it. What the user does comes back as the
 /// conversation's events. A key is marked handled only when the view acts on it, so the app's own shortcuts keep
 /// working. Colors and fonts come from the <c>ClaudeChat.*</c> resources, which can be redefined in
 /// <see cref="StyledElement.Resources"/>; the default colors are those of VS Code's "Dark 2026" theme, and
@@ -153,7 +155,16 @@ public partial class ClaudeChatView : UserControl
         // the plan's document closed with the keyboard in it (its ×): the card gets it back
         PlanDocument.Closed += (_, _) =>
         {
+            PlanComment.Cancel(); // the passage it wrote about went with the document
             if (PlanDocument.HadKeyboard) GiveBackKeyboard();
+        };
+        // "Add Comment" in the document opens the comment box over the passage; what it adds goes back to the document
+        PlanDocument.CommentRequested += (_, e) => PlanComment.Open(e);
+        PlanComment.Submitted += (_, text) => PlanDocument.AddComment(text);
+        PlanComment.Closed += (_, cancelled) =>
+        {
+            if (cancelled) PlanDocument.CancelComment();
+            if (PlanComment.HadKeyboard) GiveBackKeyboard();
         };
         // a sheet is on screen while its layer is visible, whatever opened or closed it
         foreach (var sheet in new ChatSheet[] { ModelSheet, AddSheet, UsageSheet })
@@ -253,9 +264,9 @@ public partial class ClaudeChatView : UserControl
     /// <remarks>
     /// One layer per call, the top-most first: the image preview; a menu of the reply box (the commands or the model); a sheet
     /// of the touch layout, the usage sheet before the others, and an inner page of it going back to the first before the sheet
-    /// closes; the document of a plan over the list; an agent's card in the Agent map, which goes back to the map; the panel that is
-    /// open (the Agent map, or the desktop's <c>/context</c> and <c>/usage</c>); the field where the user writes why a request is
-    /// refused. A permission request is
+    /// closes; the box where the user writes a comment on the plan; an agent's card in the Agent map, which goes back to the map; the
+    /// panel that is open (the Agent map, or the desktop's <c>/context</c> and <c>/usage</c>); the document of a plan over the list;
+    /// the field where the user writes why a request is refused. A permission request is
     /// no layer: it has to be answered. The keyboard goes back as it does when the user closes the layer.
     /// </remarks>
     public bool CloseTopLayer()
@@ -272,15 +283,17 @@ public partial class ClaudeChatView : UserControl
         }
         // the sheets sit over each other in the order they are in the view's grid: the usage sheet is the last, over the others
         if (UsageSheet.Back() || AddSheet.Back() || ModelSheet.Back()) return true;
-        if (PlanDocument.IsOpen)
-        {
-            PlanDocument.Hide();
-            return true;
-        }
+        if (PlanComment.Cancel()) return true;
         if (AgentMap.Back()) return true;
         if (Conversation is { ShownPanel: not ChatPanel.None } conversation)
         {
             conversation.ClosePanel();
+            return true;
+        }
+        // the plan's document is long and stays open: every passing layer opened after it is over it
+        if (PlanDocument.IsOpen)
+        {
+            PlanDocument.Hide();
             return true;
         }
         return Prompt.CloseDenyFieldIfOpen();
@@ -303,6 +316,7 @@ public partial class ClaudeChatView : UserControl
             UsagePanel.Conversation = Conversation;
             AgentMap.Conversation = Conversation;
             PlanDocument.Conversation = Conversation; // another conversation closes the plan of this one
+            PlanComment.Conversation = Conversation;  // and the comment box on it
             ModelSheet.Conversation = Conversation; // another conversation closes the sheets
             AddSheet.Conversation = Conversation;
             UsageSheet.Conversation = Conversation; // and the usage sheet follows the new one's panel
@@ -312,7 +326,8 @@ public partial class ClaudeChatView : UserControl
         else if (change.Property == IsReadOnlyProperty && IsReadOnly)
         {
             BottomPanel.IsVisible = false;
-            PlanDocument.ViewIsReadOnly = true; // a plan that cannot be answered here does not open by itself
+            PlanComment.Cancel();               // a plan that cannot be answered here takes no comments
+            PlanDocument.ViewIsReadOnly = true; // nor opens by itself (the one that did closes)
             Composer.ViewIsReadOnly = true; // a dictation under way stops (the words stay in the box), and the microphone goes
             Composer.ClosePopups(); // what is picked in a menu of a hidden reply box would go nowhere visible
             ModelSheet.Close();     // nor in a sheet; the usage sheet is information, and stays, as the panels it replaces do
@@ -492,8 +507,12 @@ public partial class ClaudeChatView : UserControl
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         if (Prompt.IsHeld(e.Key)) e.Handled = true;
+        // Esc with the comment box open closes it and only it (it is over the panels and the document), unless a menu, a sheet or the
+        // preview is over it
+        else if (IsCommentEsc(e)) CloseComment(e);
         // Esc with the plan's document open closes it and only it, wherever the keyboard is (the card under it too: only an
-        // Esc with the card on top is its "No"), unless a menu, a sheet or the preview is over the document
+        // Esc with the card on top is its "No"), unless a menu, a sheet, the preview or a panel opened over it is on top: the
+        // panel closes first
         else if (IsPlanEsc(e)) ClosePlan(e);
         // Esc with a panel open closes it, before the reply box would stop Claude with it; the menus of the reply box
         // and the request take theirs first (an Esc the request leaves closes the panel on the way back up)
@@ -535,15 +554,32 @@ public partial class ClaudeChatView : UserControl
         !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && PlanDocument.IsOpen
         && !Preview.IsVisible && !Composer.HasOpenPopup && !IsSheetOpen;
 
+    private bool IsCommentEsc(KeyEventArgs e) =>
+        !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && PlanComment.IsOpen
+        && !Preview.IsVisible && !Composer.HasOpenPopup && !IsSheetOpen;
+
     /// <summary>
-    /// Esc on the plan's document closes it. The key counts as held in the card until it comes up, so the keyboard repeating it
-    /// does not go on to refuse the plan.
+    /// Esc on the plan's document closes it, or the panel opened over it (the Agent map's card first). The key counts as held in the
+    /// card until it comes up, so the keyboard repeating it does not go on to refuse the plan.
     /// </summary>
     private void ClosePlan(KeyEventArgs e)
     {
         e.Handled = true;
         Prompt.Hold(e.Key);
+        if (Conversation is { ShownPanel: not ChatPanel.None } conversation)
+        {
+            if (!AgentMap.Back()) conversation.ClosePanel();
+            return;
+        }
         PlanDocument.Hide();
+    }
+
+    /// <summary>Esc on the comment box closes it without a comment; held, it goes no further.</summary>
+    private void CloseComment(KeyEventArgs e)
+    {
+        e.Handled = true;
+        Prompt.Hold(e.Key);
+        PlanComment.Cancel();
     }
 
     /// <summary>Esc on an open panel closes it; on an agent's card in the Agent map, it goes back to the list.</summary>
