@@ -3707,6 +3707,22 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
+    public void A_live_background_task_notification_adds_a_meta_line_with_its_summary()
+    {
+        var c = UiHelpers.Recording("subagent", "stream");
+        var item = Assert.Single(c.Items.OfType<MetaLineItem>());
+        var (view, window) = Open(c);
+
+        // drawn: in the list, italic like every meta line, and only the first line of the summary
+        var drawn = UiHelpers.ItemList(view).GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Text == item.Text);
+        Assert.True(drawn.IsEffectivelyVisible);
+        Assert.Equal("a.txt: Simple sentence describing a cat resting on a mat.…", drawn.Text);
+        Assert.Equal(FontStyle.Italic, drawn.FontStyle);
+        Assert.DoesNotContain("\n", drawn.Text);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_wrapped_notice_says_what_it_is_in_the_line()
     {
         var c = new ChatConversation();

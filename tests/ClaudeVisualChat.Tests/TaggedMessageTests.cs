@@ -83,8 +83,6 @@ public class TaggedMessageTests
 
         Assert.Equal("run the tests", message.Body);
         Assert.Equal("peer", message.Tail);
-        Assert.Equal("Another Claude session sent a message:\n", message.Lead);
-        Assert.Equal(PeerNotice, message.Trailer);
         // the raw sections of the card that does not know the sender: the lead, the body and the note, in that order
         Assert.Equal(new[] { "Another Claude session sent a message:", "run the tests", PeerNotice.Trim() }, message.Sections.Select(s => s.Text).ToArray());
     }
@@ -109,7 +107,7 @@ public class TaggedMessageTests
 
         Assert.Equal("channel", message.Kind);
         Assert.Equal("slack-bridge", message.FromName);
-        Assert.Equal("chat_id=\"42\" user=\"ana\"", message.Meta);
+        Assert.Equal(new[] { "source", "chat_id", "user" }, message.Attributes.Select(a => a.Key).ToArray());   // the card draws all but the source
         Assert.Equal("hi team", message.Body);
         Assert.Equal("peer", message.Tail);
 
@@ -143,7 +141,8 @@ public class TaggedMessageTests
 
         Assert.Equal("teammate-message", teammate.Kind);
         Assert.True(teammate.IsWrappedNotice);
-        Assert.Equal("teammate_id=\"alice\" color=\"blue\"", teammate.Attrs);
+        Assert.Equal(new[] { "teammate_id", "color" }, teammate.Attributes.Select(a => a.Key).ToArray());
+        Assert.Equal("blue", teammate.Attributes[1].Value);
         var section = Assert.Single(teammate.Sections);
         Assert.Null(section.Label);
         Assert.Contains("please review", section.Text);

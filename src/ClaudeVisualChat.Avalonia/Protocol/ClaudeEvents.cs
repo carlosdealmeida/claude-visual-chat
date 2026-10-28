@@ -69,8 +69,8 @@ namespace ClaudeVisualChat.Protocol
         public bool IsSynthetic { get; init; }
 
         /// <summary>
-        /// Where the line says it came from (<c>origin</c>, which the claude writes when it replays a message): another session, a channel,
-        /// a task. Null when the line says nothing, as in a session file and in a live stream.
+        /// Where the line says it came from (<c>origin</c>): another session, a channel, a task. A session file writes it on the line of a
+        /// task's notice (<c>task-notification</c>), and the claude writes it when it replays a message. Null when the line says nothing.
         /// </summary>
         public MessageOrigin? Origin { get; init; }
     }

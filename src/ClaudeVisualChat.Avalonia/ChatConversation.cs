@@ -51,6 +51,9 @@ public sealed class ChatConversation : ChatObservableObject
     private bool _claudeTellsLifecycle;
     /// <summary>Agents a session file left without an end: a task line from the live claude brings them back to running.</summary>
     private readonly HashSet<AgentInfo> _agentsStoppedByHistory = new HashSet<AgentInfo>();
+
+    /// <summary>The tasks whose end came live (<c>system/task_notification</c>): a replayed notice of the same task is not shown again as a card.</summary>
+    private readonly HashSet<string> _tasksToldLive = new HashSet<string>(StringComparer.Ordinal);
     /// <summary>An agent was added or its state changed since the agents were last looked at (see <see cref="Apply"/>).</summary>
     private bool _agentsChanged;
     /// <summary>How many times the agents' states were worked out; a test's way to see that a piece of text does not.</summary>
@@ -732,6 +735,7 @@ public sealed class ChatConversation : ChatObservableObject
                 break;
             case AgentTaskFinished finished:
                 OnAgentTaskFinished(finished);
+                _tasksToldLive.Add(finished.TaskId);
                 AddBackgroundTaskLine(finished);
                 break;
         }
@@ -788,6 +792,7 @@ public sealed class ChatConversation : ChatObservableObject
         _pendingCopy = null;
         Agents.Clear();
         _agentsStoppedByHistory.Clear();
+        _tasksToldLive.Clear();
         if (PendingPermissions.Count > 0) PendingPermissions.Clear();
         _tools.Clear();
         _nestedTools.Clear();
@@ -1520,13 +1525,16 @@ public sealed class ChatConversation : ChatObservableObject
             AddNotice(text == InterruptedText ? NoticeKind.Interrupted : NoticeKind.ToolInterrupted, e.ParentToolUseId);
             return;
         }
-        // a task notification is the claude telling itself that a background subagent finished: it ends the agent. A session file
-        // keeps it as a user line with no origin, and it shows as a message of unknown sender; a line that says where it came from
-        // (a replay) adds nothing, since the notice of the task already told it
+        // a task notification is the claude telling itself that a background subagent finished: it ends the agent. A session file keeps
+        // it as a user line (with an origin of the kind task-notification, or none), and it shows as a card of unknown sender, unless
+        // the notice of that same task already came live (system/task_notification): a replay then says it twice
         if (text.TrimStart().StartsWith(TaskNotificationPrefix, StringComparison.Ordinal))
         {
-            if (TaskNotificationText.Read(text) is { } finished) OnAgentTaskFinished(finished);
-            if (e.Origin == null && !e.IsMeta && TaggedMessage.Read(text) is { } notice)
+            var finished = TaskNotificationText.Read(text);
+            if (finished != null) OnAgentTaskFinished(finished);
+            var toldLive = finished != null && _tasksToldLive.Contains(finished.TaskId);
+            var fromTheTask = e.Origin == null || e.Origin.Kind == "task-notification";
+            if (!toldLive && fromTheTask && !e.IsMeta && TaggedMessage.Read(text) is { } notice)
                 Place(ExternalMessage(notice, null, null), e.ParentToolUseId);
             return;
         }
@@ -1573,14 +1581,18 @@ public sealed class ChatConversation : ChatObservableObject
         return ExternalMessage(message, origin.Kind == "peer" ? origin.Name : null, origin);
     }
 
-    /// <summary>The origin of a line is the sort of sender the message says: a channel's, an agent's of this session (it has a task), another session's.</summary>
+    /// <summary>
+    /// Whether the origin of a line is the sort of sender the message says. A channel's message comes from a channel. Any other comes from
+    /// a peer: an agent's message from one that is a task of this session (the origin names the task), another session's from one that
+    /// is not; and a note that calls the sender an agent of this session needs the task.
+    /// </summary>
     private static bool OriginFits(MessageOrigin origin, TaggedMessage message)
     {
         if (message.Kind == TaggedMessage.ChannelKind) return origin.Kind == "channel";
         if (origin.Kind != "peer") return false;
-        var fromTask = origin.SenderTaskId != null;
-        if (message.Kind == TaggedMessage.AgentKind ? !fromTask : fromTask) return false;
-        return message.Tail != "descendant" || fromTask;
+        var senderIsATask = message.Kind == TaggedMessage.AgentKind;
+        if (senderIsATask != (origin.SenderTaskId != null)) return false;
+        return senderIsATask || message.Tail != "descendant";
     }
 
     /// <summary>The item for a tagged message; with <paramref name="origin"/> null it does not know the sender.</summary>
@@ -1608,11 +1620,21 @@ public sealed class ChatConversation : ChatObservableObject
         };
     }
 
-    /// <summary>The notice of a task that ended (<c>system/task_notification</c>) says in a line what the agent did, when the agent ran in the background.</summary>
+    /// <summary>
+    /// The notice of a task that ended (<c>system/task_notification</c>) says in a line what the agent did, when the agent ran in the
+    /// background: the first line of the summary, and "…" when the summary goes on (it can hold the agent's whole answer).
+    /// </summary>
     private void AddBackgroundTaskLine(AgentTaskFinished e)
     {
         if (string.IsNullOrWhiteSpace(e.Summary) || FindAgent(e.ToolUseId, e.TaskId) is not { IsBackground: true }) return;
-        Items.Add(new MetaLineItem(e.Summary!));
+        var line = TaggedMessage.Preview(e.Summary!);
+        if (line.Length == 0) return;
+        var linesWithText = 0;
+        foreach (var part in e.Summary!.Split('\n'))
+        {
+            if (part.Trim().Length > 0) linesWithText++;
+        }
+        Items.Add(new MetaLineItem(linesWithText > 1 && !line.EndsWith("…", StringComparison.Ordinal) ? line + "…" : line));
     }
 
     /// <summary>What <c>/model</c> prints when typed as a command; a <c>set_model</c> request (<see cref="SetModel"/>) prints nothing.</summary>

@@ -2856,7 +2856,7 @@ public class ChatConversationTests
     }
 
     [Fact]
-    public void A_live_background_task_notification_adds_a_meta_line_with_its_summary()
+    public void A_live_background_task_notification_adds_a_meta_line_to_the_items()
     {
         var c = new ChatConversation();
         c.AppendLine(
@@ -2891,14 +2891,55 @@ public class ChatConversationTests
         Assert.Empty(c.Items.OfType<MetaLineItem>());
     }
 
+    private const string ReplayedNotice =
+        "<task-notification>\n<task-id>t9</task-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n</task-notification>";
+
     [Fact]
-    public void A_replayed_task_notification_with_an_origin_adds_no_second_line_to_the_live_one()
+    public void A_task_notification_line_with_its_origin_is_a_card_when_the_task_did_not_end_live()
+    {
+        // a real session file writes the origin of the notice on the line
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith(ReplayedNotice, "{\"kind\":\"task-notification\",\"producer\":\"session-task\"}"));
+
+        var card = Assert.IsType<ExternalMessageItem>(Assert.Single(c.Items));
+        Assert.Equal("task-notification", card.Kind);
+        Assert.Null(card.Sender);
+        Assert.Equal("Agent finished", card.Preview);
+    }
+
+    [Fact]
+    public void A_task_notification_line_is_not_a_second_card_when_the_task_ended_live_before_it()
     {
         var c = new ChatConversation();
-        c.AppendLine(UserLineWith(
-            "<task-notification>\n<task-id>t9</task-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n</task-notification>",
-            "{\"kind\":\"task-notification\",\"producer\":\"session-task\"}"));
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"t9\",\"tool_use_id\":\"toolu_9\",\"status\":\"completed\",\"summary\":\"Agent finished\"}");
+        c.AppendLine(UserLineWith(ReplayedNotice, "{\"kind\":\"task-notification\",\"producer\":\"session-task\"}"));
+        c.AppendLine(UserLineWith(ReplayedNotice));                    // with or without the origin
 
-        Assert.Empty(c.Items);                                         // the live notice of the task says it, once
+        Assert.Empty(c.Items.OfType<ExternalMessageItem>());
+        // another task is another matter
+        c.AppendLine(UserLineWith(ReplayedNotice.Replace("t9", "t10"), "{\"kind\":\"task-notification\"}"));
+        Assert.Single(c.Items.OfType<ExternalMessageItem>());
+        // and clearing forgets which tasks ended live
+        c.Clear();
+        c.AppendLine(UserLineWith(ReplayedNotice));
+        Assert.Single(c.Items.OfType<ExternalMessageItem>());
+    }
+
+    [Fact]
+    public void A_notification_line_from_another_origin_stays_out_of_the_conversation()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(UserLineWith(ReplayedNotice, "{\"kind\":\"human\"}"));
+
+        Assert.Empty(c.Items);
+    }
+
+    [Fact]
+    public void The_meta_line_of_a_background_agent_is_the_first_line_of_its_summary()
+    {
+        var c = Play("subagent");                                      // its summary is three lines: the agent's answer
+
+        var line = Assert.Single(c.Items.OfType<MetaLineItem>());
+        Assert.Equal("a.txt: Simple sentence describing a cat resting on a mat.…", line.Text);
     }
 }
