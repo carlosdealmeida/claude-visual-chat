@@ -67,6 +67,7 @@ public static class ToolPresentation
                 case "Task": return Str(input, "description");
                 case "Skill": return Str(input, "skill");
                 case "TodoWrite": return "";
+                case "ExitPlanMode": return PlanFileName(input) ?? ""; // never the plan's text: the document shows it
                 default: return FirstString(input);
             }
         }
@@ -242,6 +243,17 @@ public static class ToolPresentation
         var shown = maxLines == 0 ? "" : text.Substring(0, cut);
         if (shown.EndsWith("\r", StringComparison.Ordinal)) shown = shown.Substring(0, shown.Length - 1);
         return new TruncatedText(shown, lines - maxLines);
+    }
+
+    /// <summary>
+    /// The name of an <c>ExitPlanMode</c> plan's file: the last part of its input's <c>planFilePath</c>, after a slash of either
+    /// kind; null when the input has none.
+    /// </summary>
+    internal static string? PlanFileName(JsonElement input)
+    {
+        if (!TryStr(input, "planFilePath", out var path)) return null;
+        var name = path.Substring(Math.Max(path.LastIndexOf('\\'), path.LastIndexOf('/')) + 1);
+        return name.Length == 0 ? null : name;
     }
 
     public static (string Server, string Tool)? McpName(string toolName)

@@ -373,6 +373,65 @@ public class CloseTopLayerTests
         ui.Window.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void Close_top_layer_closes_the_plan_document_alone(ChatLayout layout)
+    {
+        var c = new ChatConversation();
+        c.Apply(new PermissionRequested("r1", "ExitPlanMode", "ExitPlanMode", null, "t1", J("{\"plan\":\"# Rewrite the parser\"}"), null));
+        var ui = new Opened(c, layout);
+        var document = ui.View.GetVisualDescendants().OfType<PlanDocumentPanel>().Single();
+        UiHelpers.Click(ui.Window, ui.Option(ui.Strings.PlanKeepPlanning));
+        if (layout == ChatLayout.Desktop)
+        {
+            c.Apply(new PermissionRequested("r2", "ExitPlanMode", "ExitPlanMode", null, "t2", J("{\"plan\":\"# Use a list\"}"), null));
+            UiHelpers.Pump();
+            ui.Prompt.GetVisualDescendants().OfType<TextBox>().Single().Focus(); // the desktop card's field is always there
+            UiHelpers.Type(ui.Window, "shorter");
+        }
+        Assert.NotNull(ui.DenyField);                                        // the field of "No", under the document
+        Assert.True(document.IsOpen);
+        Assert.False(ui.View.IsSheetOpen);
+
+        Assert.True(ui.View.CloseTopLayer());                                // one call: the document, only it
+        Assert.False(document.IsOpen);
+        Assert.False(ui.View.IsSheetOpen);
+        Assert.NotNull(ui.Prompt.Request);                                   // the request is still there to answer…
+        Assert.NotNull(ui.DenyField);                                        // …with its field as it was
+        if (layout == ChatLayout.Touch)
+        {
+            Assert.True(ui.View.CloseTopLayer());                            // then the field
+            Assert.Null(ui.DenyField);
+        }
+        Assert.False(ui.View.CloseTopLayer());
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Close_top_layer_closes_a_sheet_over_the_plan_document_first()
+    {
+        var c = UiHelpers.Recording("plan", "transcript");                   // a history: no request, so a sheet may open
+        c.AvailableModels = TouchSamples.Models;
+        c.Apply(new SessionStarted("s1", "opus", null, "default", "2.1.310"));
+        var ui = new Opened(c);
+        var document = ui.View.GetVisualDescendants().OfType<PlanDocumentPanel>().Single();
+        var call = c.Items.OfType<ToolCallItem>().Single(t => t.Name == "ExitPlanMode");
+        Assert.True(ui.View.ShowPlan(call));
+        ui.ModelSheet.Open();
+        UiHelpers.Pump();
+        Assert.True(document.IsOpen);
+        Assert.True(ui.ModelSheet.IsOpen);
+
+        Assert.True(ui.View.CloseTopLayer());
+        Assert.False(ui.ModelSheet.IsOpen);
+        Assert.True(document.IsOpen);
+        Assert.True(ui.View.CloseTopLayer());
+        Assert.False(document.IsOpen);
+        Assert.False(ui.View.CloseTopLayer());
+        ui.Window.Close();
+    }
+
     // ---- the touch layout: the ✕ of the banners, of the preview and of the Agent map are targets of 44 ----
 
     [AvaloniaFact]

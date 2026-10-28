@@ -6,6 +6,7 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 
 namespace ClaudeVisualChat.Controls;
 
@@ -15,6 +16,8 @@ namespace ClaudeVisualChat.Controls;
 /// or "47 lines", and a box with the diff, the start of the file written, or the command (IN) and its output (OUT,
 /// wrapped); "Run in background" under a command started so; for a subagent, its items behind an arrow. The dot of a
 /// running call blinks only while the conversation works. Long texts are cut so a huge result never slows the list.
+/// A plan (<c>ExitPlanMode</c>) reads "Claude’s Plan" and its file, then whether the user approved it, with no box; a click on
+/// its header opens the plan again in the document over the list.
 /// In the touch layout (pseudo-class <c>:touch</c>) the call is a block with a frame and its dot is the header's first
 /// piece.
 /// </summary>
@@ -35,6 +38,9 @@ internal partial class ToolCallView : UserControl
     /// </summary>
     internal const int BoxLines = 8;
 
+    /// <summary>The tool that asks to leave plan mode with a plan: its row has a line of its own and opens the plan's document.</summary>
+    private const string PlanTool = "ExitPlanMode";
+
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<ToolCallView>();
 
@@ -50,8 +56,24 @@ internal partial class ToolCallView : UserControl
     public ToolCallView()
     {
         InitializeComponent();
+        Header.Click += OnHeaderClick;
         Refresh();
     }
+
+    /// <summary>
+    /// A click on the header of a plan's row opens the plan again, in the document over the list; the toggle it also is (for a
+    /// subagent's steps) stays as it was.
+    /// </summary>
+    private void OnHeaderClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var item = _item;
+        if (item == null || !IsPlanRow(item)) return;
+        Header.IsChecked = false;
+        this.FindAncestorOfType<ClaudeChatView>()?.ShowPlan(item);
+    }
+
+    /// <summary>An <c>ExitPlanMode</c> row with the plan's text, which its header opens.</summary>
+    private static bool IsPlanRow(ToolCallItem item) => item.Name == PlanTool && PlanReview.HasPlan(item.Input);
 
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
 
@@ -155,7 +177,15 @@ internal partial class ToolCallView : UserControl
 
         var detail = item?.Summary ?? "";
         var kind = "mono";
-        if (IsFileTool(name))
+        if (name == PlanTool)
+        {
+            // "Claude's Plan" and its file, as a link, when the call carries the plan; "Plan Mode" when it does not
+            var plan = item != null && PlanReview.HasPlan(item.Input);
+            ToolName.Text = plan ? Strings.PlanTitle : Strings.PlanModeTool;
+            detail = plan ? ToolPresentation.PlanFileName(item!.Input) ?? "" : "";
+            kind = "file";
+        }
+        else if (IsFileTool(name))
         {
             kind = "file";
         }
@@ -173,6 +203,7 @@ internal partial class ToolCallView : UserControl
         var range = item == null ? null : ToolPresentation.ReadRange(name, item.Input);
         RangeText.Text = range is { } lines ? Strings.FormatReadRange(lines) : "";
         RangeText.IsVisible = range != null;
+        UpdateInteraction();
     }
 
     private void UpdateStatus()
@@ -184,7 +215,8 @@ internal partial class ToolCallView : UserControl
         SetState(Row, status, blinks); // the timeline's dot
         SetState(StatusDot, status, blinks); // the touch layout's, in the header
         RejectedText.Text = Strings.ToolRejected;
-        RejectedText.IsVisible = status == ToolStatus.Rejected;
+        // a refused plan says so in the line under it ("Stayed in plan mode")
+        RejectedText.IsVisible = status == ToolStatus.Rejected && _item?.Name != PlanTool;
     }
 
     /// <summary>The classes the dots take their color (and their blinking) from.</summary>
@@ -198,11 +230,18 @@ internal partial class ToolCallView : UserControl
 
     private void UpdateChildren()
     {
-        var hasChildren = _item != null && _item.Children.Count > 0;
-        Arrow.IsVisible = hasChildren;
-        Header.IsHitTestVisible = hasChildren;
-        Header.Focusable = hasChildren;
-        Header.Classes.Set("interactive", hasChildren); // the touch layout gives it a finger's height
+        Arrow.IsVisible = _item != null && _item.Children.Count > 0;
+        UpdateInteraction();
+    }
+
+    /// <summary>The header takes clicks and the keyboard when it opens something: a subagent's steps, or a plan's document.</summary>
+    private void UpdateInteraction()
+    {
+        var item = _item;
+        var opens = item != null && (item.Children.Count > 0 || IsPlanRow(item));
+        Header.IsHitTestVisible = opens;
+        Header.Focusable = opens;
+        Header.Classes.Set("interactive", opens); // the touch layout gives it a finger's height
     }
 
     // ---- the body ----
@@ -225,7 +264,8 @@ internal partial class ToolCallView : UserControl
             // a diff or a list stands for the output, unless the call failed; a refused call ran nothing; a Read or a
             // subagent that worked keeps quiet, like the extension (the file's lines, the subagent's launch details)
             var quiet = item.Status == ToolStatus.Succeeded && QuietWhenDone(name);
-            var showOutput = failed || (!hasDiff && !hasTodos && item.Status != ToolStatus.Rejected && !quiet);
+            // a plan has no box: its line tells how it ended, and its document holds its text
+            var showOutput = name != PlanTool && (failed || (!hasDiff && !hasTodos && item.Status != ToolStatus.Rejected && !quiet));
             var output = showOutput && (!string.IsNullOrEmpty(item.ResultText) || item.HiddenResultLines > 0);
 
             if (name == "Write" && WrittenText(item) is { } written)
@@ -264,6 +304,14 @@ internal partial class ToolCallView : UserControl
             case "Write":
                 if (failed) return strings.WriteFailed;
                 return ToolPresentation.WriteLineCount(item.Name, item.Input) is { } lines ? strings.FormatLines(lines) : null;
+            case PlanTool:
+                // nothing while it waits; a refusal comes back as an error (or a rejection): the claude stays in plan mode
+                return item.Status switch
+                {
+                    ToolStatus.Succeeded => strings.PlanApproved,
+                    ToolStatus.Failed or ToolStatus.Rejected => strings.PlanStayedInPlanMode,
+                    _ => null,
+                };
             default:
                 return null;
         }

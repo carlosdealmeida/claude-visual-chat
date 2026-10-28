@@ -1595,7 +1595,9 @@ public class PermissionPromptTests
 
         UiHelpers.Pump();
         ui.Option(PlanAuto).Focus();
-        UiHelpers.Press(ui.Window, Key.Escape);                                   // Esc is "No" too
+        UiHelpers.Press(ui.Window, Key.Escape);                                   // the plan's document is on top: Esc closes it first
+        Assert.Equal(2, sent.Count);
+        UiHelpers.Press(ui.Window, Key.Escape);                                   // then Esc is "No" too
         Assert.Equal("deny:r3:" + StayInPlanMode, sent[2]);
         Assert.DoesNotContain(sent, s => s.StartsWith("mode:", System.StringComparison.Ordinal));
         ui.Window.Close();

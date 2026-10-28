@@ -481,4 +481,16 @@ public class ChatStringsTests
         Assert.Equal("59m", En.FormatCacheMinutes(59));
         Assert.Equal("5m", Pt.FormatCacheMinutes(5));
     }
+
+    [Fact]
+    public void Plan_document_texts()
+    {
+        Assert.Equal(("Claude’s Plan", "Plano do Claude"), (En.PlanTitle, Pt.PlanTitle));
+        Assert.Equal(("Plan Mode", "Modo de plano"), (En.PlanModeTool, Pt.PlanModeTool));
+        Assert.Equal(("User approved the plan", "O usuário aprovou o plano"), (En.PlanApproved, Pt.PlanApproved));
+        Assert.Equal(("Stayed in plan mode", "Continuou no modo de plano"), (En.PlanStayedInPlanMode, Pt.PlanStayedInPlanMode));
+        Assert.Equal(("Ready for review", "Pronto para revisão"), (En.PlanReadyForReview, Pt.PlanReadyForReview));
+        Assert.Equal(("Select text to add comments on the plan", "Selecione um trecho para comentar o plano"),
+            (En.PlanSelectToComment, Pt.PlanSelectToComment));
+    }
 }

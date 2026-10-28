@@ -636,6 +636,17 @@
     <Setter Property="CornerRadius" Value="22" />
   </Style>
 
+  <!-- the ✕ of the plan's document: 44 by 44, a circle when the pointer or the keyboard is on it; the header around it loses its
+       padding over and under, so the target sets its height -->
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatPlanClose">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="CornerRadius" Value="22" />
+  </Style>
+  <Style Selector="controls|ClaudeChatView:touch Border.ClaudeChatPlanHeader">
+    <Setter Property="Padding" Value="16,0,4,0" />
+  </Style>
+
   <!-- the rows of the Agent map: the desktop's fixed lines (17 and 15 px) are for its 13 px text, and would cut the descenders of the
        phone's 15 px; these keep them whole -->
   <Style Selector="controls|ClaudeChatView:touch TextBlock.ClaudeChatAgentRowTitle">

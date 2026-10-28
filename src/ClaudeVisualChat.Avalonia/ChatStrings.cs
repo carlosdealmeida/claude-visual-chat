@@ -95,6 +95,12 @@ public sealed record ChatStrings
         PlanYesAutoAccept = "Sim, e aceitar as edições automaticamente",
         PlanYesManual = "Sim, e aprovar as edições uma a uma",
         PlanKeepPlanning = "Não, continuar planejando",
+        PlanTitle = "Plano do Claude",
+        PlanModeTool = "Modo de plano",
+        PlanApproved = "O usuário aprovou o plano",
+        PlanStayedInPlanMode = "Continuou no modo de plano",
+        PlanReadyForReview = "Pronto para revisão",
+        PlanSelectToComment = "Selecione um trecho para comentar o plano",
         WaitingForPermission = "Aguardando permissão…",
         AllowAlwaysOneRule = "Sim, permitir {0} para {1}",
         AllowAlwaysTwoRules = "Sim, permitir {0} e {1} para {2}",
@@ -453,6 +459,27 @@ public sealed record ChatStrings
 
     /// <summary>The plan card's "No": the claude stays in plan mode, with what the field says, if anything.</summary>
     public string PlanKeepPlanning { get; init; } = "No, keep planning";
+
+    /// <summary>
+    /// The name of an <c>ExitPlanMode</c> row that carries the plan (its file's name follows it, when it has one), and the plan's
+    /// document's title when the plan has no heading of its own.
+    /// </summary>
+    public string PlanTitle { get; init; } = "Claude’s Plan";
+
+    /// <summary>The name of an <c>ExitPlanMode</c> row whose call came without the plan.</summary>
+    public string PlanModeTool { get; init; } = "Plan Mode";
+
+    /// <summary>The line under an <c>ExitPlanMode</c> row once the user approved the plan.</summary>
+    public string PlanApproved { get; init; } = "User approved the plan";
+
+    /// <summary>The line under an <c>ExitPlanMode</c> row once the user refused the plan (the claude stays in plan mode).</summary>
+    public string PlanStayedInPlanMode { get; init; } = "Stayed in plan mode";
+
+    /// <summary>The bold line of the banner over the plan's document while the plan waits for an answer.</summary>
+    public string PlanReadyForReview { get; init; } = "Ready for review";
+
+    /// <summary>The line under it.</summary>
+    public string PlanSelectToComment { get; init; } = "Select text to add comments on the plan";
 
     /// <summary>Above the reply box, while a request waits for the typing in it to pause.</summary>
     public string WaitingForPermission { get; init; } = "Waiting for permission…";

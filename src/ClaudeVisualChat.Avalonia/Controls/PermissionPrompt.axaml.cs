@@ -289,6 +289,12 @@ internal partial class PermissionPrompt : UserControl
     internal bool IsHeld(Key key) => _heldKey == key;
 
     /// <summary>
+    /// Takes <paramref name="key"/> for held until it comes up (<see cref="IsHeld"/>): a key the view acted on above the card (an Esc
+    /// that closed the plan's document) whose repeat must not answer the card.
+    /// </summary>
+    internal void Hold(Key key) => _heldKey = key;
+
+    /// <summary>
     /// Puts the keyboard on the option Enter starts on (option 1, or the desktop card's "No" with <c>default_to_no</c>), so Enter
     /// and the digits answer at once. Not while the card waits for the typing in the reply box.
     /// </summary>

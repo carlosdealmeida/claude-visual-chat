@@ -140,7 +140,7 @@ public class PlanApprovalTests
         c.AnswerPermission(c.CurrentPermission!, PermissionDecision.Allow);
         var plan = c.CurrentPlan;
         Assert.NotNull(plan);
-        Assert.Equal("r1", plan!.Request.RequestId);
+        Assert.Equal("r1", plan!.Request!.RequestId);
         Assert.Null(plan.Outcome); // pending
 
         c.Apply(new PermissionCancelled("r1"));

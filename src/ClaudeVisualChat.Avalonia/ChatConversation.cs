@@ -1458,6 +1458,13 @@ public sealed class ChatConversation : ChatObservableObject
         {
             if (queued.RequestId == e.RequestId) return;
         }
+        // the call of a plan may come without it (input {}): the request carries it, and the row and its document read it there
+        if (e.ToolName == ExitPlanModeTool && e.ToolUseId != null && _tools.TryGetValue(e.ToolUseId, out var call)
+            && !PlanReview.HasPlan(call.Input) && PlanReview.HasPlan(e.Input))
+        {
+            call.Input = e.Input;
+            call.Summary = ToolPresentation.Summary(e.ToolName, e.Input, WorkingDirectory);
+        }
         PendingPermissions.Add(new PendingPermission(
             e.RequestId, e.ToolName, e.DisplayName ?? e.ToolName, e.Description, e.ToolUseId,
             ToolPresentation.Summary(e.ToolName, e.Input, WorkingDirectory), e.Input, e.Suggestions)

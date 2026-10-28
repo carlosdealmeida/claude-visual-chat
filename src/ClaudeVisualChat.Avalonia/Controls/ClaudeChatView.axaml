@@ -53,6 +53,10 @@
       </StackPanel>
       <!-- the Agent map, over the whole view; also while read-only -->
       <controls:AgentMapPanel Name="AgentMap" Grid.RowSpan="3" />
+      <!-- the plan of an ExitPlanMode request, as a document over the list only (the extension's tab beside the chat): the card
+           under it stays in sight and answerable. Over the Agent map, under the sheets and the preview, in the order the host's
+           back button closes them -->
+      <controls:PlanDocumentPanel Name="PlanDocument" />
       <!-- the touch layout's sheets, which rise from the bottom over the whole view and the Agent map; closed, each one is an
            empty hidden layer that draws nothing and takes no input, which is all the desktop layout has of them. The usage
            sheet is the last: it opens by itself when

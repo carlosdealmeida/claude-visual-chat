@@ -2295,4 +2295,119 @@
   <Style Selector="controls|MarkdownBlock Border.TableHeader ctb|CTextBlock">
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
+
+  <!-- ===== the plan's document, over the list (the extension's editor tab): after the markdown, whose styles it changes ===== -->
+
+  <!-- the editor's colors; a header with the title and the ×, a line under it -->
+  <Style Selector="controls|PlanDocumentPanel">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ToolBackground}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatPlanHeader">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.Border}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="24,4,8,4" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatPlanTitle">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- the ×: the Agent map's icon button, a 20 px icon with 4 px around it -->
+  <Style Selector="Button.ClaudeChatPlanClose">
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.ClaudeChatPlanClose:pointerover, Button.ClaudeChatPlanClose:focus-visible">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatPlanClose:pointerover /template/ Border#PART_ChatButton, Button.ClaudeChatPlanClose:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.HoverBackground}" />
+  </Style>
+  <!-- the page: 16 px over and under the text, 24 px at its sides -->
+  <Style Selector="StackPanel.ClaudeChatPlanPage">
+    <Setter Property="Margin" Value="24,16" />
+  </Style>
+  <!-- while the plan waits for an answer: the editor widget's colors and border, 4 px corners, 8 by 12 px inside, 16 px over the
+       plan; "Ready for review" in bold over the hint (.85em, at 80 %) -->
+  <Style Selector="Border.ClaudeChatPlanBanner">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Margin" Value="0,0,0,16" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatPlanBannerTitle">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatPlanBannerText">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+    <Setter Property="Opacity" Value="0.8" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <!-- the plan: the chat's font + 1 px (14 px) on a 1.6 line, in the editor's foreground -->
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="LineHeight" Value="22.4" />
+  </Style>
+  <!-- headings: semibold, 24 px over and 8 px under them (none over the first); H1 at 1.6em and H2 at 1.3em, each over a 1 px
+       line of the panel's border, 8 and 6 px under the text; H3 at 1.1em -->
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading1, controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading2, controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading3">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LineHeight" Value="NaN" />
+    <Setter Property="Margin" Value="0,24,0,8" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading1">
+    <Setter Property="FontSize" Value="22.4" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading2">
+    <Setter Property="FontSize" Value="18.2" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CTextBlock.Heading3">
+    <Setter Property="FontSize" Value="15.4" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.ClaudeChatPlanRule">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.Border}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Margin" Value="0,24,0,8" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.ClaudeChatPlanRule.h1">
+    <Setter Property="Padding" Value="0,0,0,8" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.ClaudeChatPlanRule.h2">
+    <Setter Property="Padding" Value="0,0,0,6" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.ClaudeChatPlanRule > ctb|CTextBlock">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument StackPanel > Border.ClaudeChatPlanRule:nth-child(1), controls|MarkdownBlock.ClaudeChatPlanDocument StackPanel > ctb|CTextBlock.Heading3:nth-child(1)">
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+  <!-- inline code in the editor's font at 13 px; code blocks 12 px inside; lists 32 px in; quotes 4 by 12 px inside their bar -->
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument ctb|CCode">
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.CodeBlock">
+    <Setter Property="Padding" Value="12" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument TextBlock.CodeBlock">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="LineHeight" Value="19.5" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Grid.List">
+    <Setter Property="Margin" Value="16,0,0,0" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatPlanDocument Border.Blockquote">
+    <Setter Property="Padding" Value="12,4" />
+  </Style>
 </Styles>

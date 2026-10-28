@@ -169,6 +169,22 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_plan_document_api_exists()
+    {
+        // the plan's document over the list and its row in the timeline (0.6.0): their texts; the panel itself stays internal
+        foreach (var text in new[]
+        {
+            "PlanTitle", "PlanModeTool", "PlanApproved", "PlanStayedInPlanMode", "PlanReadyForReview", "PlanSelectToComment",
+        })
+        {
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        }
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.PlanDocumentPanel", names);
+        Assert.Null(typeof(ClaudeVisualChat.Controls.ClaudeChatView).GetMethod("ShowPlan"));
+    }
+
+    [Fact]
     public void The_dictation_interface_is_documented()
     {
         // the XML documentation travels in the package, beside the dll: a member without a summary shows nothing in the host's IntelliSense

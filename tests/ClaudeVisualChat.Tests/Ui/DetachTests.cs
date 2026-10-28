@@ -386,6 +386,41 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void The_plan_document_comes_back_after_the_view_returns()
+    {
+        var c = Conversation();
+        var own = Handlers(c);
+        c.Apply(new PermissionRequested("r1", "ExitPlanMode", "ExitPlanMode", null, "t1", J("{\"plan\":\"# Rewrite the parser\\n\\n1. Read it\"}"), null));
+        var m = new Mounted(c);
+        var document = m.View.GetVisualDescendants().OfType<PlanDocumentPanel>().Single();
+        Assert.True(document.IsOpen);
+
+        m.Out();                                                           // taken out with the document open: nothing throws
+        Assert.Equal(own, Handlers(c));                                    // and it let go of the conversation with the rest
+        m.In();                                                            // back: still open, on the same plan
+        Assert.True(document.IsOpen);
+        Assert.Contains("Rewrite the parser", UiHelpers.Texts(document));
+        Assert.Contains(m.View.Strings.PlanReadyForReview, UiHelpers.Texts(document));
+
+        // approved while out: closed when back; a plan that came while out: open when back
+        m.Out();
+        c.ApprovePlan(c.CurrentPermission!, "default");
+        m.In();
+        Assert.False(document.IsOpen);
+        m.Out();
+        c.Apply(new PermissionRequested("r2", "ExitPlanMode", "ExitPlanMode", null, "t2", J("{\"plan\":\"# Use a list\"}"), null));
+        m.In();
+        Assert.True(document.IsOpen);
+        Assert.Contains("Use a list", UiHelpers.Texts(document));
+
+        // and it follows the conversation again
+        c.ApprovePlan(c.CurrentPermission!, "default");
+        UiHelpers.Pump();
+        Assert.False(document.IsOpen);
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_request_that_came_while_out_shows_when_back()
     {
         var m = new Mounted(Conversation());
