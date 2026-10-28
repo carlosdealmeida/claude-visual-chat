@@ -57,12 +57,13 @@ public static class ToolPresentation
                 case "PowerShell":
                     return FirstLine(Str(input, "command"));
                 case "Grep":
+                    return GrepSummary(input);
+                case "Glob":
+                case "Search":
                 {
                     var pattern = Str(input, "pattern");
-                    var path = Str(input, "path");
-                    return path.Length > 0 && pattern.Length > 0 ? pattern + " · " + path : pattern;
+                    return pattern.Length > 0 ? "pattern: \"" + pattern + "\"" : "";
                 }
-                case "Glob": return Str(input, "pattern");
                 case "WebFetch": return Str(input, "url");
                 case "WebSearch": return Str(input, "query");
                 case "Agent":
@@ -77,6 +78,51 @@ public static class ToolPresentation
         {
             return "";
         }
+    }
+
+    /// <summary>The pattern in quotes, then the options that are set, in this order: <c> (in src, glob: *.cs, type: cs)</c>.</summary>
+    private static string GrepSummary(JsonElement input)
+    {
+        var pattern = Str(input, "pattern");
+        if (pattern.Length == 0) return "";
+        var options = new List<string>();
+        if (Str(input, "path") is { Length: > 0 } path) options.Add("in " + path);
+        if (Str(input, "glob") is { Length: > 0 } glob) options.Add("glob: " + glob);
+        if (Str(input, "type") is { Length: > 0 } type) options.Add("type: " + type);
+        return "\"" + pattern + "\"" + (options.Count == 0 ? "" : " (" + string.Join(", ", options) + ")");
+    }
+
+    /// <summary>
+    /// The lines of a Glob's or Grep's output that are not empty (a line break of either kind ends one); an output that is exactly
+    /// <paramref name="noneText"/> (what a Glob says when it found nothing) counts none.
+    /// </summary>
+    internal static int CountOutputLines(string? output, string? noneText = null)
+    {
+        if (string.IsNullOrEmpty(output)) return 0;
+        if (noneText != null && output!.Trim() == noneText) return 0;
+        var count = 0;
+        var start = 0;
+        for (var i = 0; i <= output!.Length; i++)
+        {
+            if (i < output.Length && output[i] != '\n') continue;
+            var end = i > start && output[i - 1] == '\r' ? i - 1 : i;
+            if (end > start) count++;
+            start = i + 1;
+        }
+        return count;
+    }
+
+    /// <summary>The domains of a WebSearch's <c>allowed_domains</c> or <c>blocked_domains</c>; none when the input has no such list.</summary>
+    internal static IReadOnlyList<string> SearchDomains(JsonElement input, string property)
+    {
+        var domains = new List<string>();
+        if (input.ValueKind != JsonValueKind.Object || !input.TryGetProperty(property, out var list) || list.ValueKind != JsonValueKind.Array)
+            return domains;
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 } domain) domains.Add(domain);
+        }
+        return domains;
     }
 
     /// <summary>

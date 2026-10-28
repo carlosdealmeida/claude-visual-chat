@@ -1882,6 +1882,240 @@ public class ChatViewTests
         window.Close();
     }
 
+    // ---- Glob, Grep, Web Fetch and Web Search ----
+
+    private static (ChatConversation C, ToolCallItem Tool) SearchCall(string name, object input, string? result, bool isError = false)
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", name, J(JsonSerializer.Serialize(input)))));
+        if (result != null) c.Apply(new UserBlock(null, new ToolResultBlock("t1", result, isError), null, false, false));
+        return (c, c.Items.OfType<ToolCallItem>().Single());
+    }
+
+    private static TextBlock ToolTitle(Visual root, ToolCallItem tool, string name) =>
+        ViewOf(root, tool).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == name);
+
+    private static bool HasBox(Visual root, ToolCallItem tool) =>
+        ViewOf(root, tool).GetVisualDescendants().OfType<Border>().Any(b => b.Classes.Contains("ClaudeChatToolBody"));
+
+    private static Border OutputLine(Visual root, ToolCallItem tool) =>
+        ViewOf(root, tool).GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatOutputLine"));
+
+    private static string LineText(Border line) => Assert.IsType<TextBlock>(line.Child).Text!;
+
+    [AvaloniaFact]
+    public void Glob_counts_the_files_found()
+    {
+        var cases = new[]
+        {
+            ("src/a.cs\nsrc/b.cs\n\nsrc/c.cs\n", "Found 3 files"),
+            ("src/a.cs", "Found 1 file"),
+            ("No files found", "No files found"),
+            ("", "No files found"),
+        };
+        foreach (var (output, expected) in cases)
+        {
+            var (c, tool) = SearchCall("Glob", new { pattern = "**/*.cs", path = @"C:\demo\app" }, output);
+            var (view, window) = Open(c);
+            var title = ToolTitle(view, tool, "ToolName");
+            var detail = ToolTitle(view, tool, "DetailText");
+            Assert.Equal("Glob", title.Text);
+            Assert.Equal("pattern: \"**/*.cs\"", detail.Text); // no folder
+            Assert.DoesNotContain("plain", detail.Classes);     // the editor's font
+            Assert.DoesNotContain("file", detail.Classes);
+            Assert.False(HasBox(view, tool), output);          // only the secondary line, no box
+            var texts = UiHelpers.Texts(ViewOf(view, tool));
+            Assert.Contains(expected, texts);
+            Assert.DoesNotContain("OUT", texts);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Grep_counts_the_lines_of_output()
+    {
+        var cases = new[]
+        {
+            ("Found 2 files\nsrc/a.cs\nsrc/b.cs\n", "3 lines of output"),
+            ("src/a.cs:4:Foo", "1 line of output"),
+            ("", "No matches found"),
+        };
+        foreach (var (output, expected) in cases)
+        {
+            var (c, tool) = SearchCall("Grep", new { pattern = "Foo", path = "src", glob = "*.cs", type = "cs", output_mode = "content" }, output);
+            var (view, window) = Open(c);
+            Assert.Equal("Grep", ToolTitle(view, tool, "ToolName").Text);
+            Assert.Equal("\"Foo\" (in src, glob: *.cs, type: cs)", ToolTitle(view, tool, "DetailText").Text);
+            Assert.False(HasBox(view, tool));
+            Assert.Contains(expected, UiHelpers.Texts(ViewOf(view, tool)));
+            window.Close();
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Glob")]
+    [InlineData("Grep")]
+    public void The_line_of_a_search_opens_and_cuts_its_whole_output_in_place(string tool)
+    {
+        var output = string.Join("\n", Enumerable.Range(1, 30).Select(i => "src/file" + i + ".cs"));
+        var (c, call) = SearchCall(tool, new { pattern = "x" }, output);
+        var (view, window) = Open(c);
+        Assert.False(HasBox(view, call));
+        Assert.False(call.IsOutputExpanded);
+        Assert.True(OutputLine(view, call).Focusable);
+
+        UiHelpers.Click(window, OutputLine(view, call));      // a click opens it
+        Assert.True(call.IsOutputExpanded);
+        Assert.True(HasBox(view, call));
+        var texts = UiHelpers.Texts(ViewOf(view, call));
+        Assert.Contains(texts, t => t.Contains("src/file30.cs", StringComparison.Ordinal)); // the whole output, not its first lines
+        var box = ViewOf(view, call).GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatToolContent"));
+        Assert.Contains("whole", box.Classes);
+        Assert.DoesNotContain("expandable", box.Classes);     // the line cuts it, not the box
+
+        System.Threading.Thread.Sleep(600);                   // past the double-click time
+        UiHelpers.DrawFrames();
+        OutputLine(view, call).BringIntoView();                // the list stayed at the end, below the line
+        UiHelpers.DrawFrames();
+        UiHelpers.Click(window, OutputLine(view, call));      // and another cuts it
+        Assert.False(call.IsOutputExpanded);
+        Assert.False(HasBox(view, call));
+
+        OutputLine(view, call).Focus(NavigationMethod.Tab);   // the keyboard too
+        UiHelpers.Pump();
+        UiHelpers.Press(window, Key.Enter);
+        Assert.True(call.IsOutputExpanded);
+        Assert.True(OutputLine(view, call).IsFocused);        // the redraw keeps the focus
+        UiHelpers.Press(window, Key.Space);
+        Assert.False(call.IsOutputExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_search_without_output_has_a_plain_line_and_an_error_shows_its_text()
+    {
+        var (c, none) = SearchCall("Glob", new { pattern = "*.xyz" }, "No files found");
+        var (view, window) = Open(c);
+        Assert.Contains("No files found", UiHelpers.Texts(ViewOf(view, none)));
+        UiHelpers.Click(window, OutputLine(view, none));      // there is output (the tool's own sentence): it opens
+        Assert.True(none.IsOutputExpanded);
+        window.Close();
+
+        var (empty, grep) = SearchCall("Grep", new { pattern = "x" }, "");
+        (view, window) = Open(empty);
+        Assert.DoesNotContain(ViewOf(view, grep).GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("ClaudeChatOutputLine"));
+        Assert.Contains("No matches found", UiHelpers.Texts(ViewOf(view, grep)));
+        window.Close();
+
+        var (failed, glob) = SearchCall("Glob", new { pattern = "[" }, "Invalid pattern", isError: true);
+        (view, window) = Open(failed);
+        var texts = UiHelpers.Texts(ViewOf(view, glob));
+        Assert.Contains("OUT", texts);                         // an error is the raw text in OUT
+        Assert.Contains("Invalid pattern", texts);
+        Assert.DoesNotContain(texts, t => t.StartsWith("Found", StringComparison.Ordinal) || t.StartsWith("No files", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_line_of_a_search_is_a_finger_tall_in_the_touch_layout(bool touch)
+    {
+        var (c, tool) = SearchCall("Glob", new { pattern = "*.cs" }, "a.cs\nb.cs");
+        var view = touch ? UiHelpers.TouchView(c) : new ClaudeChatView { Conversation = c };
+        var window = touch ? UiHelpers.ShowPhone(view) : UiHelpers.Show(view);
+        var line = OutputLine(view, tool);
+        if (touch) Assert.True(line.Bounds.Height >= 44, line.Bounds.ToString());
+        else Assert.True(line.Bounds.Height < 44, line.Bounds.ToString());
+        UiHelpers.Click(window, line);
+        Assert.True(tool.IsOutputExpanded);                    // a tap opens it in both
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Web_fetch_shows_fetched_from_the_url()
+    {
+        const string url = "https://example.com/docs/intro";
+        var (c, tool) = SearchCall("WebFetch", new { url, prompt = "Summarize" }, "A long page about intro that must not show.");
+        var (view, window) = Open(c);
+        Assert.Equal("Web Fetch", ToolTitle(view, tool, "ToolName").Text);
+        Assert.Equal(url, ToolTitle(view, tool, "DetailText").Text);
+        var texts = UiHelpers.Texts(ViewOf(view, tool));
+        Assert.DoesNotContain("IN", texts);                    // no IN row
+        Assert.DoesNotContain("OUT", texts);
+        Assert.DoesNotContain(texts, t => t.Contains("must not show", StringComparison.Ordinal)); // what it fetched stays out
+        Assert.DoesNotContain("Summarize", texts);
+        var note = ViewOf(view, tool).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Fetched from " + url);
+        Assert.Equal(0.5, note.Opacity);
+        Assert.Equal(new Thickness(8), note.Margin);
+        Assert.True(HasBox(view, tool));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Web_fetch_that_failed_shows_the_error_in_out_and_one_that_runs_shows_nothing()
+    {
+        var (c, failed) = SearchCall("WebFetch", new { url = "https://nope.invalid" }, "getaddrinfo ENOTFOUND nope.invalid", isError: true);
+        var (view, window) = Open(c);
+        var texts = UiHelpers.Texts(ViewOf(view, failed));
+        Assert.Contains("OUT", texts);
+        Assert.Contains("getaddrinfo ENOTFOUND nope.invalid", texts);
+        Assert.DoesNotContain(texts, t => t.StartsWith("Fetched from", StringComparison.Ordinal));
+        window.Close();
+
+        var (waiting, running) = SearchCall("WebFetch", new { url = "https://example.com" }, null);
+        (view, window) = Open(waiting);
+        Assert.False(HasBox(view, running));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Web_search_lists_allowed_and_blocked_domains()
+    {
+        var cases = new (object Input, string? Line)[]
+        {
+            (new { query = "avalonia headless", allowed_domains = new[] { "a.com", "b.com" }, blocked_domains = new[] { "c.com" } },
+                "Allowed: a.com, b.com · Blocked: c.com"),
+            (new { query = "avalonia headless", allowed_domains = new[] { "a.com" }, blocked_domains = new string[0] }, "Allowed: a.com"),
+            (new { query = "avalonia headless", blocked_domains = new[] { "c.com", "d.com" } }, "Blocked: c.com, d.com"),
+            (new { query = "avalonia headless", allowed_domains = new string[0] }, null),
+        };
+        foreach (var (input, line) in cases)
+        {
+            var (c, tool) = SearchCall("WebSearch", input, "Links:\n- Avalonia docs");
+            var (view, window) = Open(c);
+            Assert.Equal("Web Search", ToolTitle(view, tool, "ToolName").Text);
+            Assert.Equal("avalonia headless", ToolTitle(view, tool, "DetailText").Text);
+            var texts = UiHelpers.Texts(ViewOf(view, tool));
+            Assert.DoesNotContain("IN", texts);
+            Assert.Contains("OUT", texts);                     // the result is an OUT row
+            Assert.Contains(texts, t => t.Contains("Avalonia docs", StringComparison.Ordinal));
+            if (line != null) Assert.Contains(line, texts);
+            else Assert.DoesNotContain(texts, t => t.StartsWith("Allowed", StringComparison.Ordinal) || t.StartsWith("Blocked", StringComparison.Ordinal));
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_new_lines_read_in_portuguese()
+    {
+        var pt = ChatStrings.PortugueseBrazil;
+        var (c, glob) = SearchCall("Glob", new { pattern = "*.cs" }, "a.cs\nb.cs");
+        var (view, window) = Open(c, pt);
+        Assert.Contains("2 arquivos encontrados", UiHelpers.Texts(ViewOf(view, glob)));
+        window.Close();
+
+        (c, var web) = SearchCall("WebSearch", new { query = "q", allowed_domains = new[] { "a.com" }, blocked_domains = new[] { "c.com" } }, "ok");
+        (view, window) = Open(c, pt);
+        Assert.Contains("Permitidos: a.com · Bloqueados: c.com", UiHelpers.Texts(ViewOf(view, web)));
+        window.Close();
+
+        (c, var fetch) = SearchCall("WebFetch", new { url = "https://x.y" }, "ok");
+        (view, window) = Open(c, pt);
+        Assert.Contains("Buscado em https://x.y", UiHelpers.Texts(ViewOf(view, fetch)));
+        window.Close();
+    }
+
     // ---- theme ----
 
     [AvaloniaFact]

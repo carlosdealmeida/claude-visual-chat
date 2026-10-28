@@ -29,9 +29,9 @@ public class ToolPresentationTests
     [InlineData("Bash", "{\"command\":\"git status\"}", "git status")]
     [InlineData("PowerShell", "{\"command\":\"git status\"}", "git status")]
     [InlineData("Bash", "{\"command\":\"echo a\\necho b\"}", "echo a…")]
-    [InlineData("Grep", "{\"pattern\":\"Foo\",\"path\":\"src\"}", "Foo · src")]
-    [InlineData("Grep", "{\"pattern\":\"Foo\"}", "Foo")]
-    [InlineData("Glob", "{\"pattern\":\"**/*.cs\"}", "**/*.cs")]
+    [InlineData("Grep", "{\"pattern\":\"Foo\",\"path\":\"src\"}", "\"Foo\" (in src)")]
+    [InlineData("Grep", "{\"pattern\":\"Foo\"}", "\"Foo\"")]
+    [InlineData("Glob", "{\"pattern\":\"**/*.cs\"}", "pattern: \"**/*.cs\"")]
     [InlineData("WebFetch", "{\"url\":\"https://x.y\"}", "https://x.y")]
     [InlineData("WebSearch", "{\"query\":\"q\"}", "q")]
     [InlineData("Agent", "{\"description\":\"Resumir\"}", "Resumir")]
@@ -43,6 +43,40 @@ public class ToolPresentationTests
     [InlineData("Mystery", "{\"x\":1}", "")]
     public void Summary_per_tool(string tool, string json, string expected)
         => Assert.Equal(expected, ToolPresentation.Summary(tool, J(json), Wd));
+
+    [Fact]
+    public void Grep_summary_lists_path_glob_and_type_in_order()
+    {
+        Assert.Equal("\"Foo\" (in src, glob: *.cs, type: cs)",
+            ToolPresentation.Summary("Grep", J("{\"type\":\"cs\",\"glob\":\"*.cs\",\"path\":\"src\",\"pattern\":\"Foo\",\"-i\":true}"), Wd));
+        Assert.Equal("\"Foo\" (glob: *.cs)", ToolPresentation.Summary("Grep", J("{\"pattern\":\"Foo\",\"glob\":\"*.cs\"}"), Wd));
+        Assert.Equal("\"Foo\" (in src, type: cs)", ToolPresentation.Summary("Grep", J("{\"pattern\":\"Foo\",\"path\":\"src\",\"type\":\"cs\",\"glob\":\"\"}"), Wd));
+        Assert.Equal("", ToolPresentation.Summary("Grep", J("{\"path\":\"src\"}"), Wd));
+    }
+
+    [Fact]
+    public void Glob_and_search_summaries_have_the_pattern_and_no_path()
+    {
+        Assert.Equal("pattern: \"src/**/*.cs\"", ToolPresentation.Summary("Glob", J("{\"pattern\":\"src/**/*.cs\",\"path\":\"C:/demo\"}"), Wd));
+        Assert.Equal("pattern: \"x\"", ToolPresentation.Summary("Search", J("{\"pattern\":\"x\"}"), Wd));
+        Assert.Equal("", ToolPresentation.Summary("Glob", J("{\"path\":\"src\"}"), Wd));
+    }
+
+    [Theory]
+    [InlineData(null, 0)]
+    [InlineData("", 0)]
+    [InlineData("a.cs", 1)]
+    [InlineData("a.cs\nb.cs\n\nc.cs\n", 3)]
+    [InlineData("a.cs\r\n\r\nb.cs\r\n", 2)]
+    [InlineData("No files found", 0)]
+    [InlineData("No files found\n", 0)]
+    [InlineData("No files found\nsrc/a.cs", 2)]
+    public void Output_lines_count_the_lines_that_are_not_empty(string? output, int expected)
+        => Assert.Equal(expected, ToolPresentation.CountOutputLines(output, "No files found"));
+
+    [Fact]
+    public void Grep_counts_every_line_even_one_that_says_no_matches()
+        => Assert.Equal(1, ToolPresentation.CountOutputLines("No matches found"));
 
     [Fact]
     public void Summary_without_working_directory_keeps_the_path()

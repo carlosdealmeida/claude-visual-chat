@@ -748,6 +748,18 @@
     <Setter Property="Opacity" Value="1" />
   </Style>
 
+  <!-- the line under a Glob or a Grep with output: the secondary line, which opens the output; the keyboard's focus is the thin
+       line inside that the box's texts have -->
+  <Style Selector="Border.ClaudeChatOutputLine:focus-visible">
+    <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.ToolContentFocusShadow}" />
+  </Style>
+  <!-- what a Web Fetch that worked says in its box: plain, half strength, 8 px from the frame -->
+  <Style Selector="TextBlock.ClaudeChatFetched">
+    <Setter Property="Opacity" Value="0.5" />
+    <Setter Property="Margin" Value="8" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
   <!-- the box under a tool -->
   <Style Selector="Border.ClaudeChatToolBody">
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />

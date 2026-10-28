@@ -37,6 +37,15 @@ public sealed record ChatStrings
         ThoughtFor = "Pensou por {0} s",
         RunInBackground = "Rodando em segundo plano",
         ToolReason = "Motivo:",
+        GlobNone = "Nenhum arquivo encontrado",
+        GlobOne = "1 arquivo encontrado",
+        GlobMany = "{0} arquivos encontrados",
+        GrepNone = "Nenhuma correspondência encontrada",
+        GrepOne = "1 linha de saída",
+        GrepMany = "{0} linhas de saída",
+        FetchedFrom = "Buscado em {0}",
+        WebAllowed = "Permitidos:",
+        WebBlocked = "Bloqueados:",
         ToolShowFullText = "Pressione Enter para mostrar o texto inteiro",
         ToolCutText = "Pressione Enter para cortar o texto",
         Working = "Trabalhando…",
@@ -362,6 +371,33 @@ public sealed record ChatStrings
 
     /// <summary>The bold start of the line under a refused command, edit or write: the reason the user typed follows it.</summary>
     public string ToolReason { get; init; } = "Reason:";
+
+    /// <summary>The line under a Glob that found nothing.</summary>
+    public string GlobNone { get; init; } = "No files found";
+
+    /// <summary>The line under a Glob that found one file.</summary>
+    public string GlobOne { get; init; } = "Found 1 file";
+
+    /// <summary>The line under a Glob that found files; <c>{0}</c> is how many.</summary>
+    public string GlobMany { get; init; } = "Found {0} files";
+
+    /// <summary>The line under a Grep with no output.</summary>
+    public string GrepNone { get; init; } = "No matches found";
+
+    /// <summary>The line under a Grep whose output is one line.</summary>
+    public string GrepOne { get; init; } = "1 line of output";
+
+    /// <summary>The line under a Grep whose output has several lines; <c>{0}</c> is how many.</summary>
+    public string GrepMany { get; init; } = "{0} lines of output";
+
+    /// <summary>The box of a Web Fetch that worked; <c>{0}</c> is the url.</summary>
+    public string FetchedFrom { get; init; } = "Fetched from {0}";
+
+    /// <summary>Starts the domains a Web Search was allowed to use.</summary>
+    public string WebAllowed { get; init; } = "Allowed:";
+
+    /// <summary>Starts the domains a Web Search was kept away from.</summary>
+    public string WebBlocked { get; init; } = "Blocked:";
 
     /// <summary>What a screen reader tells on a cut text of a tool, which a key opens whole.</summary>
     public string ToolShowFullText { get; init; } = "Press Enter to show the full text";
@@ -1054,6 +1090,26 @@ public sealed record ChatStrings
 
     /// <summary>"47 lines", "1 line".</summary>
     internal string FormatLines(int lines) => lines == 1 ? OneLine : Lines.Replace("{0}", FormatNumber(lines));
+
+    /// <summary>The line under a Glob: "No files found", "Found 1 file", "Found 3 files".</summary>
+    internal string FormatFilesFound(int files) =>
+        files <= 0 ? GlobNone : files == 1 ? GlobOne : GlobMany.Replace("{0}", FormatNumber(files));
+
+    /// <summary>The line under a Grep: "No matches found", "1 line of output", "3 lines of output".</summary>
+    internal string FormatLinesOfOutput(int lines) =>
+        lines <= 0 ? GrepNone : lines == 1 ? GrepOne : GrepMany.Replace("{0}", FormatNumber(lines));
+
+    /// <summary>The box of a Web Fetch that worked.</summary>
+    internal string FormatFetchedFrom(string url) => FetchedFrom.Replace("{0}", url);
+
+    /// <summary>The line under a Web Search: "Allowed: a.com, b.com · Blocked: c.com", each part only when its list has domains; null when neither has.</summary>
+    internal string? FormatWebDomains(IReadOnlyList<string> allowed, IReadOnlyList<string> blocked)
+    {
+        var parts = new List<string>();
+        if (allowed.Count > 0) parts.Add(WebAllowed + " " + string.Join(", ", allowed));
+        if (blocked.Count > 0) parts.Add(WebBlocked + " " + string.Join(", ", blocked));
+        return parts.Count == 0 ? null : string.Join(" · ", parts);
+    }
 
     /// <summary>The line under an edit: "Modified", "Added 2 lines", "Added 2 lines, removed 1 line"…</summary>
     internal string FormatEditChange(LineChange change)

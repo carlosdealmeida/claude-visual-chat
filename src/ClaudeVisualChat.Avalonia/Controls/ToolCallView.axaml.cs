@@ -37,6 +37,9 @@ namespace ClaudeVisualChat.Controls;
 /// ended, and its steps stay off the list (the map has them).
 /// The command's row (IN) of a Bash or PowerShell call has a button at its top right, shown while the pointer is over the row (always
 /// in the touch layout), that copies the whole command through <see cref="ChatClipboard"/>; for 2 s after a copy its icon is a check.
+/// A Glob or a Grep that worked reads only a line under its name ("Found 3 files", "12 lines of output"), with no box; with output, a
+/// click, Enter or Space on the line opens the whole output under it. A Web Fetch that worked has only "Fetched from" and its url in the
+/// box (what it fetched stays out); a Web Search says the domains it was allowed or kept away from.
 /// In the touch layout (pseudo-class <c>:touch</c>) the call is a block with a frame and its dot is the header's first
 /// piece.
 /// </summary>
@@ -74,6 +77,10 @@ internal partial class ToolCallView : UserControl
 
     /// <summary>The name an Agent (or Task) call reads, with its colon: the tool's name, the same in every language.</summary>
     private const string AgentTitle = "Agent:";
+
+    /// <summary>The names of the two web tools, the same in every language, like the extension's.</summary>
+    private const string WebFetchTitle = "Web Fetch";
+    private const string WebSearchTitle = "Web Search";
 
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<ToolCallView>();
@@ -293,6 +300,10 @@ internal partial class ToolCallView : UserControl
             // "Agent:" with its colon, a Task call too, like the extension's; the description follows in the editor's font
             ToolName.Text = AgentTitle;
         }
+        else if (name == "WebFetch" || name == "WebSearch")
+        {
+            ToolName.Text = name == "WebFetch" ? WebFetchTitle : WebSearchTitle;
+        }
         else if (IsFileTool(name))
         {
             kind = "file";
@@ -384,7 +395,13 @@ internal partial class ToolCallView : UserControl
             var hasTodos = !hasDiff && item.Todos != null && item.Todos.Count > 0;
 
             var subtitle = Subtitle(item, strings);
-            if (subtitle != null) Body.Children.Add(Line(subtitle, "ClaudeChatSecondary"));
+            var result = item.FullResultText ?? item.ResultText;
+            var opensOutput = CountsOutput(name) && subtitle != null && !string.IsNullOrEmpty(result);
+            if (subtitle != null)
+                Body.Children.Add(opensOutput ? OutputLine(item, subtitle, strings) : Line(subtitle, "ClaudeChatSecondary"));
+            // the output of a Glob or a Grep, opened from its line
+            if (opensOutput && item.IsOutputExpanded)
+                Body.Children.Add(ToolBody(TextRow(item, result!, input: false, strings, interactive: false)));
             // what the user typed when they refused: for a command, it stands for the output
             if (refused && TellsReason(name) && !string.IsNullOrEmpty(item.RejectionReason))
                 Body.Children.Add(ReasonLine(item.RejectionReason!, strings));
@@ -397,7 +414,6 @@ internal partial class ToolCallView : UserControl
             // prompt, whatever came back
             var showOutput = name != PlanTool && !IsAgentTool(name)
                 && (failed || (!hasDiff && !hasTodos && !quiet && !(refused && TellsReason(name))));
-            var result = item.FullResultText ?? item.ResultText;
             var output = showOutput && !string.IsNullOrEmpty(result);
 
             // the box of an edit or a write goes in a panel under 500 px, like the extension's; the phone keeps it
@@ -412,6 +428,8 @@ internal partial class ToolCallView : UserControl
                 Body.Children.Add(ToolBody(ListDiff(item, strings)));
             else if (hasTodos)
                 Body.Children.Add(TodoList(item.Todos!));
+            else if (name == "WebFetch" && item.Status == ToolStatus.Succeeded && Str(item.Input, "url") is { Length: > 0 } url)
+                Body.Children.Add(ToolBody(FetchedFrom(url, strings)));
 
             var rows = new List<(string Label, Control Content, bool Copyable)>();
             // the command: the box shows its first lines, and the request showed it whole
@@ -492,6 +510,49 @@ internal partial class ToolCallView : UserControl
         return line;
     }
 
+    // ---- the line under a Glob or a Grep, and the box of a Web Fetch ----
+
+    private const string SummaryKey = "summary";
+
+    /// <summary>
+    /// The line of a Glob or Grep with output ("Found 3 files"): the secondary line, taking clicks, Enter and Space to open the
+    /// output under it and cut it again (the state is in the item). A finger's height in the touch layout.
+    /// </summary>
+    private Border OutputLine(ToolCallItem item, string text, ChatStrings strings)
+    {
+        var line = new Border { Child = Line(text, "ClaudeChatSecondary") };
+        line.Classes.Add("ClaudeChatOutputLine");
+        line.Background = Brushes.Transparent; // the whole row takes the click, not only the letters
+        line.Tag = SummaryKey;
+        line.Focusable = true;
+        line.Cursor = new Cursor(StandardCursorType.Hand);
+        AutomationProperties.SetName(line, text + ". " + (item.IsOutputExpanded ? strings.ToolCutText : strings.ToolShowFullText));
+        line.GotFocus += (_, e) => _focusMethod = e.NavigationMethod;
+        // a fast second click (a double click) is not a second toggle: it would close what the first one opened, like the texts of the box
+        var clicks = 1;
+        line.AddHandler(InputElement.PointerPressedEvent, (_, e) => clicks = e.ClickCount, Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        line.Tapped += (_, e) =>
+        {
+            e.Handled = true;
+            if (clicks <= 1) Toggle(item, input: false);
+        };
+        line.KeyDown += (_, e) =>
+        {
+            if ((e.Key != Key.Enter && e.Key != Key.Space) || e.KeyModifiers != KeyModifiers.None) return;
+            e.Handled = true;
+            Toggle(item, input: false);
+        };
+        return line;
+    }
+
+    /// <summary>"Fetched from" and the url, plain, at half strength, 8 px from the frame: all that a Web Fetch that worked shows.</summary>
+    private static TextBlock FetchedFrom(string url, ChatStrings strings)
+    {
+        var text = new TextBlock { Text = strings.FormatFetchedFrom(url) };
+        text.Classes.Add("ClaudeChatFetched");
+        return text;
+    }
+
     // ---- a text in the box: cut at 60 px, whole with a click ----
 
     /// <summary>Whether a text is long enough to open whole: past <see cref="ExpandableChars"/> characters or <see cref="ExpandableLines"/> lines.</summary>
@@ -521,10 +582,11 @@ internal partial class ToolCallView : UserControl
     /// <summary>
     /// What goes in a row of the box: the editor's font at .85em, no wrapping, 4 px inside, at most 60 px with a fade. An
     /// <paramref name="input"/> is the command or the file written; the rest is the call's output, a string on the code
-    /// background that scrolls sideways. A long one takes clicks, Enter and Space and opens whole in place; the state is in the
-    /// item, because the list recycles its rows.
+    /// background that scrolls sideways. A long one takes clicks, Enter and Space and opens whole in place (unless
+    /// <paramref name="interactive"/> is false: a Glob's output, opened and cut from its line); the state is in the item, because
+    /// the list recycles its rows.
     /// </summary>
-    private Border TextRow(ToolCallItem item, string text, bool input, ChatStrings strings)
+    private Border TextRow(ToolCallItem item, string text, bool input, ChatStrings strings, bool interactive = true)
     {
         var expandable = IsExpandable(text);
         var whole = expandable && (input ? item.IsInputExpanded : item.IsOutputExpanded);
@@ -555,7 +617,7 @@ internal partial class ToolCallView : UserControl
         var content = new Border { Child = new StackPanel { Children = { shown } } };
         content.Classes.Add("ClaudeChatToolContent");
         if (whole) content.Classes.Add("whole");
-        if (!expandable) return content;
+        if (!expandable || !interactive) return content; // with a line above, that opens and cuts it
 
         content.Classes.Add("expandable");
         content.Background = Brushes.Transparent; // the whole row takes the click, not only the letters
@@ -703,6 +765,18 @@ internal partial class ToolCallView : UserControl
                 if (ToolPresentation.WriteLineCount(item.Name, item.Input) is { } lines) return strings.FormatLines(lines);
                 // a content that is not a text, which the box shows as JSON
                 return NonTextContent(item.Input) != null ? strings.WriteSucceeded : null;
+            case "Glob":
+                // an error or a refusal shows the raw text in OUT instead
+                return item.Status == ToolStatus.Succeeded
+                    ? strings.FormatFilesFound(ToolPresentation.CountOutputLines(item.FullResultText ?? item.ResultText, NoFilesFound))
+                    : null;
+            case "Grep":
+                return item.Status == ToolStatus.Succeeded
+                    ? strings.FormatLinesOfOutput(ToolPresentation.CountOutputLines(item.FullResultText ?? item.ResultText))
+                    : null;
+            case "WebSearch":
+                return strings.FormatWebDomains(ToolPresentation.SearchDomains(item.Input, "allowed_domains"),
+                    ToolPresentation.SearchDomains(item.Input, "blocked_domains"));
             case PlanTool:
                 // nothing while it waits; a refusal comes back as an error (or a rejection): the claude stays in plan mode
                 return item.Status switch
@@ -717,7 +791,13 @@ internal partial class ToolCallView : UserControl
     }
 
     /// <summary>Tools whose output, when they work, is not worth showing in the list (a subagent's call never shows one).</summary>
-    private static bool QuietWhenDone(string toolName) => toolName == "Read";
+    private static bool QuietWhenDone(string toolName) => toolName == "Read" || toolName == "WebFetch" || CountsOutput(toolName);
+
+    /// <summary>What a Glob says when it found nothing (the tool's own text, the same in every language): counted as no files.</summary>
+    private const string NoFilesFound = "No files found";
+
+    /// <summary>Glob and Grep: their row is a line that counts the output, which a click opens.</summary>
+    private static bool CountsOutput(string toolName) => toolName == "Glob" || toolName == "Grep";
 
     private static bool IsFileTool(string toolName) =>
         toolName == "Read" || toolName == "Edit" || toolName == "Write" || toolName == "MultiEdit" || toolName == "NotebookEdit";
