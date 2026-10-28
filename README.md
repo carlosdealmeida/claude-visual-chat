@@ -374,6 +374,34 @@ The document closes when the plan is approved and stays after a "No". Esc, its x
 layer at a time; only an Esc with the card on top is "No". Select a passage to comment on it: the comments wait in the
 card ("Continue planning") until the person sends them as feedback. The row of the plan in the list opens it again.
 
+## Tool calls
+
+Each call is a row in the list, drawn as the extension 2.1.310 draws it: Bash and PowerShell with their command in an IN
+box (and a copy button), Edit and Write with a line under the name ("Modified", "Added 2 lines") and their diff, Glob,
+Grep and the web tools with a line that opens the output, Agent with its prompt, MCP tools as "Server [tool]" and Claude
+in Chrome as "Claude in Chrome [action]". Nothing to set up: they come from lines `AppendLine` already gets. What your app
+may want to know:
+
+- **A call appears when its input is complete,** not as an empty row when its block starts, so a read of
+  `ChatConversation.Items` sees it a little later than before. The calls of `ToolSearch`, and their results, never appear.
+- **A click on a diff in the list opens the Diff View** over the whole view, side by side, under the file's path. Esc, its
+  x and `CloseTopLayer()` close it (it is a layer, right under the image preview), and it opens in a read-only view too.
+  On a view 500 px wide or less (the desktop layout only) the box of an Edit or a Write is left out, as in the extension;
+  the touch layout keeps it.
+- **`ToolCallItem` carries more:** `FullResultText` (the whole result, at most `ToolPresentation.MaxKeptResultChars`
+  characters, without terminal codes for commands), `RejectionReason` (what the person typed when refusing the call),
+  `IsOutputExpanded` and `IsInputExpanded` (whether a box is open whole) and `ResultImages`. A refused call shows a red dot
+  and, for an Edit, a Write or a command, a "Reason:" line; there is no "Rejected" label any more.
+- **A screenshot of Claude in Chrome** (the `computer` action) shows as a thumbnail, which opens the image preview, only
+  when the result's `content` carries an image block; a relay that forwards only text shows "Action completed". The
+  fields of the Chrome input that the rows read come from the tool's schema, not from a recording.
+- **A subagent in the background has a line under its row** that ends in "type /tasks to see its transcript". If your
+  claude has no `/tasks`, change the text: `ChatStrings.English with { AgentTasksHint = "..." }`. `AgentInfo.Prompt` and
+  `AgentInfo.IsWaitingForPermission` are on the agents of `ChatConversation.Agents`; a request that comes without an
+  `agent_id` is taken for the agent whose step asked.
+- The names of the Agent, Web Fetch, Web Search and Claude in Chrome rows are `ChatStrings` texts
+  (`AgentToolTitle`, `WebFetchToolTitle`, `WebSearchToolTitle`, `ChromeToolTitle`), the same in both languages.
+
 ## Colors
 
 Every color, both fonts, the text sizes and a few places come from resources named `ClaudeChat.*` (the keys are in
@@ -409,16 +437,16 @@ The keys, all prefixed with `ClaudeChat.`:
 | Group | Keys |
 | --- | --- |
 | Theme colors (change with the VS Code theme) | `Background`, `Surface`, `Border`, `BorderStrong`, `Foreground`, `ForegroundMuted`, `Accent`, `AccentFill`, `AccentForeground`, `FocusBorder`, `Warning`, `Error`, `Success`, `InputBackground`, `InputBorder`, `InputActiveBorder`, `PermissionActiveBorder`, `InputPlaceholder`, `HoverBackground`, `OptionBorder`, `TimelineLine`, `Dot`, `ToolBackground`, `CodeBackground`, `CodeForeground`, `CodeBlockBackground`, `PillBackground`, `PillHoverBackground` |
-| The extension's own colors | `DotSucceeded`, `DotFailed`, `DotRejected`, `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground` |
-| Reply box shadows (`BoxShadows`) | `ComposerShadow`, `ComposerFocusShadow`, `ComposerFocusShadowAcceptEdits`, `ComposerFocusShadowPlan`, `ComposerFocusShadowAuto` |
-| Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade` |
+| The extension's own colors | `DotSucceeded`, `DotFailed`, `DotRejected` (not used since 0.6.0), `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground` |
+| Reply box and tool box shadows (`BoxShadows`) | `ComposerShadow`, `ComposerFocusShadow`, `ComposerFocusShadowAcceptEdits`, `ComposerFocusShadowPlan`, `ComposerFocusShadowAuto`, `ToolContentFocusShadow` (the focus of a tool box) |
+| Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade`, `DiffExpandHover`, `DiffExpandPillHoverBorder`, `DiffViewShadow` |
 | Fonts | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |
 | Sizes | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize`, `PromptHintFontSize` |
 | Places | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (the command or the diff of a permission request: a taller one scrolls), `PromptDetailPeekHeight` (the same while the field of "No" is open), `PlanCommentsMaxHeight` (the list of comments in the plan card) |
 | Icons (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.ChevronDown`, `Icon.ChevronUp`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External` |
 | Menus and the command palette | `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`, `ListActiveForeground`, `EffortThumbShadow` |
 | Attachments | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |
-| Agent map and context ring | `ModalOverlay`, `AgentRunning`, `ContextRingTrack`, `ContextRingFill` |
+| Agent map and context ring | `ModalOverlay`, `AgentRunning`, `AgentWaiting`, `ContextRingTrack`, `ContextRingFill` |
 | Banners and Remote Control | `BannerBackground`, `BannerForeground`, `BannerTint`, `BannerErrorBackground`, `BannerErrorForeground`, `RemoteControlForeground`, `RemoteControlHoverBackground`, `RemoteControlHoverForeground` |
 | `/context` and `/usage` panels | `ContextColor1` to `ContextColor6` (the chart colors of the context bar), `PanelShadow` |
 | Touch layout (see [Touch layout](#touch-layout)) | `UserBubble`, `SheetBackground`, `SheetGroupBackground`, `SheetHandle`, `SheetOverlay`, `PermissionWarningBorder` |
@@ -554,7 +582,7 @@ void OnBackPressed()
 }
 ```
 
-The layers, top-most first: the image preview; a menu of the reply box (the commands or the models); a sheet (the usage
+The layers, top-most first: the image preview; the Diff View; a menu of the reply box (the commands or the models); a sheet (the usage
 sheet before the others, and a page inside a sheet goes back to the first page before the sheet closes); an agent's card
 in the Agent map, which goes back to the map; the panel that is open (the Agent map, or the `/context` and `/usage`
 panels of the desktop layout); and the field where the user writes why a request is refused. A permission request is no

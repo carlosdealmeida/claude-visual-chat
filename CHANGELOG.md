@@ -61,6 +61,66 @@ All notable changes to this project are written here. The format follows
 - New theme resources: `ClaudeChat.PlanCommentHighlight`, `ClaudeChat.SecondaryButtonBackground`,
   `ClaudeChat.PlanCommentsMaxHeight` (160), `ClaudeChat.PromptHintFontSize` and the icons `ClaudeChat.Icon.ChevronDown`
   and `ClaudeChat.Icon.ChevronUp`.
+- The boxes of the tool rows, as the Claude Code extension 2.1.310 draws them. The text in an IN or OUT box is cut at
+  60 px with a fade; one past 250 characters or 3 lines opens whole, in place, with a click, Enter or Space (at most
+  100,000 characters), and cuts again the same way. An output is no longer wrapped or painted red on an error: it sits on
+  the code background and scrolls sideways. The IN box of a Bash or PowerShell command has a copy button at its top
+  right, shown while the pointer is over the box (always, as a target of 44 px, in the touch layout) and turned into a
+  check for 2 seconds after the copy.
+- A refused Edit, Write, Bash or PowerShell shows "Reason:" and what the person typed, on a line of its own (a refused
+  Edit or Write also reads "Edit failed" or "Write failed"; any other refused tool shows what the claude answered). A
+  refusal that comes as the claude's standard sentence followed by "The user provided the following reason for the
+  rejection: " and a text (a session opened in the extension) has that text as its reason; the standard sentence alone
+  has none.
+- The Diff View. A click on a diff in the list, or Enter or Space on it, opens the change over the whole view, side by
+  side and scrolling, under the file's whole path (or "Diff View" when the call names no file). Esc, its x or a click on
+  its backdrop closes it, and the keyboard goes back to where it was. It is a layer of `CloseTopLayer()`, right under
+  the image preview, and it opens in a read-only view too. Back in the window with the Diff View open, the keyboard goes
+  to its x, unless a control of the host has it. A layer over the diff in the list darkens under the pointer and shows
+  "Click to expand" while the pointer or the keyboard is on it (always shown in the touch layout, where the diff is at
+  least 44 px tall). A diff goes side by side above 900 px of width and back to one column at 876 px or less.
+- A Write whose `content` is not a text reads "Write succeeded" and shows the content as indented JSON.
+- Glob and Grep rows read "Found 3 files" and "12 lines of output" (or "No files found" and "No matches found") and
+  open the whole output in place from that line. Web Fetch reads "Fetched from <url>", and Web Search lists the domains
+  allowed and blocked ("Allowed: a.com · Blocked: c.com").
+- Skill rows read the skill's name in bold and "skill" after it, with no body; TaskOutput rows read `task: "<id>"` and
+  have an OUT box without the terminal codes.
+- MCP tool rows read "Server [tool]" in bold, with the server made readable (`claude_ai_Gmail` is "Claude AI Gmail"),
+  and, under it, the first known field of the input (query, message, channel, repo, url, path, title, search or text).
+  Claude in Chrome rows read "Claude in Chrome [action]" with a line per action ("Navigation completed", "Tab
+  created"...), an OUT box without the "Tab Context:" section for the actions that read something, and, for the
+  `computer` action, a "Screenshot" thumbnail (80 px tall, at most 160 px wide) when the result carried an image; a
+  click on it opens the image preview. An error and the `javascript_tool` action show the generic body, with the input
+  as JSON.
+- Agent rows. An Agent (or Task) call reads "Agent:" and its description, and its box holds only the prompt (IN), never
+  an output, not even when the call fails. A subagent in the background has under its row the line the extension draws:
+  a dot of 8 px (green at work, blue waiting for a permission, red failed or stopped, gray otherwise), what it is doing
+  ("Working in the background: Reading a.txt"), "Waiting for your permission: see the request below", "Failed: ...",
+  "Finished" or "Stopped", what the agents it started are doing, and always "type /tasks to see its transcript" at the
+  end (`AgentTasksHint`, for a host with no `/tasks`).
+- `ToolCallItem.FullResultText`: the whole result of a call (at most `ToolPresentation.MaxKeptResultChars`, 500,000
+  characters), without terminal codes for Bash, PowerShell and TaskOutput; `ResultText` and `HiddenResultLines` stay.
+  `ToolCallItem.RejectionReason`: what the person typed when refusing the call. `ToolCallItem.IsOutputExpanded` and
+  `IsInputExpanded`: whether the output or the command is open whole (in the item, because the list reuses its rows).
+  `ToolCallItem.ResultImages` (read-only) and `ToolResultBlock.Images` (`init`): the images a result carried.
+  `AnsiText.Strip(string)`, in `ClaudeVisualChat.Protocol`, takes the terminal codes out of a text.
+- `AgentInfo.Prompt`, what the agent was asked, and `AgentInfo.IsWaitingForPermission`, true while it runs and a request
+  of its own is in the queue (the request's `AgentId` is the agent's `TaskId`; without one, the request belongs to the
+  agent whose step asked, to none when the main agent's own step asked, and only for a step the conversation has not
+  seen to the agent that started running last). `AgentTaskStarted.Prompt` (`init`, read from `task_started.prompt`).
+- `NoticeKind.ToolInterrupted`, added at the end of the enum, for "[Request interrupted by user for tool use]".
+- New `ChatStrings` texts, in English and Portuguese: `ToolReason`, `ToolShowFullText`, `ToolCutText`, `ToolInterrupted`,
+  `WriteSucceeded`, `ClickToExpand`, `DiffViewTitle`, `CopyCode`, `CopyCodeToClipboard`, `GlobNone`, `GlobOne`,
+  `GlobMany`, `GrepNone`, `GrepOne`, `GrepMany`, `FetchedFrom`, `WebAllowed`, `WebBlocked`, `AgentWorkingInBackground`,
+  `AgentWorkingInBackgroundOn`, `AgentWaitingForPermission`, `AgentWaitingAlongWithNested`, `AgentFailedWith`,
+  `AgentNestedWaiting`, `AgentNestedWorking`, `AgentNestedFailed`, `AgentNestedStopped`, `AgentTasksHint`,
+  `ChromeActionCompleted`, `ChromeScreenshot`, `ChromeNavigated`, `ChromeTabCreated`, `ChromeTabsRead`,
+  `ChromeInputCompleted`, `ChromeWindowResized`, `ChromeSearchCompleted`, `ChromeGifCompleted`,
+  `ChromeConsoleRetrieved`, `ChromeNetworkRetrieved`, `ChromeScriptExecuted`, `ChromePageRead`, `ChromeTextRetrieved`,
+  `ChromeImageUploaded` and `ChromePlanUpdated`; and the names of tools `AgentToolTitle`, `WebFetchToolTitle`,
+  `WebSearchToolTitle` and `ChromeToolTitle`, which are the same in both languages, like `AgentTokens`.
+- New theme resources: `ClaudeChat.AgentWaiting`, `ClaudeChat.ToolContentFocusShadow` (also in "Dark Modern"),
+  `ClaudeChat.DiffExpandHover`, `ClaudeChat.DiffExpandPillHoverBorder` and `ClaudeChat.DiffViewShadow`.
 
 ### Changed
 
@@ -102,6 +162,51 @@ All notable changes to this project are written here. The format follows
   `input` of its permission request.
 - `ChatStrings.PermissionRunCommand`, `PermissionEditFile` and `PermissionUseTool` are not used on the desktop since
   0.6.0 (the touch layout still uses them). Nothing public was removed or renamed.
+- A tool row's text is cut at 60 px, where it was cut at 12 lines or 4,000 characters with a line "+N lines"; there is no
+  "+N lines" any more. A Bash or PowerShell row has no line count either (the extension has none). In the touch layout
+  the cut text is a target of 44 px.
+- A call the person refused shows the red dot of a failed one and no "Rejected" label, in both layouts.
+  `ChatStrings.ToolRejected` and the `ClaudeChat.DotRejected` brush stay, not used.
+- A tool call appears in `ChatConversation.Items` when its input is complete (the assistant's line, or the end of its
+  block), no longer as an empty row when its block starts; "Working..." covers the wait. A host that read the item
+  earlier now sees it a little later. The calls of `ToolSearch`, and their results, no longer appear in the conversation.
+- The interruption lines read "Interrupted" and "Tool interrupted" (`ChatStrings.Interrupted` was "Interrupted by the
+  user"; the Portuguese text changed the same way). Only the claude's two exact texts, "[Request interrupted by user]"
+  and "[Request interrupted by user for tool use]", make them (`NoticeKind.Interrupted` and the new
+  `NoticeKind.ToolInterrupted`); any other text that begins "[Request interrupted" is the user's message, as written.
+  Before, any text with that beginning was taken for an interruption.
+- An Agent (or Task) row has no OUT line, with a result or an error, and the steps of a subagent that runs in the
+  background no longer appear in the conversation, only in the Agent map (they stay in the call's `Children`). The steps
+  of a subagent in the foreground are still nested behind the arrow of its row, where the extension shows them as plain
+  rows.
+- `AgentTaskStarted` compares its `Prompt` in the equality of the record: a host that compares these events by value sees
+  the difference. The positional constructor did not change.
+- `ToolPresentation.Summary` (the `Summary` of a call and of a `PendingPermission`): for an MCP tool it is the first
+  known field of the input (query, message, channel, repo, url, path, title, search or text; a channel reads "#name", a
+  url its host, the rest at most 40 characters), and "" when none is there, where it was the first text of the input; for
+  a Claude in Chrome tool, the line of its action. Glob reads `pattern: "..."` and Grep `"..." (in src, glob: *.cs,
+  type: cs)`, Skill drops the leading "/", and TaskOutput reads `task: "<id>"`.
+- In the touch layout, the request of Glob and Grep shows that new summary, and that of an MCP tool the field above;
+  when an MCP tool has no known field, the request shows the first text of the input, as in 0.5.0.
+- The Edit and Write boxes are left out when the view is 500 px wide or less (the line under the name and the reason
+  stay), like the extension; this is the desktop layout's only, and the touch layout keeps them. A diff in the list is
+  its lines plus 20 px tall, at most 200 px, and fades only when its lines are taller than 200 px (it used to fade past
+  180).
+- Where the group differs from the extension 2.1.310 on purpose: a Write is told to have succeeded ("Write succeeded")
+  only when its input has a `content` that is not a text, and a Write with no `content` has no such line; a request
+  that comes without `agent_id` belongs to the agent whose step asked (to none when the main agent's own step asked),
+  and only for a step the conversation has not seen to the agent that started running last, so such a request from an
+  unseen step may mark the wrong agent; the diff and the commands have no syntax highlighting, as in the extension
+  2.1.310; and the fields of the Claude in Chrome input that the rows read (`query`, `urlPattern`, `pattern`,
+  `onlyErrors`, `text`, `scroll_direction`, `ref`, `coordinate`, `duration`) come from the schema of the tool, not from a
+  recording of a real session, because none was made: a real session may show a summary or a thumbnail less. The Kairos
+  relay sends only text, so there a `computer` action reads "Action completed" with no thumbnail.
+
+### Removed
+
+- Style only: the classes `TextBlock.ClaudeChatRejected` (the "Rejected" label),
+  `SelectableTextBlock.ClaudeChatOutput.failed` (the red output) and `TextBlock.ClaudeChatMoreLines` (the "+N lines"
+  line). A host that styled them loses the effect; nothing public was removed.
 
 ### Fixed
 

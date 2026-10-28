@@ -379,6 +379,35 @@ O documento fecha quando o plano é aprovado e fica depois de um "Não". O Esc, 
 por vez; só um Esc com o cartão por cima é "Não". Selecione um trecho para comentá-lo: os comentários esperam no cartão
 ("Continuar planejando") até a pessoa mandá-los como retorno. A linha do plano na lista o abre de novo.
 
+## Chamadas de ferramenta
+
+Cada chamada é uma linha da lista, desenhada como a extensão 2.1.310 a desenha: Bash e PowerShell com o comando numa
+caixa IN (e um botão de copiar), Edit e Write com uma linha embaixo do nome (a mudança líquida de linhas) e o diff, Glob,
+Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt, as ferramentas MCP como "servidor
+[ferramenta]" e o Claude in Chrome como "Claude in Chrome [ação]". Nada a configurar: elas vêm das linhas que o
+`AppendLine` já recebe. O que o seu app pode querer saber:
+
+- **Uma chamada aparece quando a entrada dela termina,** não como uma linha vazia quando o bloco começa; assim, quem lê
+  `ChatConversation.Items` a vê um pouco mais tarde que antes. As chamadas de `ToolSearch`, e os resultados delas, nunca
+  aparecem.
+- **Um clique num diff da lista abre o Diff View** sobre a view inteira, lado a lado, com o caminho do arquivo no título.
+  O Esc, o x dele e `CloseTopLayer()` o fecham (é uma camada, logo abaixo da prévia de imagem), e ele abre também numa view
+  somente leitura. Numa view de 500 px de largura ou menos (só o layout desktop) a caixa de um Edit ou de um Write some,
+  como na extensão; o layout de toque a mantém.
+- **`ToolCallItem` traz mais:** `FullResultText` (o resultado inteiro, no máximo `ToolPresentation.MaxKeptResultChars`
+  caracteres, sem os códigos de terminal nos comandos), `RejectionReason` (o que a pessoa escreveu ao recusar a chamada),
+  `IsOutputExpanded` e `IsInputExpanded` (se uma caixa está aberta por inteiro) e `ResultImages`. Uma chamada recusada
+  mostra a bolinha vermelha e, num Edit, num Write ou num comando, uma linha "Motivo:"; não há mais o rótulo "Recusado".
+- **Uma captura de tela do Claude in Chrome** (a ação `computer`) aparece como miniatura, que abre a prévia de imagem,
+  só quando o `content` do resultado traz um bloco de imagem; um relay que repassa só texto mostra "Ação concluída". Os
+  campos da entrada do Chrome que as linhas leem vêm do esquema da ferramenta, não de uma gravação.
+- **Um subagente em segundo plano tem uma linha embaixo da sua** que termina em "digite /tasks para ver a transcrição dele". Se o
+  seu claude não tem `/tasks`, troque o texto: `ChatStrings.PortugueseBrazil with { AgentTasksHint = "..." }`. `AgentInfo.Prompt`
+  e `AgentInfo.IsWaitingForPermission` estão nos agentes de `ChatConversation.Agents`; um pedido que vem sem `agent_id`
+  é tomado como do agente cujo passo pediu.
+- Os nomes das linhas de Agent, Web Fetch, Web Search e Claude in Chrome são textos do `ChatStrings` (`AgentToolTitle`,
+  `WebFetchToolTitle`, `WebSearchToolTitle`, `ChromeToolTitle`), iguais nas duas línguas.
+
 ## Cores
 
 Todas as cores, as duas fontes, os tamanhos de texto e alguns lugares vêm de recursos chamados `ClaudeChat.*` (as
@@ -414,16 +443,16 @@ As chaves, todas com o prefixo `ClaudeChat.`:
 | Grupo | Chaves |
 | --- | --- |
 | Cores do tema (mudam com o tema do VS Code) | `Background`, `Surface`, `Border`, `BorderStrong`, `Foreground`, `ForegroundMuted`, `Accent`, `AccentFill`, `AccentForeground`, `FocusBorder`, `Warning`, `Error`, `Success`, `InputBackground`, `InputBorder`, `InputActiveBorder`, `PermissionActiveBorder`, `InputPlaceholder`, `HoverBackground`, `OptionBorder`, `TimelineLine`, `Dot`, `ToolBackground`, `CodeBackground`, `CodeForeground`, `CodeBlockBackground`, `PillBackground`, `PillHoverBackground` |
-| Cores próprias da extensão | `DotSucceeded`, `DotFailed`, `DotRejected`, `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground` |
-| Sombras da caixa de resposta (`BoxShadows`) | `ComposerShadow`, `ComposerFocusShadow`, `ComposerFocusShadowAcceptEdits`, `ComposerFocusShadowPlan`, `ComposerFocusShadowAuto` |
-| Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade` |
+| Cores próprias da extensão | `DotSucceeded`, `DotFailed`, `DotRejected` (sem uso desde a 0.6.0), `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground` |
+| Sombras da caixa de resposta e das caixas de ferramenta (`BoxShadows`) | `ComposerShadow`, `ComposerFocusShadow`, `ComposerFocusShadowAcceptEdits`, `ComposerFocusShadowPlan`, `ComposerFocusShadowAuto`, `ToolContentFocusShadow` (o foco de uma caixa de ferramenta) |
+| Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade`, `DiffExpandHover`, `DiffExpandPillHoverBorder`, `DiffViewShadow` |
 | Fontes | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |
 | Tamanhos | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize`, `PromptHintFontSize` |
 | Lugares | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (o comando ou o diff de um pedido de permissão: um mais alto rola), `PromptDetailPeekHeight` (o mesmo enquanto o campo do "Não" está aberto), `PlanCommentsMaxHeight` (a lista de comentários no cartão do plano) |
 | Ícones (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.ChevronDown`, `Icon.ChevronUp`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External` |
 | Menus e paleta de comandos | `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`, `ListActiveForeground`, `EffortThumbShadow` |
 | Anexos | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |
-| Mapa de agentes e anel de contexto | `ModalOverlay`, `AgentRunning`, `ContextRingTrack`, `ContextRingFill` |
+| Mapa de agentes e anel de contexto | `ModalOverlay`, `AgentRunning`, `AgentWaiting`, `ContextRingTrack`, `ContextRingFill` |
 | Faixas e Remote Control | `BannerBackground`, `BannerForeground`, `BannerTint`, `BannerErrorBackground`, `BannerErrorForeground`, `RemoteControlForeground`, `RemoteControlHoverBackground`, `RemoteControlHoverForeground` |
 | Painéis `/context` e `/usage` | `ContextColor1` a `ContextColor6` (as cores de gráfico da barra de contexto), `PanelShadow` |
 | Layout de toque (veja [Layout de toque](#layout-de-toque)) | `UserBubble`, `SheetBackground`, `SheetGroupBackground`, `SheetHandle`, `SheetOverlay`, `PermissionWarningBorder` |
@@ -561,7 +590,7 @@ void OnBackPressed()
 }
 ```
 
-As camadas, a de cima primeiro: a prévia de imagem; um menu da caixa de resposta (os comandos ou os modelos); uma
+As camadas, a de cima primeiro: a prévia de imagem; o Diff View; um menu da caixa de resposta (os comandos ou os modelos); uma
 folha (a de uso antes das outras, e uma página dentro de uma folha volta para a primeira antes de a folha fechar); a
 ficha de um agente no mapa de agentes, que volta para o mapa; o painel que estiver aberto (o mapa de agentes ou os
 painéis `/context` e `/usage` do layout desktop); e o campo onde o usuário escreve por que recusou um pedido. Um pedido
