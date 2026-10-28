@@ -578,6 +578,30 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void A_refusal_with_the_standard_sentence_and_a_typed_reason_keeps_the_text_after_it()
+    {
+        const string sentence = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed. ";
+        const string lead = "The user provided the following reason for the rejection: ";
+        var c = new ChatConversation();
+        var withMeta = StartTool(c, "t1", "Write");
+        var noMeta = StartTool(c, "t2", "Bash");
+        var empty = StartTool(c, "t3", "Bash");
+        var alone = StartTool(c, "t4", "Bash");
+
+        c.Apply(new UserBlock(null, new ToolResultBlock("t1", sentence + lead + "Use rg instead.\nNot grep.", true) { NonExecutionKind = "user-rejected" }, null, false, false));
+        c.Apply(new UserBlock(null, new ToolResultBlock("t2", sentence + lead + "  later ", true), null, false, false)); // the text alone tells it
+        c.Apply(new UserBlock(null, new ToolResultBlock("t3", sentence + lead, true) { NonExecutionKind = "user-rejected" }, null, false, false));
+        c.Apply(new UserBlock(null, new ToolResultBlock("t4", sentence, true) { NonExecutionKind = "user-rejected" }, null, false, false));
+
+        Assert.Equal("Use rg instead.\nNot grep.", withMeta.RejectionReason);
+        Assert.Equal("later", noMeta.RejectionReason);
+        Assert.Equal(ToolStatus.Rejected, noMeta.Status);
+        Assert.Null(empty.RejectionReason); // the lead with nothing after it
+        Assert.Null(alone.RejectionReason); // the sentence alone is still no reason
+        Assert.StartsWith("The user doesn't want to proceed", alone.FullResultText); // and the whole text stays
+    }
+
+    [Fact]
     public void Only_a_refusal_has_a_reason()
     {
         var c = new ChatConversation();

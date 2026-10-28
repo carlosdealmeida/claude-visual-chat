@@ -36,6 +36,9 @@ public sealed record ChatStrings
         InputPlaceholderTouch = "Digite / para ver os comandos",
         ThoughtFor = "Pensou por {0} s",
         RunInBackground = "Rodando em segundo plano",
+        ToolReason = "Motivo:",
+        ToolShowFullText = "Pressione Enter para mostrar o texto inteiro",
+        ToolCutText = "Pressione Enter para cortar o texto",
         Working = "Trabalhando…",
         Send = "Enviar",
         Stop = "Parar",
@@ -332,6 +335,15 @@ public sealed record ChatStrings
 
     /// <summary>The label of the output in the box under a tool call.</summary>
     public string ToolOutput { get; init; } = "OUT";
+
+    /// <summary>The bold start of the line under a refused command, edit or write: the reason the user typed follows it.</summary>
+    public string ToolReason { get; init; } = "Reason:";
+
+    /// <summary>What a screen reader tells on a cut text of a tool, which a key opens whole.</summary>
+    public string ToolShowFullText { get; init; } = "Press Enter to show the full text";
+
+    /// <summary>What a screen reader tells on a text of a tool that is open, which a key cuts again.</summary>
+    public string ToolCutText { get; init; } = "Press Enter to cut the text";
 
     /// <summary>The <c>plan</c> permission mode.</summary>
     public string ModePlan { get; init; } = "Plan";

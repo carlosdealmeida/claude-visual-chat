@@ -2,9 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
 using System.Text.Json;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 
@@ -14,8 +19,11 @@ namespace ClaudeVisualChat.Controls;
 /// One tool call, like the extension draws it: a dot (its color tells the state), the tool's name in bold and what it
 /// works on (a file in the link color, a command's description, the lines read); under it a line such as "Modified"
 /// or "47 lines", and a box with the diff, the start of the file written, or the command (IN) and its output (OUT,
-/// wrapped); "Run in background" under a command started so; for a subagent, its items behind an arrow. The dot of a
-/// running call blinks only while the conversation works. Long texts are cut so a huge result never slows the list.
+/// that scrolls sideways); "Run in background" under a command started so; for a subagent, its items behind an arrow. The dot
+/// of a running call blinks only while the conversation works. Every text in the box is cut at 60 px with a fade; a long one
+/// (<see cref="ExpandableChars"/>, <see cref="ExpandableLines"/>) opens whole in place with a click, Enter or Space, and a
+/// huge one stops at <see cref="MaxExpandedChars"/>, so a huge result never slows the list. A refused command, edit or write
+/// says what the user typed on a line of its own.
 /// A plan (<c>ExitPlanMode</c>) reads "Claude’s Plan" and its file, then whether the user approved it, with no box; a click on
 /// its header opens the plan again in the document over the list.
 /// In the touch layout (pseudo-class <c>:touch</c>) the call is a block with a frame and its dot is the header's first
@@ -23,8 +31,20 @@ namespace ClaudeVisualChat.Controls;
 /// </summary>
 internal partial class ToolCallView : UserControl
 {
-    /// <summary>Most characters of output shown.</summary>
-    internal const int MaxOutputChars = 4000;
+    /// <summary>A text in the box with more characters than this can be opened whole.</summary>
+    internal const int ExpandableChars = 250;
+
+    /// <summary>A text in the box with more lines than this can be opened whole.</summary>
+    internal const int ExpandableLines = 3;
+
+    /// <summary>Most characters of a text opened whole; past this it ends with an ellipsis.</summary>
+    internal const int MaxExpandedChars = 100_000;
+
+    /// <summary>Height kept under a line that scrolls sideways, for the bar that is drawn over it.</summary>
+    private const double ScrollBarRoom = 12;
+
+    /// <summary>Most characters of the reason a user gave for refusing a call (what the claude gets back is cut there too).</summary>
+    private const int MaxReasonChars = 4000;
 
     /// <summary>Most characters of a diff line or a to-do shown.</summary>
     internal const int MaxLineChars = 400;
@@ -52,6 +72,7 @@ internal partial class ToolCallView : UserControl
 
     private ToolCallItem? _item;
     private bool _attached;
+    private NavigationMethod _refocus = NavigationMethod.Pointer; // how the box gets the focus back when a key or a click redraws it
 
     public ToolCallView()
     {
@@ -151,7 +172,10 @@ internal partial class ToolCallView : UserControl
             case nameof(ToolCallItem.Diff):
             case nameof(ToolCallItem.Todos):
             case nameof(ToolCallItem.ResultText):
-            case nameof(ToolCallItem.HiddenResultLines):
+            case nameof(ToolCallItem.FullResultText):
+            case nameof(ToolCallItem.RejectionReason):
+            case nameof(ToolCallItem.IsOutputExpanded):
+            case nameof(ToolCallItem.IsInputExpanded):
                 UpdateBody();
                 break;
         }
@@ -248,6 +272,7 @@ internal partial class ToolCallView : UserControl
 
     private void UpdateBody()
     {
+        var focused = FocusedContent();
         Body.Children.Clear();
         var item = _item;
         if (item != null)
@@ -255,31 +280,37 @@ internal partial class ToolCallView : UserControl
             var strings = Strings;
             var name = item.Name;
             var failed = item.Status == ToolStatus.Failed;
+            var refused = item.Status == ToolStatus.Rejected;
             var hasDiff = item.Diff != null && item.Diff.Count > 0;
             var hasTodos = !hasDiff && item.Todos != null && item.Todos.Count > 0;
 
             var subtitle = Subtitle(item, strings);
             if (subtitle != null) Body.Children.Add(Line(subtitle, "ClaudeChatSecondary"));
+            // what the user typed when they refused: for a command, it stands for the output
+            if (refused && TellsReason(name) && !string.IsNullOrEmpty(item.RejectionReason))
+                Body.Children.Add(ReasonLine(item.RejectionReason!, strings));
 
-            // a diff or a list stands for the output, unless the call failed; a refused call ran nothing; a Read or a
-            // subagent that worked keeps quiet, like the extension (the file's lines, the subagent's launch details)
+            // a diff or a list stands for the output, unless the call failed; a refused edit, write or command ran nothing, and
+            // says why on the line above; any other refused call shows what the claude answered; a Read or a subagent that
+            // worked keeps quiet, like the extension (the file's lines, the subagent's launch details)
             var quiet = item.Status == ToolStatus.Succeeded && QuietWhenDone(name);
             // a plan has no box: its line tells how it ended, and its document holds its text
-            var showOutput = name != PlanTool && (failed || (!hasDiff && !hasTodos && item.Status != ToolStatus.Rejected && !quiet));
-            var output = showOutput && (!string.IsNullOrEmpty(item.ResultText) || item.HiddenResultLines > 0);
+            var showOutput = name != PlanTool && (failed || (!hasDiff && !hasTodos && !quiet && !(refused && TellsReason(name))));
+            var result = item.FullResultText ?? item.ResultText;
+            var output = showOutput && !string.IsNullOrEmpty(result);
 
             if (name == "Write" && WrittenText(item) is { } written)
-                Body.Children.Add(ToolBody(RowContent(Text(written, "ClaudeChatToolText"), whole: false)));
+                Body.Children.Add(ToolBody(TextRow(item, written, input: true, strings)));
             else if (hasDiff)
                 Body.Children.Add(DiffBox(item.Diff!, strings));
             else if (hasTodos)
                 Body.Children.Add(TodoList(item.Todos!));
 
             var rows = new List<(string Label, Control Content)>();
-            // the command's first lines: the box shows four, and the request showed it whole
+            // the command: the box shows its first lines, and the request showed it whole
             if (IsCommand(name) && Str(item.Input, "command") is { Length: > 0 } command)
-                rows.Add((strings.ToolInput, RowContent(Text(ChatText.ClipLines(command, BoxLines, MaxLineChars), "ClaudeChatToolText"), whole: false)));
-            if (output) rows.Add((strings.ToolOutput, Output(item, strings)));
+                rows.Add((strings.ToolInput, TextRow(item, command, input: true, strings)));
+            if (output) rows.Add((strings.ToolOutput, TextRow(item, result!, input: false, strings)));
             if (rows.Count > 0) Body.Children.Add(ToolBody(Rows(rows)));
             if (IsCommand(name) && RunsInBackground(item.Input))
             {
@@ -289,12 +320,145 @@ internal partial class ToolCallView : UserControl
             }
         }
         Body.IsVisible = Body.Children.Count > 0;
+        if (focused != null) Refocus(focused);
+    }
+
+    /// <summary>"Reason:" in bold and what the user typed, in the muted line under the name.</summary>
+    private static TextBlock ReasonLine(string reason, ChatStrings strings)
+    {
+        var line = new TextBlock();
+        line.Inlines!.Add(new Run(strings.ToolReason) { FontWeight = FontWeight.Bold });
+        line.Inlines.Add(new Run(" " + ChatText.Clip(reason, MaxReasonChars)));
+        line.Classes.Add("ClaudeChatSecondary");
+        return line;
+    }
+
+    // ---- a text in the box: cut at 60 px, whole with a click ----
+
+    /// <summary>Whether a text is long enough to open whole: past <see cref="ExpandableChars"/> characters or <see cref="ExpandableLines"/> lines.</summary>
+    internal static bool IsExpandable(string text)
+    {
+        if (text.Length > ExpandableChars) return true;
+        var lines = 1;
+        var end = text.Length;
+        while (end > 0 && (text[end - 1] == '\n' || text[end - 1] == '\r')) end--; // a line break at the end starts no line
+        for (var i = 0; i < end; i++)
+        {
+            if (text[i] == '\n' && ++lines > ExpandableLines) return true;
+        }
+        return false;
+    }
+
+    /// <summary>The text for a row: its first lines while cut (the frame cuts it at 60 px), the text up to the cap when whole.</summary>
+    private static string Shown(string text, bool whole)
+    {
+        if (!whole) return ChatText.ClipLines(text, BoxLines, MaxLineChars);
+        return text.Length > MaxExpandedChars ? text.Substring(0, MaxExpandedChars) + "…" : text;
+    }
+
+    private const string InputKey = "in";
+    private const string OutputKey = "out";
+
+    /// <summary>
+    /// What goes in a row of the box: the editor's font at .85em, no wrapping, 4 px inside, at most 60 px with a fade. An
+    /// <paramref name="input"/> is the command or the file written; the rest is the call's output, a string on the code
+    /// background that scrolls sideways. A long one takes clicks, Enter and Space and opens whole in place; the state is in the
+    /// item, because the list recycles its rows.
+    /// </summary>
+    private Border TextRow(ToolCallItem item, string text, bool input, ChatStrings strings)
+    {
+        var expandable = IsExpandable(text);
+        var whole = expandable && (input ? item.IsInputExpanded : item.IsOutputExpanded);
+
+        TextBlock block = input ? new TextBlock() : new SelectableTextBlock();
+        block.Text = Shown(text, whole);
+        block.TextWrapping = TextWrapping.NoWrap;
+        block.Classes.Add("ClaudeChatToolText");
+        Control shown = block;
+        if (!input)
+        {
+            block.Classes.Add("ClaudeChatOutput");
+            // the bar is drawn over the text: a line wider than the row gets room under it, so the bar does not cover the click
+            var room = new Border { Height = ScrollBarRoom, IsVisible = false };
+            var scroller = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = new StackPanel { Children = { block, room } },
+            };
+            scroller.ScrollChanged += (_, _) => room.IsVisible = scroller.Extent.Width > scroller.Viewport.Width + 0.5;
+            var holder = new Border { Child = scroller };
+            holder.Classes.Add("ClaudeChatToolResult");
+            shown = holder;
+        }
+
+        // measured at full height inside a stack, so the lines past 60 px are cut by the frame, not left out by the text
+        var content = new Border { Child = new StackPanel { Children = { shown } } };
+        content.Classes.Add("ClaudeChatToolContent");
+        if (whole) content.Classes.Add("whole");
+        if (!expandable) return content;
+
+        content.Classes.Add("expandable");
+        content.Background = Brushes.Transparent; // the whole row takes the click, not only the letters
+        content.Tag = input ? InputKey : OutputKey;
+        content.Focusable = true;
+        content.Cursor = new Cursor(StandardCursorType.Hand);
+        AutomationProperties.SetName(content, whole ? strings.ToolCutText : strings.ToolShowFullText);
+        content.Tapped += (_, e) =>
+        {
+            // a drag on the scroll bar is not a click on the text
+            if (e.Source is Visual source && source.FindAncestorOfType<ScrollBar>(true) != null) return;
+            e.Handled = true;
+            Toggle(item, input, NavigationMethod.Pointer);
+        };
+        content.KeyDown += (_, e) =>
+        {
+            if ((e.Key != Key.Enter && e.Key != Key.Space) || e.KeyModifiers != KeyModifiers.None) return;
+            e.Handled = true;
+            Toggle(item, input, NavigationMethod.Tab);
+        };
+        return content;
+    }
+
+    private void Toggle(ToolCallItem item, bool input, NavigationMethod how)
+    {
+        _refocus = how;
+        if (input) item.IsInputExpanded = !item.IsInputExpanded;
+        else item.IsOutputExpanded = !item.IsOutputExpanded;
+    }
+
+    /// <summary>The key (IN or OUT) of the text that has the focus, or null when none of the box's texts does.</summary>
+    private string? FocusedContent()
+    {
+        if (Body.Children.Count == 0 || TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not Visual focus) return null;
+        foreach (var content in Body.GetVisualDescendants().OfType<Border>())
+        {
+            if (content.Tag is string key && content.Classes.Contains("expandable") && (ReferenceEquals(content, focus) || content.IsVisualAncestorOf(focus)))
+                return key;
+        }
+        return null;
+    }
+
+    /// <summary>The box was drawn again under the keyboard (or the finger): the same text keeps the focus.</summary>
+    private void Refocus(string key)
+    {
+        foreach (var content in Body.GetVisualDescendants().OfType<Border>())
+        {
+            if (Equals(content.Tag, key) && content.Classes.Contains("expandable"))
+            {
+                content.Focus(_refocus);
+                return;
+            }
+        }
     }
 
     /// <summary>The line under the name: what an edit changed, how long a written file is.</summary>
     private static string? Subtitle(ToolCallItem item, ChatStrings strings)
     {
-        var failed = item.Status == ToolStatus.Failed;
+        // a refusal is an error result for the extension: "failed", and its reason on the next line; a call cut short, which
+        // got no result, did not fail
+        var failed = item.Status == ToolStatus.Failed
+            || (item.Status == ToolStatus.Rejected && (item.FullResultText ?? item.ResultText) != null);
         switch (item.Name)
         {
             case "Edit":
@@ -325,6 +489,9 @@ internal partial class ToolCallView : UserControl
         toolName == "Read" || toolName == "Edit" || toolName == "Write" || toolName == "MultiEdit" || toolName == "NotebookEdit";
 
     private static bool IsCommand(string toolName) => toolName == "Bash" || toolName == "PowerShell";
+
+    /// <summary>The tools whose refusal says what the user typed on a line of its own: Edit, Write and the commands.</summary>
+    private static bool TellsReason(string toolName) => toolName == "Edit" || toolName == "Write" || IsCommand(toolName);
 
     /// <summary>A command started with <c>run_in_background: true</c>.</summary>
     private static bool RunsInBackground(JsonElement input) =>
@@ -371,49 +538,18 @@ internal partial class ToolCallView : UserControl
         return stack;
     }
 
-    /// <summary>What goes in a row: 4 px inside; at most 60 px with a fade, unless <paramref name="whole"/>.</summary>
-    private static Border RowContent(Control child, bool whole)
-    {
-        // measured at full height inside a stack, so the lines past 60 px are cut by the frame, not left out by the text
-        var content = new Border { Child = new StackPanel { Children = { child } } };
-        content.Classes.Add("ClaudeChatToolContent");
-        if (whole) content.Classes.Add("whole");
-        return content;
-    }
-
-    /// <summary>The output, with "+N lines" under it when it was cut; red when the call failed.</summary>
-    private static Control Output(ToolCallItem item, ChatStrings strings)
-    {
-        var stack = new StackPanel();
-        if (!string.IsNullOrEmpty(item.ResultText))
-        {
-            // the output wraps, so a long error is read whole; the command and a written file do not
-            var text = new SelectableTextBlock { Text = ChatText.Clip(item.ResultText, MaxOutputChars), TextWrapping = TextWrapping.Wrap };
-            text.Classes.Add("ClaudeChatToolText");
-            text.Classes.Add("ClaudeChatOutput");
-            if (item.Status == ToolStatus.Failed) text.Classes.Add("failed");
-            stack.Children.Add(text);
-        }
-        if (item.HiddenResultLines > 0) stack.Children.Add(Line(strings.FormatMoreLines(item.HiddenResultLines), "ClaudeChatMoreLines"));
-        return RowContent(stack, whole: true);
-    }
-
-    /// <summary>The first lines of a written file, as text, each cut at <see cref="MaxLineChars"/>.</summary>
+    /// <summary>The file written, whole; the box cuts it. Without the input to read (an item built by hand), the diff's added lines.</summary>
     private static string? WrittenText(ToolCallItem item)
     {
         var content = Str(item.Input, "content");
-        if (content == null)
+        if (content != null) return content;
+        if (item.Diff == null || item.Diff.Count == 0) return null;
+        var lines = new List<string>();
+        foreach (var line in item.Diff)
         {
-            // no input to read (an item built by hand): the diff's lines
-            if (item.Diff == null || item.Diff.Count == 0) return null;
-            var lines = new List<string>();
-            foreach (var line in item.Diff)
-            {
-                if (line.Kind == DiffKind.Added && lines.Count < BoxLines) lines.Add(ChatText.Clip(line.Text, MaxLineChars));
-            }
-            return string.Join("\n", lines);
+            if (line.Kind == DiffKind.Added) lines.Add(ChatText.Clip(line.Text, MaxLineChars));
         }
-        return ChatText.ClipLines(content, BoxLines, MaxLineChars);
+        return string.Join("\n", lines);
     }
 
     private static Control TodoList(IReadOnlyList<TodoEntry> todos)
@@ -452,13 +588,6 @@ internal partial class ToolCallView : UserControl
             list.Children.Add(row);
         }
         return list;
-    }
-
-    private static TextBlock Text(string text, string style)
-    {
-        var block = new TextBlock { Text = text, TextWrapping = TextWrapping.NoWrap };
-        block.Classes.Add(style);
-        return block;
     }
 
     private static TextBlock Line(string text, string style)

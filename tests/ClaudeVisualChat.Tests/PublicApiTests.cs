@@ -192,6 +192,15 @@ public class PublicApiTests
         Assert.Equal(typeof(string), typeof(ToolCallItem).GetProperty("RejectionReason")?.PropertyType);
         Assert.NotNull(typeof(ToolCallItem).GetProperty("ResultText")); // the short form stays
         Assert.NotNull(typeof(ToolCallItem).GetProperty("HiddenResultLines"));
+        // the open or cut state of a tool's output and command (0.6.0): in the item, because the list recycles its rows
+        foreach (var name in new[] { "IsOutputExpanded", "IsInputExpanded" })
+        {
+            var open = typeof(ToolCallItem).GetProperty(name);
+            Assert.Equal(typeof(bool), open?.PropertyType);
+            Assert.True(open!.CanWrite && open.SetMethod!.IsPublic);
+        }
+        foreach (var text in new[] { "ToolReason", "ToolShowFullText", "ToolCutText" })
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
         var max = typeof(ToolPresentation).GetField("MaxKeptResultChars");
         Assert.Equal(500_000, max!.GetRawConstantValue());
         Assert.Contains("ToolInterrupted", System.Enum.GetNames(typeof(NoticeKind)));

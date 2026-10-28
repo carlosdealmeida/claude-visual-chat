@@ -385,6 +385,42 @@ public class FidelityTests
     }
 
     [AvaloniaFact]
+    public void Tool_contents_are_cut_at_60_px_and_open_to_the_height_of_their_lines()
+    {
+        var c = ReferenceScene();
+        var lines = string.Join("\n", Enumerable.Range(1, 20).Select(i => "line " + i));
+        c.Apply(new AssistantBlock("m9", null, new ToolUseBlock("t9", "Bash", J("{\"command\":\"seq 20\"}"))));
+        c.Apply(new UserBlock(null, new ToolResultBlock("t9", lines, false), null, false, false));
+        var (view, window) = OpenScene(c);
+        var rows = Rows(view);
+        List<Border> Contents(int row) => rows[row].GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ClaudeChatToolContent")).ToList();
+        double Inner(Border b) => b.Bounds.Height - b.Padding.Top - b.Padding.Bottom;
+
+        // Write's file (47 lines) and the output (20) are cut alike: 60 px of text under 4 px of padding
+        var write = Contents(6).Single();
+        var output = Contents(rows.Count - 1)[1];
+        Near(60, Inner(write), "Write content");
+        Near(60, Inner(output), "OUT content");
+        Near(write.Bounds.Height, output.Bounds.Height, "both cut alike");
+
+        // a click opens it to the height of its lines (the line height is the theme's, whatever the font)
+        var tool = c.Items.OfType<ToolCallItem>().Last();
+        var lineHeight = Assert.IsType<double>(Resource(view, "ClaudeChat.SmallLineHeight"));
+        var cutTop = BoundsIn(output, rows[rows.Count - 1]).Top;
+        tool.IsOutputExpanded = true;
+        UiHelpers.Pump();
+        var open = Contents(rows.Count - 1)[1];
+        Near(20 * lineHeight, Inner(open), "20 lines open");
+        Near(cutTop, BoundsIn(open, rows[rows.Count - 1]).Top, "it grows downward");
+
+        // the label column is shared: OUT starts where IN does
+        var labels = rows[rows.Count - 1].GetVisualDescendants().OfType<TextBlock>().Where(t => t.Text == "IN" || t.Text == "OUT").ToList();
+        Assert.Equal(2, labels.Count);
+        Near(BoundsIn(labels[0], view).Left, BoundsIn(labels[1], view).Left, "OUT under IN");
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Tool_header_uses_bold_name_link_colored_path_and_plain_details()
     {
         var c = ReferenceScene();

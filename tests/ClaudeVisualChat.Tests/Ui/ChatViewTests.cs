@@ -6,8 +6,12 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Automation;
+using Avalonia.Controls.Documents;
 using Avalonia.Controls.Shapes;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
@@ -191,7 +195,7 @@ public class ChatViewTests
     // ---- tool calls ----
 
     [AvaloniaFact]
-    public void Huge_tool_output_shows_more_lines()
+    public void Huge_tool_output_opens_fast_and_shows_its_first_lines_cut()
     {
         var output = string.Join("\n", Enumerable.Range(1, 10000).Select(i => "line " + i));
         Open(BashWithOutput("warm\nup")).Window.Close();
@@ -207,13 +211,9 @@ public class ChatViewTests
 
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(1), $"took {watch.ElapsedMilliseconds} ms");
         var texts = UiHelpers.Texts(view);
-        Assert.Contains("+9,988 lines", texts);
-        Assert.Contains(texts, t => t.EndsWith("line 12", StringComparison.Ordinal));
-        Assert.DoesNotContain(texts, t => t.Contains("line 13"));
-
-        view.Strings = ChatStrings.PortugueseBrazil;
-        UiHelpers.Pump();
-        Assert.Contains("+9.988 linhas", UiHelpers.Texts(view));
+        Assert.Contains(texts, t => t.EndsWith("line 8", StringComparison.Ordinal));
+        Assert.DoesNotContain(texts, t => t.Contains("line 9"));
+        Assert.DoesNotContain(texts, t => t.StartsWith("+", StringComparison.Ordinal) && t.Contains("lines")); // no "+N lines": the cut is the 60 px
         window.Close();
     }
 
@@ -230,7 +230,7 @@ public class ChatViewTests
 
         var texts = UiHelpers.Texts(view);
         var output = Assert.Single(texts, t => t.StartsWith("xxx", StringComparison.Ordinal));
-        Assert.InRange(output.Length, 100, ToolCallView.MaxOutputChars + 1);
+        Assert.InRange(output.Length, 100, ToolCallView.MaxLineChars + 1);
         var added = Assert.Single(texts, t => t.StartsWith("yyy", StringComparison.Ordinal)); // the diff's colors tell it was added
         Assert.InRange(added.Length, 100, ToolCallView.MaxLineChars + 1);
         window.Close();
@@ -529,7 +529,7 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
-    public void A_long_output_wraps_and_the_command_does_not()
+    public void An_output_and_a_command_do_not_wrap_they_scroll_sideways()
     {
         var error = "error: " + string.Join(" ", Enumerable.Range(1, 80).Select(i => "word" + i));
         var c = new ChatConversation();
@@ -538,11 +538,13 @@ public class ChatViewTests
         var (view, window) = Open(c);
         var tool = c.Items.OfType<ToolCallItem>().Single();
 
-        var output = ViewOf(view, tool).GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Text == error);
-        var box = ViewOf(view, tool).GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatToolBody"));
-        Assert.Equal(TextWrapping.Wrap, output.TextWrapping);
-        Assert.True(output.Bounds.Height > 2 * 16, $"{output.Bounds.Height} px: one line"); // several lines
-        Assert.True(output.Bounds.Right <= box.Bounds.Width, "the output stays in its box");
+        var output = ViewOf(view, tool).GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => (t.Text ?? "").StartsWith("error: word1 ", StringComparison.Ordinal));
+        Assert.Equal(TextWrapping.NoWrap, output.TextWrapping);
+        Assert.True(output.Bounds.Height < 2 * 16, $"{output.Bounds.Height} px: more than one line"); // one line, as long as it is
+        var scroller = output.GetVisualAncestors().OfType<ScrollViewer>().First();
+        Assert.Equal(ScrollBarVisibility.Auto, scroller.HorizontalScrollBarVisibility);
+        Assert.Equal(ScrollBarVisibility.Disabled, scroller.VerticalScrollBarVisibility);
+        Assert.True(scroller.Extent.Width > scroller.Viewport.Width, "the long line scrolls sideways");
 
         var command = ViewOf(view, tool).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == new string('x', 300));
         Assert.Equal(TextWrapping.NoWrap, command.TextWrapping); // cut at the box's edge, like the extension
@@ -571,6 +573,326 @@ public class ChatViewTests
         UiHelpers.Pump();
         Assert.Contains("Run in background", UiHelpers.Texts(ViewOf(view, tools[0])));
         window.Close();
+    }
+
+    // ---- the 60 px cut, the click that opens it, and the reason of a refusal ----
+
+    private static string Lines(int count) => string.Join("\n", Enumerable.Range(1, count).Select(i => "line " + i));
+
+    private const string StandardRefusal = "The user doesn't want to proceed with this tool use. The tool use was rejected.";
+
+    /// <summary>A click near the top of a content, where its first line is: a scroll bar may cover the bottom of a wide one.</summary>
+    private static void ClickTop(Window window, Control control)
+    {
+        var at = control.TranslatePoint(new Point(control.Bounds.Width / 2, 6), window)!.Value;
+        window.MouseMove(at, RawInputModifiers.None);
+        window.MouseDown(at, MouseButton.Left, RawInputModifiers.None);
+        window.MouseUp(at, MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+    }
+
+    private static Window WindowOf(Visual visual) => (Window)TopLevel.GetTopLevel(visual)!;
+
+    /// <summary>The contents of the box's rows (IN, then OUT), in the order they are drawn.</summary>
+    private static List<Border> Contents(Visual root, ToolCallItem item) =>
+        ViewOf(root, item).GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ClaudeChatToolContent")).ToList();
+
+    private static string ResultOf(Visual root, ToolCallItem item) =>
+        ViewOf(root, item).GetVisualDescendants().OfType<SelectableTextBlock>().Single().Text ?? "";
+
+    private static (ChatConversation C, ToolCallItem Tool) Answered(string output, bool error = false, string command = "seq 20")
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J(JsonSerializer.Serialize(new { command })))));
+        c.Apply(new UserBlock(null, new ToolResultBlock("t1", output, error), null, false, false));
+        return (c, c.Items.OfType<ToolCallItem>().Single());
+    }
+
+    private static UserBlock Refused(string id, string text) =>
+        new UserBlock(null, new ToolResultBlock(id, text, true) { NonExecutionKind = "user-rejected" }, null, false, false);
+
+    private static ChatConversation Refusing(string tool, object input, string text)
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", tool, J(JsonSerializer.Serialize(input)))));
+        c.Apply(Refused("t1", text));
+        return c;
+    }
+
+    [AvaloniaFact]
+    public void A_long_output_is_cut_at_sixty_pixels_with_a_fade()
+    {
+        var (c, tool) = Answered(Lines(20));
+        var (view, window) = Open(c);
+
+        var content = Contents(view, tool)[1];
+        Assert.Equal(60, content.Bounds.Height - content.Padding.Top - content.Padding.Bottom, 1); // 60 px of text, however long it is
+        var mask = Assert.IsType<LinearGradientBrush>(content.OpacityMask);
+        Assert.Equal(60, mask.EndPoint.Point.Y, 3);                                              // opaque down to 50, gone at 60
+        Assert.Equal(RelativeUnit.Absolute, mask.EndPoint.Unit);
+        Assert.Equal(3, mask.GradientStops.Count);
+        Assert.Equal(0, mask.GradientStops[0].Offset, 3);
+        Assert.Equal(50.0 / 60, mask.GradientStops[1].Offset, 3);
+        Assert.Equal(1, mask.GradientStops[2].Offset, 3);
+        Assert.Equal(Colors.Black, mask.GradientStops[1].Color);
+        Assert.Equal(Colors.Transparent, mask.GradientStops[2].Color);
+        Assert.DoesNotContain(UiHelpers.Texts(view), t => t.Contains(" lines")); // no "+N lines": the cut is the 60 px
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_click_shows_the_whole_output_and_another_cuts_it_again()
+    {
+        var (c, tool) = Answered(Lines(20));
+        var (view, window) = Open(c);
+        var cut = Contents(view, tool)[1].Bounds.Height;
+        Assert.False(tool.IsOutputExpanded);
+        Assert.DoesNotContain("line 20", ResultOf(view, tool));
+
+        UiHelpers.Click(window, Contents(view, tool)[1]);
+
+        Assert.True(tool.IsOutputExpanded);
+        Assert.Equal(Lines(20), ResultOf(view, tool));
+        var open = Contents(view, tool)[1];
+        Assert.True(open.Bounds.Height > cut + 100, $"{open.Bounds.Height} px open, {cut} px cut");
+        Assert.Null(open.OpacityMask); // nothing fades once it is whole
+
+        UiHelpers.Click(window, open);
+
+        Assert.False(tool.IsOutputExpanded);
+        Assert.DoesNotContain("line 20", ResultOf(view, tool));
+        Assert.Equal(cut, Contents(view, tool)[1].Bounds.Height, 1);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Enter_and_Space_open_and_cut_the_output_and_the_focus_stays()
+    {
+        var (c, tool) = Answered(Lines(20));
+        var (view, window) = Open(c);
+        Assert.True(Contents(view, tool)[1].Focus());
+
+        UiHelpers.Press(window, Key.Enter);
+        Assert.True(tool.IsOutputExpanded);
+        Assert.Same(Contents(view, tool)[1], UiHelpers.Focused(window)); // the row is drawn again, and keeps the keyboard
+
+        UiHelpers.Press(window, Key.Space);
+        Assert.False(tool.IsOutputExpanded);
+        Assert.Same(Contents(view, tool)[1], UiHelpers.Focused(window));
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("a\nb\nc", false)]
+    [InlineData("a\nb\nc\nd", true)]
+    [InlineData("one line of forty characters, give or take", false)]
+    [InlineData("250", false)]
+    [InlineData("251", true)]
+    public void Only_a_text_past_250_characters_or_3_lines_is_clickable(string text, bool clickable)
+    {
+        if (text == "250") text = new string('x', ToolCallView.ExpandableChars);
+        if (text == "251") text = new string('x', ToolCallView.ExpandableChars + 1);
+        Assert.Equal(3, ToolCallView.ExpandableLines);
+        var (c, tool) = Answered(text);
+        var (view, window) = Open(c);
+
+        var content = Contents(view, tool)[1];
+        Assert.Equal(clickable, content.Focusable);
+        Assert.Equal(clickable, content.Cursor != null);
+        Assert.Equal(clickable, !string.IsNullOrEmpty(AutomationProperties.GetName(content)));
+        ClickTop(window, content);
+        Assert.Equal(clickable, tool.IsOutputExpanded);
+        Assert.False(Contents(view, tool)[0].Focusable); // the short command (IN) is never one
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_command_opens_on_its_own_and_the_output_stays_cut()
+    {
+        var command = string.Join("\n", Enumerable.Range(1, 12).Select(i => "echo " + i));
+        var (c, tool) = Answered(Lines(20), command: command);
+        var (view, window) = Open(c);
+        TextBlock CommandText() => ViewOf(view, tool).GetVisualDescendants().OfType<TextBlock>().Single(t => (t.Text ?? "").StartsWith("echo 1\n", StringComparison.Ordinal));
+        Assert.DoesNotContain("echo 12", CommandText().Text); // the box shows the first lines
+
+        UiHelpers.Click(window, Contents(view, tool)[0]);
+
+        Assert.True(tool.IsInputExpanded);
+        Assert.False(tool.IsOutputExpanded);
+        Assert.EndsWith("echo 12", CommandText().Text);
+        Assert.DoesNotContain("line 20", ResultOf(view, tool));
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_cut_text_is_a_finger_tall_target_in_the_touch_layout(bool touch)
+    {
+        var (c, tool) = Answered(new string('x', 300)); // one line, past 250 characters
+        var view = OpenIn(c, touch);
+
+        var content = Contents(view, tool)[1];
+        Assert.True(content.Focusable);
+        if (touch) Assert.True(content.Bounds.Height >= 44 - 0.5, $"{content.Bounds.Height} px: under a finger");
+        else Assert.True(content.Bounds.Height < 44, $"{content.Bounds.Height} px: the touch height on the desktop");
+        ClickTop(WindowOf(view), content);
+        Assert.True(tool.IsOutputExpanded); // and a tap on it opens it
+    }
+
+    [AvaloniaFact]
+    public void The_screen_reader_hears_how_to_open_and_how_to_cut_in_the_language_of_the_view()
+    {
+        var (c, tool) = Answered(Lines(5));
+        var (view, window) = Open(c);
+        var strings = ChatStrings.English;
+        Assert.Equal("Press Enter to show the full text", strings.ToolShowFullText);
+        Assert.Equal(strings.ToolShowFullText, AutomationProperties.GetName(Contents(view, tool)[1]));
+
+        tool.IsOutputExpanded = true;
+        UiHelpers.Pump();
+        Assert.Equal(strings.ToolCutText, AutomationProperties.GetName(Contents(view, tool)[1]));
+
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal(ChatStrings.PortugueseBrazil.ToolCutText, AutomationProperties.GetName(Contents(view, tool)[1]));
+        tool.IsOutputExpanded = false;
+        UiHelpers.Pump();
+        Assert.Equal(ChatStrings.PortugueseBrazil.ToolShowFullText, AutomationProperties.GetName(Contents(view, tool)[1]));
+        Assert.NotEqual(strings.ToolShowFullText, ChatStrings.PortugueseBrazil.ToolShowFullText);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_open_state_lives_in_the_item_so_a_recycled_row_shows_it()
+    {
+        var (c, tool) = Answered(Lines(20));
+        tool.IsOutputExpanded = true; // before any row exists
+        var (view, window) = Open(c);
+        Assert.Equal(Lines(20), ResultOf(view, tool));
+
+        window.Close();
+        var (again, other) = Open(c);
+        Assert.Equal(Lines(20), ResultOf(again, tool)); // another row for the same item
+        tool.IsOutputExpanded = false;                  // and the code can cut it
+        UiHelpers.Pump();
+        Assert.DoesNotContain("line 20", ResultOf(again, tool));
+        other.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_text_past_the_cap_ends_with_an_ellipsis_when_open()
+    {
+        var text = string.Join("\n", Enumerable.Repeat(new string('z', 49), 3100)); // about 155,000 characters
+        var (c, tool) = Answered(text);
+        tool.IsOutputExpanded = true;
+        var (view, window) = Open(c);
+
+        var shown = ResultOf(view, tool);
+        Assert.Equal(ToolCallView.MaxExpandedChars + 1, shown.Length);
+        Assert.EndsWith("…", shown, StringComparison.Ordinal);
+        Assert.StartsWith(text.Substring(0, 1000), shown, StringComparison.Ordinal);
+        window.Close();
+
+        var (c2, whole) = Answered(Lines(2000)); // under the cap: untouched
+        whole.IsOutputExpanded = true;
+        (view, window) = Open(c2);
+        Assert.Equal(Lines(2000), ResultOf(view, whole));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Result_strings_sit_on_the_code_background_and_error_text_is_not_colored()
+    {
+        var (c, tool) = Answered("error: " + Lines(5), error: true);
+        var (view, window) = Open(c);
+
+        var contents = Contents(view, tool);
+        Assert.DoesNotContain(contents[0].GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("ClaudeChatToolResult")); // the command (IN) has none
+        var result = Assert.Single(contents[1].GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("ClaudeChatToolResult"));
+        Assert.Same(Resource(view, "ClaudeChat.CodeBlockBackground"), result.Background);
+        var text = result.GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        Assert.Equal(TextWrapping.NoWrap, text.TextWrapping);
+        Assert.NotSame(Resource(view, "ClaudeChat.Error"), text.Foreground);
+        Assert.Equal(ToolStatus.Failed, tool.Status); // the red dot says it failed, not the text
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_refused_bash_with_a_reason_shows_reason_instead_of_the_output()
+    {
+        var c = Refusing("Bash", new { command = "rm -rf build" }, "Use rg instead");
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        Assert.Equal(ToolStatus.Rejected, tool.Status);
+        var (view, window) = Open(c);
+
+        var texts = UiHelpers.Texts(ViewOf(view, tool));
+        Assert.Contains("Reason: Use rg instead", texts);
+        Assert.DoesNotContain("Use rg instead", texts);       // the reason is not also the output
+        Assert.DoesNotContain("OUT", texts);
+        Assert.Contains("IN", texts);                         // the command still shows
+        Assert.Contains("rm -rf build", texts);
+        var line = ViewOf(view, tool).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Inlines?.Text == "Reason: Use rg instead");
+        Assert.Contains("ClaudeChatSecondary", line.Classes);
+        Assert.Equal("Reason:", Assert.IsType<Run>(line.Inlines![0]).Text);
+        Assert.Equal(FontWeight.Bold, Assert.IsType<Run>(line.Inlines[0]).FontWeight);
+        Assert.NotEqual(FontWeight.Bold, Assert.IsType<Run>(line.Inlines[1]).FontWeight);
+
+        var pt = ChatStrings.PortugueseBrazil;
+        view.Strings = pt;
+        UiHelpers.Pump();
+        Assert.Contains("Motivo: Use rg instead", UiHelpers.Texts(ViewOf(view, tool)));
+        Assert.NotEqual(ChatStrings.English.ToolReason, pt.ToolReason);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_refused_edit_keeps_edit_failed_and_adds_the_reason()
+    {
+        var c = Refusing("Edit", new { file_path = "src/a.cs", old_string = "x", new_string = "y" }, "Too risky");
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        var (view, window) = Open(c);
+
+        var edit = ViewOf(view, tool);
+        var texts = UiHelpers.Texts(edit);
+        Assert.Contains("Edit failed", texts);
+        Assert.Contains("Reason: Too risky", texts);
+        var diff = edit.GetVisualDescendants().OfType<DiffView>().Single(); // and the diff
+        double Y(Visual v) => v.TranslatePoint(default, view)!.Value.Y;
+        var failed = edit.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Edit failed");
+        var reason = edit.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Inlines?.Text == "Reason: Too risky");
+        Assert.True(Y(failed) < Y(reason) && Y(reason) < Y(diff), "Edit failed, then the reason, then the diff");
+
+        var write = Refusing("Write", new { file_path = "b.txt", content = "hello" }, "Not now");
+        var writeTool = write.Items.OfType<ToolCallItem>().Single();
+        var (view2, window2) = Open(write);
+        var writeTexts = UiHelpers.Texts(ViewOf(view2, writeTool));
+        Assert.Contains("Write failed", writeTexts);
+        Assert.Contains("Reason: Not now", writeTexts);
+        Assert.Contains("hello", writeTexts); // the written text stays
+        window2.Close();
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_plain_refusal_shows_only_the_dot_and_failed_for_edit_and_write()
+    {
+        var edit = Refusing("Edit", new { file_path = "src/a.cs", old_string = "x", new_string = "y" }, StandardRefusal);
+        var bash = Refusing("Bash", new { command = "ls" }, StandardRefusal);
+        var grep = Refusing("Grep", new { pattern = "needle" }, StandardRefusal);
+        foreach (var c in new[] { edit, bash, grep })
+        {
+            var tool = c.Items.OfType<ToolCallItem>().Single();
+            Assert.Null(tool.RejectionReason);
+            var (view, window) = Open(c);
+            var texts = UiHelpers.Texts(ViewOf(view, tool));
+            Assert.DoesNotContain(texts, t => t.StartsWith("Reason:", StringComparison.Ordinal));
+            Assert.Same(Resource(view, "ClaudeChat.DotFailed"), VisibleDot(view, tool).Fill);
+            if (tool.Name == "Edit") Assert.Contains("Edit failed", texts);
+            if (tool.Name == "Bash") Assert.DoesNotContain(texts, t => t.StartsWith("The user", StringComparison.Ordinal)); // only the dot
+            if (tool.Name == "Grep") Assert.Contains(texts, t => t.StartsWith("The user doesn't want to proceed", StringComparison.Ordinal)); // the raw text
+            window.Close();
+        }
     }
 
     // ---- "Working…" ----

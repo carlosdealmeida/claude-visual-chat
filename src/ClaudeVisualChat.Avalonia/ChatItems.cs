@@ -137,6 +137,8 @@ public sealed class ToolCallItem : ChatItem
     private IReadOnlyList<DiffLine>? _diff;
     private IReadOnlyList<TodoEntry>? _todos;
     private bool _isExpanded;
+    private bool _isOutputExpanded;
+    private bool _isInputExpanded;
 
     public string ToolUseId
     {
@@ -223,6 +225,23 @@ public sealed class ToolCallItem : ChatItem
     {
         get => _isExpanded;
         set => SetField(ref _isExpanded, value);
+    }
+
+    /// <summary>
+    /// Whether the output (OUT) shows whole instead of cut at 60 px. A click on a long output turns it on and another turns it off.
+    /// It lives here because the list recycles its rows.
+    /// </summary>
+    public bool IsOutputExpanded
+    {
+        get => _isOutputExpanded;
+        set => SetField(ref _isOutputExpanded, value);
+    }
+
+    /// <summary>The same for what went in: the command (IN) or the file written.</summary>
+    public bool IsInputExpanded
+    {
+        get => _isInputExpanded;
+        set => SetField(ref _isInputExpanded, value);
     }
 }
 

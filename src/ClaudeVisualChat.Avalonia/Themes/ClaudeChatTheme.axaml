@@ -123,6 +123,8 @@
     <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAcceptEdits">0 0 0 3 #1FBFBFBF</BoxShadows>
     <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowPlan">0 0 0 3 #153994BC</BoxShadows>
     <BoxShadows x:Key="ClaudeChat.ComposerFocusShadowAuto">0 0 0 3 #1FF48771</BoxShadows>
+    <!-- the keyboard's focus on a cut text of a tool: a thin line inside, in the focus border color -->
+    <BoxShadows x:Key="ClaudeChat.ToolContentFocusShadow">inset 0 0 0 1 #B33994BC</BoxShadows>
     <!-- the diff: the extension draws it with the editor's vs-dark theme, whatever the VS Code theme -->
     <SolidColorBrush x:Key="ClaudeChat.DiffBackground" Color="#1E1E1E" />
     <SolidColorBrush x:Key="ClaudeChat.DiffForeground" Color="#D4D4D4" />
@@ -747,20 +749,20 @@
     <Setter Property="MaxHeight" Value="Infinity" />
     <Setter Property="OpacityMask" Value="{x:Null}" />
   </Style>
+  <!-- a long text takes clicks and the keyboard (the cursor tells it; nothing else shows on the content); the keyboard's focus
+       is a thin line inside, which takes no room -->
+  <Style Selector="Border.ClaudeChatToolContent.expandable:focus-visible">
+    <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.ToolContentFocusShadow}" />
+  </Style>
+  <!-- a string result: on the code background (textCodeBlock.background), as wide as the row, scrolling sideways -->
+  <Style Selector="Border.ClaudeChatToolResult">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.CodeBlockBackground}" />
+  </Style>
   <Style Selector="TextBlock.ClaudeChatToolText, SelectableTextBlock.ClaudeChatToolText">
     <Setter Property="FontFamily" Value="{DynamicResource ClaudeChat.MonoFontFamily}" />
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.SmallLineHeight}" />
     <Setter Property="RenderTransform" Value="translate(0px,3px)" />
-  </Style>
-  <Style Selector="SelectableTextBlock.ClaudeChatOutput.failed">
-    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Error}" />
-  </Style>
-  <Style Selector="TextBlock.ClaudeChatMoreLines">
-    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
-    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
-    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.SmallLineHeight}" />
-    <Setter Property="RenderTransform" Value="translate(0px,1px)" />
   </Style>
 
   <!-- a to-do list: a box per entry (checked when done, a star while doing), 4 px apart -->

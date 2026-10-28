@@ -23,6 +23,7 @@ public sealed class ChatConversation : ChatObservableObject
     private const string AgentTaskType = "local_agent";
     private const string RejectedResultPrefix = "User rejected";
     private const string RejectedTextPrefix = "The user doesn't want to proceed";
+    private const string RejectionReasonLead = "The user provided the following reason for the rejection: ";
     private const string DefaultModelValue = "default";
     private const string ExitPlanModeTool = "ExitPlanMode";
     private const string AutoMode = "auto";
@@ -1140,13 +1141,22 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>
     /// What the user typed when they refused a call. The claude says it never ran by the meta of the result; its text is the
-    /// typed text, unless the user typed none, and then it is the claude's own sentence.
+    /// typed text, unless the user typed none, and then it is the claude's own sentence. A refusal can also come as the claude's
+    /// sentence followed by "The user provided the following reason for the rejection: " and the typed text: the reason is what
+    /// follows. The sentence alone has no reason.
     /// </summary>
     private static string? RefusalReason(ToolResultBlock result)
     {
+        var text = result.Text;
+        if (text.StartsWith(RejectedTextPrefix, StringComparison.Ordinal))
+        {
+            var lead = text.IndexOf(RejectionReasonLead, StringComparison.Ordinal);
+            if (lead < 0) return null;
+            var typed = text.Substring(lead + RejectionReasonLead.Length).Trim();
+            return typed.Length == 0 ? null : typed;
+        }
         if (result.NonExecutionKind != "permission-rule" && result.NonExecutionKind != "user-rejected") return null;
-        if (result.Text.Trim().Length == 0 || result.Text.StartsWith(RejectedTextPrefix, StringComparison.Ordinal)) return null;
-        return result.Text;
+        return text.Trim().Length == 0 ? null : text;
     }
 
     private static ToolStatus ResultStatus(UserBlock e, ToolResultBlock result)

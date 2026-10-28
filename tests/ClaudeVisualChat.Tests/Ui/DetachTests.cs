@@ -463,6 +463,47 @@ public class DetachTests
         m.Window.Close();
     }
 
+    /// <summary>Handlers on <paramref name="item"/>'s property changes: the rows that draw it, while they are in the window.</summary>
+    private static int ItemHandlers(ChatItem item)
+    {
+        for (var type = item.GetType(); type != null; type = type.BaseType)
+        {
+            var field = type.GetField("PropertyChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly);
+            if (field != null) return ((Delegate?)field.GetValue(item))?.GetInvocationList().Length ?? 0;
+        }
+        throw new InvalidOperationException("no PropertyChanged event");
+    }
+
+    [AvaloniaFact]
+    public void A_tool_output_opened_before_or_while_out_is_drawn_as_the_item_says_when_back()
+    {
+        var c = Conversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"seq 20\"}"))));
+        c.Apply(new ClaudeVisualChat.Protocol.UserBlock(null,
+            new ClaudeVisualChat.Protocol.ToolResultBlock("t1", string.Join("\n", Enumerable.Range(1, 20).Select(i => "line " + i)), false), null, false, false));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        var m = new Mounted(c);
+        string Result() => m.View.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => (t.Text ?? "").StartsWith("line 1", StringComparison.Ordinal)).Text!;
+        var attached = ItemHandlers(tool);
+        Assert.DoesNotContain("line 20", Result());
+
+        tool.IsOutputExpanded = true;                                      // opened in the window
+        UiHelpers.Pump();
+        Assert.Contains("line 20", Result());
+
+        m.Out();                                                           // taken out opened: nothing throws, and the item is let go
+        Assert.True(ItemHandlers(tool) < attached);
+        tool.IsOutputExpanded = false;                                     // cut while out
+        tool.IsInputExpanded = true;
+        m.In();                                                            // back: drawn as the item is now
+        Assert.Equal(attached, ItemHandlers(tool));
+        Assert.DoesNotContain("line 20", Result());
+        tool.IsOutputExpanded = true;                                      // and it answers again
+        UiHelpers.Pump();
+        Assert.Contains("line 20", Result());
+        m.Window.Close();
+    }
+
     [AvaloniaFact]
     public void A_request_that_came_while_out_shows_when_back()
     {
