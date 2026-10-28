@@ -198,6 +198,9 @@ public class FidelityTests
         ("ClaudeChat.BannerBackground", "#20273B", "#2A3043"),
         ("ClaudeChat.BannerErrorForeground", "#DAA398", "#E28F8B"),
         ("ClaudeChat.BannerErrorBackground", "#4B302B", "#552C2A"),
+        // the warning banner (the invisible characters): #E5A54B at 50 % over foreground, at 25 % over editor.background
+        ("ClaudeChat.BannerWarningForeground", "#D2B285", "#D9B98C"),
+        ("ClaudeChat.BannerWarningBackground", "#473822", "#51412A"),
     };
 
     /// <summary>The extension's own colors, the same in both.</summary>

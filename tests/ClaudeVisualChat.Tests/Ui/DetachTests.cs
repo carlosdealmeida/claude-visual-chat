@@ -1463,4 +1463,34 @@ public class DetachTests
         Assert.Contains("run the tests\nplease", UiHelpers.Texts(card));
         m.Window.Close();
     }
+
+    [AvaloniaFact]
+    public void The_invisible_characters_notice_comes_back_as_it_was_and_follows_the_conversation_again()
+    {
+        var m = new Mounted(Conversation());
+        var input = UiHelpers.Input(m.View);
+        var notice = m.Composer.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "Notice");
+        input.Text = "oi" + char.ConvertFromUtf32(0x200B);
+        input.Focus();
+        UiHelpers.Press(m.Window, Avalonia.Input.Key.Enter);
+        Assert.True(notice.IsEffectivelyVisible);
+
+        m.Out();
+        m.In();
+
+        // it has no timer and no event of the host's: it is as it was, and still follows the request that hides it
+        Assert.True(notice.IsEffectivelyVisible);
+        Assert.Equal("oi", input.Text);
+        Assert.Contains("Removed 1 invisible character \u00B7 review and press Enter to send", UiHelpers.Texts(m.Composer));
+        m.Conversation.Apply(new PermissionRequested("r1", "Bash", "Bash", null, "t1", System.Text.Json.JsonDocument.Parse("{\"command\":\"ls\"}").RootElement.Clone(), null));
+        UiHelpers.Pump();
+        Assert.False(notice.IsVisible);
+        m.Out();
+        m.Conversation.AnswerPermission(m.Conversation.CurrentPermission!, PermissionDecision.Allow);   // answered while out
+        m.In();
+        Assert.True(notice.IsEffectivelyVisible);
+        UiHelpers.Click(m.Window, m.Composer.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "NoticeClose"));
+        Assert.False(notice.IsVisible);
+        m.Window.Close();
+    }
 }

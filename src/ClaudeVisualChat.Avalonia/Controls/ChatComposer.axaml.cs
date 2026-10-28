@@ -41,6 +41,9 @@ namespace ClaudeVisualChat.Controls;
 /// and Remote Control, and asks the box for the file dialog and the palette: <see cref="AttachFromPickerAsync"/>,
 /// <see cref="OpenCommands"/>). Enter breaks the line there, and Ctrl+Enter sends; so it does in the desktop layout while
 /// <see cref="UseCtrlEnterToSend"/> is on (Cmd+Enter too).
+/// A pasted text has its invisible characters taken out (<see cref="InvisibleCharacters"/>), and so has the text sent: when some are
+/// found then, the box is filled with the clean text and nothing is sent. Either way a notice under the box says how many went, until
+/// its × or a change of the text. The long pastes (<see cref="LongPastes"/>) still in a message go with it as inline pastes.
 /// The up and down arrows recall the prompts of the conversation (the ones waiting in line too) when the caret is at the start or the end of
 /// the text; Ctrl+J breaks the line; Shift+Tab asks for the next of the modes offered. All of these in both layouts.
 /// The microphone (<see cref="IChatDictation"/>): a tap starts the listening, which locks the box and puts what is heard at the
@@ -124,6 +127,15 @@ internal partial class ChatComposer : UserControl
     /// <summary>True while a recalled prompt (or the draft, coming back) is put in the box, so the change is not the user's typing.</summary>
     private bool _recalling;
 
+    /// <summary>The long pastes made in this box, to tell which of them a message still has.</summary>
+    private readonly LongPastes _pastes = new LongPastes();
+
+    /// <summary>The notice of the invisible characters taken out: how many and what follows; null when there is none.</summary>
+    private (int Removed, InvisibleNoticeKind Kind)? _notice;
+
+    /// <summary>The text of the box when the notice came: a different text ends the notice.</summary>
+    private string _noticeText = "";
+
     /// <summary>Test seam: the file dialog of the + button, giving image bytes (it takes the place of the dialog).</summary>
     internal Func<Task<IReadOnlyList<byte[]>>>? PickImagesOverride;
 
@@ -136,11 +148,14 @@ internal partial class ChatComposer : UserControl
         _touchBarContent = TouchBar.Child; // the bar takes it back in the touch layout, and only then
         TouchBar.Child = null;
         ModePicker.ItemTemplate = ModeTemplate;
+        AutomationProperties.SetLiveSetting(NoticeText, AutomationLiveSetting.Polite); // the notice is announced
+        NoticeClose.Click += (_, _) => ClearNotice();
         Input.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
         Input.PropertyChanged += (_, e) =>
         {
             if (e.Property != TextBox.TextProperty) return;
             if (!_recalling && string.IsNullOrEmpty(Input.Text)) EndRecall(); // clearing the box ends the walk
+            if (_notice != null && (Input.Text ?? "") != _noticeText) ClearNotice(); // the notice is about the text it came with
             // the user's edit, not another conversation's draft coming in: a request that comes now waits for the typing to pause
             if (!_showingDraft && !string.IsNullOrEmpty(Input.Text)) LastEdited = _conversation?.Clock() ?? DateTimeOffset.Now;
             RebaseListening();
@@ -191,6 +206,7 @@ internal partial class ChatComposer : UserControl
                 CutDictation(); // the words heard so far are in the box: they go to the draft of the conversation that leaves
                 KeepDraft(_conversation);
                 _conversation = value;
+                ClearNotice(); // it was about the other conversation's text
                 ShowDraft(value);
             }
             CacheClock.Conversation = value;
@@ -251,7 +267,20 @@ internal partial class ChatComposer : UserControl
     /// True to send with Ctrl+Enter (Cmd+Enter) and break the line with Enter; false (the default) sends with Enter and breaks the line
     /// with Shift+Enter. The touch layout always sends with Ctrl+Enter.
     /// </summary>
-    internal bool UseCtrlEnterToSend { get; set; }
+    internal bool UseCtrlEnterToSend
+    {
+        get => _useCtrlEnterToSend;
+        set
+        {
+            _useCtrlEnterToSend = value;
+            UpdateNotice(); // it says which key sends
+        }
+    }
+
+    private bool _useCtrlEnterToSend;
+
+    /// <summary>Ctrl or Cmd with Enter is the send key: where Enter breaks the line (the touch layout, or the option).</summary>
+    private bool CtrlEnterSends => IsTouch || _useCtrlEnterToSend;
 
     /// <summary>The user clicked an attached image: the view shows it.</summary>
     internal event EventHandler<(ChatImage Image, string Name)>? PreviewRequested;
@@ -331,6 +360,7 @@ internal partial class ChatComposer : UserControl
         var touch = IsTouch;
         ClosePopups(); // an open menu belongs to the layout that leaves: the desktop's model menu has no chip in the touch bar
         PseudoClasses.Set(":touch", touch);
+        UpdateNotice(); // the key that sends differs
         DesktopBar.IsVisible = !touch;
         TouchBar.Child = touch ? _touchBarContent : null;
         TouchBar.IsVisible = touch;
@@ -396,6 +426,7 @@ internal partial class ChatComposer : UserControl
                 break;
             case nameof(ChatConversation.CurrentPermission):
                 if (_tracked?.CurrentPermission != null) ClosePopups(); // the request comes first, the menus would cover it
+                UpdateNotice(); // and a banner is hidden under a request
                 break;
         }
     }
@@ -427,6 +458,9 @@ internal partial class ChatComposer : UserControl
         Label(AddButton, strings.AddAttachment);
         Label(TouchAddButton, strings.AddAttachment);
         Label(CommandsButton, strings.ShowCommands);
+        Label(NoticeClose, strings.DismissNotice);
+        AutomationProperties.SetName(Input, strings.MessageInput);
+        UpdateNotice();
         UpdateMicName();
         ShowRejected(_rejected);
         UpdateBusy();
@@ -491,7 +525,7 @@ internal partial class ChatComposer : UserControl
         }
         if (e.Key == Key.Enter)
         {
-            if (IsTouch || UseCtrlEnterToSend) return; // the text box breaks the line; the send button, or Ctrl+Enter, sends
+            if (CtrlEnterSends) return; // the text box breaks the line; the send button, or Ctrl+Enter, sends
             e.Handled = true; // Enter is the send key, never a line break
             Send();
         }
@@ -509,7 +543,7 @@ internal partial class ChatComposer : UserControl
 
     /// <summary>Ctrl or Cmd, and nothing else, with Enter: the send key of the touch layout and of <see cref="UseCtrlEnterToSend"/>.</summary>
     private bool IsSendChord(KeyModifiers modifiers) =>
-        (IsTouch || UseCtrlEnterToSend) && (modifiers == KeyModifiers.Control || modifiers == KeyModifiers.Meta);
+        CtrlEnterSends && (modifiers == KeyModifiers.Control || modifiers == KeyModifiers.Meta);
 
     /// <summary>
     /// Ctrl+J (alone) breaks the line as Shift+Enter does; Shift+Tab asks for the next permission mode. True when the key was one of them.
@@ -669,11 +703,48 @@ internal partial class ChatComposer : UserControl
     {
         var conversation = _tracked;
         if (conversation == null || !HasSomethingToSend || !IsEffectivelyVisible || _listening != null) return;
-        var text = Input.Text ?? "";
+        var (text, removed) = InvisibleCharacters.Clean(Input.Text ?? "");
+        if (removed > 0)
+        {
+            // the person sees what would go, and sends it with the next Enter (or has nothing left to send)
+            Input.Text = text;
+            Input.CaretIndex = text.Length;
+            ShowNotice(removed, HasSomethingToSend ? InvisibleNoticeKind.Review : InvisibleNoticeKind.Empty);
+            return;
+        }
+        var pastes = _pastes.In(text, InvisibleCharacters.PasteLimit);
+        var message = LongPastes.Truncate(text, InvisibleCharacters.PasteLimit);
+        if (message.Length < text.Length) message += LongPastes.TruncationNotice;
         // cleared first: a host that refuses the message at once (UndoSubmit inside MessageSubmitted) gets it back here
         Input.Clear();
+        ClearNotice();
         ShowRejected(null);
-        conversation.Submit(text);
+        conversation.SubmitWithPastes(message, pastes);
+    }
+
+    // ---- the notice of the invisible characters ----
+
+    private void ShowNotice(int removed, InvisibleNoticeKind kind)
+    {
+        _notice = (removed, kind);
+        _noticeText = Input.Text ?? "";
+        UpdateNotice();
+    }
+
+    private void ClearNotice()
+    {
+        if (_notice == null) return;
+        _notice = null;
+        _noticeText = "";
+        UpdateNotice();
+    }
+
+    /// <summary>Shows the notice in the language, with the key that sends; a permission request hides it, as it hides the banners.</summary>
+    private void UpdateNotice()
+    {
+        var show = _notice is { } && _tracked?.CurrentPermission == null;
+        Notice.IsVisible = show;
+        NoticeText.Text = show && _notice is { } notice ? Strings.FormatInvisibleNotice(notice.Removed, notice.Kind, CtrlEnterSends) : null;
     }
 
     // ---- images and files ----
@@ -714,10 +785,16 @@ internal partial class ChatComposer : UserControl
         var conversation = _tracked;
         if (!ClipboardImages.CanCheckNow)
         {
+            e.Handled = true; // the text, if there is any, is pasted here, clean
             _ = PasteImageWithoutTextAsync(conversation);
             return;
         }
-        if (ClipboardImages.HasText()) return;
+        if (ClipboardImages.HasText())
+        {
+            e.Handled = true;
+            _ = PasteTextAsync(conversation);
+            return;
+        }
         if (ClipboardImages.HasFiles())
         {
             e.Handled = true;
@@ -727,6 +804,31 @@ internal partial class ChatComposer : UserControl
         if (!ClipboardImages.HasImage()) return;
         e.Handled = true;
         _ = PasteImageAsync(conversation);
+    }
+
+    /// <summary>
+    /// A text from the clipboard goes in at the caret (over the selection) as the text box would put it, but clean: the invisible
+    /// characters of its first 50,000 are out, and when some were, the notice says so. A long paste is remembered for the message
+    /// it ends up in. Dropped when the conversation changed while the clipboard was read, or the box is locked (listening).
+    /// </summary>
+    private async Task PasteTextAsync(ChatConversation? conversation)
+    {
+        string? pasted;
+        try
+        {
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            pasted = clipboard == null ? null : await clipboard.GetTextAsync();
+        }
+        catch (Exception)
+        {
+            return;
+        }
+        if (string.IsNullOrEmpty(pasted) || !ReferenceEquals(conversation, _tracked) || Input.IsReadOnly || !IsEffectivelyVisible) return;
+        var head = LongPastes.Truncate(pasted!, InvisibleCharacters.PasteLimit);
+        var (clean, removed) = InvisibleCharacters.Clean(head);
+        Input.SelectedText = clean + pasted!.Substring(head.Length);
+        _pastes.Remember(clean);
+        if (removed > 0) ShowNotice(removed, InvisibleNoticeKind.Pasted);
     }
 
     private async Task PasteFilesAsync(ChatConversation? conversation)
@@ -750,12 +852,17 @@ internal partial class ChatComposer : UserControl
         {
             foreach (var format in await clipboard.GetFormatsAsync())
             {
-                if (format == DataFormats.Text || format.StartsWith("text/", StringComparison.Ordinal) || format == "UTF8_STRING") return;
+                if (format == DataFormats.Text || format.StartsWith("text/", StringComparison.Ordinal) || format == "UTF8_STRING")
+                {
+                    await PasteTextAsync(conversation);
+                    return;
+                }
                 files |= format == DataFormats.Files;
             }
         }
         catch (Exception)
         {
+            await PasteTextAsync(conversation); // the formats cannot be read: the text, if the clipboard gives it, is what the person pasted
             return;
         }
         if (files)

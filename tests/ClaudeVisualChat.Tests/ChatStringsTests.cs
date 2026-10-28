@@ -110,8 +110,8 @@ public class ChatStringsTests
     [Fact]
     public void Prompt_and_reply_box_texts_in_both_languages()
     {
-        Assert.Equal("Reply to Claude…", En.InputPlaceholder);
-        Assert.Equal("Responder ao Claude…", Pt.InputPlaceholder);
+        Assert.Equal("Ask Claude to edit…", En.InputPlaceholder);
+        Assert.Equal("Peça ao Claude para editar…", Pt.InputPlaceholder);
         Assert.Equal(("Send", "Stop"), (En.Send, En.Stop));
         Assert.Equal(("Enviar", "Parar"), (Pt.Send, Pt.Stop));
         Assert.Equal("Claude wants to run this command:", En.PermissionRunCommand);
@@ -707,5 +707,24 @@ public class ChatStringsTests
             Assert.False(string.IsNullOrEmpty(En.TaggedLabel(key)), key);
             Assert.False(string.IsNullOrEmpty(Pt.TaggedLabel(key)), key);
         }
+    }
+
+    [Fact]
+    public void The_invisible_characters_notice_in_both_languages()
+    {
+        Assert.Equal("Removed 1 invisible character from the pasted text", En.FormatInvisibleNotice(1, InvisibleNoticeKind.Pasted, false));
+        Assert.Equal("Removed 12 invisible characters from the pasted text", En.FormatInvisibleNotice(12, InvisibleNoticeKind.Pasted, false));
+        Assert.Equal("Removed 3 invisible characters · review and press Enter to send", En.FormatInvisibleNotice(3, InvisibleNoticeKind.Review, false));
+        Assert.Equal("Removed 3 invisible characters · review and press Ctrl/Cmd+Enter to send", En.FormatInvisibleNotice(3, InvisibleNoticeKind.Review, true));
+        Assert.Equal("Removed 1 invisible character · nothing left to send", En.FormatInvisibleNotice(1, InvisibleNoticeKind.Empty, true));
+        Assert.Equal("Removido 1 caractere invisível do texto colado", Pt.FormatInvisibleNotice(1, InvisibleNoticeKind.Pasted, false));
+        Assert.Equal("Removidos 3 caracteres invisíveis · revise e pressione Enter para enviar", Pt.FormatInvisibleNotice(3, InvisibleNoticeKind.Review, false));
+        Assert.Equal("Removidos 3 caracteres invisíveis · revise e pressione Ctrl/Cmd+Enter para enviar", Pt.FormatInvisibleNotice(3, InvisibleNoticeKind.Review, true));
+        Assert.Equal("Removidos 2 caracteres invisíveis · nada restou para enviar", Pt.FormatInvisibleNotice(2, InvisibleNoticeKind.Empty, false));
+        Assert.Equal("Removed 1,234 invisible characters from the pasted text", En.FormatInvisibleNotice(1234, InvisibleNoticeKind.Pasted, false));
+        Assert.Equal("Dismiss notice", En.DismissNotice);
+        Assert.Equal("Dispensar aviso", Pt.DismissNotice);
+        Assert.Equal("Message input", En.MessageInput);
+        Assert.Equal("Campo de mensagem", Pt.MessageInput);
     }
 }

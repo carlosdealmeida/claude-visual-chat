@@ -605,7 +605,7 @@ public class ComposerTests
     public void Portuguese_texts()
     {
         var ui = Open(strings: ChatStrings.PortugueseBrazil);
-        Assert.Equal("Responder ao Claude…", ui.Input.Watermark);
+        Assert.Equal("Peça ao Claude para editar…", ui.Input.Watermark);
         Assert.Contains("Enviar", ui.Texts); // the square's name: it shows an arrow
         ui.Conversation.Submit("x");
         ui.Type("y"); // busy, with something written: both buttons
@@ -1136,6 +1136,382 @@ public class ComposerTests
         Assert.Equal(0, toggles);
         Assert.Empty(ui.Modes);
         Assert.Equal("", ui.Input.Text ?? "");
+        ui.Window.Close();
+    }
+
+    // ---- long pastes, invisible characters and the placeholder (Task 31) ----
+
+    private static readonly string Zwsp = char.ConvertFromUtf32(0x200B);
+    private static readonly string Bell = char.ConvertFromUtf32(0x0007);
+
+    /// <summary>Pastes with Ctrl+V as the clipboard of the window gives it, and puts the seams and the clipboard back when it is disposed.</summary>
+    private sealed class Pasting : System.IDisposable
+    {
+        private readonly Opened _ui;
+
+        public Pasting(Opened ui)
+        {
+            _ui = ui;
+            ClaudeVisualChat.Imaging.ClipboardImages.HasTextOverride = () => true;
+            ClaudeVisualChat.Imaging.ClipboardImages.HasImageOverride = () => false;
+        }
+
+        /// <summary>Ctrl+V with <paramref name="text"/> on the clipboard; waits until the box has a text different from the one it had.</summary>
+        public void Paste(string text)
+        {
+            var before = _ui.Input.Text ?? "";
+            _ui.Window.Clipboard!.SetTextAsync(text).Wait();
+            _ui.Input.Focus();
+            UiHelpers.Press(_ui.Window, Key.V, RawInputModifiers.Control);
+            UiHelpers.PumpUntil(() => (_ui.Input.Text ?? "") != before);
+            for (var i = 0; i < 3; i++) UiHelpers.Pump();
+        }
+
+        public void Dispose()
+        {
+            try { _ui.Window.Clipboard?.ClearAsync().Wait(); } catch (System.Exception) { /* nothing left to clear */ }
+            ClaudeVisualChat.Imaging.ClipboardImages.HasTextOverride = null;
+            ClaudeVisualChat.Imaging.ClipboardImages.HasImageOverride = null;
+        }
+    }
+
+    private static Border Notice(Opened ui) => ui.Composer.FindControl<Border>("Notice")!;
+
+    private static string NoticeText(Opened ui) => ui.Composer.FindControl<TextBlock>("NoticeText")!.Text ?? "";
+
+    private static Button NoticeClose(Opened ui) => ui.Composer.FindControl<Button>("NoticeClose")!;
+
+    private static string LongText(int length = 900) =>
+        string.Concat(Enumerable.Repeat("a long line of pasted text ", length / 27 + 1)).Substring(0, length);
+
+    [AvaloniaFact]
+    public void Pasting_text_with_invisible_characters_shows_the_notice_until_dismissed()
+    {
+        var ui = Open();
+        using var paste = new Pasting(ui);
+        paste.Paste("one" + Zwsp + "two" + Bell + "three");
+
+        Assert.Equal("onetwothree", ui.Input.Text);
+        Assert.True(Notice(ui).IsEffectivelyVisible);
+        Assert.Equal("Removed 2 invisible characters from the pasted text", NoticeText(ui));
+
+        // announced; the × dismisses it, the text stays
+        Assert.Equal(Avalonia.Automation.AutomationLiveSetting.Polite, Avalonia.Automation.AutomationProperties.GetLiveSetting(ui.Composer.FindControl<TextBlock>("NoticeText")!));
+        Assert.Equal("Dismiss notice", Avalonia.Automation.AutomationProperties.GetName(NoticeClose(ui)));
+        UiHelpers.Click(ui.Window, NoticeClose(ui));
+        Assert.False(Notice(ui).IsVisible);
+        Assert.Equal("onetwothree", ui.Input.Text);
+
+        // one character is "character"; and it has no timer: it is still there after a long while, and goes with a change of the text
+        paste.Paste(Zwsp + "x");
+        Assert.Equal("Removed 1 invisible character from the pasted text", NoticeText(ui));
+        for (var i = 0; i < 20; i++) UiHelpers.Pump();
+        Assert.True(Notice(ui).IsEffectivelyVisible);
+        ui.Type("y");
+        Assert.False(Notice(ui).IsVisible);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_paste_with_nothing_to_remove_shows_no_notice_and_goes_in_at_the_caret_over_the_selection()
+    {
+        var ui = Open();
+        using var paste = new Pasting(ui);
+        ui.Input.Text = "abcdef";
+        ui.Input.Focus();
+        ui.Input.SelectionStart = 2;
+        ui.Input.SelectionEnd = 4;
+        paste.Paste("XY");
+
+        Assert.Equal("abXYef", ui.Input.Text);
+        Assert.Equal(4, ui.Input.CaretIndex);
+        Assert.False(Notice(ui).IsVisible);
+        // undo takes the paste back in one step
+        UiHelpers.Press(ui.Window, Key.Z, RawInputModifiers.Control);
+        Assert.Equal("abcdef", ui.Input.Text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_notice_says_the_key_that_sends_and_follows_the_language()
+    {
+        var ui = Open();
+        using var paste = new Pasting(ui);
+        ui.Input.Text = "oi" + Zwsp;
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Empty(ui.Sent);
+        Assert.Equal("Removed 1 invisible character · review and press Enter to send", NoticeText(ui));
+
+        ui.View.UseCtrlEnterToSend = true;
+        UiHelpers.Pump();
+        Assert.Equal("Removed 1 invisible character · review and press Ctrl/Cmd+Enter to send", NoticeText(ui));
+
+        ui.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal("Removido 1 caractere invisível · revise e pressione Ctrl/Cmd+Enter para enviar", NoticeText(ui));
+        Assert.Equal("Dispensar aviso", Avalonia.Automation.AutomationProperties.GetName(NoticeClose(ui)));
+        ui.View.UseCtrlEnterToSend = false;
+        UiHelpers.Pump();
+        Assert.Equal("Removido 1 caractere invisível · revise e pressione Enter para enviar", NoticeText(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Sending_text_with_invisible_characters_refills_the_box_and_sends_nothing_until_the_next_enter()
+    {
+        var ui = Open();
+        ui.Input.Text = "hello" + Zwsp + " world" + Bell;
+        ui.Input.Focus();
+
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        Assert.Empty(ui.Sent);
+        Assert.Equal("hello world", ui.Input.Text);
+        Assert.Equal("hello world".Length, ui.Input.CaretIndex);
+        Assert.Equal("Removed 2 invisible characters · review and press Enter to send", NoticeText(ui));
+
+        UiHelpers.Press(ui.Window, Key.Enter); // reviewed: this one goes
+        Assert.Equal(new[] { "hello world" }, ui.Sent);
+        Assert.Equal("", ui.Input.Text ?? "");
+        Assert.False(Notice(ui).IsVisible);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Sending_a_text_that_is_nothing_but_invisible_characters_says_nothing_is_left()
+    {
+        var ui = Open();
+        ui.Input.Text = Zwsp + Zwsp + Zwsp;
+        ui.Input.Focus();
+
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        Assert.Empty(ui.Sent);
+        Assert.Equal("", ui.Input.Text ?? "");
+        Assert.Equal("Removed 3 invisible characters · nothing left to send", NoticeText(ui));
+        UiHelpers.Press(ui.Window, Key.Enter); // nothing to send: nothing happens
+        Assert.Empty(ui.Sent);
+
+        // with an image attached there is still something to send
+        ui.Conversation.Attachments.Add(new ChatImage("image/png", "QUJD"));
+        ui.Input.Text = Zwsp;
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Empty(ui.Sent);
+        Assert.Equal("Removed 1 invisible character · review and press Enter to send", NoticeText(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_recalled_prompt_is_cleaned_on_send_but_not_on_recall()
+    {
+        var ui = Open(WithHistory("old" + Zwsp + " prompt"));
+        ui.Input.Focus();
+
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("old" + Zwsp + " prompt", ui.Input.Text);   // recalled as it was, not pasted: not cleaned
+        Assert.False(Notice(ui).IsVisible);
+
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Empty(ui.Sent);
+        Assert.Equal("old prompt", ui.Input.Text);
+        Assert.Equal("Removed 1 invisible character · review and press Enter to send", NoticeText(ui));
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal(new[] { "old prompt" }, ui.Sent);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_notice_goes_with_the_conversation_and_hides_under_a_permission_request()
+    {
+        var ui = Open();
+        ui.Input.Text = "x" + Zwsp;
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.True(Notice(ui).IsEffectivelyVisible);
+
+        ui.Conversation.Apply(new ClaudeVisualChat.Protocol.PermissionRequested("r1", "Bash", "Bash", null, "t1", J("{\"command\":\"ls\"}"), null));
+        UiHelpers.Pump();
+        Assert.False(Notice(ui).IsVisible);                  // a request covers it, as it covers the banners
+        ui.Conversation.AnswerPermission(ui.Conversation.CurrentPermission!, PermissionDecision.Allow);
+        UiHelpers.Pump();
+        Assert.True(Notice(ui).IsEffectivelyVisible);
+
+        ui.Composer.Conversation = new ChatConversation();   // another conversation: the notice was about the text of this one
+        UiHelpers.Pump();
+        Assert.False(Notice(ui).IsVisible);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_notice_is_tucked_under_the_box_in_the_banner_look_with_the_warning_colors()
+    {
+        var ui = Open();
+        ui.Input.Text = "x" + Zwsp;
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Enter);
+        UiHelpers.Pump();
+        var notice = Notice(ui);
+        var box = ui.Composer.FindControl<Border>("Box")!;
+
+        Assert.Equal(new CornerRadius(8, 8, 0, 0), notice.CornerRadius);
+        Assert.Equal(new Thickness(16, 6, 6, 12), notice.Padding);
+        Assert.Equal(new Thickness(0, 0, 0, -8), notice.Margin);
+        var text = ui.Composer.FindControl<TextBlock>("NoticeText")!;
+        Assert.Equal(Avalonia.Media.FontWeight.SemiBold, text.FontWeight);
+        Assert.Equal(11.05, text.FontSize, 3);
+        // the box's top is 8 px over the notice's bottom: the last 8 px of the notice are under it, and the box has the notice's width
+        var noticeTop = notice.TranslatePoint(default, ui.Window)!.Value;
+        var boxTop = box.TranslatePoint(default, ui.Window)!.Value;
+        Assert.Equal(boxTop.Y + 8, noticeTop.Y + notice.Bounds.Height, 3);
+        Assert.Equal(box.Bounds.Width, notice.Bounds.Width);
+        Assert.Equal(boxTop.X, noticeTop.X);
+        // the colors are resources of the theme
+        Assert.Equal(((Avalonia.Media.ISolidColorBrush)notice.FindResource("ClaudeChat.BannerWarningBackground")!).Color, ((Avalonia.Media.ISolidColorBrush)notice.Background!).Color);
+        Assert.Equal(((Avalonia.Media.ISolidColorBrush)notice.FindResource("ClaudeChat.BannerWarningForeground")!).Color, ((Avalonia.Media.ISolidColorBrush)notice.BorderBrush!).Color);
+        Assert.Equal(((Avalonia.Media.ISolidColorBrush)notice.FindResource("ClaudeChat.BannerWarningForeground")!).Color, ((Avalonia.Media.ISolidColorBrush)text.Foreground!).Color);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_paste_over_eight_hundred_characters_goes_in_inline_pastes()
+    {
+        var ui = Open();
+        MessageSubmittedEventArgs? sent = null;
+        ui.Conversation.MessageSubmitted += (_, e) => sent = e;
+        using var paste = new Pasting(ui);
+        var big = LongText();
+        var lines = "first line of a list\nsecond line of a list\nthird line of a list\nfourth line of a list";
+
+        ui.Type("see ");
+        paste.Paste(big);
+        ui.Type(" and ");
+        paste.Paste("short one");        // not long: remembered by no one
+        ui.Type(" and ");
+        paste.Paste("\n" + lines + "\n");  // over two line feeds
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        Assert.NotNull(sent);
+        Assert.Equal(new[] { big.Trim(), lines }, sent!.InlinePastes);
+        Assert.StartsWith("see " + big.Trim(), sent.Text.Replace("\r\n", "\n"));
+        var line = ClaudeVisualChat.Protocol.StdinMessages.UserMessage(sent);
+        using (var doc = System.Text.Json.JsonDocument.Parse(line))
+        {
+            var written = doc.RootElement.GetProperty("inline_pastes").EnumerateArray().Select(p => p.GetString()).ToArray();
+            Assert.Equal(new[] { big.Trim(), lines }, written);
+        }
+
+        // a message with no long paste writes none
+        ui.Type("plain");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Empty(sent.InlinePastes);
+        Assert.DoesNotContain("inline_pastes", ClaudeVisualChat.Protocol.StdinMessages.UserMessage(sent));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_paste_that_is_no_longer_in_the_text_is_not_sent_and_a_recalled_prompt_brings_its_paste_back()
+    {
+        var ui = Open();
+        var sent = new List<MessageSubmittedEventArgs>();
+        ui.Conversation.MessageSubmitted += (_, e) => sent.Add(e);
+        using var paste = new Pasting(ui);
+        var big = LongText(1000);
+
+        paste.Paste(big);
+        ui.Input.Text = (ui.Input.Text ?? "").Substring(0, 500); // cut in half: the paste is not in the text any more
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Empty(sent.Single().InlinePastes);
+
+        // pasted again and sent; recalled with Up and sent again: the box still remembers the paste
+        paste.Paste(big);
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal(new[] { big.Trim() }, sent[1].InlinePastes);
+        UiHelpers.Press(ui.Window, Key.Up);
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal(new[] { big.Trim() }, sent[2].InlinePastes);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_text_over_fifty_thousand_characters_is_cut_and_says_so()
+    {
+        var ui = Open();
+        ui.Input.Text = new string('a', 50000) + "tail that goes";
+        ui.Input.Focus();
+
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        var text = Assert.Single(ui.Sent);
+        Assert.Equal(new string('a', 50000) + "\n\n[Message truncated - exceeded 50,000 character limit]", text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_text_of_exactly_fifty_thousand_characters_is_sent_whole()
+    {
+        var ui = Open();
+        ui.Input.Text = new string('b', 50000);
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal(new string('b', 50000), Assert.Single(ui.Sent));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Line_breaks_are_sent_as_line_feeds()
+    {
+        var ui = Open();
+        ui.Input.Text = "one\r\ntwo\rthree";
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal("one\ntwo\nthree", Assert.Single(ui.Sent));
+        Assert.False(Notice(ui).IsVisible);               // a line break turned into another is not a removal
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_idle_placeholder_is_ask_claude_to_edit()
+    {
+        var ui = Open();
+        Assert.Equal("Ask Claude to edit…", ui.Input.Watermark);
+        ui.Conversation.Submit("go");                       // busy: the queue placeholder is as it was
+        UiHelpers.Pump();
+        Assert.Equal("Queue another message…", ui.Input.Watermark);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_text_field_has_its_name_the_extensions_line_height_and_a_placeholder_of_one_line()
+    {
+        var ui = Open();
+        Assert.Equal("Message input", Avalonia.Automation.AutomationProperties.GetName(ui.Input));
+        Assert.Equal(new Thickness(14, 10, 36, 10), ui.Input.Padding);
+        Assert.Equal(19.5, ui.Input.LineHeight);            // 1.5 times the 13 px text
+        Assert.Equal(200, ui.Input.MaxHeight);
+        var watermark = ui.Input.GetVisualDescendants().OfType<TextBlock>().First(t => t.Name == "PART_Watermark");
+        Assert.Equal(Avalonia.Media.TextTrimming.CharacterEllipsis, watermark.TextTrimming);
+        Assert.Equal(Avalonia.Media.TextWrapping.NoWrap, watermark.TextWrapping);
+
+        ui.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal("Campo de mensagem", Avalonia.Automation.AutomationProperties.GetName(ui.Input));
+        Assert.Equal("Peça ao Claude para editar…", ui.Input.Watermark);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_box_grows_to_two_hundred_pixels_and_no_further()
+    {
+        var ui = Open();
+        ui.Input.Text = string.Join("\n", Enumerable.Range(0, 30).Select(i => "line " + i));
+        UiHelpers.Pump();
+        UiHelpers.Pump();
+        Assert.Equal(200, ui.Input.Bounds.Height, 1);
+        ui.Input.Text = "one line";
+        UiHelpers.Pump();
+        UiHelpers.Pump();
+        Assert.True(ui.Input.Bounds.Height < 60, ui.Input.Bounds.Height.ToString());
         ui.Window.Close();
     }
 }

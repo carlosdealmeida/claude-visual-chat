@@ -89,6 +89,81 @@ namespace ClaudeVisualChat.Protocol
         }
     }
 
+    /// <summary>
+    /// The wrapper the claude puts around a long paste of a user message (<c>inline_pastes</c>): the line
+    /// <c>&lt;pasted_content id="abcd"&gt;</c> with a four-digit hex id, the paste, and a line that closes it with
+    /// <c>&lt;/pasted_content id="abcd"&gt;</c>, set off from the text around by up to two line breaks on each side.
+    /// </summary>
+    internal static class PastedContent
+    {
+        private const string Open = "<pasted_content id=\"";
+
+        /// <summary>
+        /// The text with each wrapper taken off and its paste where it was; a paste of several lines (or one next to a word) is set off from
+        /// its neighbors by a line break. The same string, not a copy, when there is no wrapper. A tag that is not whole (another id
+        /// length, no closing line) stays as it is.
+        /// </summary>
+        public static string Strip(string text)
+        {
+            if (text.IndexOf(Open, StringComparison.Ordinal) < 0) return text;
+            var pieces = new List<KeyValuePair<bool, string>>(); // true: a paste
+            var used = 0;
+            var from = 0;
+            while (true)
+            {
+                var start = text.IndexOf(Open, from, StringComparison.Ordinal);
+                if (start < 0) break;
+                var idAt = start + Open.Length;
+                from = idAt;
+                if (idAt + 7 > text.Length || !IsHex4(text, idAt) || string.CompareOrdinal(text, idAt + 4, "\">\n", 0, 3) != 0) continue;
+                var id = text.Substring(idAt, 4);
+                var closing = "\n</pasted_content id=\"" + id + "\">";
+                var bodyAt = idAt + 7;
+                var closeAt = text.IndexOf(closing, bodyAt - 1, StringComparison.Ordinal);
+                if (closeAt < 0) break;
+                var before = start;
+                for (var n = 0; n < 2 && before > used && text[before - 1] == '\n'; n++) before--;
+                pieces.Add(new KeyValuePair<bool, string>(false, text.Substring(used, before - used)));
+                pieces.Add(new KeyValuePair<bool, string>(true, closeAt < bodyAt ? "" : text.Substring(bodyAt, closeAt - bodyAt)));
+                used = closeAt + closing.Length;
+                for (var n = 0; n < 2 && used < text.Length && text[used] == '\n'; n++) used++;
+                from = used;
+            }
+            if (pieces.Count == 0) return text;
+            pieces.Add(new KeyValuePair<bool, string>(false, text.Substring(used)));
+            var result = new System.Text.StringBuilder(text.Length);
+            KeyValuePair<bool, string>? last = null;
+            foreach (var piece in pieces)
+            {
+                if (!piece.Key && piece.Value.Length == 0) continue;
+                if (last is { } previous && BreakBetween(previous, piece)) result.Append('\n');
+                result.Append(piece.Value);
+                last = piece;
+            }
+            return result.ToString();
+        }
+
+        /// <summary>A paste is set off from the text next to it by a line break when it has lines of its own, or the text touches it.</summary>
+        private static bool BreakBetween(KeyValuePair<bool, string> before, KeyValuePair<bool, string> after)
+        {
+            if (before.Key && after.Key) return true;
+            var paste = before.Key ? before.Value : after.Value;
+            if (paste.IndexOf('\n') >= 0) return true;
+            var touching = before.Key ? after.Value[0] : before.Value[before.Value.Length - 1];
+            return !char.IsWhiteSpace(touching);
+        }
+
+        private static bool IsHex4(string text, int at)
+        {
+            for (var i = at; i < at + 4; i++)
+            {
+                var c = text[i];
+                if (!(c >= '0' && c <= '9' || c >= 'a' && c <= 'f')) return false;
+            }
+            return true;
+        }
+    }
+
     internal static class EventReader
     {
         private static readonly IReadOnlyList<ClaudeEvent> None = Array.Empty<ClaudeEvent>();
@@ -125,6 +200,9 @@ namespace ClaudeVisualChat.Protocol
             for (var i = 0; i < blocks.Count; i++)
             {
                 var b = blocks[i];
+                // the claude may wrap a long paste in a tag of its own; the message is shown as the person wrote it
+                if (b is TextContentBlock pasted && PastedContent.Strip(pasted.Text) is var unwrapped && !ReferenceEquals(unwrapped, pasted.Text))
+                    b = new TextContentBlock(unwrapped);
                 if (b is TextContentBlock text && CommandText.Read(text.Text) is { } command)
                 {
                     events.Add(command);

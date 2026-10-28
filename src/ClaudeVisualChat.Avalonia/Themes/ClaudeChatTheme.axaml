@@ -73,6 +73,9 @@
     <SolidColorBrush x:Key="ClaudeChat.BannerBackground" Color="#20273B" />
     <SolidColorBrush x:Key="ClaudeChat.BannerErrorForeground" Color="#DAA398" />
     <SolidColorBrush x:Key="ClaudeChat.BannerErrorBackground" Color="#4B302B" />
+    <!-- the same for the notice of the invisible characters taken out of the text: the extension's warning amber (#E5A54B) -->
+    <SolidColorBrush x:Key="ClaudeChat.BannerWarningForeground" Color="#D2B285" />
+    <SolidColorBrush x:Key="ClaudeChat.BannerWarningBackground" Color="#473822" />
     <SolidColorBrush x:Key="ClaudeChat.FocusRing" Color="#D97757" />            <!-- the reply box with the focus, default mode -->
     <SolidColorBrush x:Key="ClaudeChat.Spinner" Color="#D97757" />              <!-- the working line's star, default mode -->
     <!-- an image attached to the reply box: a pill of input.background with 15 % of descriptionForeground; its border
@@ -1805,6 +1808,7 @@
     <Setter Property="MinHeight" Value="39.5" />
     <Setter Property="MaxHeight" Value="200" />
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
     <Setter Property="VerticalContentAlignment" Value="Top" />
   </Style>
   <Style Selector="TextBox.ClaudeChatInput /template/ Border#PART_BorderElement, TextBox.ClaudeChatInput:pointerover /template/ Border#PART_BorderElement, TextBox.ClaudeChatInput:focus /template/ Border#PART_BorderElement, TextBox.ClaudeChatInput:disabled /template/ Border#PART_BorderElement">
@@ -1815,6 +1819,11 @@
   <Style Selector="TextBox.ClaudeChatInput /template/ TextBlock#PART_Watermark, TextBox.ClaudeChatField /template/ TextBlock#PART_Watermark">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.InputPlaceholder}" />
     <Setter Property="Opacity" Value="1" />
+  </Style>
+  <!-- the placeholder is one line, with an ellipsis where the box is too narrow for it -->
+  <Style Selector="TextBox.ClaudeChatInput /template/ TextBlock#PART_Watermark">
+    <Setter Property="TextWrapping" Value="NoWrap" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
   </Style>
   <Style Selector="TextBox.ClaudeChatInput:pointerover /template/ TextBlock#PART_Watermark, TextBox.ClaudeChatInput:focus /template/ TextBlock#PART_Watermark, TextBox.ClaudeChatField:pointerover /template/ TextBlock#PART_Watermark, TextBox.ClaudeChatField:focus /template/ TextBlock#PART_Watermark">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.InputPlaceholder}" />
@@ -2773,6 +2782,17 @@
   </Style>
   <Style Selector=":is(Border).ClaudeChatBanner.error TextBlock.ClaudeChatBannerText">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.BannerErrorForeground}" />
+  </Style>
+  <!-- the amber one: the notice of the invisible characters taken out of the text, which the reply box holds -->
+  <Style Selector=":is(Border).ClaudeChatBanner.warning">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.BannerWarningForeground}" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.BannerWarningBackground}" />
+  </Style>
+  <Style Selector=":is(Border).ClaudeChatBanner.warning TextBlock.ClaudeChatBannerText">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.BannerWarningForeground}" />
+  </Style>
+  <Style Selector=":is(Border).ClaudeChatBanner.warning Button.ClaudeChatBannerClose">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.BannerWarningForeground}" />
   </Style>
   <!-- the ×: a 12 px icon, 4 px around it, 12 px after the text, in the banner's color; the toolbar's hover -->
   <Style Selector="Button.ClaudeChatBannerClose">

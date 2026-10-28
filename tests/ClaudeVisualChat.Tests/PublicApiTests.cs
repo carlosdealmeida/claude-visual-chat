@@ -729,4 +729,21 @@ public class PublicApiTests
             Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
         }
     }
+
+    [Fact]
+    public void The_inline_pastes_api_exists_and_the_helpers_stay_internal()
+    {
+        // the long pastes of a message (0.6.0): a list the host can read, set only when the event is made, and the line that carries it
+        var pastes = typeof(MessageSubmittedEventArgs).GetProperty("InlinePastes");
+        Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<string>), pastes?.PropertyType);
+        Assert.Contains(pastes!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        Assert.Equal(2, typeof(MessageSubmittedEventArgs).GetConstructors().Max(c => c.GetParameters().Length)); // no new positional parameter
+        Assert.Empty(new MessageSubmittedEventArgs("x").InlinePastes);
+
+        // the cleaning and the memory of the pastes are the box's, and the conversation's Submit has the one signature
+        Assert.False(Library.GetType("ClaudeVisualChat.InvisibleCharacters")!.IsPublic);
+        Assert.False(Library.GetType("ClaudeVisualChat.LongPastes")!.IsPublic);
+        Assert.Single(typeof(ChatConversation).GetMethods(), m => m.Name == "Submit");
+        Assert.Null(typeof(ChatConversation).GetMethod("SubmitWithPastes"));
+    }
 }

@@ -826,7 +826,13 @@ public sealed class ChatConversation : ChatObservableObject
     /// ignored unless there is an image or a file. Works while busy: the claude queues it. Sent while <see cref="IsBusy"/>, the
     /// message waits in <see cref="QueuedMessages"/> until the claude takes it; sent while idle, it goes to <see cref="Items"/> at once.
     /// </summary>
-    public bool Submit(string text)
+    public bool Submit(string text) => SubmitWithPastes(text, null);
+
+    /// <summary>
+    /// <see cref="Submit(string)"/> for the reply box, which also says the long pastes that are in the text
+    /// (<see cref="MessageSubmittedEventArgs.InlinePastes"/>). A command typed in the box is not a message and takes none.
+    /// </summary>
+    internal bool SubmitWithPastes(string text, IReadOnlyList<string>? inlinePastes)
     {
         var blank = string.IsNullOrWhiteSpace(text);
         if (blank && Attachments.Count == 0 && Files.Count == 0) return false;
@@ -840,7 +846,7 @@ public sealed class ChatConversation : ChatObservableObject
         Attachments.Clear();
         var files = Files.Count == 0 ? null : new List<ChatFile>(Files);
         Files.Clear();
-        var submitted = new MessageSubmittedEventArgs(text, images, files) { Owner = this };
+        var submitted = new MessageSubmittedEventArgs(text, images, files) { Owner = this, InlinePastes = inlinePastes ?? Array.Empty<string>() };
         _cacheAnchor = _clock();
         if (EchoSubmittedMessages)
         {

@@ -2,6 +2,19 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="using:ClaudeVisualChat.Controls"
              x:Class="ClaudeVisualChat.Controls.ChatComposer">
+  <StackPanel>
+  <!-- the notice of the invisible characters taken out of the text: a banner over the box, its last 8 px under it (the box comes
+       after it, so it is drawn over them) -->
+  <Border Name="Notice" Classes="ClaudeChatBanner warning" Margin="0,0,0,-8" IsVisible="False">
+    <DockPanel>
+      <Button Name="NoticeClose" DockPanel.Dock="Right" Classes="ClaudeChatButton ClaudeChatBannerClose">
+        <Viewbox Classes="ClaudeChatRemoveIcon">
+          <Path Classes="ClaudeChatRemoveIcon" />
+        </Viewbox>
+      </Button>
+      <TextBlock Name="NoticeText" Classes="ClaudeChatBannerText" />
+    </DockPanel>
+  </Border>
   <!-- image files dropped anywhere on the box are attached -->
   <Border Name="Box" Classes="ClaudeChatComposer" DragDrop.AllowDrop="True">
     <StackPanel>
@@ -73,4 +86,5 @@
       <controls:ModelMenu Name="ModelMenu" />
     </StackPanel>
   </Border>
+  </StackPanel>
 </UserControl>

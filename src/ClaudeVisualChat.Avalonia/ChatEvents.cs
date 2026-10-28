@@ -68,6 +68,20 @@ public sealed class MessageSubmittedEventArgs : EventArgs
     /// </summary>
     public IReadOnlyList<ChatFile> Files { get; }
 
+    private IReadOnlyList<string> _inlinePastes = Array.Empty<string>();
+
+    /// <summary>
+    /// The long pastes (over 800 characters, or over 2 line breaks) of the reply box that are still in <see cref="Text"/>, each once;
+    /// empty when there are none. <see cref="Protocol.StdinMessages.UserMessage(MessageSubmittedEventArgs)"/> writes them as
+    /// <c>inline_pastes</c>, which the claude may use to tell the pasted text from the rest. A host that writes the line itself may
+    /// leave them out: nothing depends on them.
+    /// </summary>
+    public IReadOnlyList<string> InlinePastes
+    {
+        get => _inlinePastes;
+        init => _inlinePastes = value ?? Array.Empty<string>();
+    }
+
     /// <summary>The conversation that sent it; null for one made by hand.</summary>
     internal ChatConversation? Owner { get; set; }
 

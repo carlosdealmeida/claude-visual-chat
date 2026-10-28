@@ -77,9 +77,17 @@ public sealed record ChatStrings
         TurnFailed = "A resposta terminou com erro",
         Footer = "{0} · {1} entrada · {2} saída · US$ {3}",
         ToolRejected = "Recusado",
-        InputPlaceholder = "Responder ao Claude…",
+        InputPlaceholder = "Peça ao Claude para editar…",
         InputPlaceholderBusy = "Pôr outra mensagem na fila…",
         InputPlaceholderTouch = "Digite / para ver os comandos",
+        MessageInput = "Campo de mensagem",
+        InvisibleRemovedOne = "Removido 1 caractere invisível",
+        InvisibleRemoved = "Removidos {0} caracteres invisíveis",
+        InvisibleReview = "{0} · revise e pressione Enter para enviar",
+        InvisibleReviewCtrl = "{0} · revise e pressione Ctrl/Cmd+Enter para enviar",
+        InvisibleEmpty = "{0} · nada restou para enviar",
+        InvisiblePasted = "{0} do texto colado",
+        DismissNotice = "Dispensar aviso",
         ThoughtFor = "Pensou por {0} s",
         RunInBackground = "Rodando em segundo plano",
         ToolReason = "Motivo:",
@@ -544,13 +552,40 @@ public sealed record ChatStrings
     public string ToolRejected { get; init; } = "Rejected";
 
     /// <summary>The empty reply box.</summary>
-    public string InputPlaceholder { get; init; } = "Reply to Claude…";
+    public string InputPlaceholder { get; init; } = "Ask Claude to edit…";
 
     /// <summary>The empty reply box while Claude works: what is sent now waits in line.</summary>
     public string InputPlaceholderBusy { get; init; } = "Queue another message…";
 
     /// <summary>The empty reply box of the touch layout: a "/" typed in it opens the command palette.</summary>
     public string InputPlaceholderTouch { get; init; } = "Type / for commands";
+
+    /// <summary>The accessible name of the reply box's text field (screen readers).</summary>
+    public string MessageInput { get; init; } = "Message input";
+
+    /// <summary>The notice under the reply box when one invisible character was taken out of the text.</summary>
+    public string InvisibleRemovedOne { get; init; } = "Removed 1 invisible character";
+
+    /// <summary>The same for several; <c>{0}</c> is how many.</summary>
+    public string InvisibleRemoved { get; init; } = "Removed {0} invisible characters";
+
+    /// <summary>
+    /// The notice when they were found as the message was sent: the box has the clean text again and nothing was sent. <c>{0}</c> is
+    /// <see cref="InvisibleRemovedOne"/> or <see cref="InvisibleRemoved"/>.
+    /// </summary>
+    public string InvisibleReview { get; init; } = "{0} · review and press Enter to send";
+
+    /// <summary>The same where Ctrl/Cmd+Enter is what sends (<c>UseCtrlEnterToSend</c>, and the touch layout).</summary>
+    public string InvisibleReviewCtrl { get; init; } = "{0} · review and press Ctrl/Cmd+Enter to send";
+
+    /// <summary>The notice when they were found as the message was sent and nothing is left of it.</summary>
+    public string InvisibleEmpty { get; init; } = "{0} · nothing left to send";
+
+    /// <summary>The notice when they were found in a pasted text.</summary>
+    public string InvisiblePasted { get; init; } = "{0} from the pasted text";
+
+    /// <summary>The name of the button that closes that notice.</summary>
+    public string DismissNotice { get; init; } = "Dismiss notice";
 
     /// <summary>The send button's name (it shows an arrow).</summary>
     public string Send { get; init; } = "Send";
@@ -1462,6 +1497,22 @@ public sealed record ChatStrings
     }
 
     internal string FormatFileTooBig(long maxBytes) => FileTooBig.Replace("{0}", FormatFileSize(maxBytes));
+
+    /// <summary>
+    /// What the notice under the reply box says of <paramref name="removed"/> invisible characters taken out: how many, and then what
+    /// happens next. <paramref name="ctrlEnter"/> is true where Ctrl/Cmd+Enter is what sends.
+    /// </summary>
+    internal string FormatInvisibleNotice(int removed, InvisibleNoticeKind kind, bool ctrlEnter)
+    {
+        var count = removed == 1 ? InvisibleRemovedOne : InvisibleRemoved.Replace("{0}", FormatNumber(removed));
+        var template = kind switch
+        {
+            InvisibleNoticeKind.Review => ctrlEnter ? InvisibleReviewCtrl : InvisibleReview,
+            InvisibleNoticeKind.Empty => InvisibleEmpty,
+            _ => InvisiblePasted,
+        };
+        return template.Replace("{0}", count);
+    }
 
     internal string FormatTooManyFiles(int maxFiles) => TooManyFiles.Replace("{0}", FormatNumber(maxFiles));
 

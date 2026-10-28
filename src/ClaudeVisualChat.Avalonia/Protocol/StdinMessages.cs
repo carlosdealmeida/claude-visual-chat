@@ -32,7 +32,8 @@ namespace ClaudeVisualChat.Protocol
         /// Each of its files that landed (<see cref="ChatFile.RemotePath"/>) is named by a line of its own after the text
         /// (<see cref="AttachedFileLine.Format"/>), so write it once they all have. A host that uses it should use it for every
         /// message: once the claude tells of one, a request to the API no longer releases the held ones, so a message written
-        /// without its uuid stays held until the turn's end.
+        /// without its uuid stays held until the turn's end. The long pastes of the message
+        /// (<see cref="MessageSubmittedEventArgs.InlinePastes"/>), if there are any, go in <c>inline_pastes</c>.
         /// </summary>
         public static string UserMessage(MessageSubmittedEventArgs e)
         {
@@ -44,10 +45,10 @@ namespace ClaudeVisualChat.Protocol
                 var marker = AttachedFileLine.Format(file.RemotePath!);
                 text = text.Length == 0 ? marker : text + "\n" + marker;
             }
-            return User(text, e.Images, e.Uuid);
+            return User(text, e.Images, e.Uuid, e.InlinePastes);
         }
 
-        private static string User(string text, IReadOnlyList<ChatImage>? images, string? uuid)
+        private static string User(string text, IReadOnlyList<ChatImage>? images, string? uuid, IReadOnlyList<string>? inlinePastes = null)
         {
             return Write(w =>
             {
@@ -85,6 +86,12 @@ namespace ClaudeVisualChat.Protocol
                 w.WriteNull("parent_tool_use_id");
                 w.WriteString("session_id", "default");
                 if (uuid != null) w.WriteString("uuid", uuid);
+                if (inlinePastes != null && inlinePastes.Count > 0)
+                {
+                    w.WriteStartArray("inline_pastes");
+                    foreach (var paste in inlinePastes) w.WriteStringValue(paste);
+                    w.WriteEndArray();
+                }
             });
         }
 

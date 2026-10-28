@@ -227,5 +227,40 @@ namespace ClaudeVisualChat.Tests.Protocol
                     total += TranscriptParser.Parse(line).Count;
             Assert.True(total > 20);
         }
+
+        private static string UserLine(object content) =>
+            System.Text.Json.JsonSerializer.Serialize(new { type = "user", message = new { role = "user", content } });
+
+        private static string TextOf(string line)
+        {
+            var user = TranscriptParser.Parse(line).OfType<UserBlock>().Single();
+            return Assert.IsType<TextContentBlock>(user.Block).Text;
+        }
+
+        [Theory]
+        [InlineData("look at this:\n\n<pasted_content id=\"ab12\">\nfirst\nsecond\n</pasted_content id=\"ab12\">\n\nwhat is wrong?",
+            "look at this:\nfirst\nsecond\nwhat is wrong?")]
+        [InlineData("see <pasted_content id=\"09af\">\nONE LINE\n</pasted_content id=\"09af\"> now", "see ONE LINE now")]
+        [InlineData("see<pasted_content id=\"09af\">\nONE LINE\n</pasted_content id=\"09af\">now", "see\nONE LINE\nnow")]
+        [InlineData("<pasted_content id=\"0f3a\">\nonly the paste\n</pasted_content id=\"0f3a\">", "only the paste")]
+        [InlineData("a\n\n<pasted_content id=\"0001\">\nx\ny\n</pasted_content id=\"0001\">\n\nb\n\n<pasted_content id=\"0002\">\nz\nw\n</pasted_content id=\"0002\">",
+            "a\nx\ny\nb\nz\nw")]
+        [InlineData("<pasted_content id=\"0001\">\none\n</pasted_content id=\"0001\"><pasted_content id=\"0002\">\ntwo\n</pasted_content id=\"0002\">", "one\ntwo")]
+        [InlineData("a <pasted_content id=\"abcd\">\n\n</pasted_content id=\"abcd\"> b", "a  b")]
+        [InlineData("a paste that stays: <pasted_content id=\"zzzz\">\nx\n</pasted_content id=\"zzzz\">",
+            "a paste that stays: <pasted_content id=\"zzzz\">\nx\n</pasted_content id=\"zzzz\">")]
+        [InlineData("<pasted_content id=\"abc\">\nx\n</pasted_content id=\"abc\">", "<pasted_content id=\"abc\">\nx\n</pasted_content id=\"abc\">")]
+        [InlineData("<pasted_content id=\"abcd\">\nnever closed", "<pasted_content id=\"abcd\">\nnever closed")]
+        [InlineData("<pasted_content id=\"abcd\">\nbody\n</pasted_content id=\"ffff\">", "<pasted_content id=\"abcd\">\nbody\n</pasted_content id=\"ffff\">")]
+        [InlineData("no tag at all", "no tag at all")]
+        public void The_history_drops_the_pasted_content_wrapper(string said, string shown)
+        {
+            Assert.Equal(shown, TextOf(UserLine(said)));
+            // the same in a list of blocks, and live
+            var blocks = new object[] { new { type = "text", text = said } };
+            Assert.Equal(shown, TextOf(UserLine(blocks)));
+            var live = new StreamJsonParser().Parse(UserLine(said)).OfType<UserBlock>().Single();
+            Assert.Equal(shown, Assert.IsType<TextContentBlock>(live.Block).Text);
+        }
     }
 }

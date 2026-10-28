@@ -275,4 +275,29 @@ public class StdinMessagesTests
         Assert.Throws<ArgumentNullException>(() => StdinMessages.PermissionResponse(null!));
         Assert.Throws<ArgumentNullException>(() => StdinMessages.UserMessage((string)null!)); // a bare null names no overload since 0.6.0
     }
+
+    [Fact]
+    public void User_message_writes_the_inline_pastes_after_the_uuid_only_when_there_are_some()
+    {
+        var e = new MessageSubmittedEventArgs("see AAA and BBB") { InlinePastes = new[] { "AAA", "BBB" } };
+
+        var root = Parse(StdinMessages.UserMessage(e));
+
+        Assert.Equal(new[] { "type", "message", "parent_tool_use_id", "session_id", "uuid", "inline_pastes" }, Names(root));
+        Assert.Equal(new[] { "AAA", "BBB" }, root.GetProperty("inline_pastes").EnumerateArray().Select(p => p.GetString()).ToArray());
+        Assert.Equal("see AAA and BBB", root.GetProperty("message").GetProperty("content").GetString());
+
+        // none: the line is the one it always was; a null list is none, too
+        Assert.Empty(new MessageSubmittedEventArgs("x").InlinePastes);
+        Assert.Empty(new MessageSubmittedEventArgs("x") { InlinePastes = null! }.InlinePastes);
+        Assert.DoesNotContain("inline_pastes", StdinMessages.UserMessage(new MessageSubmittedEventArgs("x") { InlinePastes = new string[0] }));
+        // the text and the images alone write none either
+        Assert.DoesNotContain("inline_pastes", StdinMessages.UserMessage("x"));
+
+        // a paste with characters that need escaping, and with images
+        var png = new ChatImage("image/png", "QUJD");
+        var tricky = new MessageSubmittedEventArgs(Tricky, new[] { png }) { InlinePastes = new[] { Tricky } };
+        var line = Parse(StdinMessages.UserMessage(tricky));
+        Assert.Equal(Tricky, line.GetProperty("inline_pastes")[0].GetString());
+    }
 }

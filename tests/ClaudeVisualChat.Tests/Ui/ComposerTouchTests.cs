@@ -300,8 +300,8 @@ public class ComposerTouchTests
         Assert.Equal(new Thickness(0), input.Margin);
         Assert.Equal(39.5, input.MinHeight);
         Assert.Equal(200, input.MaxHeight);
-        Assert.True(double.IsNaN(input.LineHeight));
-        Assert.Equal("Responder ao Claude…", input.Watermark);
+        Assert.Equal(19.5, input.LineHeight);                                  // line-height 1.5 on the 13 px text
+        Assert.Equal("Peça ao Claude para editar…", input.Watermark);
         Assert.Equal(new[] { "1 agente" }, UiHelpers.Texts(Part<AgentsChip>(composer, "AgentsChip")));
         Assert.Contains("Mostrar o menu de comandos (/)", UiHelpers.ButtonNames(composer));
     }
@@ -858,5 +858,40 @@ public class ComposerTouchTests
         TapAt(file, file.Bounds.Width - 3, file.Bounds.Height - 3);
         Assert.Empty(c.Files);
         Assert.Empty(Pills());
+    }
+
+    [AvaloniaFact]
+    public void Touch_cleans_what_is_sent_and_the_notice_has_a_target_of_44_pixels()
+    {
+        var c = TouchSamples.Opus();
+        var sent = new List<string>();
+        c.MessageSubmitted += (_, e) => sent.Add(e.Text);
+        var view = UiHelpers.TouchView(c);
+        var window = UiHelpers.ShowPhone(view);
+        var composer = UiHelpers.Composer(view);
+        var input = UiHelpers.Input(view);
+        Assert.Equal("Digite / para ver os comandos", input.Watermark);  // the placeholder is the app's too
+        input.Text = "oi" + char.ConvertFromUtf32(0x200B);
+        input.Focus();
+
+        UiHelpers.Press(window, Key.Enter, RawInputModifiers.Control);   // the touch layout sends with Ctrl+Enter
+
+        Assert.Empty(sent);
+        Assert.Equal("oi", input.Text);
+        var notice = Part<Border>(composer, "Notice");
+        UiHelpers.Pump();
+        Assert.True(notice.IsEffectivelyVisible);
+        // Enter breaks the line here, so the key that sends is Ctrl/Cmd+Enter
+        Assert.Equal("Removido 1 caractere invisível · revise e pressione Ctrl/Cmd+Enter para enviar", Part<TextBlock>(composer, "NoticeText").Text);
+        var close = Part<Button>(composer, "NoticeClose");
+        Assert.True(close.Bounds.Width >= 44 && close.Bounds.Height >= 44, close.Bounds.ToString());
+        Assert.Equal("Dispensar aviso", AutomationProperties.GetName(close));
+
+        UiHelpers.Click(window, close);
+        Assert.False(notice.IsVisible);
+        input.Focus();                                                   // the tap on the × took the keyboard
+        UiHelpers.Press(window, Key.Enter, RawInputModifiers.Control);
+        Assert.Equal(new[] { "oi" }, sent);
+        Assert.Equal(new Thickness(0), input.Padding);                   // the measures of the box are the app's, whatever the desktop's
     }
 }
