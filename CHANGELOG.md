@@ -14,7 +14,7 @@ All notable changes to this project are written here. The format follows
   "Use skill /x?" with its note, its description and its arguments; any other tool "Do you want to proceed with X?" over
   a "Details" fold with the input as JSON. "No" refuses at once with what is in the field under the answers, which is
   always there. Esc is "No" too, and in the field Enter and Esc send "No" with its text. The digits pick the answers in
-  the order they are shown, and the digit after the last one goes to the field; the arrows move between the answers
+  the order they are shown, and the digit after the last one goes to the field; up and down move between the answers
   and the field. The answers stay off for 500 ms after the card appears, so a key that was meant for the reply box
   answers nothing, and a request that comes while the person was typing (less than 1.5 s after the last key) waits
   behind "Waiting for permission..." until the typing stops. A request with `default_to_no` focuses "No" and takes no
@@ -78,9 +78,9 @@ All notable changes to this project are written here. The format follows
   host picks the ids), so an error of any other control request in that window, a failed `set_model` for instance, has
   the same effect. The worst case ends in `acceptEdits`, the more restrictive mode.
 - A refusal carries at most 4,000 characters (the limit of the Kairos relay): the typed text, the plan comments and the
-  quoted passages together. Over it, the quoted passages are shortened first, equally and with an ellipsis, then the
-  comments are dropped and, last, the typed text is cut. This holds for the "No" of every permission card, and for the
-  "Send" of the touch layout.
+  quoted passages together. Over it, the quoted passages are shortened first, all to the same length and with an
+  ellipsis, then the comments, then the typed text, and only as a last resort the whole message. This holds for the "No"
+  of every permission card, and for the "Send" of the touch layout.
 - Where the extension and the first design notes differ, the card follows the extension: the request's own description
   is not shown, a Bash command has no line count, and the plan is a document, not a block in the list. The differences
   from the extension that remain are deliberate: the plan's document is a panel over the list, where the extension
@@ -93,8 +93,10 @@ All notable changes to this project are written here. The format follows
   (`ClaudeChat.PlanCommentsMaxHeight`), where the extension's depends on the window; Edit and Write keep their diff in
   the card, where the extension opens it in a tab; the command of a Bash request cannot be edited; and in the touch
   layout the plan card has no line "Select text in the preview to add comments".
-- The plan's document sits below the `/context` and `/usage` panels, the Agent map and the bookmarks, which show over it
+- The plan's document sits below the `/context` and `/usage` panels and the Agent map, which show over it
   and close before it; the comment box sits above all of them.
+- The plan's document opens by itself only when the request carries the plan's text, and closes when the view turns
+  read-only. A plan that was cancelled or got no answer leaves the document open, as only an approval closes it.
 - `ToolPresentation.Summary("ExitPlanMode", ...)` returns the plan file's name, or "", where it returned the first
   string of the input (the plan's text). An `ExitPlanMode` call that comes without the plan (`input: {}`) takes the
   `input` of its permission request.
