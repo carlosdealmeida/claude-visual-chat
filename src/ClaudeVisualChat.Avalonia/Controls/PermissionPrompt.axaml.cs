@@ -46,6 +46,12 @@ internal interface IPromptClock
 /// folded, Esc refuses nothing and the other keys go on to the page. Unfolding arms the options again for <see cref="SettleTime"/>.
 /// </para>
 /// <para>
+/// An <c>ExitPlanMode</c> request is the plan card: "Accept this plan?" with no plan text, and the options "Yes, and use auto mode"
+/// (or "Yes, and auto-accept", when the view offers no auto mode: <see cref="Modes"/>), "Yes, and manually approve edits" and
+/// "No, keep planning". A "Yes" asks for the next mode and approves (<see cref="ChatConversation.ApprovePlan"/>); "No" with nothing
+/// written sends <see cref="StayInPlanMode"/>. The touch layout asks the same in its own flow.
+/// </para>
+/// <para>
 /// In the touch layout (pseudo-class <c>:touch</c>) the request is the 0.5.0 one: the title is a short question ("Edit
 /// OrderService.cs?", "Run this command?", "Use Fetch?"), the command or the diff under it is as whole as ever, and the answers are
 /// not numbered and go across the block at 48 px, the first one always in the accent. Option 3 opens the field, which has a button
@@ -67,6 +73,11 @@ internal partial class PermissionPrompt : UserControl
 
     /// <summary>The most a refusal carries of what the field says (the host's contract).</summary>
     internal const int MaxDenyLength = 4000;
+
+    /// <summary>What "No, keep planning" tells the claude when nothing is written in the field (the extension's sentence).</summary>
+    internal const string StayInPlanMode = "User chose to stay in plan mode and continue planning";
+
+    private const string PlanTool = "ExitPlanMode";
 
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<PermissionPrompt>();
@@ -94,6 +105,7 @@ internal partial class PermissionPrompt : UserControl
     private ChatConversation? _conversation;
     private ChatConversation? _tracked;
     private PendingPermission? _request;
+    private IReadOnlyList<string> _modes = Array.Empty<string>();
     private TimeSpan _shownAt;
     private TopLevel? _topLevel;
     private bool _attached;
@@ -123,11 +135,11 @@ internal partial class PermissionPrompt : UserControl
         _timer.Tick += (_, _) => Tick();
         YesButton.Click += (_, _) =>
         {
-            if (Settled) Answer(PermissionDecision.Allow);
+            if (Settled) Yes();
         };
         AlwaysButton.Click += (_, _) =>
         {
-            if (Settled) Answer(PermissionDecision.AllowAlways);
+            if (Settled) Always();
         };
         NoButton.Click += (_, _) =>
         {
@@ -195,6 +207,20 @@ internal partial class PermissionPrompt : UserControl
     /// <summary>The request on screen.</summary>
     internal PendingPermission? Request => _request;
 
+    /// <summary>
+    /// The permission modes the view offers (<see cref="ClaudeChatView.AvailableModes"/>): the plan card's option 1 uses the auto mode
+    /// when it is among them, and acceptEdits otherwise.
+    /// </summary>
+    internal IReadOnlyList<string> Modes
+    {
+        get => _modes;
+        set
+        {
+            _modes = value ?? Array.Empty<string>();
+            if (IsPlan) Fill();
+        }
+    }
+
     internal IPromptClock Clock { get; set; } = StopwatchClock.Instance;
 
     /// <summary>
@@ -226,6 +252,22 @@ internal partial class PermissionPrompt : UserControl
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
 
     private bool IsTouch => GetValue(LayoutProperty) == ChatLayout.Touch;
+
+    /// <summary>The request on screen is a plan to accept (<c>ExitPlanMode</c>).</summary>
+    private bool IsPlan => _request?.ToolName == PlanTool;
+
+    /// <summary>The mode the plan card's option 1 asks for: auto when the view offers it, acceptEdits otherwise.</summary>
+    private string PlanFirstMode
+    {
+        get
+        {
+            foreach (var mode in _modes)
+            {
+                if (string.Equals(mode, "auto", StringComparison.Ordinal)) return "auto";
+            }
+            return "acceptEdits";
+        }
+    }
 
     /// <summary>The keyboard is in the field of "No", or on the button under it: what is typed there is text, not an answer.</summary>
     private bool InDenyField => DenyBox.IsKeyboardFocusWithin || DenySendButton.IsKeyboardFocusWithin;
@@ -396,10 +438,10 @@ internal partial class PermissionPrompt : UserControl
         switch (option)
         {
             case 1:
-                Answer(PermissionDecision.Allow);
+                Yes();
                 break;
             case 2:
-                Answer(PermissionDecision.AllowAlways);
+                Always();
                 break;
             default:
                 OpenDenyField();
@@ -426,9 +468,31 @@ internal partial class PermissionPrompt : UserControl
 
     private void Activate(Button option)
     {
-        if (ReferenceEquals(option, YesButton)) Answer(PermissionDecision.Allow);
-        else if (ReferenceEquals(option, AlwaysButton)) Answer(PermissionDecision.AllowAlways);
+        if (ReferenceEquals(option, YesButton)) Yes();
+        else if (ReferenceEquals(option, AlwaysButton)) Always();
         else Refuse();
+    }
+
+    /// <summary>Option 1: allows; for a plan, asks for <see cref="PlanFirstMode"/> and approves.</summary>
+    private void Yes()
+    {
+        if (IsPlan) ApprovePlan(PlanFirstMode);
+        else Answer(PermissionDecision.Allow);
+    }
+
+    /// <summary>Option 2: allows and remembers; for a plan, asks for the default mode and approves.</summary>
+    private void Always()
+    {
+        if (IsPlan) ApprovePlan("default");
+        else Answer(PermissionDecision.AllowAlways);
+    }
+
+    private void ApprovePlan(string mode)
+    {
+        var conversation = _tracked;
+        var request = _request;
+        if (conversation == null || request == null) return;
+        conversation.ApprovePlan(request, mode);
     }
 
     /// <summary>↑/↓ on the desktop's card: round the options and the field.</summary>
@@ -559,8 +623,6 @@ internal partial class PermissionPrompt : UserControl
     private void Refresh()
     {
         var strings = Strings;
-        YesText.Text = strings.PermissionYes;
-        NoText.Text = IsTouch ? strings.PermissionNo : strings.PermissionRefuse;
         DenyBox.Watermark = strings.DenyPlaceholder;
         DenySendText.Text = strings.Send;
         HintText.Text = strings.PermissionEscToCancel;
@@ -580,6 +642,9 @@ internal partial class PermissionPrompt : UserControl
         DetailsJson.Text = "";
         var request = _request;
         var strings = Strings;
+        var plan = IsPlan;
+        YesText.Text = plan ? (PlanFirstMode == "auto" ? strings.PlanYesAutoMode : strings.PlanYesAutoAccept) : strings.PermissionYes;
+        NoText.Text = plan ? strings.PlanKeepPlanning : IsTouch ? strings.PermissionNo : strings.PermissionRefuse;
         FillAlways(request, strings);
         var detail = "";
         if (request != null)
@@ -594,7 +659,7 @@ internal partial class PermissionPrompt : UserControl
         SummaryText.Text = detail;
         SummaryBox.IsVisible = detail.Length > 0;
         ExtraBox.IsVisible = !string.IsNullOrEmpty(ExtraText.Text);
-        AlwaysButton.IsVisible = request != null && request.CanAllowAlways;
+        AlwaysButton.IsVisible = request != null && (plan || request.CanAllowAlways); // a plan's option 2 approves by hand
         HintText.IsVisible = !IsTouch;
         UpdateNumbers();
         UpdateDetails();
@@ -610,6 +675,11 @@ internal partial class PermissionPrompt : UserControl
     {
         AlwaysText.Inlines!.Clear();
         ToolTip.SetTip(AlwaysText, null);
+        if (IsPlan)
+        {
+            AlwaysText.Text = strings.PlanYesManual;
+            return;
+        }
         if (IsTouch || request == null)
         {
             AlwaysText.Text = request == null || request.AllowAlwaysStaysInSession
@@ -670,6 +740,10 @@ internal partial class PermissionPrompt : UserControl
                 SetTitle(EditFileQuestion(request, strings));
                 AddDiff(request, strings);
                 break;
+            case ToolKind.Plan:
+                SetTitle(strings.PlanAccept); // already a question; the plan's text is not the card's
+                detail = "";
+                break;
             default:
                 SetTitle(strings.FormatUseToolQuestion(request.DisplayName));
                 break;
@@ -712,6 +786,11 @@ internal partial class PermissionPrompt : UserControl
                 SetTitle(strings.PermissionWebSearch);
                 ExtraText.Text = strings.FormatSearchDomains(InputStrings(request, "allowed_domains"), InputStrings(request, "blocked_domains"));
                 return InputString(request, "query") ?? "";
+            case PlanTool:
+                // the plan itself is not in the card (the extension shows it beside the chat)
+                SetTitle(strings.PlanAccept);
+                AddNote(strings.PlanCommentHint, muted: true);
+                return "";
             case "Skill":
                 var skill = (InputString(request, "skill") ?? "").TrimStart('/');
                 SetTitle(strings.PermissionSkill, "/" + skill, "ClaudeChatPermissionPath");
@@ -908,15 +987,15 @@ internal partial class PermissionPrompt : UserControl
 
     /// <summary>
     /// Answers no with what is written in the field ("No" or Esc on the desktop, Enter in the field, the touch layout's button):
-    /// nothing written is a plain no, and the host sends the claude its default text; what is written goes trimmed, and cut to
-    /// <see cref="MaxDenyLength"/> characters.
+    /// nothing written is a plain no, and the host sends the claude its default text (for a plan, <see cref="StayInPlanMode"/>);
+    /// what is written goes trimmed, and cut to <see cref="MaxDenyLength"/> characters.
     /// </summary>
     private void Refuse()
     {
         var text = DenyBox.Text;
         if (string.IsNullOrWhiteSpace(text))
         {
-            Answer(PermissionDecision.Deny);
+            Answer(PermissionDecision.Deny, IsPlan ? StayInPlanMode : null);
             return;
         }
         var message = text!.Trim();
@@ -979,14 +1058,16 @@ internal partial class PermissionPrompt : UserControl
     {
         Command,
         File,
+        Plan,
         Other,
     }
 
-    /// <summary>The touch layout's kinds of request (0.5.0).</summary>
+    /// <summary>The touch layout's kinds of request (0.5.0, and the plan of 0.6.0).</summary>
     private static ToolKind KindOf(string toolName) => toolName switch
     {
         "Bash" or "PowerShell" => ToolKind.Command,
         "Edit" or "Write" or "MultiEdit" or "NotebookEdit" => ToolKind.File,
+        PlanTool => ToolKind.Plan,
         _ => ToolKind.Other,
     };
 }

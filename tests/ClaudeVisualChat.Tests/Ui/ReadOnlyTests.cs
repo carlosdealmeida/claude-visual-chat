@@ -52,6 +52,31 @@ public class ReadOnlyTests
     }
 
     [AvaloniaFact]
+    public void A_read_only_view_hides_the_plan_card()
+    {
+        using var doc = JsonDocument.Parse("{\"plan\":\"# Plan\\n\\n1. Do it\"}");
+        var c = new ChatConversation();
+        c.Apply(new PermissionRequested("r1", "ExitPlanMode", "ExitPlanMode", null, "tool-r1", doc.RootElement.Clone(), null));
+        var (view, window) = Open(c);
+        var answers = 0;
+        c.PermissionAnswered += (_, _) => answers++;
+        c.PermissionModeRequested += (_, _) => answers++;
+        Assert.True(UiHelpers.Prompt(view).IsEffectivelyVisible);              // the editable view shows the plan card
+        Assert.Contains("Accept this plan?", UiHelpers.Texts(UiHelpers.Prompt(view)));
+
+        view.IsReadOnly = true;
+        UiHelpers.Pump();
+
+        Assert.False(UiHelpers.Prompt(view).IsEffectivelyVisible);
+        Assert.DoesNotContain("Accept this plan?", UiHelpers.Texts(view));
+        UiHelpers.Press(window, Avalonia.Input.Key.D1);                         // its keys answer nothing
+        UiHelpers.Press(window, Avalonia.Input.Key.Escape);
+        Assert.Equal(0, answers);
+        Assert.Same(c.PendingPermissions[0], c.CurrentPlan!.Request);          // still in the conversation, only not shown
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void ReadOnly_keeps_items_and_scroll()
     {
         var c = WithRequest();

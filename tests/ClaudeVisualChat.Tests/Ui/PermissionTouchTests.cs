@@ -1091,4 +1091,77 @@ public class PermissionTouchTests
         Assert.NotNull(ui.DenyField);                                                    // and the field stays as it is
         ui.Window.Close();
     }
+
+    // ---- the plan card (ExitPlanMode), in the touch layout's flow ----
+
+    private const string PlanTitle = "Aceitar este plano?";
+    private const string PlanAuto = "Sim, e usar o modo automático";
+    private const string PlanManual = "Sim, e aprovar as edições uma a uma";
+    private const string PlanKeep = "Não, continuar planejando";
+
+    private static PermissionRequested ExitPlanMode(string id = "r1") =>
+        Request(id, "ExitPlanMode", "{\"plan\":\"# Plan: add a line\\n\\n1. Edit notes.md\"}");
+
+    [AvaloniaFact]
+    public void Touch_plan_card_answers_across_the_block_and_keep_planning_opens_the_field()
+    {
+        var c = new ChatConversation();
+        var sent = new List<string>();
+        c.PermissionModeRequested += (_, e) => sent.Add("mode:" + e.Mode);
+        c.PermissionAnswered += (_, e) => sent.Add(e.Decision.ToString().ToLowerInvariant() + ":" + e.Request.RequestId
+                                                  + (e.Message == null ? "" : ":" + e.Message));
+        c.Apply(ExitPlanMode("r1"));
+        c.Apply(ExitPlanMode("r2"));
+        c.Apply(ExitPlanMode("r3"));
+        var ui = new Opened(c);
+
+        Assert.Equal(PlanTitle, ui.Title);
+        Assert.DoesNotContain(ui.Texts, t => t.Contains("Edit notes.md"));                // no plan text in the card
+        Assert.Empty(ui.Numbers);
+        foreach (var text in new[] { PlanAuto, PlanManual, PlanKeep })
+        {
+            var option = ui.Option(text);
+            Assert.True(option.Bounds.Height >= 48, text + " is " + option.Bounds.Height + " high");
+            Assert.Equal(ui.Inside, option.Bounds.Width, 1);
+        }
+        Assert.Contains("primary", ui.Option(PlanAuto).Classes);                          // the first one in the accent
+        Assert.Null(ui.DenyField);
+        AssertTargetsOf44(ui);
+
+        ui.Tap(PlanKeep);                                                                 // opens the field, answers nothing
+        Assert.Empty(sent);
+        Assert.NotNull(ui.DenyField);
+        ui.Tap(Send);                                                                     // nothing written: the user stays in plan mode
+        Assert.Equal(new[] { "deny:r1:User chose to stay in plan mode and continue planning" }, sent);
+
+        UiHelpers.Pump();
+        ui.Tap(PlanAuto);
+        Assert.Equal(new[] { "mode:auto", "allow:r2" }, sent.Skip(1));                  // the mode first, the allow right after
+
+        UiHelpers.Pump();
+        ui.Tap(PlanManual);
+        Assert.Equal(new[] { "mode:default", "allow:r3" }, sent.Skip(3));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Touch_plan_card_without_auto_offers_auto_accept_and_keys_answer()
+    {
+        var c = new ChatConversation();
+        var modes = new List<string>();
+        c.PermissionModeRequested += (_, e) => modes.Add(e.Mode);
+        c.Apply(ExitPlanMode());
+        var ui = new Opened(c);
+        ui.View.AvailableModes = new[] { "plan", "default", "acceptEdits" };
+        UiHelpers.Pump();
+
+        Assert.Contains("Sim, e aceitar as edições automaticamente", ui.Texts);
+        Assert.DoesNotContain(PlanAuto, ui.Texts);
+        ui.Option(PlanManual).Focus();
+        UiHelpers.Press(ui.Window, Key.D1);
+
+        Assert.Equal(new[] { "acceptEdits" }, modes);
+        Assert.Equal(PermissionDecision.Allow, Assert.Single(ui.Answers).Decision);
+        ui.Window.Close();
+    }
 }

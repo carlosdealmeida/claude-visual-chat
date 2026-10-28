@@ -23,6 +23,9 @@ public sealed class ChatConversation : ChatObservableObject
     private const string RejectedResultPrefix = "User rejected";
     private const string RejectedTextPrefix = "The user doesn't want to proceed";
     private const string DefaultModelValue = "default";
+    private const string ExitPlanModeTool = "ExitPlanMode";
+    private const string AutoMode = "auto";
+    private const string AcceptEditsMode = "acceptEdits";
     private static readonly string[] LocalCommandNames = { "context", "usage", "remote-control", "rc", "chrome" };
     private static readonly IReadOnlyList<string> LocalCommandList = new System.Collections.ObjectModel.ReadOnlyCollection<string>(LocalCommandNames);
 
@@ -39,6 +42,9 @@ public sealed class ChatConversation : ChatObservableObject
     private StreamJsonParser _parser = new StreamJsonParser();
     private int _runningAgents;
     private PendingPermission? _currentPermission;
+    private PlanReview? _currentPlan;
+    /// <summary>A plan was approved with the auto mode, and the claude has neither applied nor refused it yet (see <see cref="ApprovePlan"/>).</summary>
+    private bool _autoModeAsked;
     private bool _isBusy;
     private bool _isStreaming;
     private string? _sessionId;
@@ -157,6 +163,12 @@ public sealed class ChatConversation : ChatObservableObject
         new ObservableCollection<PendingPermission>();
 
     public PendingPermission? CurrentPermission => _currentPermission;
+
+    /// <summary>
+    /// The plan of the <c>ExitPlanMode</c> request on screen (<see cref="CurrentPermission"/>); null when that is another
+    /// request, or none. A new one for each request; the one that leaves keeps its <see cref="PlanReview.Outcome"/>.
+    /// </summary>
+    internal PlanReview? CurrentPlan => _currentPlan;
 
     /// <summary>True from a submitted message or Claude's first block until the turn ends.</summary>
     public bool IsBusy
@@ -344,7 +356,11 @@ public sealed class ChatConversation : ChatObservableObject
     public string PermissionMode
     {
         get => _permissionMode;
-        private set => SetField(ref _permissionMode, value);
+        private set
+        {
+            if (value == AutoMode) _autoModeAsked = false; // applied: an error from now on is not its refusal
+            SetField(ref _permissionMode, value);
+        }
     }
 
     /// <summary>
@@ -579,6 +595,7 @@ public sealed class ChatConversation : ChatObservableObject
         _echoes.Clear();
         _unanswered.Clear();
         _interruptedThisTurn = false;
+        _autoModeAsked = false;
         _cacheAnchor = null; // the cache belongs to the items; the browser and Remote Control belong to the host
         PromptCacheExpiresAt = null;
         PromptCacheTtl = null;
@@ -800,9 +817,30 @@ public sealed class ChatConversation : ChatObservableObject
     public void AnswerPermission(PendingPermission request, PermissionDecision decision, string? message = null)
     {
         if (request == null) throw new ArgumentNullException(nameof(request));
-        var queued = RemovePermission(request.RequestId);
-        if (queued == null) return;
+        var index = IndexOfPermission(request.RequestId);
+        if (index < 0) return;
+        var queued = PendingPermissions[index];
+        // the plan knows how it ended before it stops being the current one
+        if (_currentPlan != null && ReferenceEquals(_currentPlan.Request, queued))
+            _currentPlan.Outcome = decision == PermissionDecision.Deny ? PlanOutcome.Rejected : PlanOutcome.Approved;
+        PendingPermissions.RemoveAt(index);
         PermissionAnswered?.Invoke(this, new PermissionAnsweredEventArgs(queued, decision, message));
+    }
+
+    /// <summary>
+    /// The plan card's "Yes" for an <c>ExitPlanMode</c> request: asks for <paramref name="mode"/> (<see cref="SetPermissionMode"/>)
+    /// and allows the request right after, without waiting, as the claude applies them in the order it reads them. If the auto
+    /// mode was asked for and the claude answers a control request with an error before it applies it, acceptEdits is asked for
+    /// instead, once. A request that already left the queue gets neither.
+    /// </summary>
+    internal void ApprovePlan(PendingPermission request, string mode)
+    {
+        if (request == null) throw new ArgumentNullException(nameof(request));
+        if (mode == null) throw new ArgumentNullException(nameof(mode));
+        if (IndexOfPermission(request.RequestId) < 0) return; // the claude no longer waits for it
+        _autoModeAsked = mode == AutoMode;
+        SetPermissionMode(mode);
+        AnswerPermission(request, PermissionDecision.Allow);
     }
 
     /// <summary>Drops a request without answering it (for one answered somewhere else).</summary>
@@ -1432,14 +1470,20 @@ public sealed class ChatConversation : ChatObservableObject
 
     private PendingPermission? RemovePermission(string? requestId)
     {
+        var index = IndexOfPermission(requestId);
+        if (index < 0) return null;
+        var queued = PendingPermissions[index];
+        PendingPermissions.RemoveAt(index);
+        return queued;
+    }
+
+    private int IndexOfPermission(string? requestId)
+    {
         for (var i = 0; i < PendingPermissions.Count; i++)
         {
-            var queued = PendingPermissions[i];
-            if (queued.RequestId != requestId) continue;
-            PendingPermissions.RemoveAt(i);
-            return queued;
+            if (PendingPermissions[i].RequestId == requestId) return i;
         }
-        return null;
+        return -1;
     }
 
     private void RemovePermissionsFor(string toolUseId)
@@ -1453,6 +1497,12 @@ public sealed class ChatConversation : ChatObservableObject
     private void OnPendingPermissionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         var first = PendingPermissions.Count > 0 ? PendingPermissions[0] : null;
+        // the plan first: whoever hears that the current request changed finds its plan already there
+        if (!ReferenceEquals(_currentPlan?.Request, first))
+        {
+            var plan = first != null && first.ToolName == ExitPlanModeTool ? new PlanReview(first) : null;
+            SetField(ref _currentPlan, plan, nameof(CurrentPlan));
+        }
         SetField(ref _currentPermission, first, nameof(CurrentPermission));
     }
 
@@ -1460,7 +1510,15 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnControlAcknowledged(ControlAcknowledged e)
     {
-        if (e.IsError || e.Response is not { ValueKind: JsonValueKind.Object } response) return;
+        if (e.IsError)
+        {
+            // the auto mode a plan was approved with was refused: the next best, which needs no gate
+            if (!_autoModeAsked) return;
+            _autoModeAsked = false;
+            SetPermissionMode(AcceptEditsMode);
+            return;
+        }
+        if (e.Response is not { ValueKind: JsonValueKind.Object } response) return;
         if (response.TryGetProperty("mode", out var mode) && mode.ValueKind == JsonValueKind.String)
             PermissionMode = mode.GetString() ?? PermissionMode;
     }
@@ -1478,6 +1536,7 @@ public sealed class ChatConversation : ChatObservableObject
         Items.Add(new TurnFooterItem(e.DurationMs, e.InputTokens, e.OutputTokens, e.CostUsd, e.IsError));
         _turnTools.Clear();
         _interruptedThisTurn = false;
+        _autoModeAsked = false; // the claude answers a mode request at once: an error after the turn is about something else
         _unanswered.Clear();
         IsBusy = false;
     }

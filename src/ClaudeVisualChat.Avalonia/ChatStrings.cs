@@ -89,6 +89,12 @@ public sealed record ChatStrings
         PermissionEscToCancel = "Esc para cancelar",
         PermissionCollapse = "Recolher",
         PermissionExpand = "Expandir",
+        PlanAccept = "Aceitar este plano?",
+        PlanCommentHint = "Selecione um trecho na prévia para comentar",
+        PlanYesAutoMode = "Sim, e usar o modo automático",
+        PlanYesAutoAccept = "Sim, e aceitar as edições automaticamente",
+        PlanYesManual = "Sim, e aprovar as edições uma a uma",
+        PlanKeepPlanning = "Não, continuar planejando",
         WaitingForPermission = "Aguardando permissão…",
         AllowAlwaysOneRule = "Sim, permitir {0} para {1}",
         AllowAlwaysTwoRules = "Sim, permitir {0} e {1} para {2}",
@@ -429,6 +435,24 @@ public sealed record ChatStrings
 
     /// <summary>The name of the same button while the card is folded.</summary>
     public string PermissionExpand { get; init; } = "Expand";
+
+    /// <summary>The plan card's title (an <c>ExitPlanMode</c> request); the card holds no plan text.</summary>
+    public string PlanAccept { get; init; } = "Accept this plan?";
+
+    /// <summary>The line under the desktop plan card's title.</summary>
+    public string PlanCommentHint { get; init; } = "Select text in the preview to add comments";
+
+    /// <summary>The plan card's option 1 when the view offers the auto mode: approves, and asks for that mode first.</summary>
+    public string PlanYesAutoMode { get; init; } = "Yes, and use auto mode";
+
+    /// <summary>The plan card's option 1 when the view does not offer the auto mode: approves, and asks for acceptEdits first.</summary>
+    public string PlanYesAutoAccept { get; init; } = "Yes, and auto-accept";
+
+    /// <summary>The plan card's option 2: approves, and asks for the default mode first.</summary>
+    public string PlanYesManual { get; init; } = "Yes, and manually approve edits";
+
+    /// <summary>The plan card's "No": the claude stays in plan mode, with what the field says, if anything.</summary>
+    public string PlanKeepPlanning { get; init; } = "No, keep planning";
 
     /// <summary>Above the reply box, while a request waits for the typing in it to pause.</summary>
     public string WaitingForPermission { get; init; } = "Waiting for permission…";

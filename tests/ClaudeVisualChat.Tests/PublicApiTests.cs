@@ -152,6 +152,23 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_plan_card_api_exists()
+    {
+        // the plan card (0.6.0): its texts; the plan under review and how it ended stay internal
+        foreach (var text in new[]
+        {
+            "PlanAccept", "PlanCommentHint", "PlanYesAutoMode", "PlanYesAutoAccept", "PlanYesManual", "PlanKeepPlanning",
+        })
+        {
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        }
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.DoesNotContain("ClaudeVisualChat.PlanReview", names);
+        Assert.DoesNotContain("ClaudeVisualChat.PlanOutcome", names);
+        Assert.Null(typeof(ChatConversation).GetMethod("ApprovePlan"));
+    }
+
+    [Fact]
     public void The_dictation_interface_is_documented()
     {
         // the XML documentation travels in the package, beside the dll: a member without a summary shows nothing in the host's IntelliSense

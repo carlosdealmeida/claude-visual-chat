@@ -1480,4 +1480,192 @@ public class PermissionPromptTests
         Assert.False(prompt.IsFolded);
         window.Close();
     }
+
+    // ---- the plan card (ExitPlanMode) ----
+
+    private const string PlanTitle = "Accept this plan?";
+    private const string PlanAuto = "Yes, and use auto mode";
+    private const string PlanAutoAccept = "Yes, and auto-accept";
+    private const string PlanManual = "Yes, and manually approve edits";
+    private const string PlanKeep = "No, keep planning";
+    private const string StayInPlanMode = "User chose to stay in plan mode and continue planning";
+    private static readonly string[] WithoutAuto = { "plan", "default", "acceptEdits" };
+
+    private static PermissionRequested ExitPlanMode(string id = "r1") =>
+        Request(id, "ExitPlanMode",
+            "{\"plan\":\"# Plan: add a line\\n\\n1. Edit notes.md\",\"planFilePath\":\"C:\\\\Users\\\\demo\\\\.claude\\\\plans\\\\p.md\"}");
+
+    /// <summary>What the conversation sends the host, in order: "mode:auto", "allow:r1", "deny:r1:text"…</summary>
+    private static List<string> Sent(ChatConversation c)
+    {
+        var sent = new List<string>();
+        c.PermissionModeRequested += (_, e) => sent.Add("mode:" + e.Mode);
+        c.PermissionAnswered += (_, e) => sent.Add(e.Decision.ToString().ToLowerInvariant() + ":" + e.Request.RequestId
+                                                  + (e.Message == null ? "" : ":" + e.Message));
+        return sent;
+    }
+
+    [AvaloniaFact]
+    public void The_plan_card_offers_auto_mode_when_auto_is_available()
+    {
+        var c = new ChatConversation();
+        var sent = Sent(c);
+        c.Apply(ExitPlanMode());
+        var ui = Open(c); // the view's modes, by default, include auto
+
+        Assert.Contains(PlanTitle, ui.Texts);
+        Assert.Contains("Select text in the preview to add comments", ui.Texts);
+        Assert.Equal(new[] { PlanAuto, PlanManual, PlanKeep },
+            ui.Options.Select(o => UiHelpers.Texts(o).Last()).ToArray());
+        Assert.Equal(new[] { "1", "2", "3" }, ui.Numbers);
+        Assert.DoesNotContain(PlanAutoAccept, ui.Texts);                          // never both
+        Assert.DoesNotContain(ui.Texts, t => t.Contains("Edit notes.md"));        // the card holds no plan text
+        Assert.NotNull(ui.DenyField);                                             // then the field
+        Assert.Contains("Esc to cancel", ui.Texts);
+
+        UiHelpers.Click(ui.Window, ui.Option(PlanAuto));
+
+        Assert.Equal(new[] { "mode:auto", "allow:r1" }, sent);                   // the mode first, the allow right after
+        Assert.False(ui.Prompt.IsEffectivelyVisible);
+
+        // the next request is a plain one again: its own options, no plan
+        c.Apply(Bash("r2", "ls"));
+        UiHelpers.Pump();
+        Assert.Contains(RunCommand, ui.Texts);
+        Assert.Equal(new[] { "Yes", No }, ui.Options.Select(o => UiHelpers.Texts(o).Last()).ToArray());
+        Assert.DoesNotContain(PlanManual, ui.Texts);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Without_auto_the_plan_card_offers_auto_accept()
+    {
+        var c = new ChatConversation();
+        var sent = Sent(c);
+        c.Apply(ExitPlanMode());
+        var ui = Open(c);
+        ui.View.AvailableModes = WithoutAuto;
+        UiHelpers.Pump();
+
+        Assert.Contains(PlanAutoAccept, ui.Texts);
+        Assert.DoesNotContain(PlanAuto, ui.Texts);
+        ui.Option(PlanAutoAccept).Focus();
+
+        UiHelpers.Press(ui.Window, Key.D1);
+
+        Assert.Equal(new[] { "mode:acceptEdits", "allow:r1" }, sent);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Manually_approve_edits_asks_for_the_default_mode()
+    {
+        var c = new ChatConversation();
+        var sent = Sent(c);
+        c.Apply(ExitPlanMode());
+        var ui = Open(c);
+        ui.Option(PlanAuto).Focus();
+
+        UiHelpers.Press(ui.Window, Key.D2);
+
+        Assert.Equal(new[] { "mode:default", "allow:r1" }, sent);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void No_keep_planning_with_an_empty_field_says_the_user_stays_in_plan_mode()
+    {
+        var c = new ChatConversation();
+        var sent = Sent(c);
+        c.Apply(ExitPlanMode("r1"));
+        c.Apply(ExitPlanMode("r2"));
+        c.Apply(ExitPlanMode("r3"));
+        var ui = Open(c);
+
+        UiHelpers.Click(ui.Window, ui.Option(PlanKeep));                          // the click: at once
+        Assert.Equal(new[] { "deny:r1:" + StayInPlanMode }, sent);
+
+        UiHelpers.Pump();
+        ui.Option(PlanAuto).Focus();
+        UiHelpers.Press(ui.Window, Key.D4);                                       // 4 goes to the field
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Type(ui.Window, "Use a list instead of a table.");
+        UiHelpers.Press(ui.Window, Key.Enter);                                    // with text: the text alone
+        Assert.Equal("deny:r2:Use a list instead of a table.", sent[1]);
+
+        UiHelpers.Pump();
+        ui.Option(PlanAuto).Focus();
+        UiHelpers.Press(ui.Window, Key.Escape);                                   // Esc is "No" too
+        Assert.Equal("deny:r3:" + StayInPlanMode, sent[2]);
+        Assert.DoesNotContain(sent, s => s.StartsWith("mode:", System.StringComparison.Ordinal));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_plan_feedback_stops_at_four_thousand_characters()
+    {
+        var c = new ChatConversation();
+        c.Apply(ExitPlanMode());
+        var ui = Open(c);
+        ui.DenyField!.Text = new string('a', 5000);
+        ui.DenyField.Focus();
+        UiHelpers.Pump();
+
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        var answer = Assert.Single(ui.Answers);
+        Assert.Equal(PermissionDecision.Deny, answer.Decision);
+        Assert.Equal(4000, answer.Message!.Length);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_plan_card_follows_the_modes_the_view_offers()
+    {
+        var c = new ChatConversation();
+        c.Apply(ExitPlanMode());
+        var ui = Open(c);
+        Assert.Contains(PlanAuto, ui.Texts);
+
+        ui.View.AvailableModes = WithoutAuto;                                     // changed while the card shows
+        UiHelpers.Pump();
+        Assert.Contains(PlanAutoAccept, ui.Texts);
+        Assert.DoesNotContain(PlanAuto, ui.Texts);
+
+        ui.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Contains(ChatStrings.PortugueseBrazil.PlanAccept, ui.Texts);
+        Assert.Contains(ChatStrings.PortugueseBrazil.PlanYesAutoAccept, ui.Texts);
+        Assert.Contains(ChatStrings.PortugueseBrazil.PlanKeepPlanning, ui.Texts);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_plan_recording_ends_in_accept_edits_after_approval()
+    {
+        var lines = FixtureFiles.StreamLines("plan");
+        var asks = System.Array.FindIndex(lines, l => l.Contains("\"control_request\"") && l.Contains("\"ExitPlanMode\""));
+        Assert.True(asks > 0);
+        var c = new ChatConversation();
+        var sent = Sent(c);
+        for (var i = 0; i <= asks; i++) c.AppendLine(lines[i]);
+        Assert.Equal("plan", c.PermissionMode);
+        var plan = c.CurrentPlan;
+        Assert.NotNull(plan);
+        var ui = Open(c);
+        ui.View.AvailableModes = WithoutAuto; // the recording asked for acceptEdits
+        UiHelpers.Pump();
+
+        UiHelpers.Click(ui.Window, ui.Option(PlanAutoAccept));
+        Assert.Equal(2, sent.Count);
+        Assert.Equal("mode:acceptEdits", sent[0]);
+        Assert.StartsWith("allow:", sent[1], System.StringComparison.Ordinal);
+        Assert.Equal(PlanOutcome.Approved, plan!.Outcome);
+
+        for (var i = asks + 1; i < lines.Length; i++) c.AppendLine(lines[i]); // the claude's confirmation, then the rest of the turn
+        Assert.Equal("acceptEdits", c.PermissionMode);
+        Assert.Null(c.CurrentPermission);
+        Assert.Equal(2, sent.Count);
+        ui.Window.Close();
+    }
 }

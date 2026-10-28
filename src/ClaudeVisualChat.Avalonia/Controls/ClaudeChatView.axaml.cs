@@ -132,6 +132,7 @@ public partial class ClaudeChatView : UserControl
         Scroller.TemplateApplied += (_, e) => _verticalBar = e.NameScope.Find<ScrollBar>("PART_VerticalScrollBar");
         Composer.Modes = AvailableModes;
         AddSheet.Modes = AvailableModes;
+        Prompt.Modes = AvailableModes; // the plan card's option 1
         Prompt.RequestChanged += OnPromptRequestChanged;
         // a request that comes while the user types in the reply box waits for the typing to pause (the desktop's card)
         Prompt.LastTyped = () => Composer.IsEmpty ? null : Composer.LastEdited;
@@ -319,6 +320,7 @@ public partial class ClaudeChatView : UserControl
         {
             Composer.Modes = AvailableModes;
             AddSheet.Modes = AvailableModes;
+            Prompt.Modes = AvailableModes;
         }
         else if (change.Property == UsageSheetContentProperty)
         {

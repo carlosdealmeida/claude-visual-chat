@@ -365,6 +365,27 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void A_plan_card_that_came_while_out_shows_when_back_with_the_modes_set_meanwhile()
+    {
+        var c = Conversation();
+        var m = new Mounted(c);
+        var prompt = UiHelpers.Prompt(m.View);
+
+        m.Out();
+        c.Apply(new PermissionRequested("r1", "ExitPlanMode", "ExitPlanMode", null, "t1", J("{\"plan\":\"# Plan\"}"), null));
+        m.View.AvailableModes = new[] { "plan", "default", "acceptEdits" }; // no auto, set while out
+        Assert.False(prompt.IsTicking);
+        m.In();
+
+        Assert.Same(c.CurrentPermission, prompt.Request);
+        var texts = UiHelpers.Texts(prompt);
+        Assert.Contains("Accept this plan?", texts);
+        Assert.Contains("Yes, and auto-accept", texts);
+        Assert.DoesNotContain("Yes, and use auto mode", texts);
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_request_that_came_while_out_shows_when_back()
     {
         var m = new Mounted(Conversation());
