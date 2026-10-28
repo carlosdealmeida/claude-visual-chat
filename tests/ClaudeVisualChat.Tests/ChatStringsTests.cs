@@ -75,6 +75,8 @@ public class ChatStringsTests
         Assert.Equal("Could not copy to clipboard", En.CopyFailed);
         Assert.Equal("Copying once the reply finishes", En.CopyWaiting);
         Assert.Equal("Copiando quando a resposta terminar", Pt.CopyWaiting);
+        Assert.Equal("Copy cancelled", En.CopyCancelled);
+        Assert.Equal("Cópia cancelada", Pt.CopyCancelled);
     }
 
     [Fact]

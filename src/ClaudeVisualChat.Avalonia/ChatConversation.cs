@@ -336,7 +336,7 @@ public sealed class ChatConversation : ChatObservableObject
             if (SetField(ref _isBusy, value) && !value)
             {
                 _sawThinkingTokens = false; // the session stopped: the next thought counts afresh
-                _pendingCopy = null; // and no reply is coming for a /copy that waited: the turn that ends takes it first
+                CancelPendingCopy(); // and no reply is coming for a /copy that waited (the turn that ends takes it first)
             }
         }
     }
@@ -1211,11 +1211,22 @@ public sealed class ChatConversation : ChatObservableObject
         return true;
     }
 
-    /// <summary>Asks the claude to stop; the turn ends when its result arrives. A <c>/copy</c> that waited for the reply is dropped.</summary>
+    /// <summary>
+    /// Asks the claude to stop; the turn ends when its result arrives. A <c>/copy</c> that waited for the reply is dropped, and a
+    /// line says so.
+    /// </summary>
     public void Stop()
     {
-        _pendingCopy = null; // the person gave up on the reply it waited for
+        CancelPendingCopy(); // the person gave up on the reply it waited for
         StopRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>A <c>/copy</c> that waited for a reply that will not come: its line ("Copying once…") gets its end.</summary>
+    private void CancelPendingCopy()
+    {
+        if (_pendingCopy == null) return;
+        _pendingCopy = null;
+        Items.Add(new MetaLineItem(Strings.CopyCancelled));
     }
 
     // ---- assistant blocks ----
@@ -2233,7 +2244,8 @@ public sealed class ChatConversation : ChatObservableObject
         _interruptedThisTurn = false;
         _autoModeAsked = false; // the claude answers a mode request at once: an error after the turn is about something else
         _unanswered.Clear();
-        var pendingCopy = _pendingCopy; // the turn's end is the one the copy waited for; IsBusy falling forgets it
+        var pendingCopy = _pendingCopy; // the turn's end is the one the copy waited for, not a cancel
+        _pendingCopy = null;
         IsBusy = false;
         if (pendingCopy is int copy) CopyReply(copy);
         // what is still held came after the turn's last request to the API: the claude has it, for its next turn

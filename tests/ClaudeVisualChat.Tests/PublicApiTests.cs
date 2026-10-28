@@ -516,7 +516,7 @@ public class PublicApiTests
         Assert.Null(conversation.GetEvent("CopyRequested"));
         Assert.Null(conversation.GetMethod("ReportCopy"));
         Assert.Null(conversation.GetProperty("Strings"));
-        foreach (var name in new[] { "CommandCopyDescription", "CopyDone", "CopyNothing", "CopyOnly", "CopyOnlyOne", "CopyUsage", "CopyFailed", "CopyWaiting" })
+        foreach (var name in new[] { "CommandCopyDescription", "CopyDone", "CopyNothing", "CopyOnly", "CopyOnlyOne", "CopyUsage", "CopyFailed", "CopyWaiting", "CopyCancelled" })
         {
             var property = typeof(ChatStrings).GetProperty(name);
             Assert.Equal(typeof(string), property?.PropertyType);

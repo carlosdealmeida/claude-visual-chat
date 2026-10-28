@@ -1822,6 +1822,7 @@ public class ChatConversationTests
         Assert.Equal("Copying once the reply finishes", LastMeta(c));
         Assert.True(c.UndoSubmit(work));
         Assert.False(c.IsBusy);
+        Assert.Equal("Copy cancelled", LastMeta(c));          // the line that said it would copy has its end
         c.Submit("later");
         c.Items.Add(new AssistantTextItem { Text = "another reply" });
         c.Apply(new TurnCompleted("success", false, 10, null, null, null));
@@ -1833,6 +1834,9 @@ public class ChatConversationTests
         stopped.Submit("work");
         stopped.Submit("/copy");
         stopped.Stop();
+        Assert.Equal("Copy cancelled", LastMeta(stopped));
+        stopped.Stop();                                           // once: nothing waits any more
+        Assert.Single(stopped.Items.OfType<MetaLineItem>(), m => m.Text == "Copy cancelled");
         stopped.Items.Add(new AssistantTextItem { Text = "cut short" });
         stopped.Apply(new TurnCompleted("success", false, 10, null, null, null));
         Assert.Empty(copies);
@@ -1849,6 +1853,10 @@ public class ChatConversationTests
         c.Strings = ChatStrings.PortugueseBrazil;
         c.Submit("/copy 3");
         Assert.Equal("Só há 2 respostas do assistente para copiar", LastMeta(c));
+        c.Submit("work");
+        c.Submit("/copy");
+        c.Stop();
+        Assert.Equal("Cópia cancelada", LastMeta(c));
         c = WithReplies("one");
         c.Submit("/copy 2");
         Assert.Equal("Only 1 assistant messages available to copy", LastMeta(c)); // the English text stays as the extension's

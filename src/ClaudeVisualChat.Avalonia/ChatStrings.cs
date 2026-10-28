@@ -245,6 +245,7 @@ public sealed record ChatStrings
         CopyUsage = "Uso: /copy [N], onde N é 1 (a mais recente), 2, 3, … Recebido: {0}",
         CopyFailed = "Não foi possível copiar para a área de transferência",
         CopyWaiting = "Copiando quando a resposta terminar",
+        CopyCancelled = "Cópia cancelada",
         YouQueued = "Você, na fila",
         MessageQueued = "Mensagem na fila.",
         RanAtOnce = "Rodou na hora, enquanto o Claude trabalhava.",
@@ -1036,6 +1037,9 @@ public sealed record ChatStrings
 
     /// <summary>The line after <c>/copy</c> typed while Claude works: the copy waits for the reply to end.</summary>
     public string CopyWaiting { get; init; } = "Copying once the reply finishes";
+
+    /// <summary>The line after <see cref="CopyWaiting"/> when the reply it waited for will not come (Stop, the message taken back).</summary>
+    public string CopyCancelled { get; init; } = "Copy cancelled";
 
     /// <summary>What a screen reader says of a message held until Claude takes it, at the end of the list.</summary>
     public string YouQueued { get; init; } = "You, queued";
