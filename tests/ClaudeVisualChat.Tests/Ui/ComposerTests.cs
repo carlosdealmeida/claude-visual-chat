@@ -12,7 +12,9 @@ using Xunit;
 using ControlAcknowledged = ClaudeVisualChat.Protocol.ControlAcknowledged;
 using SessionStarted = ClaudeVisualChat.Protocol.SessionStarted;
 using StatusChanged = ClaudeVisualChat.Protocol.StatusChanged;
+using TextContentBlock = ClaudeVisualChat.Protocol.TextContentBlock;
 using TurnCompleted = ClaudeVisualChat.Protocol.TurnCompleted;
+using UserBlock = ClaudeVisualChat.Protocol.UserBlock;
 
 namespace ClaudeVisualChat.Tests.Ui;
 
@@ -622,6 +624,370 @@ public class ComposerTests
         Assert.Contains("Stop", ui.Texts);
         Assert.Contains("Manual", UiHelpers.Texts(ui.ModePicker));
         Assert.Empty(ui.Modes); // relabeling asks for nothing
+        ui.Window.Close();
+    }
+
+    // ---- recalling prompts, shortcuts and Ctrl+Enter (0.6.0) ----
+
+    private static UserBlock Said(string text, string? parent = null, bool synthetic = false) =>
+        new UserBlock(parent, new TextContentBlock(text), null, false, false) { IsSynthetic = synthetic };
+
+    private static ChatConversation WithHistory(params string[] prompts)
+    {
+        var conversation = new ChatConversation();
+        foreach (var prompt in prompts) conversation.Apply(Said(prompt));
+        return conversation;
+    }
+
+    private static string Lines(TextBox box) => (box.Text ?? "").Replace("\r\n", "\n");
+
+    /// <summary>A key pressed on the box itself, as the window's keyboard would deliver it, for a box that cannot take the focus.</summary>
+    private static void Raise(Control target, Key key, KeyModifiers modifiers = KeyModifiers.None) =>
+        target.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Source = target, Key = key, KeyModifiers = modifiers });
+
+    [AvaloniaFact]
+    public void Up_at_the_start_recalls_the_previous_prompt_and_down_restores_the_draft()
+    {
+        var ui = Open(WithHistory("one", "two"));
+        ui.Type("draft");
+        ui.Input.CaretIndex = 0;
+
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("two", ui.Input.Text);
+        Assert.Equal(3, ui.Input.CaretIndex);          // the caret goes to the end, where Down acts
+        ui.Input.CaretIndex = 0;
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("one", ui.Input.Text);
+        ui.Input.CaretIndex = 0;
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("one", ui.Input.Text);            // the oldest: nowhere further back
+        Assert.DoesNotContain(Key.Up, ui.Unhandled);
+
+        ui.Input.CaretIndex = ui.Input.Text!.Length;
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.Equal("two", ui.Input.Text);
+        ui.Input.CaretIndex = ui.Input.Text!.Length;
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.Equal("draft", ui.Input.Text);          // past the newest: the draft is back
+        Assert.Equal(5, ui.Input.CaretIndex);
+
+        ui.Input.CaretIndex = 5;
+        UiHelpers.Press(ui.Window, Key.Down);          // the walk is over: Down is the caret's again
+        Assert.Equal("draft", ui.Input.Text);
+        Assert.Empty(ui.Sent);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_empty_box_recalls_with_up_and_nothing_to_recall_leaves_the_key_to_the_box()
+    {
+        var empty = Open();
+        empty.Input.Focus();
+        UiHelpers.Press(empty.Window, Key.Up);
+        Assert.Equal("", empty.Input.Text ?? "");
+        empty.Window.Close();
+
+        var ui = Open(WithHistory("only"));
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("only", ui.Input.Text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Up_in_the_middle_of_the_text_moves_the_caret_only()
+    {
+        var ui = Open(WithHistory("old"));
+        ui.Type("abc");
+        ui.Input.CaretIndex = 1;
+
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("abc", ui.Input.Text);
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.Equal("abc", ui.Input.Text);
+
+        // a selection is not the start of the text either
+        ui.Input.SelectionStart = 0;
+        ui.Input.SelectionEnd = 2;
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("abc", ui.Input.Text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_prompts_recalled_are_the_users_trimmed_with_the_queue_and_without_synthetic_or_subagent_lines()
+    {
+        var conversation = new ChatConversation();
+        conversation.Apply(Said("  padded  "));
+        conversation.Apply(Said("synthetic", synthetic: true));
+        conversation.Apply(Said("from a subagent", parent: "toolu_unknown"));
+        conversation.Apply(Said("repeat"));
+        conversation.Apply(Said("repeat"));
+        var ui = Open(conversation);
+        ui.Type("go");                                  // sent: Claude is busy from here, and the next ones wait in line
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.True(conversation.IsBusy);
+        conversation.Submit("  queued  ");
+        Assert.Single(conversation.QueuedMessages);
+
+        ui.Input.Focus();
+        var seen = new List<string>();
+        for (var i = 0; i < 7; i++)
+        {
+            ui.Input.CaretIndex = 0;
+            UiHelpers.Press(ui.Window, Key.Up);
+            seen.Add(ui.Input.Text ?? "");
+        }
+
+        // newest first; the queue is the newest of all, and Up works while Claude is busy
+        Assert.Equal(new[] { "queued", "go", "repeat", "repeat", "padded", "padded", "padded" }, seen);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Clearing_the_box_ends_the_walk()
+    {
+        var ui = Open(WithHistory("one", "two"));
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("two", ui.Input.Text);
+
+        ui.Input.Clear();
+        UiHelpers.Pump();
+        UiHelpers.Press(ui.Window, Key.Up);
+
+        Assert.Equal("two", ui.Input.Text);             // a new walk from the newest, not the next older one
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Another_conversation_starts_its_own_walk()
+    {
+        var first = WithHistory("first one");
+        var second = WithHistory("second one");
+        var ui = Open(first);
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("first one", ui.Input.Text);
+
+        ui.View.Conversation = second;
+        UiHelpers.Pump();
+        ui.Input.Focus();
+        Assert.Equal("", ui.Input.Text ?? "");
+        UiHelpers.Press(ui.Window, Key.Up);
+
+        Assert.Equal("second one", ui.Input.Text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_recalled_slash_command_does_not_open_the_palette_until_edited()
+    {
+        var ui = Open(WithHistory("/compact", "/"));
+        var palette = ui.Composer.GetLogicalDescendants().OfType<CommandPalette>().Single();
+        ui.Input.Focus();
+
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("/", ui.Input.Text);
+        Assert.False(palette.IsOpen);
+        ui.Input.CaretIndex = 0;
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal("/compact", ui.Input.Text);
+        Assert.False(palette.IsOpen);
+
+        // edited: the box emptied and a "/" typed opens it as always
+        ui.Input.Clear();
+        UiHelpers.Type(ui.Window, "/");
+        Assert.True(palette.IsOpen);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void With_the_palette_open_the_arrows_are_the_palettes()
+    {
+        var conversation = WithHistory("an old prompt");
+        var ui = Open(conversation);
+        ui.Type("/");
+        var palette = ui.Composer.GetLogicalDescendants().OfType<CommandPalette>().Single();
+        Assert.True(palette.IsOpen);
+
+        UiHelpers.Press(ui.Window, Key.Up);
+
+        Assert.Equal("/", ui.Input.Text);
+        Assert.True(palette.IsOpen);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Ctrl_j_breaks_the_line()
+    {
+        var ui = Open();
+        ui.Type("ab");
+        ui.Input.CaretIndex = 1;
+
+        UiHelpers.Press(ui.Window, Key.J, RawInputModifiers.Control);
+
+        Assert.Equal("a\nb", Lines(ui.Input));
+        Assert.Equal(ui.Input.Text!.IndexOf('b'), ui.Input.CaretIndex);          // the caret is after the break
+        Assert.Empty(ui.Sent);
+        Assert.DoesNotContain(Key.J, ui.Unhandled);
+        UiHelpers.Type(ui.Window, "X");
+        Assert.Equal("a\nXb", Lines(ui.Input));
+
+        // with another modifier it is not the shortcut
+        UiHelpers.Press(ui.Window, Key.J, RawInputModifiers.Control | RawInputModifiers.Shift);
+        Assert.Equal("a\nXb", Lines(ui.Input));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Shift_tab_cycles_the_available_modes_in_the_extension_order()
+    {
+        var ui = Open();
+        ui.Conversation.Apply(new SessionStarted("s1", "sonnet", null, "default", "2.1.310"));
+        ui.View.AvailableModes = new[] { "plan", "default", "acceptEdits" };
+        UiHelpers.Pump();
+        ui.Input.Focus();
+
+        // default -> acceptEdits -> plan -> default; the mode moves only when the claude confirms it
+        foreach (var expected in new[] { "acceptEdits", "plan", "default" })
+        {
+            UiHelpers.Press(ui.Window, Key.Tab, RawInputModifiers.Shift);
+            Assert.Equal(expected, ui.Modes.Last());
+            ui.Conversation.Apply(new StatusChanged(null, expected));
+        }
+
+        Assert.Equal(new[] { "acceptEdits", "plan", "default" }, ui.Modes);
+        Assert.DoesNotContain(Key.Tab, ui.Unhandled);
+        Assert.True(ui.Input.IsFocused);                // the focus did not move backwards
+        Assert.Empty(ui.Sent);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Shift_tab_goes_through_auto_when_it_is_offered_and_asks_nothing_when_there_is_no_other_mode()
+    {
+        var ui = Open();
+        ui.Conversation.Apply(new SessionStarted("s1", "sonnet", null, "plan", "2.1.310"));
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Tab, RawInputModifiers.Shift);
+        Assert.Equal(new[] { "auto" }, ui.Modes);
+
+        ui.Conversation.Apply(new StatusChanged(null, "auto"));
+        ui.View.AvailableModes = new[] { "auto" };
+        UiHelpers.Pump();
+        UiHelpers.Press(ui.Window, Key.Tab, RawInputModifiers.Shift);
+        Assert.Single(ui.Modes);                        // auto is the only one offered, and it is the current one
+        ui.Window.Close();
+    }
+
+    [Fact]
+    public void The_next_mode_follows_the_cycle_among_the_modes_offered()
+    {
+        var all = new[] { "plan", "default", "acceptEdits", "auto" };
+        Assert.Equal("acceptEdits", ChatComposer.NextMode("default", all));
+        Assert.Equal("plan", ChatComposer.NextMode("acceptEdits", all));
+        Assert.Equal("auto", ChatComposer.NextMode("plan", all));
+        Assert.Equal("default", ChatComposer.NextMode("auto", all));
+        Assert.Equal("default", ChatComposer.NextMode("bypassPermissions", all));     // outside the cycle: from its start
+        Assert.Equal("plan", ChatComposer.NextMode(null, new[] { "default", "plan" }));  // none yet counts as default
+        Assert.Equal("plan", ChatComposer.NextMode("default", new[] { "plan", "default" }));
+        Assert.Equal("plan", ChatComposer.NextMode("auto", new[] { "plan" }));          // the current one is not offered
+        Assert.Null(ChatComposer.NextMode("default", new[] { "default" }));
+        Assert.Null(ChatComposer.NextMode("default", System.Array.Empty<string>()));
+    }
+
+    [AvaloniaFact]
+    public void With_ctrl_enter_to_send_enter_breaks_the_line_and_ctrl_enter_sends()
+    {
+        var ui = Open();
+        Assert.False(ui.View.UseCtrlEnterToSend);
+        ui.Type("oi");
+        UiHelpers.Press(ui.Window, Key.Enter, RawInputModifiers.Control);
+        Assert.Empty(ui.Sent);                          // off: Ctrl+Enter is what it always was, and Enter sends
+
+        ui.View.UseCtrlEnterToSend = true;
+        UiHelpers.Pump();
+        ui.Input.Clear();
+        ui.Type("oi");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        UiHelpers.Type(ui.Window, "tchau");
+        Assert.Empty(ui.Sent);
+        Assert.Equal("oi\ntchau", Lines(ui.Input));
+        UiHelpers.Press(ui.Window, Key.Enter, RawInputModifiers.Shift);
+        Assert.Empty(ui.Sent);                          // Shift+Enter still breaks the line
+
+        UiHelpers.Press(ui.Window, Key.Enter, RawInputModifiers.Control);
+        Assert.Equal("oi\ntchau\n", Assert.Single(ui.Sent).Replace("\r\n", "\n"));
+        Assert.Equal("", ui.Input.Text ?? "");
+        Assert.DoesNotContain(Key.Enter, ui.Unhandled);
+
+        ui.Type("de novo");
+        UiHelpers.Press(ui.Window, Key.Enter, RawInputModifiers.Meta);
+        Assert.Equal("de novo", ui.Sent.Last());         // Cmd+Enter too
+
+        ui.View.UseCtrlEnterToSend = false;
+        UiHelpers.Pump();
+        ui.Type("volta");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal("volta", ui.Sent.Last());
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Ctrl_alt_f_asks_for_the_focus_view_while_the_keyboard_is_in_the_view()
+    {
+        var ui = Open();
+        var toggles = 0;
+        ui.View.FocusViewToggleRequested += (_, _) => toggles++;
+        ui.Input.Focus();
+
+        UiHelpers.Press(ui.Window, Key.F, RawInputModifiers.Control | RawInputModifiers.Alt);
+
+        Assert.Equal(1, toggles);
+        Assert.DoesNotContain(Key.F, ui.Unhandled);
+        Assert.Equal("", ui.Input.Text ?? "");
+        UiHelpers.Press(ui.Window, Key.F, RawInputModifiers.Control);
+        UiHelpers.Press(ui.Window, Key.F, RawInputModifiers.Alt);
+        Assert.Equal(1, toggles);                        // both modifiers, and nothing else
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_read_only_view_ignores_the_new_shortcuts()
+    {
+        var ui = Open(WithHistory("old"));
+        ui.Conversation.Apply(new SessionStarted("s1", "sonnet", null, "default", "2.1.310"));
+        var toggles = 0;
+        ui.View.FocusViewToggleRequested += (_, _) => toggles++;
+        ui.Input.Focus();
+        Raise(ui.Input, Key.Up);
+        Assert.Equal("old", ui.Input.Text);              // the same keys act while the view can be answered in
+        ui.Input.Clear();
+        Raise(ui.Input, Key.J, KeyModifiers.Control);
+        Raise(ui.Input, Key.Tab, KeyModifiers.Shift);
+        Raise(ui.Input, Key.F, KeyModifiers.Control | KeyModifiers.Alt);
+        Assert.Equal(1, toggles);
+        Assert.Single(ui.Modes);
+        Assert.NotEqual("", ui.Input.Text ?? "");        // the line was broken
+        ui.Input.Clear();
+        ui.Modes.Clear();
+        toggles = 0;
+
+        ui.View.IsReadOnly = true;
+        UiHelpers.Pump();
+        Raise(ui.Input, Key.J, KeyModifiers.Control);
+        Raise(ui.Input, Key.Tab, KeyModifiers.Shift);
+        Raise(ui.Input, Key.F, KeyModifiers.Control | KeyModifiers.Alt);
+        Raise(ui.Input, Key.Up);
+        UiHelpers.Press(ui.Window, Key.J, RawInputModifiers.Control);
+        UiHelpers.Press(ui.Window, Key.Tab, RawInputModifiers.Shift);
+        UiHelpers.Press(ui.Window, Key.F, RawInputModifiers.Control | RawInputModifiers.Alt);
+        UiHelpers.Press(ui.Window, Key.Up);
+
+        Assert.Equal(0, toggles);
+        Assert.Empty(ui.Modes);
+        Assert.Equal("", ui.Input.Text ?? "");
         ui.Window.Close();
     }
 }

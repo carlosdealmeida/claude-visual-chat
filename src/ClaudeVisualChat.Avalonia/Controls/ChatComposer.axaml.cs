@@ -39,7 +39,10 @@ namespace ClaudeVisualChat.Controls;
 /// the view for their sheets (<see cref="AddSheetRequested"/>, <see cref="ModelSheetRequested"/>); the "/", the cache
 /// clock, the Remote Control chip, the agents chip and the mode are not in it (the "+" sheet has the commands, the mode
 /// and Remote Control, and asks the box for the file dialog and the palette: <see cref="AttachFromPickerAsync"/>,
-/// <see cref="OpenCommands"/>). Enter breaks the line there, and Ctrl+Enter sends.
+/// <see cref="OpenCommands"/>). Enter breaks the line there, and Ctrl+Enter sends; so it does in the desktop layout while
+/// <see cref="UseCtrlEnterToSend"/> is on (Cmd+Enter too).
+/// The up and down arrows recall the prompts of the conversation (the ones waiting in line too) when the caret is at the start or the end of
+/// the text; Ctrl+J breaks the line; Shift+Tab asks for the next of the modes offered. All of these in both layouts.
 /// The microphone (<see cref="IChatDictation"/>): a tap starts the listening, which locks the box and puts what is heard at the
 /// caret as it comes, a space on each side of the words; a second tap stops it and keeps what was heard. It sends nothing, and
 /// nothing is sent while it listens. It ends with the caret after the words and, only if the box had the keyboard when the finger
@@ -109,6 +112,18 @@ internal partial class ChatComposer : UserControl
     /// <summary>Why the last image or file did not go in; null when it did, or after a send.</summary>
     private Rejection? _rejected;
 
+    /// <summary>The prompts the arrows walk through, oldest first, taken when the walk began; null when none is under way.</summary>
+    private List<string>? _recall;
+
+    /// <summary>Where the walk is in <see cref="_recall"/>; the box shows that prompt.</summary>
+    private int _recallAt;
+
+    /// <summary>What was in the box before the first Up: it comes back when the walk goes past the newest prompt.</summary>
+    private string _recallDraft = "";
+
+    /// <summary>True while a recalled prompt (or the draft, coming back) is put in the box, so the change is not the user's typing.</summary>
+    private bool _recalling;
+
     /// <summary>Test seam: the file dialog of the + button, giving image bytes (it takes the place of the dialog).</summary>
     internal Func<Task<IReadOnlyList<byte[]>>>? PickImagesOverride;
 
@@ -125,6 +140,7 @@ internal partial class ChatComposer : UserControl
         Input.PropertyChanged += (_, e) =>
         {
             if (e.Property != TextBox.TextProperty) return;
+            if (!_recalling && string.IsNullOrEmpty(Input.Text)) EndRecall(); // clearing the box ends the walk
             // the user's edit, not another conversation's draft coming in: a request that comes now waits for the typing to pause
             if (!_showingDraft && !string.IsNullOrEmpty(Input.Text)) LastEdited = _conversation?.Clock() ?? DateTimeOffset.Now;
             RebaseListening();
@@ -204,6 +220,7 @@ internal partial class ChatComposer : UserControl
     {
         var text = conversation != null && _drafts.TryGetValue(conversation, out var draft) ? draft : "";
         LastEdited = null; // the other conversation's typing does not hold this one's requests
+        EndRecall(); // the prompts walked through were the other conversation's
         _showingDraft = true;
         try
         {
@@ -229,6 +246,12 @@ internal partial class ChatComposer : UserControl
             RebuildModes();
         }
     }
+
+    /// <summary>
+    /// True to send with Ctrl+Enter (Cmd+Enter) and break the line with Enter; false (the default) sends with Enter and breaks the line
+    /// with Shift+Enter. The touch layout always sends with Ctrl+Enter.
+    /// </summary>
+    internal bool UseCtrlEnterToSend { get; set; }
 
     /// <summary>The user clicked an attached image: the view shows it.</summary>
     internal event EventHandler<(ChatImage Image, string Name)>? PreviewRequested;
@@ -451,10 +474,12 @@ internal partial class ChatComposer : UserControl
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
     {
         // a hidden box (read-only, or an ancestor hidden) may keep the keyboard: its keys send and stop nothing
-        if (!IsEffectivelyVisible) return;
-        if (IsTouch && e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.Control)
+        if (!IsEffectivelyVisible || _viewIsReadOnly) return;
+        // the shortcuts come first: a key with a modifier used to return at once, and these all have one
+        if (HandleShortcut(e)) return;
+        if (e.Key == Key.Enter && IsSendChord(e.KeyModifiers))
         {
-            e.Handled = true; // the touch layout's send key: there Enter breaks the line
+            e.Handled = true; // Ctrl/Cmd+Enter is the send key where Enter breaks the line
             Send();
             return;
         }
@@ -466,15 +491,151 @@ internal partial class ChatComposer : UserControl
         }
         if (e.Key == Key.Enter)
         {
-            if (IsTouch) return; // the text box breaks the line; the send button, or Ctrl+Enter, sends
+            if (IsTouch || UseCtrlEnterToSend) return; // the text box breaks the line; the send button, or Ctrl+Enter, sends
             e.Handled = true; // Enter is the send key, never a line break
             Send();
+        }
+        else if ((e.Key == Key.Up || e.Key == Key.Down) && Recall(e.Key == Key.Up))
+        {
+            e.Handled = true;
         }
         else if (e.Key == Key.Escape && _tracked != null && _tracked.IsBusy)
         {
             e.Handled = true; // only when it stops something; otherwise the Esc is the app's
             _tracked.Stop();
         }
+    }
+
+    /// <summary>Ctrl or Cmd, and nothing else, with Enter: the send key of the touch layout and of <see cref="UseCtrlEnterToSend"/>.</summary>
+    private bool IsSendChord(KeyModifiers modifiers) =>
+        (IsTouch || UseCtrlEnterToSend) && (modifiers == KeyModifiers.Control || modifiers == KeyModifiers.Meta);
+
+    /// <summary>
+    /// Ctrl+J (alone) breaks the line as Shift+Enter does; Shift+Tab asks for the next permission mode. True when the key was one of them.
+    /// (Ctrl+Alt+F, the Focus view's, is the view's: it comes down to it before the box.)
+    /// </summary>
+    private bool HandleShortcut(KeyEventArgs e)
+    {
+        if (e.Key == Key.J && e.KeyModifiers == KeyModifiers.Control)
+        {
+            e.Handled = true;
+            BreakLine();
+            return true;
+        }
+        if (e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.Shift)
+        {
+            e.Handled = true; // never the focus moving backwards out of the box
+            CycleMode();
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>The text box's own line break, the one Shift+Enter makes, so that the caret, the selection and the undo history agree.</summary>
+    private void BreakLine()
+    {
+        if (Input.IsReadOnly) return; // listening: the box is locked
+        Input.RaiseEvent(new KeyEventArgs
+        {
+            RoutedEvent = KeyDownEvent,
+            Source = Input,
+            Key = Key.Enter,
+            KeyModifiers = KeyModifiers.Shift,
+        });
+    }
+
+    // ---- recalling prompts ----
+
+    /// <summary>
+    /// The up and down arrows walk through the prompts of the conversation (those waiting in line too), newest first. Up acts only with
+    /// the caret at the very start of the text (an empty box counts) and the first one keeps the draft; Down only with the caret at the
+    /// end, and going past the newest prompt brings the draft back. Anywhere else the arrows move the caret. True when the key was used.
+    /// </summary>
+    private bool Recall(bool older)
+    {
+        var conversation = _tracked;
+        if (conversation == null || _listening != null || ModelMenu.IsOpen) return false;
+        if (Input.SelectionStart != Input.SelectionEnd) return false;
+        var text = Input.Text ?? "";
+        if (older)
+        {
+            if (Input.CaretIndex != 0) return false;
+            if (_recall == null)
+            {
+                var prompts = conversation.RecallablePrompts();
+                if (prompts.Count == 0) return false;
+                _recall = prompts;
+                _recallAt = prompts.Count;
+                _recallDraft = text;
+            }
+            if (_recallAt > 0) ShowRecalled(_recall[--_recallAt]);
+            return true;
+        }
+        if (_recall == null || Input.CaretIndex != text.Length) return false;
+        if (_recallAt < _recall.Count - 1)
+        {
+            ShowRecalled(_recall[++_recallAt]);
+            return true;
+        }
+        var draft = _recallDraft;
+        EndRecall();
+        ShowRecalled(draft);
+        return true;
+    }
+
+    /// <summary>
+    /// Puts a prompt in the box, the caret at its end. It is text set, not typed: the "/" menu opens on a "/" typed into the empty box,
+    /// so a recalled command leaves it closed until the person edits the text.
+    /// </summary>
+    private void ShowRecalled(string text)
+    {
+        _recalling = true;
+        try
+        {
+            Input.Text = text;
+        }
+        finally
+        {
+            _recalling = false;
+        }
+        Input.CaretIndex = text.Length;
+    }
+
+    private void EndRecall()
+    {
+        _recall = null;
+        _recallDraft = "";
+    }
+
+    /// <summary>Shift+Tab: asks the conversation for the next of the modes offered.</summary>
+    private void CycleMode()
+    {
+        var conversation = _tracked;
+        if (conversation == null) return;
+        var next = NextMode(conversation.PermissionMode, _modes);
+        if (next != null) conversation.SetPermissionMode(next);
+    }
+
+    /// <summary>The order Shift+Tab walks the modes in (the extension's, without the ones the host does not offer).</summary>
+    private static readonly string[] ModeCycle = { "default", "acceptEdits", "plan", "auto" };
+
+    /// <summary>
+    /// The mode after <paramref name="current"/> in the cycle that is among <paramref name="offered"/>; null when there is none to go to
+    /// (none offered, or only the current one). A current mode outside the cycle (or none yet) goes to the first of the cycle offered.
+    /// </summary>
+    internal static string? NextMode(string? current, IReadOnlyList<string> offered)
+    {
+        var from = Array.IndexOf(ModeCycle, current ?? "default");
+        for (var step = 1; step <= ModeCycle.Length; step++)
+        {
+            var candidate = ModeCycle[(from + step + ModeCycle.Length) % ModeCycle.Length];
+            if (candidate == current) return null; // all the way round: nothing else is offered
+            foreach (var mode in offered)
+            {
+                if (mode == candidate) return candidate;
+            }
+        }
+        return null;
     }
 
     private void Send()

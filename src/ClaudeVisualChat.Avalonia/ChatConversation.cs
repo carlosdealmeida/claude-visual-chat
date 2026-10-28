@@ -865,6 +865,26 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
+    /// The prompts the reply box recalls with the up and down arrows, oldest first: the user's messages in <see cref="Items"/> (those a
+    /// session file or the claude's echo brought back too) and then those waiting in <see cref="QueuedMessages"/>. Trimmed; the empty
+    /// ones (an image or a file alone) are left out and repeats are kept. A synthetic line and a subagent's are no prompt of the user's.
+    /// </summary>
+    internal List<string> RecallablePrompts()
+    {
+        var prompts = new List<string>();
+        foreach (var item in Items) AddPrompt(prompts, item);
+        foreach (var item in QueuedMessages) AddPrompt(prompts, item);
+        return prompts;
+    }
+
+    private static void AddPrompt(List<string> prompts, ChatItem item)
+    {
+        if (item is not UserMessageItem { IsUserPrompt: true } message) return;
+        var text = message.Text.Trim();
+        if (text.Length > 0) prompts.Add(text);
+    }
+
+    /// <summary>
     /// Fits the image to <see cref="ImageBudgetBytes"/> and <see cref="MaxImageSide"/> off the UI thread and adds it to
     /// <see cref="Attachments"/>. Await it on the UI thread: the adding happens in the continuation.
     /// </summary>
@@ -1590,7 +1610,7 @@ public sealed class ChatConversation : ChatObservableObject
         }
         List<ChatFile>? files = null;
         foreach (var path in paths) (files ??= new List<ChatFile>()).Add(ChatFile.FromRemotePath(path));
-        Place(new UserMessageItem(shown, images, files) { Timestamp = e.Timestamp }, e.ParentToolUseId);
+        Place(new UserMessageItem(shown, images, files) { Timestamp = e.Timestamp, IsUserPrompt = !e.IsSynthetic && e.ParentToolUseId == null }, e.ParentToolUseId);
     }
 
     /// <summary>

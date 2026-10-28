@@ -64,6 +64,12 @@ public sealed class UserMessageItem : ChatItem
     /// putting the message back in its place in the queue, which is what the view follows.
     /// </summary>
     internal string? QueuedNotice { get; set; }
+
+    /// <summary>
+    /// False for a line the user did not write: the claude's own (synthetic) one, or one of a subagent's. The reply box does not recall it
+    /// with the arrow keys. True for every other message, and for one built by hand.
+    /// </summary>
+    internal bool IsUserPrompt { get; set; } = true;
 }
 
 /// <summary>Text from Claude; grows while <see cref="IsStreaming"/>.</summary>

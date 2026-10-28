@@ -68,6 +68,38 @@ public class ComposerTouchTests
     }
 
     [AvaloniaFact]
+    public void The_keyboard_shortcuts_of_the_reply_box_work_in_the_touch_layout_too()
+    {
+        // a hardware keyboard on a tablet: up recalls, Ctrl+J breaks the line, Shift+Tab asks for the next mode, Ctrl+Alt+F the Focus view
+        var c = TouchSamples.Opus();
+        c.Apply(new UserBlock(null, new TextContentBlock("earlier prompt"), null, false, false));
+        var modes = new List<string>();
+        c.PermissionModeRequested += (_, e) => modes.Add(e.Mode);
+        var sent = new List<string>();
+        c.MessageSubmitted += (_, e) => sent.Add(e.Text);
+        var view = UiHelpers.TouchView(c);
+        var toggles = 0;
+        view.FocusViewToggleRequested += (_, _) => toggles++;
+        var window = UiHelpers.ShowPhone(view);
+        var input = UiHelpers.Input(view);
+        input.Focus();
+
+        UiHelpers.Press(window, Key.Up);
+        Assert.Equal("earlier prompt", input.Text);
+        UiHelpers.Press(window, Key.J, RawInputModifiers.Control);
+        Assert.Equal("earlier prompt\n", (input.Text ?? "").Replace("\r\n", "\n"));
+        Assert.Empty(sent);
+        UiHelpers.Press(window, Key.Tab, RawInputModifiers.Shift);
+        Assert.Equal(new[] { "acceptEdits" }, modes);
+        UiHelpers.Press(window, Key.F, RawInputModifiers.Control | RawInputModifiers.Alt);
+        Assert.Equal(1, toggles);
+
+        // and Ctrl+Enter sends there whether or not the option is on
+        UiHelpers.Press(window, Key.Enter, RawInputModifiers.Control);
+        Assert.Single(sent);
+    }
+
+    [AvaloniaFact]
     public void Touch_agents_chip_sits_at_the_end_of_the_list()
     {
         var view = UiHelpers.TouchView(UiHelpers.Recording("subagent", "stream"));

@@ -124,6 +124,14 @@ public partial class ClaudeChatView : UserControl
         AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(ScrollToEndOnSend), true);
 
     /// <summary>
+    /// False (the default) to send with Enter, breaking the line with Shift+Enter or Ctrl+J; true to send only with Ctrl+Enter
+    /// (Cmd+Enter), and have Enter break the line. The extension's <c>claudeCode.useCtrlEnterToSend</c>. The touch layout always sends
+    /// with Ctrl+Enter, as Enter breaks the line there.
+    /// </summary>
+    public static readonly StyledProperty<bool> UseCtrlEnterToSendProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(UseCtrlEnterToSend), false);
+
+    /// <summary>
     /// True (the default) to show when each message was sent, its time over it (the whole date and time in its tooltip), with a date
     /// line before the first one and wherever the day changes. False hides the times and the date lines. Inherited by everything
     /// inside the view. The extension's <c>showMessageTimestamps</c>.
@@ -308,6 +316,9 @@ public partial class ClaudeChatView : UserControl
         AddHandler(KeyDownEvent, OnKeyDownNotTaken, RoutingStrategies.Bubble);
     }
 
+    /// <summary>The user pressed Ctrl+Alt+F: the Focus view turns on or off (the view's part in it is wired where the Focus view is).</summary>
+    internal event EventHandler? FocusViewToggleRequested;
+
     public ChatConversation? Conversation
     {
         get => GetValue(ConversationProperty);
@@ -392,6 +403,13 @@ public partial class ClaudeChatView : UserControl
     {
         get => GetValue(ScrollToEndOnSendProperty);
         set => SetValue(ScrollToEndOnSendProperty, value);
+    }
+
+    /// <summary>Sends with Ctrl+Enter and breaks the line with Enter (see <see cref="UseCtrlEnterToSendProperty"/>). False by default.</summary>
+    public bool UseCtrlEnterToSend
+    {
+        get => GetValue(UseCtrlEnterToSendProperty);
+        set => SetValue(UseCtrlEnterToSendProperty, value);
     }
 
     /// <summary>Shows the messages' times and the date lines between days (see <see cref="ShowTimestampsProperty"/>). True by default.</summary>
@@ -529,6 +547,10 @@ public partial class ClaudeChatView : UserControl
         else if (change.Property == DictationProperty)
         {
             Composer.Dictation = Dictation;
+        }
+        else if (change.Property == UseCtrlEnterToSendProperty)
+        {
+            Composer.UseCtrlEnterToSend = UseCtrlEnterToSend;
         }
         else if (change.Property == SpinnerVerbsProperty || change.Property == SpinnerVerbsReplaceProperty)
         {
@@ -764,6 +786,12 @@ public partial class ClaudeChatView : UserControl
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         if (Prompt.IsHeld(e.Key)) e.Handled = true;
+        // Ctrl+Alt+F, the extension's toggle of the Focus view, while the keyboard is in the view; nothing in a read-only one
+        else if (!IsReadOnly && !e.Handled && e.Key == Key.F && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Alt))
+        {
+            e.Handled = true;
+            FocusViewToggleRequested?.Invoke(this, EventArgs.Empty);
+        }
         // Esc with the Diff View open closes it and only it, wherever the keyboard is: it is over everything but the preview
         else if (IsDiffEsc(e)) CloseDiff(e);
         // Esc with "What went wrong?" open closes it and only it (it is under the Diff View and the preview only)

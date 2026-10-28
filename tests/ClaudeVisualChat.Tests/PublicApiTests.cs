@@ -662,6 +662,24 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_ctrl_enter_to_send_api_exists_and_the_recall_and_focus_view_pieces_stay_internal()
+    {
+        // the extension's useCtrlEnterToSend (0.6.0): a property of the view, off by default
+        var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
+        var property = view.GetProperty("UseCtrlEnterToSend");
+        Assert.Equal(typeof(bool), property?.PropertyType);
+        Assert.True(property!.SetMethod!.IsPublic);
+        var field = view.GetField("UseCtrlEnterToSendProperty");
+        Assert.Equal(typeof(Avalonia.StyledProperty<bool>), field?.FieldType);
+        Assert.False(((Avalonia.StyledProperty<bool>)field!.GetValue(null)!).GetDefaultValue(view));
+        // the Focus view's toggle is wired inside the library; the recall of prompts is the reply box's
+        Assert.Null(view.GetEvent("FocusViewToggleRequested", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance));
+        Assert.NotNull(view.GetEvent("FocusViewToggleRequested", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance));
+        Assert.Null(typeof(ChatConversation).GetMethod("RecallablePrompts", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance));
+        Assert.Null(typeof(UserMessageItem).GetProperty("IsUserPrompt", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance));
+    }
+
+    [Fact]
     public void The_external_message_api()
     {
         var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
