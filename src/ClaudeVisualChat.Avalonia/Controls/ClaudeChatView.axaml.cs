@@ -207,6 +207,10 @@ public partial class ClaudeChatView : UserControl
     private double _anchorOffset;
     private bool _anchorQueued;
 
+    // the offset the list was moved to to keep the first row on screen in place, until its ScrollChanged comes: that move is the
+    // view's, not the user scrolling down, and does not make the list follow its end again
+    private double? _anchorMovedTo;
+
     private ChatConversation? _tracked;
     private bool _attached;
     private bool _isSheetOpen;
@@ -952,14 +956,24 @@ public partial class ClaudeChatView : UserControl
         // input, between passes, so this is rare.)
         var keptInRange = e.ViewportDelta.Y > 0 && -e.OffsetDelta.Y <= e.ViewportDelta.Y + 0.5;
         var wentUp = e.OffsetDelta.Y < 0 && !keptInRange;
+        // the list moved to keep the first row on screen in place (QueueKeepAnchor): not the user
+        var anchorMove = _anchorMovedTo is double movedTo && e.OffsetDelta.Y != 0 && Math.Abs(Scroller.Offset.Y - movedTo) <= 0.5;
+        if (e.OffsetDelta.Y != 0) _anchorMovedTo = null;
         // Going up from the end by any amount (the wheel, a finger, the keys ↑, Page Up and Home, the scroll bar) is the user going up
         // to read; a wheel that an inner scroller takes, or a sideways one, does not move the list. Coming back down to 50 px of the
         // end follows it again, and so does the list ending up at its very end (the rows above got shorter). New rows alone, with
         // the list not moving, change nothing: a user who went up stays up.
-        if (wentUp && distance > AtEndExactly) _stickToEnd = false;
-        else if ((e.OffsetDelta.Y != 0 && distance <= EndTolerance) || ReachedEndOfOldEstimate(e)) _stickToEnd = true;
+        if (!anchorMove)
+        {
+            if (wentUp && distance > AtEndExactly) _stickToEnd = false;
+            else if ((e.OffsetDelta.Y != 0 && distance <= EndTolerance) || ReachedEndOfOldEstimate(e)) _stickToEnd = true;
+        }
 
-        if (_stickToEnd && distance > AtEndExactly) QueueScrollToEnd(); // new items, or a better estimate of the ones above
+        // Following, the list goes down to the end when the content or the viewport changed size (new items, a better estimate of
+        // the ones above, a panel under the list), not when the user's own move brought it back within 50 px of the end: that only
+        // makes it follow again, from where the user left it.
+        var resized = e.ExtentDelta.Y != 0 || e.ViewportDelta.Y != 0;
+        if (_stickToEnd && distance > AtEndExactly && (resized || e.OffsetDelta.Y == 0)) QueueScrollToEnd();
 
         if (_stickToEnd) ForgetAnchor();
         else QueueKeepAnchor();
@@ -980,7 +994,11 @@ public partial class ClaudeChatView : UserControl
         _anchorOffset = Scroller.Offset.Y;
     }
 
-    private void ForgetAnchor() => _anchorItem = null;
+    private void ForgetAnchor()
+    {
+        _anchorItem = null;
+        _anchorMovedTo = null;
+    }
 
     /// <summary>
     /// After the layout pass (not inside it, where ScrollChanged is raised, and the rows are not yet where the pass puts them): when the
@@ -1000,7 +1018,11 @@ public partial class ClaudeChatView : UserControl
                 && Top(row) is double top && Math.Abs(top - _anchorTop) > 0.5)
             {
                 ScrollListBy(top - _anchorTop); // its own scroll takes the row again, where it is then
-                if (Scroller.Offset.Y != _anchorOffset) return;
+                if (Scroller.Offset.Y != _anchorOffset)
+                {
+                    _anchorMovedTo = Scroller.Offset.Y;
+                    return;
+                }
             }
             SetAnchor();
         });

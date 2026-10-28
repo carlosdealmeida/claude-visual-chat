@@ -1533,6 +1533,59 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
+    public void Coming_back_within_fifty_pixels_of_the_end_follows_again_without_a_jump()
+    {
+        var c = new ChatConversation();
+        for (var i = 0; i < 100; i++) c.Items.Add(new UserMessageItem("message " + i));
+        var (view, window) = Open(c);
+        var scroller = UiHelpers.Scroller(view);
+        double End() => scroller.Extent.Height - scroller.Viewport.Height;
+
+        scroller.Offset = new Vector(0, 0); // up to read: it stops following
+        UiHelpers.Pump();
+        var back = End() - 40;
+        scroller.Offset = new Vector(0, back); // the user's own move down to 40 px from the end: it follows again, from there
+        UiHelpers.Pump();
+        Assert.Equal(back, scroller.Offset.Y, 0.5);
+
+        c.Items.Add(new UserMessageItem("new one")); // the content grew: now it goes to the end
+        UiHelpers.Pump();
+        Assert.True(UiHelpers.AtEnd(scroller), $"offset {scroller.Offset.Y} of {End()}");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Keeping_the_row_on_screen_in_place_is_not_the_user_scrolling_down()
+    {
+        var c = new ChatConversation();
+        for (var i = 0; i < 100; i++) c.Items.Add(new UserMessageItem("message " + i));
+        var (view, window) = Open(c);
+        var scroller = UiHelpers.Scroller(view);
+        var list = UiHelpers.ItemList(view);
+        double End() => scroller.Extent.Height - scroller.Viewport.Height;
+        double? Top(Control row) => row.TranslatePoint(default, scroller)?.Y;
+
+        var up = End() - 30; // up from the end by 30 px: it stops following, within 50 px of the end
+        scroller.Offset = new Vector(0, up);
+        UiHelpers.Pump();
+        var first = list.GetRealizedContainers().Where(r => r.IsVisible && Top(r) + r.Bounds.Height > 0.5).OrderBy(r => Top(r)).First();
+        var item = first.DataContext!;
+        var top = Top(first)!.Value;
+
+        c.Items.Insert(0, new UserMessageItem("put in at the top\nover\nthree lines")); // the list moves down to keep the row in place
+        UiHelpers.Pump();
+        Assert.True(scroller.Offset.Y > up);
+        Assert.Equal(top, Top(list.ContainerFromItem(item)!)!.Value, 0.5);
+
+        // that move was the view's, not the user's: the list still does not follow
+        c.Items.Add(new UserMessageItem("at the end"));
+        UiHelpers.Pump();
+        Assert.False(UiHelpers.AtEnd(scroller), $"offset {scroller.Offset.Y} of {End()}");
+        Assert.Equal(top, Top(list.ContainerFromItem(item)!)!.Value, 0.5);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Without_following_the_first_message_on_screen_stays_in_place()
     {
         var c = new ChatConversation();
@@ -1628,6 +1681,48 @@ public class ChatViewTests
         UiHelpers.Scroller(view).ScrollToHome(); // the list kept what was on screen in place: the new one is above it
         UiHelpers.Pump();
         Assert.Equal(new[] { "seg, 20 de out", "sáb, 25 de out", "dom, 26 de out" }, DateLines(view).Take(3));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_date_line_moves_when_a_message_of_its_day_comes_before_or_the_first_of_its_day_goes()
+    {
+        var c = new ChatConversation { Clock = () => LocalTime(2025, 10, 27, 12, 0) };
+        var u1 = new UserMessageItem("first day") { Timestamp = LocalTime(2025, 10, 25, 9, 0) };
+        var a1 = new AssistantTextItem { Text = "answer of the first day", Timestamp = LocalTime(2025, 10, 25, 9, 1) };
+        var u2 = new UserMessageItem("second day") { Timestamp = LocalTime(2025, 10, 26, 9, 0) };
+        var a2 = new AssistantTextItem { Text = "answer of the second day", Timestamp = LocalTime(2025, 10, 26, 9, 1) };
+        c.Items.Add(u1);
+        c.Items.Add(a1);
+        c.Items.Add(u2);
+        c.Items.Add(a2);
+        var (view, window) = Open(c);
+        // the items under the date lines on screen, top to bottom
+        List<object?> Marked() => view.GetVisualDescendants().OfType<DateSeparator>().Where(d => d.IsEffectivelyVisible)
+            .OrderBy(d => d.TranslatePoint(default, view)!.Value.Y).Select(d => d.DataContext).ToList();
+        Assert.Equal(new object[] { u1, u2 }, Marked());
+
+        // a message of the second day put in before its first: the line goes to it
+        var early = new UserMessageItem("earlier the same day") { Timestamp = LocalTime(2025, 10, 26, 8, 0) };
+        c.Items.Insert(2, early);
+        UiHelpers.Pump();
+        Assert.Equal(new object[] { u1, early }, Marked());
+        Assert.Equal(new[] { "Sat, Oct 25", "Sun, Oct 26" }, DateLines(view));
+
+        // and before the first of the list
+        var earliest = new UserMessageItem("earliest") { Timestamp = LocalTime(2025, 10, 25, 8, 0) };
+        c.Items.Insert(0, earliest);
+        UiHelpers.Pump();
+        Assert.Equal(new object[] { earliest, early }, Marked());
+
+        // the first of a day goes: the next of that day takes the line
+        c.Items.Remove(early);
+        UiHelpers.Pump();
+        Assert.Equal(new object[] { earliest, u2 }, Marked());
+        c.Items.Remove(earliest);
+        UiHelpers.Pump();
+        Assert.Equal(new object[] { u1, u2 }, Marked());
+        Assert.Equal(new[] { "Sat, Oct 25", "Sun, Oct 26" }, DateLines(view));
         window.Close();
     }
 
