@@ -131,6 +131,29 @@ public partial class ClaudeChatView : UserControl
     public static readonly StyledProperty<bool> ShowTimestampsProperty =
         AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(ShowTimestamps), true, inherits: true);
 
+    /// <summary>
+    /// The verbs the host adds to the working line's own (or, with <see cref="SpinnerVerbsReplace"/>, uses instead of them): the words it
+    /// rotates through while Claude works, each shown with three dots. Null or empty (the default) adds none. The extension's
+    /// <c>claudeCode.spinnerVerbs</c>; the host reads its own setting and sets this, the view saves nothing.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<string>?> SpinnerVerbsProperty =
+        AvaloniaProperty.Register<ClaudeChatView, IReadOnlyList<string>?>(nameof(SpinnerVerbs));
+
+    /// <summary>
+    /// False (the default) to add <see cref="SpinnerVerbs"/> to the working line's own verbs; true to use them alone. True with none
+    /// (null, or an empty list) uses the line's own, as false does.
+    /// </summary>
+    public static readonly StyledProperty<bool> SpinnerVerbsReplaceProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(SpinnerVerbsReplace));
+
+    /// <summary>
+    /// True to keep the working line's star still (at ✻) and swap its verbs whole, without writing them from left to right; false
+    /// (the default) moves them. The view cannot ask the system whether the user wants less motion (Avalonia 11.0 does not tell), so the
+    /// host that knows sets it. Inherited by everything inside the view.
+    /// </summary>
+    public static readonly StyledProperty<bool> ReduceMotionProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(ReduceMotion), false, inherits: true);
+
     /// <summary>True while the conversation is busy; inherited, so a running tool's dot blinks only then.</summary>
     internal static readonly StyledProperty<bool> IsWorkingProperty =
         AvaloniaProperty.Register<ClaudeChatView, bool>("IsWorking", inherits: true);
@@ -329,6 +352,27 @@ public partial class ClaudeChatView : UserControl
         set => SetValue(IsReadOnlyProperty, value);
     }
 
+    /// <summary>Verbs added to the working line's own, or used alone (see <see cref="SpinnerVerbsProperty"/>). Null by default.</summary>
+    public IReadOnlyList<string>? SpinnerVerbs
+    {
+        get => GetValue(SpinnerVerbsProperty);
+        set => SetValue(SpinnerVerbsProperty, value);
+    }
+
+    /// <summary>True to use <see cref="SpinnerVerbs"/> alone (see <see cref="SpinnerVerbsReplaceProperty"/>). False by default.</summary>
+    public bool SpinnerVerbsReplace
+    {
+        get => GetValue(SpinnerVerbsReplaceProperty);
+        set => SetValue(SpinnerVerbsReplaceProperty, value);
+    }
+
+    /// <summary>Keeps the working line's star still and swaps its verbs whole (see <see cref="ReduceMotionProperty"/>). False by default.</summary>
+    public bool ReduceMotion
+    {
+        get => GetValue(ReduceMotionProperty);
+        set => SetValue(ReduceMotionProperty, value);
+    }
+
     /// <summary>Brings the list to its end when the user sends a message (see <see cref="ScrollToEndOnSendProperty"/>). True by default.</summary>
     public bool ScrollToEndOnSend
     {
@@ -472,9 +516,12 @@ public partial class ClaudeChatView : UserControl
         {
             Composer.Dictation = Dictation;
         }
+        else if (change.Property == SpinnerVerbsProperty || change.Property == SpinnerVerbsReplaceProperty)
+        {
+            WorkingRow.SetVerbs(SpinnerVerbs, SpinnerVerbsReplace);
+        }
         else if (change.Property == StringsProperty)
         {
-            WorkingText.Text = Strings.Working;
             if (_tracked != null) _tracked.Strings = Strings;
         }
         else if (change.Property == AvailableModesProperty)
@@ -615,7 +662,10 @@ public partial class ClaudeChatView : UserControl
     {
         if (e.PropertyName == nameof(ChatConversation.IsBusy)
             || e.PropertyName == nameof(ChatConversation.IsStreaming)
-            || e.PropertyName == nameof(ChatConversation.PermissionMode))
+            || e.PropertyName == nameof(ChatConversation.PermissionMode)
+            || e.PropertyName == nameof(ChatConversation.CurrentPermission)
+            || e.PropertyName == nameof(ChatConversation.Status)
+            || e.PropertyName == nameof(ChatConversation.IsRunningStartupHooks))
             UpdateWorking();
         else if (e.PropertyName == nameof(ChatConversation.ShownPanel))
             CloseBlockedPanel();
@@ -637,18 +687,22 @@ public partial class ClaudeChatView : UserControl
     }
 
     /// <summary>
-    /// While Claude works, running tools blink; and while nothing is arriving either (no text or thought in pieces),
-    /// "Working…" shows at the end of the list, its dot in the color of the mode, like the extension's line.
+    /// While Claude works, running tools blink; and while nothing is arriving either (no text or thought in pieces), the working line
+    /// shows at the end of the list, its star in the color of the mode: a verb, "Compacting..." while the claude compacts, or
+    /// "Running start-up hooks..." while a start-up hook runs (that one shows even before the first message). It is gone while a
+    /// permission request waits.
     /// </summary>
     private void UpdateWorking()
     {
         var conversation = _tracked;
         var busy = conversation != null && conversation.IsBusy;
         SetValue(IsWorkingProperty, busy);
-        WorkingText.Text = Strings.Working;
-        var on = busy && !conversation!.IsStreaming;
+        var hooks = conversation is { IsRunningStartupHooks: true };
+        var compacting = busy && conversation!.Status == "compacting";
+        WorkingRow.State = hooks ? WorkingState.StartupHooks : compacting ? WorkingState.Compacting : WorkingState.Verb;
+        var on = ((busy && !conversation!.IsStreaming) || hooks) && conversation!.CurrentPermission == null;
         WorkingRow.IsVisible = on;
-        WorkingRow.Classes.Set("on", on); // the dot's blinking, only while it shows
+        WorkingRow.Classes.Set("on", on); // its fade in, only while it shows
         var mode = conversation?.PermissionMode;
         WorkingRow.Classes.Set("plan", mode == "plan");
         WorkingRow.Classes.Set("acceptEdits", mode == "acceptEdits");

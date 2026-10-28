@@ -170,6 +170,15 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void Hook_lines_of_a_file_give_the_id_and_the_event()
+        {
+            Assert.Equal(new HookStarted("h1", "Setup"), Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_id\":\"h1\",\"hook_event\":\"Setup\"}")));
+            Assert.Equal(new HookFinished("h1"), Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"hook_response\",\"hook_id\":\"h1\"}")));
+        }
+
+        [Fact]
         public void A_thinking_tokens_line_of_a_file_gives_the_count_too()
         {
             Assert.Equal(new ThinkingTokens(50), Assert.Single(TranscriptParser.Parse(

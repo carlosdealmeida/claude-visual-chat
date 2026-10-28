@@ -1170,40 +1170,45 @@ public class ChatViewTests
         }
     }
 
-    // ---- "Working…" ----
+    // ---- the working line ----
 
-    private static Panel WorkingRow(ClaudeChatView view) =>
-        view.GetVisualDescendants().OfType<Panel>().Single(p => p.Classes.Contains("ClaudeChatWorking"));
+    private static WorkingIndicator WorkingRow(ClaudeChatView view) =>
+        view.GetVisualDescendants().OfType<WorkingIndicator>().Single(p => p.Classes.Contains("ClaudeChatWorking"));
+
+    private static TextBlock WorkingGlyph(ClaudeChatView view) =>
+        WorkingRow(view).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatWorkingGlyph"));
 
     [AvaloniaFact]
-    public void The_working_dot_blinks_only_while_its_line_shows()
+    public void The_working_star_moves_only_while_its_line_shows()
     {
         var c = new ChatConversation();
         var (view, window) = Open(c);
-        var dot = WorkingRow(view).GetVisualDescendants().OfType<Ellipse>().Single();
 
         // hidden before anything is sent: still
         Assert.False(WorkingRow(view).IsEffectivelyVisible);
-        Assert.All(DotOpacities(dot), o => Assert.Equal(1, o));
+        Assert.False(WorkingRow(view).IsGlyphMoving);
+        Assert.False(WorkingRow(view).IsTicking);
 
-        // shown while Claude works: it blinks
+        // shown while Claude works: it moves
         c.Submit("go");
         UiHelpers.Pump();
         Assert.True(WorkingRow(view).IsEffectivelyVisible);
-        Assert.Contains(DotOpacities(dot), o => o < 0.9);
+        Assert.True(WorkingRow(view).IsGlyphMoving);
+        Assert.True(WorkingRow(view).IsTicking);
 
         // hidden while a text arrives: still
         c.AppendLine("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"m1\"}}}");
         c.AppendLine("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}}");
         UiHelpers.Pump();
         Assert.False(WorkingRow(view).IsEffectivelyVisible);
-        Assert.All(DotOpacities(dot), o => Assert.Equal(1, o));
+        Assert.False(WorkingRow(view).IsGlyphMoving);
 
         // after the turn: still
         c.Apply(new ClaudeVisualChat.Protocol.TurnCompleted("success", false, 10, 0, 1, 1));
         UiHelpers.Pump();
         Assert.False(WorkingRow(view).IsEffectivelyVisible);
-        Assert.All(DotOpacities(dot), o => Assert.Equal(1, o));
+        Assert.False(WorkingRow(view).IsGlyphMoving);
+        Assert.False(WorkingRow(view).IsTicking);
         window.Close();
     }
 
@@ -1217,7 +1222,7 @@ public class ChatViewTests
         c.Submit("go");
         UiHelpers.Pump();
         Assert.True(WorkingRow(view).IsEffectivelyVisible);
-        Assert.Contains("Working…", UiHelpers.Texts(WorkingRow(view)));
+        Assert.EndsWith("...", WorkingRow(view).FullText);
         var user = view.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatUser"));
         Assert.True(WorkingRow(view).TranslatePoint(default, view)!.Value.Y > user.TranslatePoint(new Point(0, user.Bounds.Height), view)!.Value.Y);
 
@@ -1235,15 +1240,15 @@ public class ChatViewTests
         var tool = view.GetVisualDescendants().OfType<ToolCallView>().Single();
         Assert.True(WorkingRow(view).TranslatePoint(default, view)!.Value.Y >= tool.TranslatePoint(new Point(0, tool.Bounds.Height), view)!.Value.Y);
 
-        // the dot blinks, in the color of the mode; the text in Portuguese
-        var dot = WorkingRow(view).GetVisualDescendants().OfType<Ellipse>().Single();
-        Assert.Same(Resource(view, "ClaudeChat.Spinner"), dot.Fill);
-        Assert.Contains(DotOpacities(dot), o => o < 0.9);
+        // the star moves, in the color of the mode; the verb in Portuguese
+        var glyph = WorkingGlyph(view);
+        Assert.Same(Resource(view, "ClaudeChat.Spinner"), glyph.Foreground);
+        Assert.True(WorkingRow(view).IsGlyphMoving);
         c.Apply(new ClaudeVisualChat.Protocol.StatusChanged(null, "acceptEdits"));
         view.Strings = ChatStrings.PortugueseBrazil;
         UiHelpers.Pump();
-        Assert.Same(Resource(view, "ClaudeChat.Foreground"), dot.Fill);
-        Assert.Contains("Trabalhando…", UiHelpers.Texts(WorkingRow(view)));
+        Assert.Same(Resource(view, "ClaudeChat.Foreground"), glyph.Foreground);
+        Assert.Contains(WorkingRow(view).Verb, ChatStrings.PortugueseBrazil.WorkingVerbs);
 
         c.Apply(new ClaudeVisualChat.Protocol.TurnCompleted("success", false, 10, 0, 1, 1));
         UiHelpers.Pump();
@@ -3064,7 +3069,7 @@ public class ChatViewTests
         c.AppendLine("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"comm\"}}}");
         UiHelpers.Pump();
         Assert.Empty(view.GetVisualDescendants().OfType<ToolCallView>()); // no row until the input is whole
-        Assert.True(WorkingRow(view).IsEffectivelyVisible);              // "Working…" is all that shows the work meanwhile
+        Assert.True(WorkingRow(view).IsEffectivelyVisible);              // the working line is all that shows the work meanwhile
 
         c.AppendLine("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_stop\",\"index\":0}}");
         UiHelpers.Pump();

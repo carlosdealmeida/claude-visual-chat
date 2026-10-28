@@ -243,13 +243,10 @@
     <Setter Property="Padding" Value="16,0" />
   </Style>
 
-  <!-- ===== "Working…" at the end of the list: no timeline column to make room for ===== -->
+  <!-- ===== the working line at the end of the list: no timeline column to make room for, so the star's column is narrower ===== -->
 
-  <Style Selector="Panel.ClaudeChatWorking.touch Ellipse.ClaudeChatWorkingDot">
-    <Setter Property="Margin" Value="0" />
-  </Style>
-  <Style Selector="Panel.ClaudeChatWorking.touch TextBlock.ClaudeChatWorkingText">
-    <Setter Property="Margin" Value="16,0,0,0" />
+  <Style Selector="Grid.ClaudeChatWorking.touch TextBlock.ClaudeChatWorkingGlyph">
+    <Setter Property="Width" Value="20" />
   </Style>
 
   <!-- ===== the reply box: a box of 24 px corners, the text over a bar of 44 px targets ===== -->

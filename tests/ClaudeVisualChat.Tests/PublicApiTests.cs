@@ -604,4 +604,33 @@ public class PublicApiTests
         }
         Assert.Contains("Compacted", System.Enum.GetNames(typeof(NoticeKind)));   // nothing public goes
     }
+
+    [Fact]
+    public void The_working_line_has_its_names()
+    {
+        Assert.Equal(typeof(string), typeof(ChatConversation).GetProperty("Status")?.PropertyType);
+        Assert.False(typeof(ChatConversation).GetProperty("Status")!.SetMethod!.IsPublic);  // the claude says it, the host reads it
+        Assert.Equal(typeof(bool), typeof(ChatConversation).GetProperty("IsRunningStartupHooks")?.PropertyType);
+        Assert.Null(typeof(ChatConversation).GetProperty("IsRunningStartupHooks")!.SetMethod);
+
+        var started = typeof(ClaudeVisualChat.Protocol.HookStarted);
+        Assert.Equal(typeof(string), started.GetProperty("HookId")?.PropertyType);
+        Assert.Equal(typeof(string), started.GetProperty("HookEvent")?.PropertyType);
+        Assert.True(typeof(ClaudeVisualChat.Protocol.ClaudeEvent).IsAssignableFrom(started));
+        Assert.Equal(typeof(string), typeof(ClaudeVisualChat.Protocol.HookFinished).GetProperty("HookId")?.PropertyType);
+
+        var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
+        Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<string>), view.GetProperty("SpinnerVerbs")?.PropertyType);
+        Assert.Equal(typeof(bool), view.GetProperty("SpinnerVerbsReplace")?.PropertyType);
+        Assert.Equal(typeof(bool), view.GetProperty("ReduceMotion")?.PropertyType);
+        foreach (var field in new[] { "SpinnerVerbsProperty", "SpinnerVerbsReplaceProperty", "ReduceMotionProperty" })
+            Assert.NotNull(view.GetField(field));
+
+        var verbs = typeof(ChatStrings).GetProperty("WorkingVerbs");
+        Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<string>), verbs?.PropertyType);
+        Assert.Contains(verbs!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        foreach (var text in new[] { "CompactingLine", "CompactingAnnouncement", "StartupHooksLine", "WorkingAnnouncement", "Working" })
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.WorkingIndicator", Library.GetExportedTypes().Select(t => t.FullName)); // drawn by the view
+    }
 }

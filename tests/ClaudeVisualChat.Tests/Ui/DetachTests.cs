@@ -1297,6 +1297,61 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void The_working_indicator_stops_its_timers_when_the_view_leaves()
+    {
+        long now = 1000;
+        TokenCountUp.ClockOverride = () => now;
+        try
+        {
+            var c = Conversation();
+            c.Submit("go");
+            var m = new Mounted(c);
+            var row = m.View.GetVisualDescendants().OfType<WorkingIndicator>().Single();
+            Assert.True(row.IsGlyphMoving);                                    // the star moves
+            Assert.True(row.IsTicking);                                        // and the verb waits for its time
+            var verb = row.Verb;
+            now += 10_000;
+            row.Tick();                                                        // the verb changed meanwhile
+            var changed = row.Verb;
+            Assert.NotEqual(verb, changed);
+
+            m.Out();                                                           // taken out with the line showing: nothing throws,
+            Assert.False(row.IsGlyphMoving);                                   // and no timer runs out of the window
+            Assert.False(row.IsTicking);
+            row.StepGlyph();                                                   // late ticks find nothing to do
+            now += 100;
+            row.Tick();
+            Assert.Equal(changed, row.Verb);
+            Assert.False(row.IsGlyphMoving);
+            Assert.False(row.IsTicking);
+            c.Apply(new StatusChanged("compacting", null));                    // what changes meanwhile is drawn when it is back
+            c.Apply(new StatusChanged(null, null));
+            UiHelpers.Pump();
+
+            m.In();                                                            // back: as it was, and the timers run again
+            Assert.True(row.IsEffectivelyVisible);
+            Assert.Equal(changed + "...", row.FullText);
+            Assert.True(row.IsGlyphMoving);
+            Assert.True(row.IsTicking);
+
+            m.Out();                                                           // out again with the line in the middle of a state
+            c.Apply(new StatusChanged("compacting", null));
+            m.In();
+            Assert.Equal("Compacting...", row.FullText);
+            Assert.True(row.IsGlyphMoving);
+
+            m.Out();                                                           // out when the line is over: back, it is hidden and still
+            c.Apply(new ClaudeVisualChat.Protocol.TurnCompleted("success", false, 10, 0, 1, 1));
+            m.In();
+            Assert.False(row.IsEffectivelyVisible);
+            Assert.False(row.IsGlyphMoving);
+            Assert.False(row.IsTicking);
+            m.Window.Close();
+        }
+        finally { TokenCountUp.ClockOverride = null; }
+    }
+
+    [AvaloniaFact]
     public void A_compaction_card_lets_go_of_its_item_out_of_the_window_and_comes_back_as_it_is()
     {
         var item = new CompactionItem { Trigger = "manual", TokensBefore = 36326, Summary = "the first summary" };

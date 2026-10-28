@@ -18,15 +18,12 @@
               <VirtualizingStackPanel />
             </ItemsPanelTemplate>
           </controls:ChatItemList.ItemsPanel>
-          <!-- while Claude works and nothing is arriving: a blinking dot and "Working…"; under it the messages sent meanwhile,
+          <!-- while Claude works and nothing is arriving: a moving star and a verb that changes; under it the messages sent meanwhile,
                held until the claude takes them; under them, in the touch layout, the chip of the agents (in the tree only then:
                the desktop layout has it in the reply box's bar). This order holds whatever the layout -->
           <controls:ChatItemList.Footer>
             <StackPanel Name="FooterPanel">
-              <Panel Name="WorkingRow" Classes="ClaudeChatWorking" IsVisible="False">
-                <Ellipse Name="WorkingDot" Classes="ClaudeChatWorkingDot" />
-                <TextBlock Name="WorkingText" Classes="ClaudeChatWorkingText" />
-              </Panel>
+              <controls:WorkingIndicator Name="WorkingRow" Classes="ClaudeChatWorking" IsVisible="False" />
               <controls:QueuedMessageList Name="QueuedList" />
               <controls:AgentsChip Name="TouchAgentsChip" HorizontalAlignment="Left" />
             </StackPanel>

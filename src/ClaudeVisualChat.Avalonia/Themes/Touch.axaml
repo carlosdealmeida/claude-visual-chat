@@ -10,6 +10,8 @@
   <!-- text: 15 px on a 1.5 line, the app's reading size; the small text (times, paths, the line under a tool) at .85em -->
   <x:Double x:Key="ClaudeChat.FontSize">15</x:Double>
   <x:Double x:Key="ClaudeChat.LineHeight">22.5</x:Double>
+  <x:Double x:Key="ClaudeChat.WorkingGlyphFontSize">22.5</x:Double>      <!-- 1.5em and 1.85em of the larger text -->
+  <x:Double x:Key="ClaudeChat.WorkingRowHeight">27.75</x:Double>
   <x:Double x:Key="ClaudeChat.SmallFontSize">12.75</x:Double>
   <x:Double x:Key="ClaudeChat.SmallLineHeight">19</x:Double>
   <x:Double x:Key="ClaudeChat.CodeFontSize">13.5</x:Double>               <!-- .9em: inline code and code blocks -->

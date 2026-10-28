@@ -530,6 +530,22 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void Hook_lines_give_the_id_and_the_event_and_the_status_gives_its_word()
+        {
+            var parser = new StreamJsonParser();
+            Assert.Equal(new HookStarted("h1", "SessionStart"), Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_id\":\"h1\",\"hook_name\":\"SessionStart:startup\",\"hook_event\":\"SessionStart\"}")));
+            Assert.Equal(new HookFinished("h1"), Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"hook_response\",\"hook_id\":\"h1\",\"hook_name\":\"SessionStart:startup\",\"hook_event\":\"SessionStart\",\"outcome\":\"success\"}")));
+            Assert.Empty(parser.Parse("{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_event\":\"SessionStart\"}"));  // no id: nothing to match
+            Assert.Empty(parser.Parse("{\"type\":\"system\",\"subtype\":\"hook_response\"}"));
+            Assert.Equal(new StatusChanged("compacting", null), Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"status\",\"status\":\"compacting\"}")));
+            Assert.Equal(new StatusChanged(null, "plan"), Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"status\",\"status\":null,\"permissionMode\":\"plan\"}")));
+        }
+
+        [Fact]
         public void Thinking_tokens_give_the_absolute_count_and_a_delta_gives_its_own()
         {
             var parser = new StreamJsonParser();

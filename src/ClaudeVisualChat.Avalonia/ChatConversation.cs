@@ -64,6 +64,8 @@ public sealed class ChatConversation : ChatObservableObject
     private bool _autoModeAsked;
     private bool _isBusy;
     private bool _isStreaming;
+    private string? _status;
+    private readonly HashSet<string> _startupHooks = new HashSet<string>(StringComparer.Ordinal);
     private string? _sessionId;
     private string? _model;
     private string? _requestedModel;
@@ -338,6 +340,22 @@ public sealed class ChatConversation : ChatObservableObject
         get => _isStreaming;
         private set => SetField(ref _isStreaming, value);
     }
+
+    /// <summary>
+    /// What the claude says it is doing (<c>system/status</c>: <c>compacting</c> while it makes room, <c>requesting</c> while a request
+    /// to the API is out); null when it says nothing. Cleared when the turn ends and by <see cref="Clear"/>.
+    /// </summary>
+    public string? Status
+    {
+        get => _status;
+        private set => SetField(ref _status, value);
+    }
+
+    /// <summary>
+    /// True while a <c>SessionStart</c> or <c>Setup</c> hook of the claude has begun and not answered: the session is not ready yet.
+    /// Cleared when the turn ends and by <see cref="Clear"/>, so a hook that never answers does not hold it for ever.
+    /// </summary>
+    public bool IsRunningStartupHooks => _startupHooks.Count > 0;
 
     public string? SessionId
     {
@@ -645,9 +663,16 @@ public sealed class ChatConversation : ChatObservableObject
                 Items.Add(new CommandOutputItem(output.Text));
                 break;
             case StatusChanged status:
+                Status = string.IsNullOrEmpty(status.Status) ? null : status.Status;
                 if (status.PermissionMode != null) PermissionMode = status.PermissionMode;
                 // one per request to the API: the claude takes what was sent during the turn into the next one (the recording of 2.1.310)
                 if (status.Status == "requesting" && !_claudeTellsLifecycle) ReleaseHeld(_held.Count);
+                break;
+            case HookStarted hook:
+                if (hook.HookEvent == "SessionStart" || hook.HookEvent == "Setup") SetStartupHook(hook.HookId, true);
+                break;
+            case HookFinished finished:
+                SetStartupHook(finished.HookId, false);
                 break;
             case CommandLifecycle lifecycle:
                 OnCommandLifecycle(lifecycle);
@@ -772,6 +797,7 @@ public sealed class ChatConversation : ChatObservableObject
         PromptCacheExpiresAt = null;
         PromptCacheTtl = null;
         IsPromptCacheCompacted = false;
+        ForgetStatus();
         IsBusy = false;
         UpdateStreaming();
         UpdateRunningAgents();
@@ -2039,8 +2065,25 @@ public sealed class ChatConversation : ChatObservableObject
             PermissionMode = mode.GetString() ?? PermissionMode;
     }
 
+    private void SetStartupHook(string id, bool running)
+    {
+        var before = _startupHooks.Count > 0;
+        if (running) _startupHooks.Add(id);
+        else _startupHooks.Remove(id);
+        if (before != _startupHooks.Count > 0) OnPropertyChanged(nameof(IsRunningStartupHooks));
+    }
+
+    private void ForgetStatus()
+    {
+        Status = null;
+        if (_startupHooks.Count == 0) return;
+        _startupHooks.Clear();
+        OnPropertyChanged(nameof(IsRunningStartupHooks));
+    }
+
     private void OnTurnCompleted(TurnCompleted e)
     {
+        ForgetStatus();
         RemoveTurnPermissions();
         EndStreaming();
         if (e.IsError || _interruptedThisTurn)

@@ -285,12 +285,13 @@ public class TouchLayoutTests
         c.Submit("hi");
         var view = UiHelpers.TouchView(c);
         UiHelpers.ShowPhone(view);
-        var dot = view.GetVisualDescendants().OfType<Ellipse>().Single(e => e.Classes.Contains("ClaudeChatWorkingDot"));
-        Assert.True(dot.IsEffectivelyVisible);
-        Assert.Equal(new Thickness(0), dot.Margin);
+        var glyph = view.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatWorkingGlyph"));
+        Assert.True(glyph.IsEffectivelyVisible);
+        Assert.Equal(0, glyph.TranslatePoint(default, view)!.Value.X - view.GetVisualDescendants().OfType<WorkingIndicator>().Single().TranslatePoint(default, view)!.Value.X);
+        var touchColumn = glyph.Bounds.Width;
         view.Layout = ChatLayout.Desktop;
         UiHelpers.Pump();
-        Assert.Equal(new Thickness(9, 0, 0, 0), dot.Margin);
+        Assert.True(glyph.Bounds.Width > touchColumn); // the desktop's makes room for the timeline's icon column
     }
 
     [AvaloniaFact]

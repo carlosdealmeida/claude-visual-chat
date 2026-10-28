@@ -26,6 +26,15 @@ namespace ClaudeVisualChat.Protocol
     public sealed record StatusChanged(string? Status, string? PermissionMode) : ClaudeEvent;
 
     /// <summary>
+    /// A hook of the claude began (<c>system/hook_started</c>): <paramref name="HookId"/> is its id, <paramref name="HookEvent"/> the
+    /// event it answers (<c>SessionStart</c>, <c>Setup</c>, <c>PreToolUse</c>...).
+    /// </summary>
+    public sealed record HookStarted(string HookId, string HookEvent) : ClaudeEvent;
+
+    /// <summary>A hook of the claude answered (<c>system/hook_response</c>); <paramref name="HookId"/> is the one a <see cref="HookStarted"/> gave.</summary>
+    public sealed record HookFinished(string HookId) : ClaudeEvent;
+
+    /// <summary>
     /// What became of a message written to the claude's stdin with a <c>uuid</c> (<c>command_lifecycle</c>, 2.1.310):
     /// <paramref name="CommandUuid"/> is that uuid; <paramref name="State"/> is <c>queued</c>, <c>started</c>, <c>completed</c>,
     /// <c>cancelled</c>, <c>discarded</c> or <c>refused</c>; <paramref name="RanAhead"/> is true for a command the claude ran at

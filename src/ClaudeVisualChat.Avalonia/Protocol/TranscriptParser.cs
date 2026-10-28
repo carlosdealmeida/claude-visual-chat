@@ -278,6 +278,14 @@ namespace ClaudeVisualChat.Protocol
             {
                 case "api_retry":
                     return new ClaudeEvent[] { new SystemNotice(subtype!) };
+                case "hook_started":
+                    return JsonHelpers.Str(root, "hook_id") is { } startedId && JsonHelpers.Str(root, "hook_event") is { } hookEvent
+                        ? new ClaudeEvent[] { new HookStarted(startedId, hookEvent) }
+                        : None;
+                case "hook_response":
+                    return JsonHelpers.Str(root, "hook_id") is { } finishedId
+                        ? new ClaudeEvent[] { new HookFinished(finishedId) }
+                        : None;
                 case "compact_boundary":
                     {
                         // the stream says compact_metadata; a session file may say compactMetadata, or nothing

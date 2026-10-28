@@ -16,6 +16,13 @@ public sealed record ChatStrings
     private const string Separator = " · ";
 
     /// <summary>No model description to translate, shared so that two default texts are equal; before <see cref="English"/>, since static fields are set in the order they are written.</summary>
+    // shared, so that the default texts stay equal to each other
+    private static readonly IReadOnlyList<string> EnglishWorkingVerbs = new ReadOnlyCollection<string>(new[]
+    {
+        "Thinking", "Reading", "Weighing", "Sketching", "Tracing", "Untangling", "Digging", "Sorting",
+        "Connecting dots", "Checking", "Following the thread", "Mapping", "Drafting", "Polishing", "Piecing it together", "Testing ideas",
+    });
+
     private static readonly IReadOnlyDictionary<string, string> NoModelDescriptions = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
     public static ChatStrings English { get; } = new ChatStrings();
@@ -73,6 +80,15 @@ public sealed record ChatStrings
         ToolShowFullText = "Pressione Enter para mostrar o texto inteiro",
         ToolCutText = "Pressione Enter para cortar o texto",
         Working = "Trabalhando…",
+        WorkingVerbs = new ReadOnlyCollection<string>(new[]
+        {
+            "Pensando", "Lendo", "Ponderando", "Rascunhando", "Rastreando", "Desembaraçando", "Cavando", "Organizando",
+            "Ligando os pontos", "Conferindo", "Seguindo o fio", "Mapeando", "Escrevendo", "Lapidando", "Montando o quebra-cabeça", "Testando ideias",
+        }),
+        CompactingLine = "Compactando...",
+        CompactingAnnouncement = "Compactando a conversa",
+        StartupHooksLine = "Executando os hooks de início...",
+        WorkingAnnouncement = "O Claude está trabalhando",
         Send = "Enviar",
         Stop = "Parar",
         Dictate = "Ditar",
@@ -337,8 +353,26 @@ public sealed record ChatStrings
     /// <summary>Under a command that runs in the background.</summary>
     public string RunInBackground { get; init; } = "Run in background";
 
-    /// <summary>The line at the end of the list while Claude works and nothing is arriving.</summary>
+    /// <summary>The old text of the line at the end of the list; the line now shows <see cref="WorkingVerbs"/>, and this is no longer drawn.</summary>
     public string Working { get; init; } = "Working…";
+
+    /// <summary>
+    /// The words the line at the end of the list rotates through while Claude works and nothing is arriving, each shown with three
+    /// dots after it. A short list of our own; the host's <see cref="Controls.ClaudeChatView.SpinnerVerbs"/> add to it or replace it.
+    /// </summary>
+    public IReadOnlyList<string> WorkingVerbs { get; init; } = EnglishWorkingVerbs;
+
+    /// <summary>The line while the claude makes room by compacting the conversation (<c>status</c> <c>compacting</c>).</summary>
+    public string CompactingLine { get; init; } = "Compacting...";
+
+    /// <summary>What a screen reader says of the line while the claude compacts.</summary>
+    public string CompactingAnnouncement { get; init; } = "Compacting conversation";
+
+    /// <summary>The line while a <c>SessionStart</c> or <c>Setup</c> hook runs.</summary>
+    public string StartupHooksLine { get; init; } = "Running start-up hooks...";
+
+    /// <summary>What a screen reader says of the line at the end of the list while Claude works.</summary>
+    public string WorkingAnnouncement { get; init; } = "Claude is working";
 
     /// <summary>Lines left out of a tool output or diff; <c>{0}</c> is the count.</summary>
     public string MoreLines { get; init; } = "+{0} lines";

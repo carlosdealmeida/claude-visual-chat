@@ -2610,4 +2610,61 @@ public class ChatConversationTests
         c.Apply(new UserBlock(null, new TextContentBlock("just a line"), null, false, false) { IsSynthetic = true });
         Assert.IsType<UserMessageItem>(Assert.Single(c.Items));
     }
+
+    [Fact]
+    public void The_status_is_what_the_claude_last_said_and_null_when_it_says_nothing()
+    {
+        var c = new ChatConversation();
+        var changes = new List<string?>();
+        c.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ChatConversation.Status)) changes.Add(c.Status); };
+        Assert.Null(c.Status);
+
+        c.Apply(new StatusChanged("compacting", null));
+        Assert.Equal("compacting", c.Status);
+        c.Apply(new StatusChanged("compacting", "plan"));       // the same word again: nothing to say
+        c.Apply(new StatusChanged(null, "plan"));                // a line without the word clears it
+        Assert.Null(c.Status);
+        c.Apply(new StatusChanged("", null));
+        Assert.Null(c.Status);
+        Assert.Equal(new string?[] { "compacting", null }, changes);
+
+        c.Apply(new StatusChanged("compacting", null));          // the turn ends, or the chat is cleared: it goes
+        c.Apply(new TurnCompleted("success", false, 10, 0, 1, 1));
+        Assert.Null(c.Status);
+        c.Apply(new StatusChanged("compacting", null));
+        c.Clear();
+        Assert.Null(c.Status);
+    }
+
+    [Fact]
+    public void Start_up_hooks_run_from_their_start_to_their_response()
+    {
+        var c = new ChatConversation();
+        var changes = 0;
+        c.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ChatConversation.IsRunningStartupHooks)) changes++; };
+        Assert.False(c.IsRunningStartupHooks);
+
+        c.Apply(new HookStarted("a", "PreToolUse"));              // only SessionStart and Setup count
+        c.Apply(new HookStarted("b", "UserPromptSubmit"));
+        Assert.False(c.IsRunningStartupHooks);
+
+        c.Apply(new HookStarted("c", "SessionStart"));
+        c.Apply(new HookStarted("d", "Setup"));
+        Assert.True(c.IsRunningStartupHooks);
+        c.Apply(new HookFinished("a"));                            // another hook's answer changes nothing
+        Assert.True(c.IsRunningStartupHooks);
+        c.Apply(new HookFinished("c"));
+        Assert.True(c.IsRunningStartupHooks);                      // one still runs
+        c.Apply(new HookFinished("d"));
+        Assert.False(c.IsRunningStartupHooks);
+        c.Apply(new HookFinished("d"));                            // an answer twice is harmless
+        Assert.Equal(2, changes);
+
+        c.Apply(new HookStarted("e", "SessionStart"));             // one that never answers does not hold the line for ever
+        c.Apply(new TurnCompleted("success", false, 10, 0, 1, 1));
+        Assert.False(c.IsRunningStartupHooks);
+        c.Apply(new HookStarted("f", "Setup"));
+        c.Clear();
+        Assert.False(c.IsRunningStartupHooks);
+    }
 }
