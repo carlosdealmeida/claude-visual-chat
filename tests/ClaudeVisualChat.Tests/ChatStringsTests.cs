@@ -307,6 +307,10 @@ public class ChatStringsTests
         Assert.Equal("Pensando...", Pt.ThinkingNow);
         Assert.Equal("Conversation was compacted to free up context.", En.CompactionNoSummary);
         Assert.Equal("A conversa foi compactada para liberar contexto.", Pt.CompactionNoSummary);
+        Assert.Equal("Switched to Opus 5.5", En.FormatSwitchedTo("Opus 5.5"));
+        Assert.Equal("Modelo trocado para Opus 5.5", Pt.FormatSwitchedTo("Opus 5.5"));
+        Assert.Equal("Switched model", En.SwitchedModel);
+        Assert.Equal("Modelo trocado", Pt.SwitchedModel);
     }
 
     [Theory]

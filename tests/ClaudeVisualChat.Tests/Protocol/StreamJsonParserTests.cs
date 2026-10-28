@@ -546,6 +546,18 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void An_informational_line_gives_its_level_and_text()
+        {
+            var parser = new StreamJsonParser();
+            Assert.Equal(new Informational("warning", "blocked:\nwhy"), Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"informational\",\"content\":\"blocked:\\nwhy\",\"level\":\"warning\",\"prompt_submit_outcome\":{\"kind\":\"blocked_by_hook\"}}")));
+            Assert.Equal(new Informational("info", "hi"), Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"informational\",\"content\":\"hi\"}")));                 // no level: information
+            Assert.Empty(parser.Parse("{\"type\":\"system\",\"subtype\":\"informational\",\"level\":\"warning\"}"));   // no text
+            Assert.Empty(TranscriptParser.Parse("{\"type\":\"system\",\"subtype\":\"informational\",\"level\":\"warning\"}"));
+        }
+
+        [Fact]
         public void Thinking_tokens_give_the_absolute_count_and_a_delta_gives_its_own()
         {
             var parser = new StreamJsonParser();

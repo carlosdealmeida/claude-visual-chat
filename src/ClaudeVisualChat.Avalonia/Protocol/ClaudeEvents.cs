@@ -123,6 +123,13 @@ namespace ClaudeVisualChat.Protocol
         public long? PostTokens { get; init; }
     }
 
+    /// <summary>
+    /// A line the claude says about its own work (<c>system/informational</c>). <paramref name="Level"/> is <c>info</c>, <c>warning</c> or
+    /// <c>error</c> (<c>info</c> when the line does not say); a hook that blocked the prompt sends a <c>warning</c> whose text is
+    /// "UserPromptSubmit operation blocked by hook:", the reason and "Original prompt: …".
+    /// </summary>
+    public sealed record Informational(string Level, string Text) : ClaudeEvent;
+
     /// <summary>The slash commands the session offers (from <c>initialize</c> or <c>commands_changed</c>).</summary>
     public sealed record CommandsAvailable(IReadOnlyList<ChatCommand> Commands) : ClaudeEvent;
 

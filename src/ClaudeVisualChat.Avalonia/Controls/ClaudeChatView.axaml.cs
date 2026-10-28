@@ -166,6 +166,13 @@ public partial class ClaudeChatView : UserControl
         AvaloniaProperty.Register<ClaudeChatView, bool>("IsNarrow", inherits: true);
 
     /// <summary>
+    /// True while the view is <see cref="TinyWidth"/> px wide or less; inherited, so the divider of a command shows its short label there
+    /// (the extension's <c>max-width: 330px</c>).
+    /// </summary>
+    internal static readonly StyledProperty<bool> IsTinyProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>("IsTiny", inherits: true);
+
+    /// <summary>
     /// <see cref="IsReadOnly"/>, inherited, so the rows of the list that drop what cannot be done in a read-only view (the thumbs under a
     /// reply) follow it.
     /// </summary>
@@ -174,6 +181,9 @@ public partial class ClaudeChatView : UserControl
 
     /// <summary>At this width or less the view is narrow (the extension's <c>max-width: 500px</c>).</summary>
     internal const double NarrowWidth = 500;
+
+    /// <summary>At this width or less the view is tiny (the extension's <c>max-width: 330px</c>).</summary>
+    internal const double TinyWidth = 330;
 
     /// <summary>How close to the end (in pixels) still counts as being at the end: coming back down this close follows the end again.</summary>
     private const double EndTolerance = 50;
@@ -538,7 +548,11 @@ public partial class ClaudeChatView : UserControl
         {
             // not before the first layout, when the view has no width yet: the rows would drop their boxes and draw them again
             var width = Bounds.Width;
-            if (width > 0) SetValue(IsNarrowProperty, width <= NarrowWidth);
+            if (width > 0)
+            {
+                SetValue(IsNarrowProperty, width <= NarrowWidth);
+                SetValue(IsTinyProperty, width <= TinyWidth);
+            }
             Sticky.CapHeight = Math.Max(0, StickyCap * Bounds.Height);
         }
         else if (change.Property == LayoutProperty)

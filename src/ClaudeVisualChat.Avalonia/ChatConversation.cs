@@ -660,7 +660,12 @@ public sealed class ChatConversation : ChatObservableObject
                 OnCommandEcho(echo);
                 break;
             case CommandOutput output:
-                Items.Add(new CommandOutputItem(output.Text));
+                OnCommandOutput(output.Text);
+                break;
+            case Informational info:
+                // a warning or an error (a hook blocked the prompt) is a line of its own; the plain information is not shown, as in the extension
+                if (info.Text.Length > 0 && !string.Equals(info.Level, "info", StringComparison.OrdinalIgnoreCase))
+                    Items.Add(new MetaLineItem(info.Text.Trim()));
                 break;
             case StatusChanged status:
                 Status = string.IsNullOrEmpty(status.Status) ? null : status.Status;
@@ -1542,6 +1547,27 @@ public sealed class ChatConversation : ChatObservableObject
         List<ChatFile>? files = null;
         foreach (var path in paths) (files ??= new List<ChatFile>()).Add(ChatFile.FromRemotePath(path));
         Place(new UserMessageItem(shown, images, files) { Timestamp = e.Timestamp }, e.ParentToolUseId);
+    }
+
+    /// <summary>What <c>/model</c> prints when typed as a command; a <c>set_model</c> request (<see cref="SetModel"/>) prints nothing.</summary>
+    private const string SetModelPrefix = "Set model to ";
+
+    /// <summary>
+    /// What a local command printed: one line is a divider ("Set model to X" says "Switched to X", with a short label), more are
+    /// the command's output as printed.
+    /// </summary>
+    private void OnCommandOutput(string text)
+    {
+        var line = text.Trim();
+        if (line.Length == 0 || line.IndexOf('\n') >= 0)
+        {
+            Items.Add(new CommandOutputItem(text));
+            return;
+        }
+        if (line.StartsWith(SetModelPrefix, StringComparison.Ordinal) && line.Length > SetModelPrefix.Length)
+            Items.Add(new DividerItem(Strings.FormatSwitchedTo(line.Substring(SetModelPrefix.Length).Trim()), Strings.SwitchedModel));
+        else
+            Items.Add(new DividerItem(line));
     }
 
     private void OnCommandEcho(CommandEcho e)

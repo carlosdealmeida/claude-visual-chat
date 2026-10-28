@@ -1352,6 +1352,41 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void A_divider_lets_go_of_its_item_out_of_the_window_and_comes_back_as_it_is()
+    {
+        var text = string.Join(" ", System.Linq.Enumerable.Repeat("a long line that a command printed", 12));
+        var item = new DividerItem(text);
+        var c = Conversation();
+        c.Items.Add(item);
+        var own = ItemHandlers(item);
+        var m = new Mounted(c);
+        DividerLine Line() => m.View.GetVisualDescendants().OfType<DividerLine>().Single();
+        var line = Line();
+        Assert.True(line.IsTracking);
+        Assert.True(ItemHandlers(item) > own);
+        UiHelpers.Click(m.Window, line);                                   // opened
+        Assert.True(item.IsOpen);
+
+        m.Out();                                                           // taken out open: nothing throws, and the item is let go
+        Assert.False(line.IsTracking);
+        Assert.Equal(own, ItemHandlers(item));
+        item.IsOpen = false;                                               // closed while out
+        UiHelpers.Pump();
+
+        m.In();                                                            // back: drawn as the item is now
+        line = Line();
+        Assert.True(line.IsTracking);
+        Assert.True(ItemHandlers(item) > own);
+        Assert.Equal(Avalonia.Media.TextWrapping.NoWrap, line.Label.TextWrapping);
+        UiHelpers.Click(m.Window, line);                                   // and it opens, and follows its item again
+        Assert.True(item.IsOpen);
+        item.IsOpen = false;
+        UiHelpers.Pump();
+        Assert.Equal(Avalonia.Media.TextWrapping.NoWrap, line.Label.TextWrapping);
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_compaction_card_lets_go_of_its_item_out_of_the_window_and_comes_back_as_it_is()
     {
         var item = new CompactionItem { Trigger = "manual", TokensBefore = 36326, Summary = "the first summary" };

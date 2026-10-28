@@ -508,3 +508,32 @@ public sealed class MetaLineItem : ChatItem
 
     public string Text { get; }
 }
+
+/// <summary>
+/// What a slash command printed in one line, as the extension shows it: a divider, the text between two wavy rules (the date line's).
+/// "Set model to X" is "Switched to X" with the short label "Switched model". A label that does not fit, or any label in a panel of
+/// 330 px or less, can be tapped to show the whole <see cref="Text"/>.
+/// </summary>
+public sealed class DividerItem : ChatItem
+{
+    private bool _isOpen;
+
+    public DividerItem(string text, string? shortText = null)
+    {
+        Text = text ?? "";
+        ShortText = string.IsNullOrEmpty(shortText) ? null : shortText;
+    }
+
+    /// <summary>The whole text.</summary>
+    public string Text { get; }
+
+    /// <summary>What a panel of 330 px or less shows in place of <see cref="Text"/> until it is tapped; null when there is no shorter label.</summary>
+    public string? ShortText { get; }
+
+    /// <summary>Whether the whole <see cref="Text"/> is shown, in as many lines as it takes.</summary>
+    public bool IsOpen
+    {
+        get => _isOpen;
+        set => SetField(ref _isOpen, value);
+    }
+}

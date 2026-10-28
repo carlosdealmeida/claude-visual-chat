@@ -34,6 +34,8 @@ public sealed record ChatStrings
         CompactedChat = "Conversa compactada · {0} · {1}k tokens liberados",
         CompactedChatShort = "Conversa compactada",
         CompactionNoSummary = "A conversa foi compactada para liberar contexto.",
+        SwitchedTo = "Modelo trocado para {0}",
+        SwitchedModel = "Modelo trocado",
         MoreLines = "+{0} linhas",
         Interrupted = "Interrompido",
         ToolInterrupted = "Ferramenta interrompida",
@@ -346,6 +348,12 @@ public sealed record ChatStrings
 
     /// <summary>In the open card of a compaction whose summary the claude did not send.</summary>
     public string CompactionNoSummary { get; init; } = "Conversation was compacted to free up context.";
+
+    /// <summary>The divider of <c>/model</c> typed as a command; <c>{0}</c> is the model.</summary>
+    public string SwitchedTo { get; init; } = "Switched to {0}";
+
+    /// <summary>The short label of that divider, for a panel of 330 px or less.</summary>
+    public string SwitchedModel { get; init; } = "Switched model";
 
     /// <summary>The collapsed line of a whole thought; <c>{0}</c> is how many seconds it took.</summary>
     public string ThoughtFor { get; init; } = "Thought for {0}s";
@@ -1356,6 +1364,9 @@ public sealed record ChatStrings
         }
         return hasTrigger ? CompactedChatShort + Separator + trigger! : CompactedChatShort;
     }
+
+    /// <summary>"Switched to Opus 5.5".</summary>
+    internal string FormatSwitchedTo(string model) => SwitchedTo.Replace("{0}", model);
 
     /// <summary>"47 lines", "1 line".</summary>
     internal string FormatLines(int lines) => lines == 1 ? OneLine : Lines.Replace("{0}", FormatNumber(lines));

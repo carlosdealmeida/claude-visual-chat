@@ -95,6 +95,13 @@
   <Style Selector="controls|ClaudeChatView:touch TextBlock.ClaudeChatDateLabel">
     <Setter Property="LineHeight" Value="20.25" />
   </Style>
+  <!-- the divider of a one-line command is the same text in the same lines, and a finger tall: a tap shows the whole text -->
+  <Style Selector="controls|ClaudeChatView:touch TextBlock.ClaudeChatDividerLabel">
+    <Setter Property="LineHeight" Value="20.25" />
+  </Style>
+  <Style Selector="controls|ClaudeChatView:touch controls|DividerLine">
+    <Setter Property="MinHeight" Value="44" />
+  </Style>
 
   <!-- ===== the timeline: none; the content starts at the margin ===== -->
 

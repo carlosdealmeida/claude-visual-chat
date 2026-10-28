@@ -393,6 +393,11 @@
         </controls:ChatTimelineRow>
       </DataTemplate>
 
+      <!-- a command that printed one line: the text between two wavy rules, out of the timeline -->
+      <DataTemplate DataType="cvc:DividerItem">
+        <controls:DividerLine />
+      </DataTemplate>
+
       <!-- what the conversation says about its own commands (/copy): a line, not part of the timeline -->
       <DataTemplate DataType="cvc:MetaLineItem">
         <SelectableTextBlock Classes="ClaudeChatMetaLine" Text="{Binding Text}" />
@@ -494,7 +499,11 @@
   <Style Selector="controls|DateSeparator">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.DisabledForeground}" />
   </Style>
-  <Style Selector="TextBlock.ClaudeChatDateLabel">
+  <!-- the divider of a one-line command: the same rules and the same text, in disabledForeground -->
+  <Style Selector="controls|DividerLine">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.DisabledForeground}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatDateLabel, TextBlock.ClaudeChatDividerLabel">
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.CodeFontSize}" />
     <Setter Property="LineHeight" Value="17.55" />
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />

@@ -1969,7 +1969,73 @@ public class ChatConversationTests
     {
         var c = Load("commands");
         Assert.Contains(c.Items, i => i is UserMessageItem { Text: "/hello Ana" });
-        Assert.Contains(c.Items, i => i is CommandOutputItem o && o.Text.Length > 0);
+        Assert.Contains(c.Items, i => i is DividerItem { Text: "Compacted" });          // what /compact printed, in one line
+    }
+
+    [Fact]
+    public void One_line_command_output_becomes_a_divider()
+    {
+        var c = new ChatConversation();
+        c.Apply(new CommandOutput("Fast mode ON · model set to Opus 5.5\n"));           // the line's end is not another line
+        var divider = Assert.IsType<DividerItem>(Assert.Single(c.Items));
+        Assert.Equal("Fast mode ON · model set to Opus 5.5", divider.Text);
+        Assert.Null(divider.ShortText);
+        Assert.False(divider.IsOpen);
+    }
+
+    [Fact]
+    public void Set_model_to_becomes_switched_to()
+    {
+        var c = new ChatConversation();
+        c.Apply(new CommandOutput("Set model to Opus 5.5"));
+        var divider = Assert.IsType<DividerItem>(Assert.Single(c.Items));
+        Assert.Equal("Switched to Opus 5.5", divider.Text);
+        Assert.Equal("Switched model", divider.ShortText);
+
+        c.Strings = ChatStrings.PortugueseBrazil;                                       // in the language of the view
+        c.Apply(new CommandOutput("Set model to Sonnet 5.5"));
+        var other = Assert.IsType<DividerItem>(c.Items.Last());
+        Assert.Equal("Modelo trocado para Sonnet 5.5", other.Text);
+        Assert.Equal("Modelo trocado", other.ShortText);
+    }
+
+    [Fact]
+    public void A_model_asked_for_with_set_model_prints_nothing()
+    {
+        var c = new ChatConversation();
+        c.SetModel("opus");                                                             // the Kairós path
+        c.Apply(new SettingsApplied("opus", null, false));
+        Assert.Empty(c.Items);
+    }
+
+    [Fact]
+    public void Multi_line_command_output_stays_command_output()
+    {
+        var c = new ChatConversation();
+        c.Apply(new CommandOutput("Hello, Ana!\n  two spaces in"));
+        c.Apply(new CommandOutput(""));                                                 // nothing to say: not a divider either
+        Assert.Equal(new[] { "Hello, Ana!\n  two spaces in", "" }, c.Items.Cast<CommandOutputItem>().Select(i => i.Text));
+    }
+
+    [Fact]
+    public void A_warning_informational_line_becomes_a_meta_line()
+    {
+        var c = new ChatConversation();
+        c.Apply(new Informational("info", "just so you know"));                         // plain information is not shown
+        c.Apply(new Informational("warning", "UserPromptSubmit operation blocked by hook:\n[x]: no\n\n\nOriginal prompt: forbidden"));
+        var line = Assert.IsType<MetaLineItem>(Assert.Single(c.Items));
+        Assert.StartsWith("UserPromptSubmit operation blocked by hook:", line.Text);
+        Assert.EndsWith("Original prompt: forbidden", line.Text);
+    }
+
+    [Fact]
+    public void The_recording_of_a_blocked_prompt_shows_the_hook_warning_once()
+    {
+        var c = new ChatConversation();
+        foreach (var line in FixtureFiles.StreamLines("hook-blocked")) c.AppendLine(line);
+        var meta = Assert.IsType<MetaLineItem>(Assert.Single(c.Items, i => i is MetaLineItem));
+        Assert.Contains("UserPromptSubmit operation blocked by hook:", meta.Text);
+        Assert.Contains("Original prompt: Now say the word forbidden in one line.", meta.Text);
     }
 
     [Fact]

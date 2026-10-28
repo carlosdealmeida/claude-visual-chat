@@ -319,6 +319,11 @@ namespace ClaudeVisualChat.Protocol
                     return CommandText.ReadOutput(JsonHelpers.Str(root, "content")) is { } output
                         ? new ClaudeEvent[] { output }
                         : None;
+                case "informational":
+                    // a session file keeps the line without its text: nothing to show
+                    return JsonHelpers.Str(root, "content") is { Length: > 0 } content
+                        ? new ClaudeEvent[] { new Informational(JsonHelpers.Str(root, "level") ?? "info", content) }
+                        : None;
                 case "task_started":
                 case "task_progress":
                 case "task_updated":

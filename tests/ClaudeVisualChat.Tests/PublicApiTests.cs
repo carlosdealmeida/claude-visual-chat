@@ -606,6 +606,32 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_divider_and_the_informational_line_api()
+    {
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.Contains("ClaudeVisualChat.DividerItem", names);
+        Assert.Contains("ClaudeVisualChat.Protocol.Informational", names);
+        Assert.True(typeof(DividerItem).IsSealed && typeof(ChatItem).IsAssignableFrom(typeof(DividerItem)));
+        Assert.True(typeof(ClaudeVisualChat.Protocol.ClaudeEvent).IsAssignableFrom(typeof(ClaudeVisualChat.Protocol.Informational)));
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.DividerLine", names);       // the control is the library's own
+
+        Assert.Equal(typeof(string), typeof(DividerItem).GetProperty("Text")?.PropertyType);
+        Assert.Null(typeof(DividerItem).GetProperty("Text")!.SetMethod);
+        Assert.Equal(typeof(string), typeof(DividerItem).GetProperty("ShortText")?.PropertyType);
+        Assert.Null(typeof(DividerItem).GetProperty("ShortText")!.SetMethod);
+        Assert.Equal(typeof(bool), typeof(DividerItem).GetProperty("IsOpen")?.PropertyType);
+        Assert.Equal(typeof(string), typeof(ClaudeVisualChat.Protocol.Informational).GetProperty("Level")?.PropertyType);
+        Assert.Equal(typeof(string), typeof(ClaudeVisualChat.Protocol.Informational).GetProperty("Text")?.PropertyType);
+
+        foreach (var text in new[] { "SwitchedTo", "SwitchedModel" })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+    }
+
+    [Fact]
     public void The_working_line_has_its_names()
     {
         Assert.Equal(typeof(string), typeof(ChatConversation).GetProperty("Status")?.PropertyType);

@@ -2221,15 +2221,127 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
-    public void Command_output_of_the_recording_shows()
+    public void Command_output_of_the_recording_shows_as_a_divider()
     {
         var c = UiHelpers.Recording("commands", "transcript");
-        var item = c.Items.OfType<CommandOutputItem>().First();
+        var item = c.Items.OfType<DividerItem>().First();
         var (view, window) = Open(c);
         UiHelpers.ItemList(view).ScrollIntoView(item);
         UiHelpers.Pump();
-        Assert.Contains(view.GetVisualDescendants().OfType<SelectableTextBlock>(),
-            t => t.Classes.Contains("ClaudeChatCommandOutput") && t.Text == item.Text && t.IsEffectivelyVisible);
+        Assert.Contains(view.GetVisualDescendants().OfType<DividerLine>(),
+            d => ReferenceEquals(d.DataContext, item) && d.Label.Text == "Compacted" && d.IsEffectivelyVisible);
+        window.Close();
+    }
+
+    // ---- the divider of a command that printed one line ----
+
+    private static DividerLine DividerOf(ClaudeChatView view, DividerItem item) =>
+        view.GetVisualDescendants().OfType<DividerLine>().Single(d => ReferenceEquals(d.DataContext, item));
+
+    private static (ClaudeChatView View, Window Window) OpenWith(ChatConversation c, bool touch)
+    {
+        if (!touch) return Open(c);
+        var view = UiHelpers.TouchView(c);
+        return (view, UiHelpers.ShowPhone(view));
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_divider_is_its_text_between_two_wavy_rules(bool touch)
+    {
+        var item = new DividerItem("Compacted");
+        var c = new ChatConversation();
+        c.Items.Add(item);
+        var (view, window) = OpenWith(c, touch);
+        var line = DividerOf(view, item);
+        var label = line.Label;
+
+        Assert.Equal("Compacted", label.Text);
+        Assert.Equal(Resource(view, "ClaudeChat.CodeFontSize"), label.FontSize);                       // .9em
+        var muted = Assert.IsAssignableFrom<ISolidColorBrush>(Resource(view, "ClaudeChat.DisabledForeground")).Color;
+        Assert.Equal(muted, Assert.IsAssignableFrom<ISolidColorBrush>(label.Foreground).Color);
+        Assert.Equal(muted, Assert.IsAssignableFrom<ISolidColorBrush>(line.Foreground).Color);
+
+        // the rules of the date line: 7 px tall, 10 px from the text, as wide as each other, and 32 px at least
+        Assert.Equal(DateSeparator.WaveHeight, line.LeftRule.Height);
+        Assert.InRange(line.RightRule.Width, line.LeftRule.Width - 1, line.LeftRule.Width + 1);
+        Assert.True(line.LeftRule.Width >= DateSeparator.MinRuleWidth);
+        Assert.InRange(label.Bounds.Left - line.LeftRule.Right, DateSeparator.Gap - 1, DateSeparator.Gap + 1);
+        Assert.InRange(line.RightRule.Left - label.Bounds.Right, DateSeparator.Gap - 1, DateSeparator.Gap + 1);
+        Assert.InRange(label.Bounds.Top + label.Bounds.Height / 2, line.Bounds.Height / 2 - 1, line.Bounds.Height / 2 + 1);
+        Assert.InRange(line.LeftRule.Top + line.LeftRule.Height / 2, line.Bounds.Height / 2 - 1, line.Bounds.Height / 2 + 1);
+        Assert.True(line.Bounds.Height >= label.Bounds.Height + 2 * DateSeparator.VerticalPadding - 1);  // 8 px over and under
+        if (touch) Assert.True(line.Bounds.Height >= 44);                                              // a finger tall
+        Assert.False(line.IsOpenable);                                                                  // it fits: nothing to open
+
+        UiHelpers.Click(window, line);
+        Assert.False(item.IsOpen);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_cut_divider_shows_the_whole_text_on_click(bool touch)
+    {
+        var text = string.Join(" ", Enumerable.Repeat("a long line that a command printed", 12));
+        var item = new DividerItem(text);
+        var c = new ChatConversation();
+        c.Items.Add(item);
+        var (view, window) = OpenWith(c, touch);
+        var line = DividerOf(view, item);
+        var label = line.Label;
+
+        Assert.True(line.IsOpenable);                                                                   // the label is cut
+        Assert.Equal(TextTrimming.CharacterEllipsis, label.TextTrimming);
+        var oneLine = label.Bounds.Height;
+        Assert.True(label.Bounds.Width <= line.Bounds.Width - 2 * (DateSeparator.MinRuleWidth + DateSeparator.Gap) + 1);
+
+        UiHelpers.Click(window, line);                                                                  // opened: every line of it
+        Assert.True(item.IsOpen);
+        Assert.Equal(text, label.Text);
+        Assert.Equal(TextWrapping.Wrap, label.TextWrapping);
+        Assert.True(label.Bounds.Height > oneLine * 2, "the text takes as many lines as it needs");
+        Assert.True(label.Bounds.Width <= line.Bounds.Width - 2 * (DateSeparator.MinRuleWidth + DateSeparator.Gap) + 1);
+        Assert.True(line.LeftRule.Width >= DateSeparator.MinRuleWidth - 1);                              // and the rules stay on both sides
+        Assert.True(line.RightRule.Width >= DateSeparator.MinRuleWidth - 1);
+
+        UiHelpers.Click(window, line);                                                                  // closed
+        Assert.False(item.IsOpen);
+        Assert.InRange(label.Bounds.Height, oneLine - 1, oneLine + 1);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_view_of_330_px_or_less_shows_the_short_label_until_it_is_opened()
+    {
+        var item = new DividerItem("Switched to Opus 5.5", "Switched model");
+        var c = new ChatConversation();
+        c.Items.Add(item);
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view, 320, 600);
+        var line = DividerOf(view, item);
+
+        Assert.Equal("Switched model", line.Label.Text);
+        Assert.True(line.IsOpenable);                                                                   // there is a longer text to show
+        UiHelpers.Click(window, line);
+        Assert.True(item.IsOpen);
+        Assert.Equal("Switched to Opus 5.5", line.Label.Text);
+        UiHelpers.Click(window, line);
+        Assert.Equal("Switched model", line.Label.Text);
+
+        line.Focus();                                                                                   // the keyboard opens it too
+        UiHelpers.Press(window, Key.Enter);
+        Assert.True(item.IsOpen);
+        UiHelpers.Press(window, Key.Space);
+        Assert.False(item.IsOpen);
+
+        window.Width = 600;                                                                             // wider: the whole text fits
+        UiHelpers.Pump();
+        UiHelpers.Pump();
+        Assert.Equal("Switched to Opus 5.5", line.Label.Text);
+        Assert.False(line.IsOpenable);
         window.Close();
     }
 
