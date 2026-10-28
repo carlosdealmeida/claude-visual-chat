@@ -19,8 +19,9 @@ namespace ClaudeVisualChat.Controls;
 /// which prompt (<see cref="Show"/>) and where the next prompt's row begins, which pushes the band up and out. The bubble spans the list's
 /// width, folds a long text as the row does (the same item's state), and is at most <see cref="CapHeight"/> tall, scrolling inside. A click
 /// on it with no text selected waits <see cref="ClickDelay"/> (a double click selects a word instead), then asks the view to bring the start
-/// of the turn to the top (<see cref="TurnRequested"/>); a press that moves more than <see cref="ClickSlop"/> px, or scrolls the bubble's
-/// text, is a drag and no click. A finger dragged over the band that the bubble's text does not take goes to the list
+/// of the turn to the top (<see cref="TurnRequested"/>); a press that moves more than <see cref="ClickSlop"/> px (<see cref="TouchClickSlop"/>
+/// in the touch layout), or scrolls the bubble's text, is a drag and no click. A finger dragged over the band that the bubble's text does
+/// not take goes to the list
 /// (<see cref="ListDragged"/>), as the wheel does through the view. It follows the 0.3.1 rule: out of the window it lets go of its prompt and stops the
 /// click's timer; back, it is drawn as the prompt is then.
 /// </summary>
@@ -34,6 +35,9 @@ internal sealed class StickyPrompt : Border
 
     /// <summary>A press that moves farther than this before it is let go is a drag, not a click.</summary>
     internal const double ClickSlop = 4;
+
+    /// <summary><see cref="ClickSlop"/> in the touch layout: a finger rolls a little as it taps.</summary>
+    internal const double TouchClickSlop = 10;
 
     private static readonly StyledProperty<ChatLayout> LayoutProperty =
         ClaudeChatView.LayoutProperty.AddOwner<StickyPrompt>();
@@ -84,7 +88,6 @@ internal sealed class StickyPrompt : Border
         AddHandler(PointerPressedEvent, OnPressed, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(PointerMovedEvent, OnMoved, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(PointerReleasedEvent, (_, _) => _touch = null, RoutingStrategies.Bubble, handledEventsToo: true);
-        AddHandler(PointerCaptureLostEvent, (_, _) => _touch = null, RoutingStrategies.Bubble, handledEventsToo: true);
 
         _band.Children.Add(Fill);
         _band.Children.Add(Fade);
@@ -238,7 +241,8 @@ internal sealed class StickyPrompt : Border
         _pressedAt = null;
         if (e.InitialPressMouseButton != MouseButton.Left || _item == null || pressedAt == null) return;
         var moved = e.GetPosition(null) - pressedAt.Value;
-        if (Math.Abs(moved.X) > ClickSlop || Math.Abs(moved.Y) > ClickSlop || _scroller.Offset != _pressedScroll) return;
+        var slop = GetValue(LayoutProperty) == ChatLayout.Touch ? TouchClickSlop : ClickSlop;
+        if (Math.Abs(moved.X) > slop || Math.Abs(moved.Y) > slop || _scroller.Offset != _pressedScroll) return;
         if (e.Source is Visual source && (source.FindAncestorOfType<Button>(includeSelf: true) != null
                                           || source.FindAncestorOfType<ScrollBar>(includeSelf: true) != null))
             return;

@@ -1932,10 +1932,45 @@ public class ChatViewTests
         UiHelpers.Pump();
         Assert.False(sticky.IsWaiting);
 
+        // so is a move of 8 px, past the desktop's slop (a tap of the touch layout may move that much)
+        window.MouseDown(from, MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(from + new Vector(0, 8), RawInputModifiers.LeftMouseButton);
+        window.MouseUp(from + new Vector(0, 8), MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.False(sticky.IsWaiting);
+
         // the same press let go where it was (or a pixel or two off) is a click
         window.MouseDown(from, MouseButton.Left, RawInputModifiers.None);
         window.MouseMove(from + new Vector(2, 1), RawInputModifiers.LeftMouseButton);
         window.MouseUp(from + new Vector(2, 1), MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.True(sticky.IsWaiting);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_tap_on_the_pinned_prompt_in_the_touch_layout_may_move_more_than_a_mouse_click()
+    {
+        var (c, first, _) = TwoLongTurns();
+        var view = UiHelpers.TouchView(c);
+        var window = UiHelpers.ShowPhone(view);
+        var sticky = Sticky(view);
+        ScrollRowTo(view, c.Items[20], 0);
+        Assert.Same(first, sticky.Item);
+        var from = sticky.Bubble.TranslatePoint(new Point(24, 3), window)!.Value; // the bubble's padding, past its round corner
+        Assert.Same(sticky.Bubble, UiHelpers.HitTest(window, from));
+
+        // past the touch slop it is a drag
+        window.MouseDown(from, MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(from + new Vector(0, StickyPrompt.TouchClickSlop + 4), RawInputModifiers.LeftMouseButton);
+        window.MouseUp(from + new Vector(0, StickyPrompt.TouchClickSlop + 4), MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.False(sticky.IsWaiting);
+
+        // a finger rolls a little as it taps: 8 px, a drag with a mouse, is still a tap there
+        window.MouseDown(from, MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(from + new Vector(0, 8), RawInputModifiers.LeftMouseButton);
+        window.MouseUp(from + new Vector(0, 8), MouseButton.Left, RawInputModifiers.None);
         UiHelpers.Pump();
         Assert.True(sticky.IsWaiting);
         window.Close();
