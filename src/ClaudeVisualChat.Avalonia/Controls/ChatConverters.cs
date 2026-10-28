@@ -18,8 +18,15 @@ internal static class ChatConverters
     /// <summary>(<see cref="TurnFooterItem"/>, <see cref="ChatStrings"/>) → the footer, empty when nothing is known.</summary>
     public static readonly IMultiValueConverter Footer = new StringsConverter<TurnFooterItem>((footer, strings) => strings.FormatFooter(footer));
 
-    /// <summary>(<see cref="DateTimeOffset"/>?, <see cref="ChatStrings"/>) → the time over a message; null when unknown.</summary>
+    /// <summary>
+    /// (<see cref="DateTimeOffset"/>?, <see cref="ChatStrings"/>, the view's <see cref="ClaudeChatView.ShowTimestamps"/>) → the time over
+    /// a message; null when unknown, or while the view hides the times.
+    /// </summary>
     public static readonly IMultiValueConverter Time = new TimeConverter();
+
+    /// <summary><see cref="DateTimeOffset"/>? → the whole date and time, as the tooltip of a message's time shows it; null when unknown.</summary>
+    public static readonly IValueConverter FullTime = new FuncValueConverter<object?, string?>(value =>
+        value is DateTimeOffset time ? ChatStrings.FormatFullTime(time) : null);
 
     /// <summary>(IsStreaming, DurationMs, <see cref="ChatStrings"/>) → "Thinking" or "Thought for 3s".</summary>
     public static readonly IMultiValueConverter ThinkingLabel = new ThinkingLabelConverter();
@@ -74,6 +81,7 @@ internal static class ChatConverters
         public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
         {
             if (values.Count < 1 || !(values[0] is DateTimeOffset time)) return null;
+            if (values.Count > 2 && values[2] is false) return null;
             var strings = values.Count > 1 ? values[1] as ChatStrings ?? ChatStrings.English : ChatStrings.English;
             return strings.FormatTime(time);
         }

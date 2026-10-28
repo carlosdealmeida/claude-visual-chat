@@ -22,6 +22,14 @@ internal sealed class ChatItemList : ItemsControl
     public static readonly StyledProperty<double> ListWidthProperty =
         AvaloniaProperty.Register<ChatItemList, double>(nameof(ListWidth));
 
+    /// <summary>
+    /// Where the item a row of this list holds is in the list: set on the row's container as the list prepares it and moved with it,
+    /// and inherited by what the row holds, so a row reads its place (to compare itself with the item before it) without looking for
+    /// its item in the list. -1 outside a row.
+    /// </summary>
+    public static readonly AttachedProperty<int> IndexProperty =
+        AvaloniaProperty.RegisterAttached<ChatItemList, Control, int>("Index", -1, inherits: true);
+
     /// <summary>What shows under the items, shown by the template's <c>PART_Footer</c>.</summary>
     public object? Footer
     {
@@ -38,6 +46,24 @@ internal sealed class ChatItemList : ItemsControl
     {
         base.OnPropertyChanged(change);
         if (change.Property == BoundsProperty) SetValue(ListWidthProperty, Bounds.Width);
+    }
+
+    protected override void PrepareContainerForItemOverride(Control container, object? item, int index)
+    {
+        container.SetValue(IndexProperty, index); // before the base hands the item to the row: the row reads its new place with it
+        base.PrepareContainerForItemOverride(container, item, index);
+    }
+
+    protected override void ContainerIndexChangedOverride(Control container, int oldIndex, int newIndex)
+    {
+        base.ContainerIndexChangedOverride(container, oldIndex, newIndex);
+        container.SetValue(IndexProperty, newIndex);
+    }
+
+    protected override void ClearContainerForItemOverride(Control container)
+    {
+        base.ClearContainerForItemOverride(container);
+        container.ClearValue(IndexProperty);
     }
 }
 

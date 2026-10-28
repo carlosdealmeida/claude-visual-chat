@@ -168,6 +168,7 @@ public class FidelityTests
         ("ClaudeChat.Background", "#191A1B", "#1F1F1F"),          // sideBar.background / editor.background
         ("ClaudeChat.Foreground", "#BFBFBF", "#CCCCCC"),          // foreground
         ("ClaudeChat.ForegroundMuted", "#8C8C8C", "#9D9D9D"),     // descriptionForeground
+        ("ClaudeChat.DisabledForeground", "#555555", "#80CCCCCC"), // disabledForeground: the date line
         ("ClaudeChat.Accent", "#48A0C7", "#4DAAFC"),              // textLink.foreground
         ("ClaudeChat.AccentFill", "#297AA0", "#0078D4"),          // button.background
         ("ClaudeChat.FocusBorder", "#B33994BC", "#0078D4"),       // focusBorder
@@ -290,6 +291,97 @@ public class FidelityTests
         var stamp = view.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatStamp") && t.Text == "10:27 PM");
         Assert.Equal(11.05, stamp.FontSize);
         Near(bounds.Right, BoundsIn(stamp, view).Right, "time right edge");
+        window.Close();
+    }
+
+    // ---- the date line and the fade over the reply box ----
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void The_date_line_has_the_extension_measures(ChatLayout layout)
+    {
+        var c = ReferenceScene(); // its prompt is the first message with a time: the line is over it
+        var view = new ClaudeChatView { Conversation = c, Layout = layout };
+        var window = layout == ChatLayout.Touch ? UiHelpers.ShowPhone(view) : UiHelpers.Show(view, PanelWidth, 940);
+        UiHelpers.ItemList(view).ScrollIntoView(c.Items.OfType<UserMessageItem>().Last());
+        UiHelpers.Pump();
+        var line = view.GetVisualDescendants().OfType<DateSeparator>().Single(d => d.IsEffectivelyVisible);
+        Assert.Equal("Mon, Oct 19", line.Date);
+
+        // the label: centered, .9em, in disabledForeground, cut with "…"
+        var label = line.Label;
+        Assert.Equal(Resource(view, "ClaudeChat.CodeFontSize"), label.FontSize);
+        Assert.Same(Resource(view, "ClaudeChat.DisabledForeground"), line.Foreground);
+        Assert.Same(Resource(view, "ClaudeChat.DisabledForeground"), label.Foreground);
+        Assert.Equal(TextTrimming.CharacterEllipsis, label.TextTrimming);
+        var box = BoundsIn(line, view);
+        var text = BoundsIn(label, view);
+        Near(box.Center.X, text.Center.X, "label centered");
+        // the rules: 7 px tall, on both sides, 10 px from the label, as far as the line's ends; centered on the label
+        Near(0, line.LeftRule.Left, "left rule from the start");
+        Near(line.Bounds.Width, line.RightRule.Right, "right rule to the end");
+        Near(10, label.Bounds.Left - line.LeftRule.Right, "gap before the label");
+        Near(10, line.RightRule.Left - label.Bounds.Right, "gap after the label");
+        Assert.Equal(7, line.LeftRule.Height);
+        Assert.Equal(7, line.RightRule.Height);
+        Assert.True(line.LeftRule.Width >= 32);
+        Near(label.Bounds.Center.Y, line.LeftRule.Center.Y, "rule centered on the label");
+        // 8 px over and under
+        Near(8, label.Bounds.Top, "8 px over");
+        Near(8, line.Bounds.Height - label.Bounds.Bottom, "8 px under");
+        // over the user's turn, which keeps its own spacing under it
+        var turn = view.GetVisualDescendants().OfType<StackPanel>().Single(s => s.Classes.Contains("ClaudeChatUserTurn") && ReferenceEquals(s.DataContext, c.Items.OfType<UserMessageItem>().Last()));
+        Near(box.Bottom + turn.Margin.Top, BoundsIn(turn, view).Top, "the turn under the line");
+        window.Close();
+
+        // narrow, the label is cut and the rules keep their 32 px
+        var scene = ReferenceScene();
+        var narrow = new ClaudeChatView { Conversation = scene, Layout = layout };
+        window = UiHelpers.Show(narrow, 140, 600);
+        UiHelpers.ItemList(narrow).ScrollIntoView(scene.Items.OfType<UserMessageItem>().Last());
+        UiHelpers.Pump();
+        line = narrow.GetVisualDescendants().OfType<DateSeparator>().Single(d => d.IsEffectivelyVisible);
+        Assert.True(line.LeftRule.Width >= 32 - Tolerance, $"left rule {line.LeftRule.Width}");
+        Assert.True(line.RightRule.Width >= 32 - Tolerance, $"right rule {line.RightRule.Width}");
+        Assert.True(line.Label.Bounds.Width < line.Label.DesiredSize.Width + 0.5 && line.Label.Bounds.Width <= line.Bounds.Width - 2 * (32 + 10) + 0.5);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_fade_of_150_px_dims_the_list_over_the_reply_box()
+    {
+        var c = ReferenceScene();
+        var (view, window) = OpenScene(c);
+        var fade = view.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatListFade"));
+        Assert.True(fade.IsEffectivelyVisible);
+        Assert.False(fade.IsHitTestVisible); // the list under it takes the pointer
+        var bounds = BoundsIn(fade, view);
+        Near(150, bounds.Height, "fade height");
+        Near(view.Bounds.Height, bounds.Bottom, "fade to the bottom of the view");
+        Near(0, bounds.Left, "fade from the left");
+        Near(view.Bounds.Width, bounds.Right, "fade to the right");
+        // from nothing at its top to the background at its bottom
+        Assert.Same(Resource(view, "ClaudeChat.Background"), fade.Background);
+        var mask = Assert.IsAssignableFrom<ILinearGradientBrush>(fade.OpacityMask);
+        Assert.Equal(0, mask.GradientStops.First().Color.A);
+        Assert.Equal(255, mask.GradientStops.Last().Color.A);
+        Assert.True(mask.StartPoint.Point.Y < mask.EndPoint.Point.Y);
+        // over the list, under the reply box: drawn after the one, before the other
+        var grid = Assert.IsAssignableFrom<Grid>(fade.Parent);
+        var composer = view.GetVisualDescendants().OfType<ChatComposer>().Single();
+        var bottom = composer.GetVisualAncestors().OfType<StackPanel>().First(s => ReferenceEquals(s.Parent, grid));
+        Assert.True(grid.Children.IndexOf(UiHelpers.Scroller(view)) < grid.Children.IndexOf(fade));
+        Assert.True(grid.Children.IndexOf(fade) < grid.Children.IndexOf(bottom));
+        // the top of the reply box is inside the fade: the fade shows over the list just above it
+        Assert.True(BoundsIn(composer, view).Top > bounds.Top);
+
+        view.IsReadOnly = true; // no reply box to fade into
+        UiHelpers.Pump();
+        Assert.False(fade.IsEffectivelyVisible);
+        view.IsReadOnly = false;
+        UiHelpers.Pump();
+        Assert.True(fade.IsEffectivelyVisible);
         window.Close();
     }
 

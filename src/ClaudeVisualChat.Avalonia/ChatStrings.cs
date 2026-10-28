@@ -245,6 +245,9 @@ public sealed record ChatStrings
         UsageSevenDay = "Semanal (7 dias)",
         UsagePercent = "{0} %",
         DayNames = "dom seg ter qua qui sex sáb",
+        MonthNames = "jan fev mar abr mai jun jul ago set out nov dez",
+        DateFormat = "{0}, {2} de {1}",
+        DateWithYearFormat = "{0} de {1}",
         AgentsChip = "{0} agentes",
         AgentsChipOne = "1 agente",
         AgentsChipTouch = "Agentes · {0}",
@@ -955,6 +958,21 @@ public sealed record ChatStrings
     /// <summary>The seven short day names, Sunday first, separated by spaces.</summary>
     public string DayNames { get; init; } = "Sun Mon Tue Wed Thu Fri Sat";
 
+    /// <summary>The twelve short month names, January first, separated by spaces.</summary>
+    public string MonthNames { get; init; } = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec";
+
+    /// <summary>
+    /// The date line where the day changes in the list: <c>{0}</c> is the day's short name (<see cref="DayNames"/>), <c>{1}</c> the
+    /// month's (<see cref="MonthNames"/>), <c>{2}</c> the day of the month ("Sat, Oct 25").
+    /// </summary>
+    public string DateFormat { get; init; } = "{0}, {1} {2}";
+
+    /// <summary>
+    /// The date line of a day outside the current year: <c>{0}</c> is the date as <see cref="DateFormat"/> writes it, <c>{1}</c> the
+    /// year ("Sat, Oct 25, 2025").
+    /// </summary>
+    public string DateWithYearFormat { get; init; } = "{0}, {1}";
+
     /// <summary>The <c>five_hour</c> usage limit.</summary>
     public string UsageFiveHour { get; init; } = "Current session (5h)";
 
@@ -1607,6 +1625,48 @@ public sealed record ChatStrings
         var names = (DayNames ?? "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
         if (names.Length != 7) names = English.DayNames.Split(' ');
         return names[(int)day];
+    }
+
+    /// <summary>The month's short name from <see cref="MonthNames"/> (1 to 12); the English one when that is not twelve names.</summary>
+    private string MonthName(int month)
+    {
+        var names = (MonthNames ?? "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (names.Length != 12) names = English.MonthNames.Split(' ');
+        return names[month - 1];
+    }
+
+    /// <summary>
+    /// The date line of the local day of <paramref name="date"/>: <see cref="DateFormat"/>, and <see cref="DateWithYearFormat"/> with the
+    /// year when that day is not in the local year of <paramref name="now"/>. The names come from <see cref="DayNames"/> and
+    /// <see cref="MonthNames"/>, the numbers from the invariant culture: never the system's.
+    /// </summary>
+    internal string FormatDate(DateTimeOffset date, DateTimeOffset now)
+    {
+        var local = date.ToLocalTime();
+        var text = (DateFormat ?? "")
+            .Replace("{0}", DayName(local.DayOfWeek))
+            .Replace("{1}", MonthName(local.Month))
+            .Replace("{2}", local.Day.ToString(CultureInfo.InvariantCulture));
+        if (local.Year == now.ToLocalTime().Year) return text;
+        return (DateWithYearFormat ?? "").Replace("{0}", text).Replace("{1}", local.Year.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// A time whole, in local time, as the tooltip of a message's time shows it: "2026-10-25 15:45:12 GMT-3" (the offset from UTC in
+    /// hours, and minutes when it has them: "GMT+5:30"; "GMT" alone at UTC). The same in every language.
+    /// </summary>
+    internal static string FormatFullTime(DateTimeOffset time) => FormatTimeWithOffset(time.ToLocalTime());
+
+    /// <summary><see cref="FormatFullTime"/> of a time as it is, at its own offset.</summary>
+    internal static string FormatTimeWithOffset(DateTimeOffset time)
+    {
+        var text = time.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + " GMT";
+        var offset = time.Offset;
+        if (offset == TimeSpan.Zero) return text;
+        var sign = offset < TimeSpan.Zero ? "-" : "+";
+        var hours = Math.Abs(offset.Hours).ToString(CultureInfo.InvariantCulture);
+        var minutes = Math.Abs(offset.Minutes);
+        return text + sign + hours + (minutes == 0 ? "" : ":" + minutes.ToString("00", CultureInfo.InvariantCulture));
     }
 
     /// <summary><see cref="Footer"/> with what the turn reported; empty when it reported nothing.</summary>

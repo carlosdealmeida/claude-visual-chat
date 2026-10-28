@@ -609,6 +609,46 @@ public class DetachTests
         m.Window.Close();
     }
 
+    private static DateTimeOffset LocalTime(int year, int month, int day, int hour)
+    {
+        var time = new DateTime(year, month, day, hour, 0, 0, DateTimeKind.Unspecified);
+        return new DateTimeOffset(time, TimeZoneInfo.Local.GetUtcOffset(time));
+    }
+
+    [AvaloniaFact]
+    public void A_date_line_lets_go_of_the_list_and_its_item_out_of_the_window_and_comes_back_as_they_are()
+    {
+        var c = Conversation();
+        c.Clock = () => LocalTime(2026, 10, 26, 12);
+        var prompt = new UserMessageItem("first") { Timestamp = LocalTime(2026, 10, 25, 9) };
+        c.Items.Add(prompt);
+        var own = ItemHandlers(prompt);
+        var m = new Mounted(c);
+        List<string?> Lines() => m.View.GetVisualDescendants().OfType<DateSeparator>().Where(d => d.IsEffectivelyVisible)
+            .OrderBy(d => d.TranslatePoint(default, m.View)!.Value.Y).Select(d => d.Date).ToList();
+        var line = m.View.GetVisualDescendants().OfType<DateSeparator>().Single(d => ReferenceEquals(d.DataContext, prompt));
+        Assert.Equal(new[] { "Sun, Oct 25" }, Lines());
+        Assert.True(line.IsTracking);
+        Assert.True(ItemHandlers(prompt) > own);                          // it follows its item's time
+
+        m.Out();                                                          // nothing throws
+        Assert.False(line.IsTracking);                                    // it lets go of the list
+        Assert.Equal(own, ItemHandlers(prompt));                          // and of its item
+        Assert.Equal("Sun, Oct 25", line.Date);                           // and leaving drew nothing
+        // changed while out: a message of the same day before it, and the view's language
+        c.Items.Insert(0, new UserMessageItem("earlier") { Timestamp = LocalTime(2026, 10, 25, 8) });
+        m.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+
+        m.In();                                                           // back: drawn as the list is now
+        Assert.Equal(new[] { "dom, 25 de out" }, Lines());                // over the earlier one, not over this one
+        Assert.True(ItemHandlers(prompt) > own);
+        prompt.Timestamp = LocalTime(2026, 10, 26, 9);                    // and it follows its item again
+        UiHelpers.Pump();
+        Assert.Equal(new[] { "dom, 25 de out", "seg, 26 de out" }, Lines());
+        m.Window.Close();
+    }
+
     [AvaloniaFact]
     public void A_background_agents_line_lets_go_of_its_agent_out_of_the_window_and_tells_what_changed_when_back()
     {

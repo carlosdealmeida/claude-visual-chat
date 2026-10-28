@@ -21,6 +21,7 @@
   <SolidColorBrush x:Key="ClaudeChat.BorderStrong" Color="#3C3C3C" />         <!-- input.border -->
   <SolidColorBrush x:Key="ClaudeChat.Foreground" Color="#CCCCCC" />           <!-- foreground -->
   <SolidColorBrush x:Key="ClaudeChat.ForegroundMuted" Color="#9D9D9D" />      <!-- descriptionForeground -->
+  <SolidColorBrush x:Key="ClaudeChat.DisabledForeground" Color="#80CCCCCC" /> <!-- disabledForeground (VS Code's default) -->
   <SolidColorBrush x:Key="ClaudeChat.Accent" Color="#4DAAFC" />               <!-- textLink.foreground -->
   <SolidColorBrush x:Key="ClaudeChat.AccentFill" Color="#0078D4" />           <!-- button.background -->
   <SolidColorBrush x:Key="ClaudeChat.AccentForeground" Color="#FFFFFF" />     <!-- button.foreground -->

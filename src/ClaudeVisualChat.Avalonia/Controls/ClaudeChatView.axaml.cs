@@ -17,7 +17,10 @@ namespace ClaudeVisualChat.Controls;
 
 /// <summary>
 /// Draws a <see cref="ChatConversation"/> in the style of the Claude Code extension for VS Code. The list sticks to
-/// its end while the user is there and stops following when the user scrolls up. Under the list, the permission
+/// its end while the user is there (50 px from it counts), stops following when the user scrolls up and, when the user sends a message,
+/// follows it again from wherever it was (unless <see cref="ScrollToEndOnSend"/> is off); its last part fades into the background over
+/// the reply box. Each message shows when it was sent (the whole date and time in the tooltip), and a date line marks the first message
+/// and each change of day; <see cref="ShowTimestamps"/> hides both. Under the list, the permission
 /// request Claude waits on (keys 1, 2 and 3 answer while the focus is in it), the browser's or Remote Control's banner,
 /// and the reply box (Enter sends, Shift+Enter breaks the line, Esc stops Claude while it works). Over the end of the
 /// list, the <c>/context</c> and <c>/usage</c> panels (Esc closes the one open instead); over the whole view, the Agent map
@@ -113,6 +116,21 @@ public partial class ClaudeChatView : UserControl
     public static readonly DirectProperty<ClaudeChatView, bool> IsSheetOpenProperty =
         AvaloniaProperty.RegisterDirect<ClaudeChatView, bool>(nameof(IsSheetOpen), view => view.IsSheetOpen);
 
+    /// <summary>
+    /// True (the default) to bring the list to its end when the user sends a message, even after scrolling up to read: the list
+    /// follows the end again. False leaves the list where the user left it. The extension's <c>scrollToBottomOnSend</c>.
+    /// </summary>
+    public static readonly StyledProperty<bool> ScrollToEndOnSendProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(ScrollToEndOnSend), true);
+
+    /// <summary>
+    /// True (the default) to show when each message was sent, its time over it (the whole date and time in its tooltip), with a date
+    /// line before the first one and wherever the day changes. False hides the times and the date lines. Inherited by everything
+    /// inside the view. The extension's <c>showMessageTimestamps</c>.
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowTimestampsProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(ShowTimestamps), true, inherits: true);
+
     /// <summary>True while the conversation is busy; inherited, so a running tool's dot blinks only then.</summary>
     internal static readonly StyledProperty<bool> IsWorkingProperty =
         AvaloniaProperty.Register<ClaudeChatView, bool>("IsWorking", inherits: true);
@@ -134,13 +152,27 @@ public partial class ClaudeChatView : UserControl
     /// <summary>At this width or less the view is narrow (the extension's <c>max-width: 500px</c>).</summary>
     internal const double NarrowWidth = 500;
 
-    /// <summary>How close to the end (in pixels) still counts as being at the end.</summary>
-    private const double EndTolerance = 4;
+    /// <summary>How close to the end (in pixels) still counts as being at the end: coming back down this close follows the end again.</summary>
+    private const double EndTolerance = 50;
+
+    /// <summary>
+    /// Closer than this to the end (in pixels) is right at it: a scroll up that leaves it stops following, and while following the list
+    /// is brought down to it.
+    /// </summary>
+    private const double AtEndExactly = 1;
 
     /// <summary>True while the list follows new items; false once the user scrolls up.</summary>
     private bool _stickToEnd = true;
 
     private bool _scrollQueued;
+
+    // While the list does not follow its end, the item of the first row on screen, where that row began in the viewport and the list's
+    // offset then: when the rows above it change (one put in before it, one that grows, another width) and the list did not move, the
+    // list moves with it, so what the user reads stays where it was, as the extension's (the browser's scroll anchoring).
+    private object? _anchorItem;
+    private double _anchorTop;
+    private double _anchorOffset;
+    private bool _anchorQueued;
 
     private ChatConversation? _tracked;
     private bool _attached;
@@ -297,6 +329,20 @@ public partial class ClaudeChatView : UserControl
         set => SetValue(IsReadOnlyProperty, value);
     }
 
+    /// <summary>Brings the list to its end when the user sends a message (see <see cref="ScrollToEndOnSendProperty"/>). True by default.</summary>
+    public bool ScrollToEndOnSend
+    {
+        get => GetValue(ScrollToEndOnSendProperty);
+        set => SetValue(ScrollToEndOnSendProperty, value);
+    }
+
+    /// <summary>Shows the messages' times and the date lines between days (see <see cref="ShowTimestampsProperty"/>). True by default.</summary>
+    public bool ShowTimestamps
+    {
+        get => GetValue(ShowTimestampsProperty);
+        set => SetValue(ShowTimestampsProperty, value);
+    }
+
     /// <summary>
     /// True while a sheet of the touch layout is on screen (see <see cref="IsSheetOpenProperty"/>). It follows every way a sheet
     /// opens and closes: the user, <see cref="DismissSheet"/>, <see cref="CloseTopLayer"/>, a permission request, another
@@ -377,6 +423,7 @@ public partial class ClaudeChatView : UserControl
         {
             ItemList.ItemsSource = Conversation?.Items;
             _stickToEnd = true;
+            ForgetAnchor(); // its item was the other conversation's
             QueueScrollToEnd();
             Composer.Conversation = Conversation; // before the prompt, which asks the reply box about focus
             Prompt.Conversation = Conversation;
@@ -403,6 +450,7 @@ public partial class ClaudeChatView : UserControl
             SetValue(ViewIsReadOnlyProperty, true); // the thumbs under the replies go
             Feedback.Hide();                        // a rating cannot go from here: the box closes, sending nothing
             BottomPanel.IsVisible = false;
+            ListFade.IsVisible = false;         // there is no reply box to fade into
             PlanComment.Cancel();               // a plan that cannot be answered here takes no comments
             PlanDocument.ViewIsReadOnly = true; // nor opens by itself (the one that did closes)
             Composer.ViewIsReadOnly = true; // a dictation under way stops (the words stay in the box), and the microphone goes
@@ -414,6 +462,7 @@ public partial class ClaudeChatView : UserControl
         {
             SetValue(ViewIsReadOnlyProperty, false);
             BottomPanel.IsVisible = true;
+            ListFade.IsVisible = true;
             PlanDocument.ViewIsReadOnly = false;
             Composer.ViewIsReadOnly = false;
             Prompt.RestartPause(); // a request that came back must not be answered by a stray key
@@ -516,6 +565,7 @@ public partial class ClaudeChatView : UserControl
             {
                 _tracked.PropertyChanged -= OnConversationChanged;
                 _tracked.CopyRequested -= OnCopyRequested;
+                _tracked.MessageSubmitted -= OnMessageSubmitted;
                 _tracked.Items.CollectionChanged -= OnItemsChanged;
             }
             _tracked = conversation;
@@ -524,6 +574,7 @@ public partial class ClaudeChatView : UserControl
             {
                 _tracked.PropertyChanged += OnConversationChanged;
                 _tracked.CopyRequested += OnCopyRequested;
+                _tracked.MessageSubmitted += OnMessageSubmitted;
                 _tracked.Items.CollectionChanged += OnItemsChanged;
                 _tracked.Strings = Strings; // the lines it says itself come in this view's language
             }
@@ -534,6 +585,17 @@ public partial class ClaudeChatView : UserControl
             UpdateWorking();
             CloseBlockedPanel();
         }
+    }
+
+    /// <summary>
+    /// A message sent (from the reply box, the palette or the host): with <see cref="ScrollToEndOnSend"/>, the list follows its end again
+    /// and goes there, however far up the user was. It goes at once (the extension glides there for up to 2 s, then jumps).
+    /// </summary>
+    private void OnMessageSubmitted(object? sender, MessageSubmittedEventArgs e)
+    {
+        if (!ScrollToEndOnSend) return;
+        _stickToEnd = true; // first: the scroll job does nothing without it
+        QueueScrollToEnd();
     }
 
     /// <summary>
@@ -813,16 +875,78 @@ public partial class ClaudeChatView : UserControl
 
         UpdateGutter();
         UpdateSticky(); // it also comes when the rows change height: a prompt opened, more text, another width
-        var atEnd = DistanceToEnd() <= EndTolerance;
+        var distance = DistanceToEnd();
         // When the list gets taller (the request under it goes, the window grows), the scroll viewer brings the offset
         // down to keep it in range, while new items may arrive in the same pass: that is not the user going up. (A
         // scroll up smaller than that growth, in that very pass, is taken for it too; the user's scrolling comes from
         // input, between passes, so this is rare.)
         var keptInRange = e.ViewportDelta.Y > 0 && -e.OffsetDelta.Y <= e.ViewportDelta.Y + 0.5;
-        if (e.OffsetDelta.Y < 0 && !atEnd && !keptInRange) _stickToEnd = false; // the user went up to read
-        else if (atEnd || ReachedEndOfOldEstimate(e)) _stickToEnd = true;         // or came back to the end
+        var wentUp = e.OffsetDelta.Y < 0 && !keptInRange;
+        // Going up from the end by any amount (the wheel, a finger, the keys ↑, Page Up and Home, the scroll bar) is the user going up
+        // to read; a wheel that an inner scroller takes, or a sideways one, does not move the list. Coming back down to 50 px of the
+        // end follows it again, and so does the list ending up at its very end (the rows above got shorter). New rows alone, with
+        // the list not moving, change nothing: a user who went up stays up.
+        if (wentUp && distance > AtEndExactly) _stickToEnd = false;
+        else if ((e.OffsetDelta.Y != 0 && distance <= EndTolerance) || ReachedEndOfOldEstimate(e)) _stickToEnd = true;
 
-        if (_stickToEnd && !atEnd) QueueScrollToEnd(); // new items, or a better estimate of the ones above
+        if (_stickToEnd && distance > AtEndExactly) QueueScrollToEnd(); // new items, or a better estimate of the ones above
+
+        if (_stickToEnd) ForgetAnchor();
+        else QueueKeepAnchor();
+    }
+
+    /// <summary>The first row on screen becomes the one the list keeps in place while it does not follow its end.</summary>
+    private void SetAnchor()
+    {
+        _anchorItem = null;
+        var best = double.PositiveInfinity;
+        foreach (var row in ItemList.GetRealizedContainers())
+        {
+            if (!row.IsVisible || !(Top(row) is double top) || top + row.Bounds.Height <= 0.5 || top >= best) continue;
+            best = top;
+            _anchorItem = row.DataContext;
+        }
+        _anchorTop = best;
+        _anchorOffset = Scroller.Offset.Y;
+    }
+
+    private void ForgetAnchor() => _anchorItem = null;
+
+    /// <summary>
+    /// After the layout pass (not inside it, where ScrollChanged is raised, and the rows are not yet where the pass puts them): when the
+    /// list did not move since the first row on screen was taken, and that row did (rows came or grew above it), the list moves by as
+    /// much and the row is back where it was; otherwise the first row on screen now is taken. A row that left (taken out, or given to
+    /// another item) leaves its place to the first row on screen now.
+    /// </summary>
+    private void QueueKeepAnchor()
+    {
+        if (_anchorQueued) return;
+        _anchorQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _anchorQueued = false;
+            if (!_attached || _stickToEnd) return;
+            if (_anchorItem != null && Scroller.Offset.Y == _anchorOffset && RowOf(_anchorItem) is { } row
+                && Top(row) is double top && Math.Abs(top - _anchorTop) > 0.5)
+            {
+                ScrollListBy(top - _anchorTop); // its own scroll takes the row again, where it is then
+                if (Scroller.Offset.Y != _anchorOffset) return;
+            }
+            SetAnchor();
+        });
+    }
+
+    /// <summary>
+    /// The drawn row of <paramref name="item"/>, or null. Looked for among the rows drawn only (the list may have given the row that held it
+    /// to another item, when rows came before it).
+    /// </summary>
+    private Control? RowOf(object item)
+    {
+        foreach (var row in ItemList.GetRealizedContainers())
+        {
+            if (row.IsVisible && ReferenceEquals(row.DataContext, item)) return row;
+        }
+        return null;
     }
 
     /// <summary>
@@ -1030,7 +1154,7 @@ public partial class ClaudeChatView : UserControl
         Dispatcher.UIThread.Post(() =>
         {
             _scrollQueued = false;
-            if (!_stickToEnd || DistanceToEnd() <= EndTolerance) return;
+            if (!_stickToEnd || DistanceToEnd() <= AtEndExactly) return;
             var end = Math.Max(0, Scroller.Extent.Height - Scroller.Viewport.Height);
             Scroller.SetCurrentValue(ScrollViewer.OffsetProperty, new Vector(Scroller.Offset.X, end));
         });

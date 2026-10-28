@@ -378,6 +378,38 @@ public class ChatStringsTests
         Assert.Equal("Resets Sat 8:05 AM", (En with { DayNames = "x y" }).FormatUsageResets(saturday, now));
     }
 
+    [Fact]
+    public void The_date_line_names_the_day_and_the_month_and_the_year_outside_this_one()
+    {
+        DateTimeOffset Local(int year, int month, int day) => new DateTimeOffset(new DateTime(year, month, day, 15, 45, 0, DateTimeKind.Local));
+        var now = Local(2025, 10, 26);
+        Assert.Equal("Sat, Oct 25", En.FormatDate(Local(2025, 10, 25), now));
+        Assert.Equal("sáb, 25 de out", Pt.FormatDate(Local(2025, 10, 25), now));
+        Assert.Equal("Thu, Jan 1", En.FormatDate(Local(2026, 1, 1), Local(2026, 3, 1)));
+        Assert.Equal("Sat, Oct 25, 2025", En.FormatDate(Local(2025, 10, 25), Local(2026, 10, 28)));
+        Assert.Equal("sáb, 25 de out de 2025", Pt.FormatDate(Local(2025, 10, 25), Local(2026, 10, 28)));
+        Assert.Equal("Wed, Dec 31, 2025", En.FormatDate(Local(2025, 12, 31), Local(2026, 1, 1)));
+        // a list of month names that is not twelve long falls back to the English ones
+        Assert.Equal("Sat, Oct 25", (En with { MonthNames = "a b c" }).FormatDate(Local(2025, 10, 25), now));
+        // a format of the host's
+        Assert.Equal("25/Oct (Sat)", (En with { DateFormat = "{2}/{1} ({0})" }).FormatDate(Local(2025, 10, 25), now));
+    }
+
+    [Theory]
+    [InlineData(-3, 0, "2026-10-25 15:45:12 GMT-3")]
+    [InlineData(5, 30, "2026-10-25 15:45:12 GMT+5:30")]
+    [InlineData(-9, -30, "2026-10-25 15:45:12 GMT-9:30")]
+    [InlineData(0, 0, "2026-10-25 15:45:12 GMT")]
+    [InlineData(1, 0, "2026-10-25 15:45:12 GMT+1")]
+    public void The_whole_time_of_a_message_has_its_offset_from_utc(int hours, int minutes, string expected)
+    {
+        var at = new DateTimeOffset(2026, 10, 25, 15, 45, 12, new TimeSpan(hours, minutes, 0));
+        Assert.Equal(expected, ChatStrings.FormatTimeWithOffset(at));
+        // the tooltip shows it in local time
+        var local = at.ToLocalTime();
+        Assert.Equal(ChatStrings.FormatTimeWithOffset(local), ChatStrings.FormatFullTime(at));
+    }
+
     [Theory]
     [InlineData(0, "0", "0")]
     [InlineData(999, "999", "999")]

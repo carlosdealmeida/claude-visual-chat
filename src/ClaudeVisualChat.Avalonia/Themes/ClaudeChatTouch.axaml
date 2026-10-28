@@ -91,6 +91,11 @@
     <Setter Property="Padding" Value="12,9" />
   </Style>
 
+  <!-- the date line where the day changes: as on the desktop, its date in lines of 1.5 of the larger text -->
+  <Style Selector="controls|ClaudeChatView:touch TextBlock.ClaudeChatDateLabel">
+    <Setter Property="LineHeight" Value="20.25" />
+  </Style>
+
   <!-- ===== the timeline: none; the content starts at the margin ===== -->
 
   <Style Selector="controls|ChatTimelineRow:touch /template/ Ellipse#PART_Dot, controls|ChatTimelineRow:touch /template/ Rectangle#PART_Line, controls|ChatTimelineRow:touch /template/ TextBlock#PART_Stamp">

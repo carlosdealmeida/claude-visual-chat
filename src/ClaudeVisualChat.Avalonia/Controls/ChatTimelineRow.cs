@@ -13,12 +13,15 @@ namespace ClaudeVisualChat.Controls;
 /// <c>:first</c> (first entry of its list), <c>:runStart</c>, <c>:runEnd</c> (no entry of the timeline before or
 /// after) and <c>:stamped</c> (it shows a time). The dot takes its color from the classes <c>running</c>,
 /// <c>succeeded</c>, <c>failed</c> and <c>rejected</c>. In the touch layout it takes <c>:touch</c> too, and the theme
-/// draws no timeline then.
+/// draws no timeline then. Over all of it, the date line (<see cref="DateSeparator"/>) when its entry is the first of a day.
 /// </summary>
 internal sealed class ChatTimelineRow : ContentControl
 {
     public static readonly StyledProperty<string?> StampProperty =
         AvaloniaProperty.Register<ChatTimelineRow, string?>(nameof(Stamp));
+
+    public static readonly StyledProperty<string?> StampTipProperty =
+        AvaloniaProperty.Register<ChatTimelineRow, string?>(nameof(StampTip));
 
     private static readonly StyledProperty<ChatLayout> LayoutProperty =
         ClaudeChatView.LayoutProperty.AddOwner<ChatTimelineRow>();
@@ -36,6 +39,13 @@ internal sealed class ChatTimelineRow : ContentControl
     {
         get => GetValue(StampProperty);
         set => SetValue(StampProperty, value);
+    }
+
+    /// <summary>The tooltip of the time: the whole date and time; null shows none.</summary>
+    public string? StampTip
+    {
+        get => GetValue(StampTipProperty);
+        set => SetValue(StampTipProperty, value);
     }
 
     protected override Type StyleKeyOverride => typeof(ChatTimelineRow);

@@ -1420,6 +1420,291 @@ public class ChatViewTests
         window.Close();
     }
 
+    // ---- scrolling on send, and what counts as the end ----
+
+    /// <summary>A hundred messages, the list at its end, then the user up at 100 px from the top.</summary>
+    private static (ChatConversation C, ClaudeChatView View, Window Window, ScrollViewer Scroller) ReadingAbove()
+    {
+        var c = new ChatConversation();
+        for (var i = 0; i < 100; i++) c.Items.Add(new UserMessageItem("message " + i));
+        var (view, window) = Open(c);
+        var scroller = UiHelpers.Scroller(view);
+        Assert.True(UiHelpers.AtEnd(scroller));
+        scroller.Offset = new Vector(0, 100); // the user scrolls up to read
+        UiHelpers.Pump();
+        c.Items.Add(new AssistantTextItem { Text = "while reading" });
+        UiHelpers.Pump();
+        Assert.Equal(100, scroller.Offset.Y); // it no longer follows
+        return (c, view, window, scroller);
+    }
+
+    [AvaloniaFact]
+    public void Sending_scrolls_to_the_end_even_after_scrolling_up()
+    {
+        var (c, view, window, scroller) = ReadingAbove();
+        Assert.True(view.ScrollToEndOnSend); // the default
+
+        c.Submit("go on");
+        UiHelpers.Pump();
+        Assert.True(UiHelpers.AtEnd(scroller), $"offset {scroller.Offset.Y} of {scroller.Extent.Height - scroller.Viewport.Height}");
+        Assert.Contains("go on", UiHelpers.Texts(view));
+
+        c.Items.Add(new UserMessageItem("the next one")); // and it follows the end again
+        UiHelpers.Pump();
+        Assert.True(UiHelpers.AtEnd(scroller));
+        Assert.Contains("the next one", UiHelpers.Texts(view));
+        window.Close();
+
+        // typed in the reply box and sent with Enter, the same
+        (c, view, window, scroller) = ReadingAbove();
+        UiHelpers.Input(view).Text = "typed";
+        UiHelpers.Input(view).Focus();
+        UiHelpers.Press(window, Key.Enter);
+        UiHelpers.Pump();
+        Assert.Contains(c.Items, i => i is UserMessageItem { Text: "typed" });
+        Assert.True(UiHelpers.AtEnd(scroller));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void With_scroll_to_end_on_send_off_the_list_stays_put()
+    {
+        var (c, view, window, scroller) = ReadingAbove();
+        view.ScrollToEndOnSend = false;
+
+        c.Submit("go on");
+        UiHelpers.Pump();
+        Assert.Equal(100, scroller.Offset.Y); // where the user left it
+        Assert.False(UiHelpers.AtEnd(scroller));
+        window.Close();
+
+        // at the end, it follows the new message as ever
+        var at = new ChatConversation();
+        for (var i = 0; i < 100; i++) at.Items.Add(new UserMessageItem("message " + i));
+        (view, window) = Open(at);
+        view.ScrollToEndOnSend = false;
+        scroller = UiHelpers.Scroller(view);
+        at.Submit("go on");
+        UiHelpers.Pump();
+        Assert.True(UiHelpers.AtEnd(scroller));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Fifty_pixels_from_the_end_still_counts_as_the_end()
+    {
+        var c = new ChatConversation();
+        for (var i = 0; i < 100; i++) c.Items.Add(new UserMessageItem("message " + i));
+        var (view, window) = Open(c);
+        var scroller = UiHelpers.Scroller(view);
+        double End() => scroller.Extent.Height - scroller.Viewport.Height;
+
+        scroller.Offset = new Vector(0, 0); // up to read: it stops following
+        UiHelpers.Pump();
+        scroller.Offset = new Vector(0, End() - 50); // back down to 50 px from the end: that is the end, it follows again
+        UiHelpers.Pump();
+        c.Items.Add(new UserMessageItem("new one"));
+        UiHelpers.Pump();
+        Assert.True(UiHelpers.AtEnd(scroller), $"offset {scroller.Offset.Y} of {End()}");
+
+        scroller.Offset = new Vector(0, 0);
+        UiHelpers.Pump();
+        var away = End() - 80; // 80 px is not the end
+        scroller.Offset = new Vector(0, away);
+        UiHelpers.Pump();
+        c.Items.Add(new UserMessageItem("another"));
+        UiHelpers.Pump();
+        Assert.Equal(away, scroller.Offset.Y);
+
+        scroller.ScrollToEnd();
+        UiHelpers.Pump();
+        var up = End() - 30; // and going up from the end, even by less than 50 px, stops following
+        scroller.Offset = new Vector(0, up);
+        UiHelpers.Pump();
+        c.Items.Add(new UserMessageItem("one more"));
+        UiHelpers.Pump();
+        Assert.Equal(up, scroller.Offset.Y);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Without_following_the_first_message_on_screen_stays_in_place()
+    {
+        var c = new ChatConversation();
+        for (var i = 0; i < 100; i++) c.Items.Add(new UserMessageItem("message " + i));
+        var (view, window) = Open(c);
+        var scroller = UiHelpers.Scroller(view);
+        var list = UiHelpers.ItemList(view);
+        double? Top(Control row) => row.TranslatePoint(default, scroller)?.Y;
+        scroller.Offset = new Vector(0, 1500); // up, reading
+        UiHelpers.Pump();
+        var first = list.GetRealizedContainers().Where(r => r.IsVisible && Top(r) + r.Bounds.Height > 0.5).OrderBy(r => Top(r)).First();
+        var item = first.DataContext!;
+        var top = Top(first)!.Value;
+
+        c.Items.Insert(0, new UserMessageItem("put in at the top\nover\nthree lines")); // a row comes above it
+        UiHelpers.Pump();
+        var row = list.ContainerFromItem(item)!;
+        Assert.Equal(top, Top(row)!.Value, 0.5); // what the user reads did not move
+        Assert.True(scroller.Offset.Y > 1500);  // the list did
+
+        // following the end, the end is what stays
+        scroller.ScrollToEnd();
+        UiHelpers.Pump();
+        c.Items.Insert(0, new UserMessageItem("another at the top"));
+        c.Items.Add(new UserMessageItem("and one at the end"));
+        UiHelpers.Pump();
+        Assert.True(UiHelpers.AtEnd(scroller));
+        Assert.Contains("and one at the end", UiHelpers.Texts(view));
+        window.Close();
+    }
+
+    /// <summary>A time of a given local day.</summary>
+    private static DateTimeOffset LocalTime(int year, int month, int day, int hour, int minute)
+    {
+        var time = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Unspecified);
+        return new DateTimeOffset(time, TimeZoneInfo.Local.GetUtcOffset(time));
+    }
+
+    /// <summary>The date lines on screen, top to bottom.</summary>
+    private static List<string?> DateLines(Visual root) =>
+        root.GetVisualDescendants().OfType<DateSeparator>().Where(d => d.IsEffectivelyVisible)
+            .OrderBy(d => d.TranslatePoint(default, root)!.Value.Y).Select(d => d.Date).ToList();
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void A_date_line_marks_the_first_turn_and_each_day_change(ChatLayout layout)
+    {
+        // a turn sent before midnight, answered after it: "Sat, Oct 25" over the prompt, "Sun, Oct 26" over the answer of the next day
+        var c = new ChatConversation { Clock = () => LocalTime(2025, 10, 26, 10, 0) };
+        var prompt = new UserMessageItem("late question") { Timestamp = LocalTime(2025, 10, 25, 23, 50) };
+        var before = new AssistantTextItem { Text = "before midnight", Timestamp = LocalTime(2025, 10, 25, 23, 55) };
+        var after = new AssistantTextItem { Text = "after midnight", Timestamp = LocalTime(2025, 10, 26, 0, 5) };
+        c.Items.Add(prompt);
+        c.Items.Add(before);
+        c.Items.Add(new ThinkingItem { Text = "no time of its own" });
+        c.Items.Add(after);
+        c.Items.Add(new TurnFooterItem(1000, 1, 1, null, false));
+        c.Items.Add(new UserMessageItem("next morning") { Timestamp = LocalTime(2025, 10, 26, 9, 0) }); // the same day: no line
+        var view = new ClaudeChatView { Conversation = c, Layout = layout };
+        var window = layout == ChatLayout.Touch ? UiHelpers.ShowPhone(view) : UiHelpers.Show(view);
+        UiHelpers.Scroller(view).ScrollToHome();
+        UiHelpers.Pump();
+
+        Assert.Equal(new[] { "Sat, Oct 25", "Sun, Oct 26" }, DateLines(view));
+        // each at the top of its row: over the prompt's box, over the answer's text
+        DateSeparator LineOf(ChatItem item) =>
+            view.GetVisualDescendants().OfType<DateSeparator>().Single(d => d.IsEffectivelyVisible && ReferenceEquals(d.DataContext, item));
+        var box = view.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatUser") && ReferenceEquals(b.DataContext, prompt));
+        Assert.True(LineOf(prompt).TranslatePoint(new Point(0, LineOf(prompt).Bounds.Height), view)!.Value.Y <= box.TranslatePoint(default, view)!.Value.Y + 0.5);
+        var answer = view.GetVisualDescendants().OfType<MarkdownBlock>().Single(m => ReferenceEquals(m.DataContext, after));
+        Assert.True(LineOf(after).TranslatePoint(new Point(0, LineOf(after).Bounds.Height), view)!.Value.Y <= answer.TranslatePoint(default, view)!.Value.Y + 0.5);
+
+        // a message of a new day at the end gets its own; one of the same day none
+        c.Items.Add(new UserMessageItem("a day later") { Timestamp = LocalTime(2025, 10, 27, 8, 0) });
+        c.Items.Add(new AssistantTextItem { Text = "same day", Timestamp = LocalTime(2025, 10, 27, 8, 1) });
+        UiHelpers.Pump();
+        UiHelpers.Scroller(view).ScrollToEnd();
+        UiHelpers.Pump();
+        Assert.Contains("Mon, Oct 27", DateLines(view));
+        Assert.Single(DateLines(view), d => d == "Mon, Oct 27");
+
+        // in the view's language
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Contains("seg, 27 de out", DateLines(view));
+
+        // a message put in before the first takes the first line, when it is of another day
+        UiHelpers.Scroller(view).ScrollToHome();
+        UiHelpers.Pump();
+        c.Items.Insert(0, new UserMessageItem("days before") { Timestamp = LocalTime(2025, 10, 20, 9, 0) });
+        UiHelpers.Pump();
+        UiHelpers.Scroller(view).ScrollToHome(); // the list kept what was on screen in place: the new one is above it
+        UiHelpers.Pump();
+        Assert.Equal(new[] { "seg, 20 de out", "sáb, 25 de out", "dom, 26 de out" }, DateLines(view).Take(3));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_date_outside_this_year_adds_the_year()
+    {
+        var c = new ChatConversation { Clock = () => LocalTime(2026, 10, 28, 12, 0) };
+        c.Items.Add(new UserMessageItem("last year") { Timestamp = LocalTime(2025, 10, 25, 15, 45) });
+        c.Items.Add(new UserMessageItem("this year") { Timestamp = LocalTime(2026, 1, 2, 9, 0) });
+        var (view, window) = Open(c);
+        Assert.Equal(new[] { "Sat, Oct 25, 2025", "Fri, Jan 2" }, DateLines(view));
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal(new[] { "sáb, 25 de out de 2025", "sex, 2 de jan" }, DateLines(view));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Show_timestamps_off_hides_times_and_date_lines()
+    {
+        var sent = LocalTime(2026, 10, 25, 15, 45).AddSeconds(12);
+        var c = new ChatConversation { Clock = () => sent };
+        var prompt = new UserMessageItem("a question") { Timestamp = sent };
+        var answer = new AssistantTextItem { Text = "an answer", Timestamp = sent.AddMinutes(1) };
+        c.Items.Add(prompt);
+        c.Items.Add(answer);
+        var (view, window) = Open(c);
+        Assert.True(view.ShowTimestamps); // the default
+        TextBlock[] Stamps() => view.GetVisualDescendants().OfType<TextBlock>()
+            .Where(t => t.Classes.Contains("ClaudeChatStamp") && t.IsEffectivelyVisible).ToArray();
+        var row = view.GetVisualDescendants().OfType<ChatTimelineRow>().Single(r => ReferenceEquals(r.DataContext, answer));
+
+        Assert.Equal(new[] { "3:45 PM", "3:46 PM" }, Stamps().Select(t => t.Text));
+        Assert.Equal(new[] { "Sun, Oct 25" }, DateLines(view));
+        // the time's tooltip: the whole date and time, and its offset from UTC
+        Assert.Equal(ChatStrings.FormatFullTime(sent), ToolTip.GetTip(Stamps()[0]));
+        Assert.Equal(ChatStrings.FormatFullTime(sent.AddMinutes(1)), ToolTip.GetTip(Stamps()[1]));
+        Assert.StartsWith("2026-10-25 15:45:12 GMT", ChatStrings.FormatFullTime(sent));
+        Assert.Contains(":stamped", row.Classes);
+
+        view.ShowTimestamps = false;
+        UiHelpers.Pump();
+        Assert.Empty(Stamps());
+        Assert.Empty(DateLines(view));
+        Assert.DoesNotContain(":stamped", row.Classes); // the answer takes the room of an answer without a time
+
+        view.ShowTimestamps = true;
+        UiHelpers.Pump();
+        Assert.Equal(2, Stamps().Length);
+        Assert.Equal(new[] { "Sun, Oct 25" }, DateLines(view));
+        window.Close();
+
+        // in the touch layout too, where the date line is all there is of the times
+        var touch = UiHelpers.TouchView(c);
+        window = UiHelpers.ShowPhone(touch);
+        Assert.Equal(new[] { "dom, 25 de out" }, DateLines(touch));
+        touch.ShowTimestamps = false;
+        UiHelpers.Pump();
+        Assert.Empty(DateLines(touch));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_subagents_steps_have_no_date_line()
+    {
+        var c = new ChatConversation { Clock = () => LocalTime(2026, 10, 25, 12, 0) };
+        c.Items.Add(new UserMessageItem("look around") { Timestamp = LocalTime(2026, 10, 25, 11, 0) });
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("toolu_a", "Agent", J("{\"description\":\"Look around\",\"prompt\":\"go\"}"))));
+        var agent = c.Items.OfType<ToolCallItem>().Single();
+        // the agent's own first message and step, of another day even: the first of their list, yet not the conversation's
+        var asked = new UserMessageItem("asked of the agent") { Timestamp = LocalTime(2026, 10, 26, 0, 5) };
+        var step = new AssistantTextItem { Text = "a step of the agent", Timestamp = LocalTime(2026, 10, 26, 0, 6) };
+        agent.Children.Add(asked);
+        agent.Children.Add(step);
+        agent.IsExpanded = true;
+        var (view, window) = Open(c);
+        Assert.Contains("asked of the agent", UiHelpers.Texts(view)); // the steps are drawn
+        Assert.Contains(view.GetVisualDescendants().OfType<DateSeparator>(), d => ReferenceEquals(d.DataContext, step));
+        Assert.Equal(new[] { "Sun, Oct 25" }, DateLines(view)); // the prompt's only
+        window.Close();
+    }
+
     // ---- the prompt pinned at the top ----
 
     /// <summary>Two turns, each a prompt and a long reply in 40 paragraphs, so the rows above the screen are not drawn.</summary>

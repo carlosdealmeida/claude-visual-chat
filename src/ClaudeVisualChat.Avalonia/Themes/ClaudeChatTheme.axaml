@@ -33,6 +33,7 @@
     <SolidColorBrush x:Key="ClaudeChat.BorderStrong" Color="#333536" />         <!-- input.border -->
     <SolidColorBrush x:Key="ClaudeChat.Foreground" Color="#BFBFBF" />           <!-- foreground -->
     <SolidColorBrush x:Key="ClaudeChat.ForegroundMuted" Color="#8C8C8C" />      <!-- descriptionForeground -->
+    <SolidColorBrush x:Key="ClaudeChat.DisabledForeground" Color="#555555" />   <!-- disabledForeground: the date line -->
     <SolidColorBrush x:Key="ClaudeChat.Accent" Color="#48A0C7" />               <!-- textLink.foreground -->
     <SolidColorBrush x:Key="ClaudeChat.AccentFill" Color="#297AA0" />           <!-- button.background -->
     <SolidColorBrush x:Key="ClaudeChat.AccentForeground" Color="#FFFFFF" />     <!-- button.foreground -->
@@ -233,45 +234,52 @@
     <!-- one template per item; the list picks the one that matches -->
     <controls:ChatItemTemplates x:Key="ClaudeChat.ItemTemplates">
 
-      <!-- the user's message: its time, then a box as wide as the list (in the touch layout, no time and a bubble at the
-           right: the class touch, from the view's layout, tells the styles of Themes/ClaudeChatTouch.axaml) -->
+      <!-- the user's message: the date line when it is the first message of a day, its time (the whole date and time in its
+           tooltip), then a box as wide as the list (in the touch layout, no time and a bubble at the right: the class touch, from
+           the view's layout, tells the styles of Themes/ClaudeChatTouch.axaml) -->
       <DataTemplate DataType="cvc:UserMessageItem">
-        <StackPanel Classes="ClaudeChatUserTurn"
-                    Classes.touch="{Binding $parent[controls:ClaudeChatView].Layout, Converter={x:Static controls:ChatConverters.IsTouch}}">
-          <!-- the time keeps its own visibility (from its text); this holder is what the touch layout hides -->
-          <Panel Classes="ClaudeChatUserStamp">
-            <TextBlock Classes="ClaudeChatStamp"
-                       IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-              <TextBlock.Text>
-                <MultiBinding Converter="{x:Static controls:ChatConverters.Time}">
-                  <Binding Path="Timestamp" />
-                  <Binding Path="$parent[controls:ClaudeChatView].Strings" />
-                </MultiBinding>
-              </TextBlock.Text>
-            </TextBlock>
-          </Panel>
-          <Border Classes="ClaudeChatUser">
-            <!-- what it took, images then files, in one row above the text (as the extension's), then the text: folded at 60 px
-                 behind "Show more" when it is taller, open or folded as the item says -->
-            <StackPanel>
-              <controls:MessageAttachments Images="{Binding Images}" Files="{Binding Files}"
-                                           Classes.alone="{Binding Text, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
-              <controls:FoldedText IsExpanded="{Binding IsTextExpanded, Mode=TwoWay}"
-                                   IsVisible="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                <SelectableTextBlock Classes="ClaudeChatUserText"
-                                     Text="{Binding Text, Converter={x:Static controls:ChatConverters.Clip}}" />
-              </controls:FoldedText>
-            </StackPanel>
-          </Border>
+        <StackPanel>
+          <controls:DateSeparator />
+          <StackPanel Classes="ClaudeChatUserTurn"
+                      Classes.touch="{Binding $parent[controls:ClaudeChatView].Layout, Converter={x:Static controls:ChatConverters.IsTouch}}">
+            <!-- the time keeps its own visibility (from its text); this holder is what the touch layout hides -->
+            <Panel Classes="ClaudeChatUserStamp">
+              <TextBlock Classes="ClaudeChatStamp"
+                         IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                         ToolTip.Tip="{Binding Timestamp, Converter={x:Static controls:ChatConverters.FullTime}}">
+                <TextBlock.Text>
+                  <MultiBinding Converter="{x:Static controls:ChatConverters.Time}">
+                    <Binding Path="Timestamp" />
+                    <Binding Path="$parent[controls:ClaudeChatView].Strings" />
+                    <Binding Path="$parent[controls:ClaudeChatView].ShowTimestamps" />
+                  </MultiBinding>
+                </TextBlock.Text>
+              </TextBlock>
+            </Panel>
+            <Border Classes="ClaudeChatUser">
+              <!-- what it took, images then files, in one row above the text (as the extension's), then the text: folded at 60 px
+                   behind "Show more" when it is taller, open or folded as the item says -->
+              <StackPanel>
+                <controls:MessageAttachments Images="{Binding Images}" Files="{Binding Files}"
+                                             Classes.alone="{Binding Text, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+                <controls:FoldedText IsExpanded="{Binding IsTextExpanded, Mode=TwoWay}"
+                                     IsVisible="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                  <SelectableTextBlock Classes="ClaudeChatUserText"
+                                       Text="{Binding Text, Converter={x:Static controls:ChatConverters.Clip}}" />
+                </controls:FoldedText>
+              </StackPanel>
+            </Border>
+          </StackPanel>
         </StackPanel>
       </DataTemplate>
 
       <DataTemplate DataType="cvc:AssistantTextItem">
-        <controls:ChatTimelineRow>
+        <controls:ChatTimelineRow StampTip="{Binding Timestamp, Converter={x:Static controls:ChatConverters.FullTime}}">
           <controls:ChatTimelineRow.Stamp>
             <MultiBinding Converter="{x:Static controls:ChatConverters.Time}">
               <Binding Path="Timestamp" />
               <Binding Path="$parent[controls:ClaudeChatView].Strings" />
+              <Binding Path="$parent[controls:ClaudeChatView].ShowTimestamps" />
             </MultiBinding>
           </controls:ChatTimelineRow.Stamp>
           <controls:MarkdownBlock Classes="ClaudeChatAnswer" Markdown="{Binding Text}" />
@@ -461,6 +469,17 @@
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
   </Style>
 
+  <!-- the date line where the day changes: the date at .9em in disabledForeground, its wavy rules in the same color (DateSeparator
+       lays them out: 7 px tall, 32 px at least, 10 px from the date, 8 px over and under) -->
+  <Style Selector="controls|DateSeparator">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.DisabledForeground}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatDateLabel">
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.CodeFontSize}" />
+    <Setter Property="LineHeight" Value="17.55" />
+    <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+
   <!-- a flat toggle: a thought, or a subagent's work -->
   <Style Selector="ToggleButton.ClaudeChatDisclosure">
     <Setter Property="Background" Value="Transparent" />
@@ -510,20 +529,24 @@
 
   <!-- ===== the timeline: a dot at 9 px, the line at 12 px, the content at 30 px; 8 px over and under ===== -->
 
+  <!-- over the entry, the date line when it is the first of a day (it hides itself otherwise): the line of the run stops over it -->
   <Style Selector="controls|ChatTimelineRow">
     <Setter Property="Template">
       <ControlTemplate>
-        <Panel>
-          <Rectangle Name="PART_Line" Width="1" HorizontalAlignment="Left" Margin="12,0,0,0"
-                     Fill="{DynamicResource ClaudeChat.TimelineLine}" />
-          <Ellipse Name="PART_Dot" Width="7" Height="7" HorizontalAlignment="Left" VerticalAlignment="Top"
-                   Margin="9,15,0,0" Fill="{DynamicResource ClaudeChat.Dot}" />
-          <TextBlock Name="PART_Stamp" Classes="ClaudeChatStamp" VerticalAlignment="Top"
-                     Text="{TemplateBinding Stamp}" IsVisible="False" />
-          <ContentPresenter Name="PART_ContentPresenter" Margin="30,8,0,8"
-                            Content="{TemplateBinding Content}"
-                            ContentTemplate="{TemplateBinding ContentTemplate}" />
-        </Panel>
+        <DockPanel>
+          <controls:DateSeparator Name="PART_Date" DockPanel.Dock="Top" />
+          <Panel>
+            <Rectangle Name="PART_Line" Width="1" HorizontalAlignment="Left" Margin="12,0,0,0"
+                       Fill="{DynamicResource ClaudeChat.TimelineLine}" />
+            <Ellipse Name="PART_Dot" Width="7" Height="7" HorizontalAlignment="Left" VerticalAlignment="Top"
+                     Margin="9,15,0,0" Fill="{DynamicResource ClaudeChat.Dot}" />
+            <TextBlock Name="PART_Stamp" Classes="ClaudeChatStamp" VerticalAlignment="Top"
+                       Text="{TemplateBinding Stamp}" ToolTip.Tip="{TemplateBinding StampTip}" IsVisible="False" />
+            <ContentPresenter Name="PART_ContentPresenter" Margin="30,8,0,8"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}" />
+          </Panel>
+        </DockPanel>
       </ControlTemplate>
     </Setter>
   </Style>
@@ -611,6 +634,21 @@
       <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
         <GradientStop Offset="0" Color="Black" />
         <GradientStop Offset="1" Color="Transparent" />
+      </LinearGradientBrush>
+    </Setter>
+  </Style>
+
+  <!-- the fade at the bottom of the view: 150 px from nothing to the background, over the end of the list and under the reply box,
+       so the list dims into the background over the box -->
+  <Style Selector="Border.ClaudeChatListFade">
+    <Setter Property="Height" Value="150" />
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+    <Setter Property="IsHitTestVisible" Value="False" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
+    <Setter Property="OpacityMask">
+      <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="Transparent" />
+        <GradientStop Offset="1" Color="Black" />
       </LinearGradientBrush>
     </Setter>
   </Style>

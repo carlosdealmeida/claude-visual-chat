@@ -31,6 +31,9 @@
           </controls:ChatItemList.Footer>
         </controls:ChatItemList>
       </ScrollViewer>
+      <!-- the extension's fade: the last 150 px of the view go from nothing to the background, over the list and under the reply
+           box (drawn after the one, before the other), so the list dims into the background over the box. Gone while read-only -->
+      <Border Name="ListFade" Classes="ClaudeChatListFade" Grid.RowSpan="3" />
       <!-- the prompt of the turn on screen, pinned to the top of the list while its own row is above it; the next prompt pushes it
            out. Over the list only: every panel and layer comes over it -->
       <controls:StickyPrompt Name="Sticky" VerticalAlignment="Top" />

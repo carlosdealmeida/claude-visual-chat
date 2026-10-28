@@ -276,6 +276,31 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_scroll_on_send_and_timestamps_api_exists()
+    {
+        // the extension's scrollToBottomOnSend and showMessageTimestamps (0.6.0): two properties of the view, both on by default
+        var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
+        foreach (var name in new[] { "ScrollToEndOnSend", "ShowTimestamps" })
+        {
+            var property = view.GetProperty(name);
+            Assert.Equal(typeof(bool), property?.PropertyType);
+            Assert.True(property!.SetMethod!.IsPublic);
+            var field = view.GetField(name + "Property");
+            Assert.Equal(typeof(Avalonia.StyledProperty<bool>), field?.FieldType);
+            Assert.True(((Avalonia.StyledProperty<bool>)field!.GetValue(null)!).GetDefaultValue(view));
+        }
+        // the date line's texts; the line itself stays internal
+        foreach (var text in new[] { "MonthNames", "DateFormat", "DateWithYearFormat" })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.DoesNotContain("ClaudeVisualChat.Controls.DateSeparator", names);
+    }
+
+    [Fact]
     public void The_response_actions_api_exists()
     {
         // the actions under a reply (0.6.0): the bookmark and the line's uuid on the reply, a link event for the host and the rating
