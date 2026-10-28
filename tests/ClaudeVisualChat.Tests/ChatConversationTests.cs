@@ -2843,6 +2843,23 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void A_message_is_a_card_only_from_the_sender_it_claims()
+    {
+        var c = new ChatConversation();
+        const string channel = "<channel source=\"slack\">\nhi\n</channel>";
+        const string agent = "<agent-message from=\"reviewer\">\nlooks good\n</agent-message>";
+        c.AppendLine(UserLineWith(channel, "{\"kind\":\"peer\",\"name\":\"slack\"}"));      // a channel's message from a peer
+        c.AppendLine(UserLineWith(channel, "{\"kind\":\"human\"}"));
+        c.AppendLine(UserLineWith(agent, "{\"kind\":\"peer\",\"name\":\"reviewer\"}"));     // an agent's message from no task
+        c.AppendLine(UserLineWith(agent, "{\"kind\":\"channel\"}"));
+        c.AppendLine(UserLineWith(agent, "{\"kind\":\"human\"}"));
+        c.AppendLine(UserLineWith(CrossSession, "{\"kind\":\"channel\"}"));
+
+        Assert.Equal(6, c.Items.Count);
+        Assert.All(c.Items, i => Assert.IsType<UserMessageItem>(i));
+    }
+
+    [Fact]
     public void A_wrapped_notice_is_a_card_only_without_an_origin()
     {
         var c = new ChatConversation();

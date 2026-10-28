@@ -1582,20 +1582,25 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
-    /// Whether the origin of a line is the sort of sender the message says. A channel's message comes from a channel. Any other comes from
-    /// a peer: an agent's message from one that is a task of this session (the origin names the task), another session's from one that
-    /// is not; and a note that calls the sender an agent of this session needs the task.
+    /// Whether the origin of a line is the sender the message claims. A message from a channel needs a channel's origin. A message
+    /// from an agent needs a peer that is a task of this session (the origin names the task); a message from another session needs a
+    /// peer that is not. Anything else (a human's line, say) does not fit.
     /// </summary>
     private static bool OriginFits(MessageOrigin origin, TaggedMessage message)
     {
-        if (message.Kind == TaggedMessage.ChannelKind) return origin.Kind == "channel";
-        if (origin.Kind != "peer") return false;
-        var senderIsATask = message.Kind == TaggedMessage.AgentKind;
-        if (senderIsATask != (origin.SenderTaskId != null)) return false;
-        return senderIsATask || message.Tail != "descendant";
+        switch (message.Kind)
+        {
+            case TaggedMessage.ChannelKind:
+                return origin.Kind == "channel";
+            case TaggedMessage.AgentKind:
+                return origin.Kind == "peer" && !string.IsNullOrEmpty(origin.SenderTaskId);
+            case TaggedMessage.CrossSessionKind:
+                return origin.Kind == "peer" && string.IsNullOrEmpty(origin.SenderTaskId);
+            default:
+                return false;
+        }
     }
 
-    /// <summary>The item for a tagged message; with <paramref name="origin"/> null it does not know the sender.</summary>
     private static ExternalMessageItem ExternalMessage(TaggedMessage message, string? originName, MessageOrigin? origin)
     {
         string? sender = null;

@@ -53,6 +53,77 @@ public class TaggedMessageTests
     }
 
     [Fact]
+    public void A_worktree_in_a_task_notification_decodes_its_path_and_its_branch()
+    {
+        var text = Notification.Replace(
+            "<usage>", "<worktree><worktreePath>C:\\w\\a&amp;b</worktreePath><worktreeBranch>fix/a&amp;b&lt;2&gt;</worktreeBranch></worktree>\n<usage>");
+
+        var message = TaggedMessage.Read(text)!;
+
+        Assert.True(message.Columns);
+        var worktree = message.Sections.Single(s => s.Label == "worktree").Lines!;
+        Assert.Equal(new[] { "worktreePath", "worktreeBranch" }, worktree.Select(l => l.Label).ToArray());
+        Assert.Equal(new[] { "C:\\w\\a&b", "fix/a&b<2>" }, worktree.Select(l => l.Text).ToArray());
+    }
+
+    [Fact]
+    public void Text_between_the_parts_of_a_task_notification_is_other_text_and_a_bad_list_keeps_the_raw_text()
+    {
+        var loose = TaggedMessage.Read(Notification.Replace("<note>", "stray words\n<note>"))!;
+        Assert.True(loose.Columns);
+        Assert.Contains(loose.Sections, s => s.Label == "other-text" && s.Text == "stray words");
+
+        var notANumber = TaggedMessage.Read(Notification.Replace("<tool_uses>3</tool_uses>", "<tool_uses>three</tool_uses>"))!;
+        Assert.False(notANumber.Columns);
+        Assert.Contains("<tool_uses>three</tool_uses>", Assert.Single(notANumber.Sections).Text);
+
+        var twice = TaggedMessage.Read(Notification.Replace("<note>", "<status>failed</status>\n<note>"))!;
+        Assert.False(twice.Columns);                                         // a part said twice is no list
+    }
+
+    [Fact]
+    public void Broken_markup_is_not_a_tagged_message()
+    {
+        Assert.Null(TaggedMessage.Read("<agent-message from=\"a\">\nfirst\n"));                          // never closed
+        Assert.Null(TaggedMessage.Read("<agent-message from=\"a>\nfirst\n</agent-message>"));            // the quote never closes
+        Assert.Null(TaggedMessage.Read("<agent-message from=\"a\" from=\"b\">\nfirst\n</agent-message>")); // the same attribute twice
+        Assert.Null(TaggedMessage.Read("<agent-message from=a>\nfirst\n</agent-message>"));              // a value without quotes
+        Assert.Null(TaggedMessage.Read("<agent-message from=\"a\"from-x=\"b\">\nfirst\n</agent-message>"));
+        Assert.Null(TaggedMessage.Read("<channel>\nhi\n</channel>"));                                    // a channel names its source
+        Assert.Null(TaggedMessage.Read("<task-notification>\n<summary>done</summary>\n</status>\n</task-notification>"));   // a close tag alone
+        Assert.Null(TaggedMessage.Read("<task-notification>\n<summary>done\n</task-notification>"));     // a part never closed
+        Assert.Null(TaggedMessage.Read("<task-notification>\n<summary>done</summary>\n"));
+        Assert.Null(TaggedMessage.Read("<bash-stdout>a</bash-stdout><bash-stdout>b</bash-stdout>"));
+        Assert.Null(TaggedMessage.Read("<bash-stdout>a</bash-stdout> and more"));
+        Assert.Null(TaggedMessage.Read("<"));
+        Assert.Null(TaggedMessage.Read("< agent-message from=\"a\">\nfirst\n</agent-message>"));
+    }
+
+    [Fact]
+    public void A_message_body_may_hold_markup_of_its_own_and_entities_are_decoded()
+    {
+        var message = TaggedMessage.Read("<cross-session-message from=\"s\">\nuse List<int> &amp; <b>bold</b>\n</cross-session-message>")!;
+        Assert.Equal("use List<int> & <b>bold</b>", message.Body);
+        Assert.Null(TaggedMessage.Read("<cross-session-message from=\"s\">\n<cross-session-message from=\"t\">\nx\n</cross-session-message>"));
+
+        var result = TaggedMessage.Read(Notification.Replace("a.txt: a cat", "a.txt: a List<int> &lt;cat&gt;"))!;
+        Assert.True(result.Columns);
+        Assert.Equal("a.txt: a List<int> <cat>\nb.txt: rain", result.Sections.Single(s => s.Label == "result").Text);
+    }
+
+    [Fact]
+    public void A_long_hostile_text_is_read_quickly()
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Null(TaggedMessage.Read("<task-notification>\n" + string.Concat(Enumerable.Repeat("<a b=\"c\" ", 20000))));
+        Assert.Null(TaggedMessage.Read("<agent-message from=\"" + new string('x', 200000)));
+        Assert.Null(TaggedMessage.Read("<task-notification>" + string.Concat(Enumerable.Repeat("</", 50000))));
+        Assert.Null(TaggedMessage.Read(string.Concat(Enumerable.Repeat("<bash-stdout>x</bash-stdout>", 20000))));
+        Assert.NotNull(TaggedMessage.Read("<teammate-message>\n" + string.Concat(Enumerable.Repeat("<x &amp; ", 50000)) + "\n</teammate-message>"));
+        Assert.True(watch.Elapsed < System.TimeSpan.FromSeconds(10), watch.Elapsed.ToString());
+    }
+
+    [Fact]
     public void A_task_notification_without_a_summary_is_not_a_message()
     {
         Assert.Null(TaggedMessage.Read("<task-notification>\n<task-id>t1</task-id>\n<status>completed</status>\n</task-notification>"));

@@ -5,300 +5,481 @@ using System.Text;
 
 namespace ClaudeVisualChat.Protocol
 {
-    /// <summary>One labelled part of a tagged message; <see cref="Lines"/> is set when the part is a list of its own (the usage of a task).</summary>
+    /// <summary>A part of a tagged message: its name (null for a part that has none) and its text; a part that is a list holds it in <see cref="Lines"/>.</summary>
     internal sealed class TaggedSection
     {
         public TaggedSection(string? label, string text)
         {
             Label = label;
-            Text = text;
+            Text = text ?? "";
         }
 
-        /// <summary>A key (<c>task-id</c>, <c>usage</c>, <c>output</c>…) that the strings give a text to; null for a part with no name.</summary>
+        /// <summary>The name of the part (<c>task-id</c>, <c>output</c>…); null for a part with no name (a lead line, a body, a note).</summary>
         public string? Label { get; }
 
+        /// <summary>The text of the part, entities decoded and line breaks kept.</summary>
         public string Text { get; }
 
+        /// <summary>The names and values inside the part, when it is a list (the usage or the worktree of a task); null otherwise.</summary>
         public IReadOnlyList<TaggedSection>? Lines { get; init; }
     }
 
     /// <summary>
-    /// A user text that is exactly one tagged block, as the claude writes them when something other than the user speaks: a message from
-    /// an agent (<c>agent-message</c>), from another session (<c>cross-session-message</c>), from a channel (<c>channel</c>), the notice of a
-    /// task (<c>task-notification</c>), or a wrapped notice (<c>teammate-message</c>, <c>bash-stdout</c>…). Text with a second block, or
-    /// with anything else around the block, is not one: it is the user's.
-    ///
-    /// <para>
-    /// The reader is a small scanner of tags written for this component. A <b>message block</b> is, in this order: an optional line that
-    /// introduces it; an opening tag alone on its line, with the attributes its sort allows; the message; the closing tag alone on its line;
-    /// and, optionally, a blank line and one line of note for the claude. A <b>task notice</b> is a <c>task-notification</c> tag holding one
-    /// tag per fact, each at most once, and then, maybe, a text. A <b>wrapped notice</b> is one known tag around the whole text.
-    /// </para>
+    /// A user text that is exactly one tagged block: a message from an agent of this session, from another Claude session or from a
+    /// channel, the notice of a background task, or a wrapped notice (a teammate's message, a command's output…).
     /// </summary>
+    /// <remarks>
+    /// <para>How it reads. <see cref="LightMarkup"/> scans the text into elements (an open tag, its attributes, the raw text up to its close
+    /// tag). The name of the first tag picks a <see cref="Shape"/> from <see cref="Shapes"/>, a table that says, for each block the claude
+    /// writes, its kind, its family, the attributes it may have and must have, which attribute names the sender, and the line that may lead
+    /// it. One reader per family then checks what the table says and builds the message:</para>
+    /// <list type="bullet">
+    /// <item><b>message</b> (<c>agent-message</c>, <c>cross-session-message</c>, <c>channel</c>): the body sits on lines of its own; a lead
+    /// line may come before the tag, and then the note that warns it is not from the user must follow, after a blank line;</item>
+    /// <item><b>notice</b> (<c>teammate-message</c>, <c>tick</c>…): any attributes, any content, nothing around it;</item>
+    /// <item><b>output</b> (<c>bash-stdout</c>, <c>bash-stderr</c>, <c>bash-exit-code</c>): one to three of them side by side, each once;</item>
+    /// <item><b>task</b> (<c>task-notification</c>): parts named in <see cref="TaskParts"/>, its summary required; a part or a shape it does
+    /// not know keeps the notice as raw text.</item>
+    /// </list>
+    /// <para>Limits it sets itself: names of up to 64 characters and up to 32 attributes (<see cref="LightMarkup"/>), up to 64 pieces inside
+    /// a task notice and 16 inside one of its lists, numbers in a usage of up to 19 digits.</para>
+    /// </remarks>
     internal sealed class TaggedMessage
     {
+        /// <summary>The kind of a message from an agent of this session (<c>&lt;agent-message&gt;</c>).</summary>
         public const string AgentKind = "agent";
+
+        /// <summary>The kind of a message from another Claude session (<c>&lt;cross-session-message&gt;</c>).</summary>
         public const string CrossSessionKind = "cross-session";
+
+        /// <summary>The kind of a message from a channel (<c>&lt;channel&gt;</c>).</summary>
         public const string ChannelKind = "channel";
+
+        /// <summary>The kind of the notice of a background task (<c>&lt;task-notification&gt;</c>).</summary>
         public const string TaskKind = "task-notification";
 
-        private const string TaskTag = "task-notification";
-        private const int PreviewLength = 512;
-        private const int HandleLength = 20;
-        private const int NameLength = 64;
+        /// <summary><see cref="Tail"/> when nothing follows the block.</summary>
+        public const string NoTail = "none";
 
-        // the tag of each sort of message block, and the attributes it may carry, in the order they are written
-        private static readonly string[] AgentAttributes = { "from" };
-        private static readonly string[] CrossSessionAttributes = { "from", "from-session", "hop-chain", "from-name", "from-mode" };
+        /// <summary><see cref="Tail"/> when the note that says the message is not from the user follows the block.</summary>
+        public const string PeerTail = "peer";
 
-        private static readonly string[] WrappedTags =
+        /// <summary>How the note after a message from a peer or a channel starts.</summary>
+        private const string NoteStart = "IMPORTANT: This is NOT from your user";
+
+        /// <summary>The section names of a task notice: what text follows it, and text inside it that is none of its parts.</summary>
+        private const string AfterLabel = "after-notification";
+
+        private const string OtherTextLabel = "other-text";
+
+        /// <summary>The most pieces read inside a task notice, and inside one of its lists.</summary>
+        private const int MaxTaskPieces = 64;
+
+        private const int MaxFacts = 16;
+
+        /// <summary>The longest number in the usage of a task (a long).</summary>
+        private const int MaxDigits = 19;
+
+        /// <summary>The longest short name of a sender; a longer one is cut and ends in "…".</summary>
+        public const int HandleLength = 20;
+
+        /// <summary>The longest full name of a sender kept; a longer one is cut and ends in "…".</summary>
+        public const int PlainNameLength = 100;
+
+        /// <summary>The longest preview; a longer one is cut and ends in "…".</summary>
+        public const int PreviewLength = 512;
+
+        private const string Ellipsis = "…";
+
+        private TaggedMessage()
         {
-            "teammate-message", "bash-stdout", "bash-stderr", "tick", "mcp-resource-update", "mcp-polling-update", "local-command-caveat",
-        };
-
-        // the facts of a task notice, and the ones whose text is one plain line
-        private static readonly HashSet<string> TaskFacts = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "task-id", "tool-use-id", "task-type", "output-file", "status", "summary", "note", "event", "result", "usage", "worktree",
-        };
-
-        private static readonly HashSet<string> PlainFacts = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "task-id", "tool-use-id", "task-type", "output-file", "status",
-        };
-
-        private static readonly HashSet<string> UsageFacts = new HashSet<string>(StringComparer.Ordinal) { "subagent_tokens", "tool_uses", "duration_ms" };
-
-        private static readonly HashSet<string> WorktreeFacts = new HashSet<string>(StringComparer.Ordinal) { "worktreePath", "worktreeBranch" };
+        }
 
         /// <summary><see cref="AgentKind"/>, <see cref="CrossSessionKind"/>, <see cref="ChannelKind"/>, <see cref="TaskKind"/>, or the tag of a wrapped notice.</summary>
         public string Kind { get; private init; } = "";
 
-        /// <summary>The sender the tag names (<c>from</c>, <c>from-name</c>, <c>source</c>), with its entities decoded; null when it names none.</summary>
+        /// <summary>The sender the block names (the name, the session, the source of a channel), decoded; null when it names none.</summary>
         public string? FromName { get; private init; }
 
-        /// <summary>The message; for the notice of a task, its summary.</summary>
+        /// <summary>The message itself, line breaks kept; for the notice of a task, its summary; for a wrapped notice, its first part.</summary>
         public string Body { get; private init; } = "";
 
-        /// <summary>The attributes of the opening tag, in the order written.</summary>
+        /// <summary>The attributes of the tag in the order written, their values decoded.</summary>
         public IReadOnlyList<KeyValuePair<string, string>> Attributes { get; private init; } = Array.Empty<KeyValuePair<string, string>>();
 
-        /// <summary>
-        /// Who the note after the block says wrote it: <c>none</c> (no note), <c>peer</c> (another session or a channel) or <c>descendant</c>
-        /// (an agent of this same session).
-        /// </summary>
-        public string Tail { get; private init; } = "none";
+        /// <summary>What follows the block: <see cref="NoTail"/> or <see cref="PeerTail"/>.</summary>
+        public string Tail { get; private init; } = NoTail;
 
-        /// <summary>The parts of the message, for a card that does not know its sender and for the notice of a task.</summary>
+        /// <summary>The parts, for the card that does not know the sender: lead, body and note of a message; the parts of a notice.</summary>
         public IReadOnlyList<TaggedSection> Sections { get; private init; } = Array.Empty<TaggedSection>();
 
-        /// <summary>The <see cref="Sections"/> are a list of names and values.</summary>
+        /// <summary>Whether the parts read as a list of names and values (the notice of a task, when every part is one it knows).</summary>
         public bool Columns { get; private init; }
 
-        /// <summary>A wrapped notice: its tag says what it is, and nobody needs to be named.</summary>
-        public bool IsWrappedNotice => Array.IndexOf(WrappedTags, Kind) >= 0;
+        /// <summary>Whether it is a wrapped notice (a teammate's message, a command's output…) rather than a message from a sender.</summary>
+        public bool IsWrappedNotice { get; private init; }
 
-        /// <summary>The message the text is, or null when it is not exactly one tagged block.</summary>
+        // ---- the table ----
+
+        private enum Family
+        {
+            Message,
+            Notice,
+            Output,
+            Task,
+        }
+
+        /// <summary>What the table says of one tag.</summary>
+        private sealed class Shape
+        {
+            public Shape(Family family, string kind)
+            {
+                Family = family;
+                Kind = kind;
+            }
+
+            public Family Family { get; }
+
+            public string Kind { get; }
+
+            /// <summary>The attributes the tag may have; null for any.</summary>
+            public string[]? Allowed { get; init; }
+
+            /// <summary>The attribute it must have; null for none.</summary>
+            public string? Required { get; init; }
+
+            /// <summary>The attributes that name the sender, the first one present winning.</summary>
+            public string[] Sender { get; init; } = Array.Empty<string>();
+
+            /// <summary>The line that may come before the tag; <c>{name}</c> stands for the value of that attribute.</summary>
+            public string? Lead { get; init; }
+
+            /// <summary>For an output: the name of its part.</summary>
+            public string? Part { get; init; }
+        }
+
+        private static readonly Dictionary<string, Shape> Shapes = new Dictionary<string, Shape>(StringComparer.Ordinal)
+        {
+            ["agent-message"] = new Shape(Family.Message, AgentKind)
+            {
+                Allowed = new[] { "from" }, Required = "from", Sender = new[] { "from" },
+            },
+            ["cross-session-message"] = new Shape(Family.Message, CrossSessionKind)
+            {
+                Allowed = new[] { "from", "from-session", "from-name", "from-mode", "hop-chain" }, Required = "from",
+                Sender = new[] { "from-name", "from" }, Lead = "Another Claude session sent a message:",
+            },
+            ["channel"] = new Shape(Family.Message, ChannelKind)
+            {
+                Required = "source", Sender = new[] { "source" }, Lead = "A message arrived from {source}:",
+            },
+            ["teammate-message"] = new Shape(Family.Notice, "teammate-message"),
+            ["tick"] = new Shape(Family.Notice, "tick"),
+            ["mcp-resource-update"] = new Shape(Family.Notice, "mcp-resource-update"),
+            ["mcp-polling-update"] = new Shape(Family.Notice, "mcp-polling-update"),
+            ["local-command-caveat"] = new Shape(Family.Notice, "local-command-caveat"),
+            ["bash-stdout"] = new Shape(Family.Output, "bash-stdout") { Part = "output" },
+            ["bash-stderr"] = new Shape(Family.Output, "bash-stderr") { Part = "error-output" },
+            ["bash-exit-code"] = new Shape(Family.Output, "bash-exit-code") { Part = "exit-code" },
+            ["task-notification"] = new Shape(Family.Task, TaskKind),
+        };
+
+        /// <summary>How the content of a part of a task notice reads.</summary>
+        private enum Fill
+        {
+            /// <summary>Text, line breaks kept.</summary>
+            Text,
+
+            /// <summary>A list of named whole numbers.</summary>
+            Numbers,
+
+            /// <summary>A list of named one-line texts.</summary>
+            Lines,
+        }
+
+        /// <summary>The parts a task notice may hold, each at most once, in any order.</summary>
+        private static readonly Dictionary<string, Fill> TaskParts = new Dictionary<string, Fill>(StringComparer.Ordinal)
+        {
+            ["task-id"] = Fill.Text,
+            ["tool-use-id"] = Fill.Text,
+            ["task-type"] = Fill.Text,
+            ["output-file"] = Fill.Text,
+            ["status"] = Fill.Text,
+            ["summary"] = Fill.Text,
+            ["note"] = Fill.Text,
+            ["event"] = Fill.Text,
+            ["result"] = Fill.Text,
+            ["usage"] = Fill.Numbers,
+            ["worktree"] = Fill.Lines,
+        };
+
+        // ---- reading ----
+
+        /// <summary>The tagged message <paramref name="text"/> is, or null when it is anything else (or holds broken markup).</summary>
         public static TaggedMessage? Read(string text)
         {
-            if (string.IsNullOrEmpty(text) || text.IndexOf('<') < 0) return null; // every block holds a tag
-            return ReadTaskNotice(text) ?? ReadMessageBlock(text) ?? ReadWrappedNotice(text);
-        }
+            if (string.IsNullOrEmpty(text)) return null;
+            var start = 0;
+            var end = text.Length;
+            while (start < end && char.IsWhiteSpace(text[start])) start++;
+            while (end > start && char.IsWhiteSpace(text[end - 1])) end--;
+            if (start == end) return null;
 
-        // ---- tags ----
-
-        /// <summary>An opening tag: its name, its attributes, and the index after its <c>&gt;</c>.</summary>
-        private sealed class Tag
-        {
-            public Tag(string name, List<KeyValuePair<string, string>> attributes, int end)
+            // a block starts the text, or follows the one line that leads it
+            string? lead = null;
+            var at = start;
+            if (text[start] != '<')
             {
-                Name = name;
-                Attributes = attributes;
-                End = end;
+                var lineEnd = text.IndexOf('\n', start, end - start);
+                if (lineEnd < 0) return null;
+                lead = text.Substring(start, lineEnd - start).TrimEnd('\r');
+                at = lineEnd + 1;
+                if (at >= end || text[at] != '<') return null;
             }
 
-            public string Name { get; }
-
-            public List<KeyValuePair<string, string>> Attributes { get; }
-
-            public int End { get; }
-        }
-
-        /// <summary>
-        /// The opening tag that starts at <paramref name="at"/>: <c>&lt;name&gt;</c>, or the name and then, each after a blank,
-        /// <c>key="value"</c>. A value holds no quote, angle bracket or line break. Null when the text there is no such tag.
-        /// </summary>
-        private static Tag? OpenTag(string s, int at)
-        {
-            if (at >= s.Length || s[at] != '<') return null;
-            var i = at + 1;
-            var nameStart = i;
-            while (i < s.Length && (char.IsLetter(s[i]) || s[i] == '-' || s[i] == '_')) i++;
-            if (i == nameStart) return null;
-            var name = s.Substring(nameStart, i - nameStart);
-            var attributes = new List<KeyValuePair<string, string>>();
-            while (i < s.Length)
+            var tag = LightMarkup.TagAt(text, at, end);
+            if (tag == null || !Shapes.TryGetValue(tag.Name, out var shape)) return null;
+            if (lead != null && shape.Lead == null) return null;
+            switch (shape.Family)
             {
-                if (s[i] == '>') return new Tag(name, attributes, i + 1);
-                if (s[i] != ' ' && s[i] != '\t') return null;
-                while (i < s.Length && (s[i] == ' ' || s[i] == '\t')) i++;
-                if (i < s.Length && s[i] == '>') continue;
-                var keyStart = i;
-                while (i < s.Length && (char.IsLetterOrDigit(s[i]) || s[i] == '-' || s[i] == '_')) i++;
-                if (i == keyStart || i + 1 >= s.Length || s[i] != '=' || s[i + 1] != '"') return null;
-                var key = s.Substring(keyStart, i - keyStart);
-                i += 2;
-                var valueStart = i;
-                while (i < s.Length && s[i] != '"')
-                {
-                    if (s[i] == '<' || s[i] == '>' || s[i] == '\n' || s[i] == '\r') return null;
-                    i++;
-                }
-                if (i >= s.Length) return null;
-                attributes.Add(new KeyValuePair<string, string>(key, s.Substring(valueStart, i - valueStart)));
-                i++;
+                case Family.Message: return ReadMessage(text, at, end, lead, shape);
+                case Family.Notice: return ReadNotice(text, at, end, shape);
+                case Family.Output: return ReadOutput(text, at, end);
+                default: return ReadTask(text, at, end);
             }
-            return null;
         }
 
-        /// <summary>One <c>&lt;name&gt;inside&lt;/name&gt;</c> with no attributes at <paramref name="at"/>; <paramref name="next"/> is the index after it.</summary>
-        private static bool Element(string s, int at, out string name, out string inside, out int next)
+        private static TaggedMessage? ReadMessage(string text, int at, int end, string? lead, Shape shape)
         {
-            name = inside = "";
-            next = at;
-            var tag = OpenTag(s, at);
-            if (tag == null || tag.Attributes.Count > 0) return false;
-            var close = "</" + tag.Name + ">";
-            var closeAt = s.IndexOf(close, tag.End, StringComparison.Ordinal);
-            if (closeAt < 0) return false;
-            name = tag.Name;
-            inside = s.Substring(tag.End, closeAt - tag.End);
-            next = closeAt + close.Length;
-            return true;
-        }
+            var element = LightMarkup.ElementAt(text, at, end);
+            if (element == null || !AttributesFit(element, shape)) return null;
 
-        private readonly struct Piece
-        {
-            public Piece(string? name, string text)
+            // the body has lines of its own: a line break after the open tag and one before the close tag
+            var from = element.ContentStart;
+            var to = element.ContentEnd;
+            if (!SkipLineBreak(text, ref from, to, forward: true) || !SkipLineBreak(text, ref to, from, forward: false)) return null;
+            var body = LightMarkup.Unescape(text.Substring(from, to - from));
+            if (HoldsOpenTag(body, element.Name)) return null; // a block inside the block
+
+            if (lead != null && lead != LeadFor(shape, element)) return null;
+
+            // after the block: nothing, or the note after a blank line; a lead comes only with the note
+            string? note = null;
+            if (element.End < end)
             {
-                Name = name;
-                Text = text;
+                if (text[element.End] != '\n' && text[element.End] != '\r') return null;
+                note = text.Substring(element.End, end - element.End).Trim();
+                if (!note.StartsWith(NoteStart, StringComparison.Ordinal)) return null;
+            }
+            else if (lead != null)
+            {
+                return null;
             }
 
-            public string? Name { get; }
-
-            public string Text { get; }
+            var sections = new List<TaggedSection>(3);
+            if (lead != null) sections.Add(new TaggedSection(null, lead));
+            sections.Add(new TaggedSection(null, body));
+            if (note != null) sections.Add(new TaggedSection(null, note));
+            return new TaggedMessage
+            {
+                Kind = shape.Kind,
+                FromName = SenderNamed(element, shape),
+                Body = body,
+                Attributes = element.Attributes,
+                Tail = note == null ? NoTail : PeerTail,
+                Sections = sections,
+            };
         }
 
-        /// <summary>
-        /// What is in a run of tags: the loose text between them (no name) and each tag with its inside. Null when a tag is not one of
-        /// <paramref name="allowed"/>, comes twice, or is never closed.
-        /// </summary>
-        private static List<Piece>? Pieces(string text, HashSet<string> allowed)
+        private static TaggedMessage? ReadNotice(string text, int at, int end, Shape shape)
         {
-            var pieces = new List<Piece>();
+            var element = LightMarkup.ElementAt(text, at, end);
+            if (element == null || element.End != end) return null;
+            var content = StripOuterBreaks(LightMarkup.Unescape(element.RawContent));
+            return new TaggedMessage
+            {
+                Kind = shape.Kind,
+                Body = content,
+                Attributes = element.Attributes,
+                Sections = new[] { new TaggedSection(null, content) },
+                IsWrappedNotice = true,
+            };
+        }
+
+        private static TaggedMessage? ReadOutput(string text, int at, int end)
+        {
+            var nodes = LightMarkup.Nodes(text, at, end, 8);
+            if (nodes == null) return null;
+            var sections = new List<TaggedSection>(3);
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            var at = 0;
-            while (at < text.Length)
+            string? kind = null;
+            foreach (var node in nodes)
             {
-                var lt = text.IndexOf('<', at);
-                var loose = text.Substring(at, (lt < 0 ? text.Length : lt) - at).Trim();
-                if (loose.Length > 0) pieces.Add(new Piece(null, loose));
-                if (lt < 0) break;
-                if (!Element(text, lt, out var name, out var inside, out var next) || !allowed.Contains(name) || !seen.Add(name)) return null;
-                pieces.Add(new Piece(name, inside));
-                at = next;
+                if (node.Element is not { } element)
+                {
+                    if (!IsBlank(node.Text)) return null;
+                    continue;
+                }
+                if (!Shapes.TryGetValue(element.Name, out var shape) || shape.Family != Family.Output || !seen.Add(element.Name)) return null;
+                if (element.Attributes.Count > 0) return null;
+                kind ??= shape.Kind;
+                sections.Add(new TaggedSection(shape.Part, StripOuterBreaks(LightMarkup.Unescape(element.RawContent))));
             }
-            return pieces;
+            if (kind == null) return null;
+            return new TaggedMessage
+            {
+                Kind = kind,
+                Body = sections[0].Text,
+                Sections = sections,
+                IsWrappedNotice = true,
+            };
         }
 
-        // ---- the notice of a task ----
-
-        private static TaggedMessage? ReadTaskNotice(string text)
+        private static TaggedMessage? ReadTask(string text, int at, int end)
         {
-            var s = text.TrimStart();
-            var open = "<" + TaskTag + ">";
-            var close = "</" + TaskTag + ">";
-            if (!s.StartsWith(open, StringComparison.Ordinal)) return null;
-            var closeAt = s.IndexOf(close, StringComparison.Ordinal);
-            if (closeAt < 0 || s.IndexOf(close, closeAt + close.Length, StringComparison.Ordinal) >= 0) return null;
-            var inside = s.Substring(open.Length, closeAt - open.Length);
-            var after = s.Substring(closeAt + close.Length).Trim();
+            var element = LightMarkup.ElementAt(text, at, end);
+            if (element == null) return null;
+            var nodes = LightMarkup.Nodes(text, element.ContentStart, element.ContentEnd, MaxTaskPieces);
+            if (nodes == null) return null;
 
-            var summary = SummaryOf(inside);
-            if (summary == null) return null; // a notice with nothing to say is no message
-            var parts = TaskParts(inside, after);
+            var sections = new List<TaggedSection>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            string? summary = null;
+            var known = true;
+            foreach (var node in nodes)
+            {
+                if (node.Element is not { } part)
+                {
+                    if (!IsBlank(node.Text)) sections.Add(new TaggedSection(OtherTextLabel, node.Text!.Trim()));
+                    continue;
+                }
+                var value = StripOuterBreaks(LightMarkup.Unescape(part.RawContent));
+                if (part.Name == "summary" && summary == null) summary = value;
+                if (!TaskParts.TryGetValue(part.Name, out var fill) || !seen.Add(part.Name) || part.Attributes.Count > 0)
+                {
+                    known = false;
+                    continue;
+                }
+                IReadOnlyList<TaggedSection>? lines = null;
+                if (fill != Fill.Text)
+                {
+                    lines = Facts(part, fill);
+                    if (lines == null)
+                    {
+                        known = false;
+                        continue;
+                    }
+                }
+                sections.Add(new TaggedSection(part.Name, value) { Lines = lines });
+            }
+            if (summary == null || IsBlank(summary)) return null;
+
+            // a notice it cannot lay out as a list is shown as it came
+            if (!known)
+            {
+                sections.Clear();
+                sections.Add(new TaggedSection(null, text.Substring(element.Start, element.End - element.Start)));
+            }
+            if (element.End < end) sections.Add(new TaggedSection(AfterLabel, text.Substring(element.End, end - element.End).Trim()));
             return new TaggedMessage
             {
                 Kind = TaskKind,
                 Body = summary,
-                Sections = parts ?? (IReadOnlyList<TaggedSection>)new[] { new TaggedSection(null, Clean(text)) }, // what no list can hold is shown as it came
-                Columns = parts != null,
+                Attributes = element.Attributes,
+                Sections = sections,
+                Columns = known,
             };
         }
 
-        /// <summary>The summary, if the notice has exactly one that holds no tag and says something.</summary>
-        private static string? SummaryOf(string inside)
+        /// <summary>The named values inside a part of a task notice, every one of them checked; null when any is not what the part holds.</summary>
+        private static IReadOnlyList<TaggedSection>? Facts(MarkupElement part, Fill fill)
         {
-            const string open = "<summary>";
-            const string close = "</summary>";
-            var start = inside.IndexOf(open, StringComparison.Ordinal);
-            var end = inside.IndexOf(close, StringComparison.Ordinal);
-            if (start < 0 || end < start + open.Length) return null;
-            if (inside.IndexOf(open, start + 1, StringComparison.Ordinal) >= 0 || inside.IndexOf(close, end + 1, StringComparison.Ordinal) >= 0) return null;
-            var text = inside.Substring(start + open.Length, end - start - open.Length);
-            if (text.IndexOf('<') >= 0) return null;
-            var summary = Clean(Decode(text)).Trim();
-            return summary.Length == 0 ? null : summary;
-        }
-
-        /// <summary>The facts of the notice as names and values; null when something in it cannot be shown so.</summary>
-        private static List<TaggedSection>? TaskParts(string inside, string after)
-        {
-            var pieces = Pieces(inside, TaskFacts);
-            if (pieces == null) return null;
-            var sections = new List<TaggedSection>();
-            foreach (var piece in pieces)
+            var nodes = LightMarkup.Nodes(part.Source, part.ContentStart, part.ContentEnd, MaxFacts);
+            if (nodes == null) return null;
+            var facts = new List<TaggedSection>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var node in nodes)
             {
-                if (piece.Name == null)
+                if (node.Element is not { } fact)
                 {
-                    sections.Add(new TaggedSection("other-text", Clean(piece.Text)));
+                    if (!IsBlank(node.Text)) return null;
                     continue;
                 }
-                if (piece.Name == "usage" || piece.Name == "worktree")
-                {
-                    var lines = SubFacts(piece.Name, piece.Text);
-                    if (lines == null) return null;
-                    sections.Add(new TaggedSection(piece.Name, string.Join("\n", lines.ConvertAll(l => l.Label + ": " + l.Text))) { Lines = lines });
-                    continue;
-                }
-                if (piece.Text.IndexOf('<') >= 0) return null;
-                var plain = PlainFacts.Contains(piece.Name);
-                if (plain && HasLineBreak(piece.Text)) return null;
-                sections.Add(new TaggedSection(piece.Name, Clean(plain ? piece.Text : Decode(piece.Text)).Trim()));
+                if (fact.Attributes.Count > 0 || !seen.Add(fact.Name)) return null;
+                // every value is decoded, the path and the branch of a worktree alike
+                var value = LightMarkup.Unescape(fact.RawContent).Trim();
+                if (fill == Fill.Numbers ? !AllDigits(value) : SpansLines(value)) return null;
+                facts.Add(new TaggedSection(fact.Name, value));
             }
-            if (after.Length > 0) sections.Add(new TaggedSection("after-notification", Clean(after)));
-            return sections;
+            return facts;
         }
 
-        /// <summary>The facts inside a usage (numbers) or a worktree (one-line texts); null at anything else.</summary>
-        private static List<TaggedSection>? SubFacts(string owner, string text)
+        private static bool AttributesFit(MarkupElement element, Shape shape)
         {
-            var pieces = Pieces(text, owner == "usage" ? UsageFacts : WorktreeFacts);
-            if (pieces == null) return null;
-            var lines = new List<TaggedSection>();
-            foreach (var piece in pieces)
+            if (shape.Required != null && element.Attribute(shape.Required) == null) return false;
+            if (shape.Allowed == null) return true;
+            foreach (var pair in element.Attributes)
             {
-                if (piece.Name == null || piece.Text.IndexOf('<') >= 0 || HasLineBreak(piece.Text)) return null;
-                if (owner == "usage" && !IsNumber(piece.Text)) return null;
-                lines.Add(new TaggedSection(piece.Name, Clean(piece.Text)));
+                if (Array.IndexOf(shape.Allowed, pair.Key) < 0) return false;
             }
-            return lines;
+            return true;
         }
 
-        private static bool IsNumber(string text)
+        private static string? SenderNamed(MarkupElement element, Shape shape)
         {
-            if (text.Length == 0) return false;
+            foreach (var key in shape.Sender)
+            {
+                var value = element.Attribute(key);
+                if (!string.IsNullOrWhiteSpace(value)) return value;
+            }
+            return null;
+        }
+
+        /// <summary>The lead line the shape expects for this element, its <c>{name}</c> filled with that attribute's value.</summary>
+        private static string? LeadFor(Shape shape, MarkupElement element)
+        {
+            var lead = shape.Lead;
+            if (lead == null) return null;
+            var open = lead.IndexOf('{');
+            var close = open < 0 ? -1 : lead.IndexOf('}', open + 1);
+            if (close < 0) return lead;
+            var value = element.Attribute(lead.Substring(open + 1, close - open - 1));
+            return value == null ? null : lead.Substring(0, open) + value + lead.Substring(close + 1);
+        }
+
+        /// <summary>Moves <paramref name="i"/> over one line break (<c>\n</c> or <c>\r\n</c>) toward <paramref name="bound"/>; false when none stands there.</summary>
+        private static bool SkipLineBreak(string s, ref int i, int bound, bool forward)
+        {
+            if (forward)
+            {
+                if (i < bound && s[i] == '\r') i++;
+                if (i >= bound || s[i] != '\n') return false;
+                i++;
+                return true;
+            }
+            if (i <= bound || s[i - 1] != '\n') return false;
+            i--;
+            if (i > bound && s[i - 1] == '\r') i--;
+            return true;
+        }
+
+        /// <summary>Whether the text holds an open tag of the name: <c>&lt;name</c> then a space, <c>&gt;</c> or <c>/</c>.</summary>
+        private static bool HoldsOpenTag(string text, string name)
+        {
+            var probe = "<" + name;
+            var i = 0;
+            while ((i = text.IndexOf(probe, i, StringComparison.Ordinal)) >= 0)
+            {
+                var next = i + probe.Length;
+                if (next >= text.Length || text[next] == '>' || text[next] == '/' || char.IsWhiteSpace(text[next])) return true;
+                i = next;
+            }
+            return false;
+        }
+
+        private static bool AllDigits(string text)
+        {
+            if (text.Length == 0 || text.Length > MaxDigits) return false;
             foreach (var c in text)
             {
                 if (c < '0' || c > '9') return false;
@@ -306,393 +487,110 @@ namespace ClaudeVisualChat.Protocol
             return true;
         }
 
-        private static bool HasLineBreak(string text) => text.IndexOf('\n') >= 0 || text.IndexOf('\r') >= 0;
-
-        // ---- a message from an agent, another session or a channel ----
-
-        private static TaggedMessage? ReadMessageBlock(string text)
+        private static bool IsBlank(string? text)
         {
-            // the line that introduces the block, if the text does not start with the tag itself
-            string? lead = null;
-            var s = text;
-            if (text[0] != '<')
+            if (text == null) return true;
+            foreach (var c in text)
             {
-                var lineEnd = text.IndexOf('\n');
-                if (lineEnd <= 0) return null;
-                lead = text.Substring(0, lineEnd);
-                s = text.Substring(lineEnd + 1);
+                if (!char.IsWhiteSpace(c)) return false;
             }
-            var tag = OpenTag(s, 0);
-            if (tag == null || tag.End >= s.Length || s[tag.End] != '\n') return null;
-            string kind;
-            switch (tag.Name)
-            {
-                case "agent-message": kind = AgentKind; break;
-                case "cross-session-message": kind = CrossSessionKind; break;
-                case "channel": kind = ChannelKind; break;
-                default: return null;
-            }
-
-            // the closing tag alone on its line, and nowhere else
-            var close = "</" + tag.Name + ">";
-            var closeAt = s.IndexOf("\n" + close, tag.End, StringComparison.Ordinal);
-            if (closeAt < 0 || s.IndexOf(close, StringComparison.Ordinal) != closeAt + 1) return null;
-            if (s.IndexOf(close, closeAt + 1 + close.Length, StringComparison.Ordinal) >= 0) return null;
-            var note = s.Substring(closeAt + 1 + close.Length);
-            var tail = TailOf(kind, note);
-            if (tail == null) return null;
-
-            var sender = SenderOf(kind, tag.Attributes);
-            if (sender == null) return null;
-            if (kind == ChannelKind)
-            {
-                // a channel's introduction and its note come together, and the introduction names the channel the tag names
-                if ((lead != null) != (tail == "peer")) return null;
-                if (lead != null && !IntroducesChannel(lead, sender)) return null;
-            }
-            else if (lead != null && !IntroducesSession(lead))
-            {
-                return null;
-            }
-
-            var body = closeAt > tag.End ? s.Substring(tag.End + 1, closeAt - tag.End - 1) : "";
-            var sections = new List<TaggedSection>();
-            if (lead != null) sections.Add(new TaggedSection(null, Clean(lead.Trim())));
-            sections.Add(new TaggedSection(null, Clean(body)));
-            if (note.Trim().Length > 0) sections.Add(new TaggedSection(null, Clean(note.Trim())));
-            return new TaggedMessage
-            {
-                Kind = kind,
-                FromName = sender.Length == 0 ? null : sender,
-                Body = Clean(body),
-                Attributes = tag.Attributes,
-                Tail = tail,
-                Sections = sections,
-            };
+            return true;
         }
 
-        /// <summary>
-        /// The sender the attributes name (empty when they name none), or null when the attributes are not the ones that sort of message
-        /// carries: an agent's has <c>from</c>; another session's has some of <c>from</c>, <c>from-session</c>, <c>hop-chain</c>,
-        /// <c>from-name</c> and <c>from-mode</c>, in that order; a channel's starts with <c>source</c> and may carry more.
-        /// </summary>
-        private static string? SenderOf(string kind, List<KeyValuePair<string, string>> attributes)
-        {
-            if (kind == ChannelKind)
-                return attributes.Count > 0 && attributes[0].Key == "source" ? Decode(attributes[0].Value, true) : null;
-            var allowed = kind == AgentKind ? AgentAttributes : CrossSessionAttributes;
-            var position = -1;
-            string? name = null;
-            foreach (var attribute in attributes)
-            {
-                var index = Array.IndexOf(allowed, attribute.Key);
-                if (index <= position) return null; // not allowed here, repeated, or out of order
-                position = index;
-                if (attribute.Key == "from-mode" && attribute.Value != "bypass" && attribute.Value != "prompting") return null;
-                if (attribute.Key == "from-name")
-                {
-                    if (attribute.Value.Length == 0 || Shorten(attribute.Value) != attribute.Value) return null;
-                    name = attribute.Value;
-                }
-                else if (kind == AgentKind)
-                {
-                    name = Decode(attribute.Value, true);
-                }
-            }
-            if (kind == AgentKind && attributes.Count == 0) return null;
-            return name ?? "";
-        }
+        private static bool SpansLines(string text) => text.IndexOf('\n') >= 0 || text.IndexOf('\r') >= 0;
 
-        /// <summary>The line before a channel's block: it names the channel, and may add that the message came while the claude worked.</summary>
-        private static bool IntroducesChannel(string line, string source)
-        {
-            var head = "A message arrived from " + source;
-            return line == head + ":" || line == head + " while you were working:";
-        }
-
-        /// <summary>The line before another session's block says a session sent a message.</summary>
-        private static bool IntroducesSession(string line) =>
-            line.EndsWith(":", StringComparison.Ordinal)
-            && (line.StartsWith("Another Claude session sent a message", StringComparison.Ordinal)
-                || line.StartsWith("A peer session sent a message", StringComparison.Ordinal));
-
-        /// <summary>
-        /// What follows the block: nothing (<c>none</c>), or a blank line and one line the claude adds for itself, which says the message is not
-        /// the user's: from another session or channel (<c>peer</c>), or from an agent of this same session (<c>descendant</c>). Null when it
-        /// is anything else.
-        /// </summary>
-        private static string? TailOf(string kind, string after)
-        {
-            if (after.Length == 0) return "none";
-            if (!after.StartsWith("\n\n", StringComparison.Ordinal) || after.IndexOf('\n', 2) >= 0) return null;
-            var line = after.Substring(2);
-            if (kind == ChannelKind) return line.Contains("external channel") ? "peer" : null;
-            if (line.Contains("inside this same session")) return "descendant";
-            return line.Contains("Claude session") ? "peer" : null;
-        }
-
-        // ---- a wrapped notice ----
-
-        private static TaggedMessage? ReadWrappedNotice(string text)
-        {
-            var s = text.TrimEnd();
-            var tag = OpenTag(s, 0);
-            if (tag == null || Array.IndexOf(WrappedTags, tag.Name) < 0) return null;
-            var close = "</" + tag.Name + ">";
-            var closeAt = s.IndexOf(close, tag.End, StringComparison.Ordinal);
-            if (closeAt < 0 || s.IndexOf(close, closeAt + close.Length, StringComparison.Ordinal) >= 0) return null;
-            var inside = s.Substring(tag.End, closeAt - tag.End);
-            var sections = new List<TaggedSection>();
-            if (tag.Name == "bash-stdout")
-            {
-                // a command's output may be followed by its error output and its exit code, in that order, and nothing else
-                sections.Add(new TaggedSection("output", TrimBreaks(Clean(Output(inside)))));
-                var at = closeAt + close.Length;
-                var expected = new[] { "bash-stderr", "bash-exit-code" };
-                var labels = new[] { "error-output", "exit-code" };
-                var slot = 0;
-                while (at < s.Length)
-                {
-                    if (!Element(s, at, out var name, out var value, out var next) || value.IndexOf('<') >= 0) return null;
-                    while (slot < expected.Length && expected[slot] != name) slot++;
-                    if (slot == expected.Length) return null;
-                    sections.Add(new TaggedSection(labels[slot], Clean(name == "bash-stderr" ? Decode(value) : value)));
-                    slot++;
-                    at = next;
-                }
-            }
-            else
-            {
-                if (closeAt + close.Length != s.Length) return null; // the tag wraps the whole text
-                sections.Add(new TaggedSection(null, TrimBreaks(Clean(tag.Name == "bash-stderr" ? Output(inside) : inside))));
-            }
-            return new TaggedMessage
-            {
-                Kind = tag.Name,
-                Body = sections[0].Text,
-                Attributes = tag.Attributes,
-                Sections = sections,
-            };
-        }
-
-        /// <summary>The text without the line breaks at its ends: they are the tag's, not the text's.</summary>
-        private static string TrimBreaks(string text) => text.Trim('\n');
-
-        /// <summary>The output of a command: the inside of a persisted output when that is all of it, else the text with its entities decoded.</summary>
-        private static string Output(string text)
-        {
-            const string open = "<persisted-output>";
-            const string close = "</persisted-output>";
-            var trimmed = text.TrimEnd();
-            if (trimmed.StartsWith(open, StringComparison.Ordinal) && trimmed.EndsWith(close, StringComparison.Ordinal)
-                && trimmed.Length >= open.Length + close.Length)
-                return trimmed.Substring(open.Length, trimmed.Length - open.Length - close.Length);
-            return Decode(text);
-        }
+        private static string StripOuterBreaks(string text) => text.Trim('\r', '\n');
 
         // ---- names and previews ----
 
-        private static bool IsLetterOrNumber(UnicodeCategory category)
-        {
-            switch (category)
-            {
-                case UnicodeCategory.UppercaseLetter:
-                case UnicodeCategory.LowercaseLetter:
-                case UnicodeCategory.TitlecaseLetter:
-                case UnicodeCategory.ModifierLetter:
-                case UnicodeCategory.OtherLetter:
-                case UnicodeCategory.DecimalDigitNumber:
-                case UnicodeCategory.LetterNumber:
-                case UnicodeCategory.OtherNumber:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
         /// <summary>
-        /// The short name of a sender: control and invisible characters go, the rest is cut at 64 characters, every run of characters that are
-        /// no letter, digit, dot, dash or underscore becomes one "-", dots, dashes and underscores at the ends go, and what is left is cut
-        /// at 20 characters with "…". Empty when it holds no letter or digit.
+        /// The short name of a sender: letters, digits, dots and underscores kept; any run of other characters (dashes among them)
+        /// one "-"; invisible characters dropped; dashes and dots taken off both ends; cut at <see cref="HandleLength"/> with "…".
+        /// Empty when nothing is left.
         /// </summary>
         public static string Handle(string? name)
         {
             if (string.IsNullOrEmpty(name)) return "";
-            var sb = new StringBuilder();
-            var gap = false;
-            var hasLetter = false;
-            var shortened = Shorten(name!);
-            for (var i = 0; i < shortened.Length; i++)
-            {
-                var length = char.IsHighSurrogate(shortened[i]) && i + 1 < shortened.Length && char.IsLowSurrogate(shortened[i + 1]) ? 2 : 1;
-                var part = shortened.Substring(i, length);
-                var isWord = IsLetterOrNumber(CharUnicodeInfo.GetUnicodeCategory(shortened, i));
-                if (isWord || part == "." || part == "_" || part == "-")
-                {
-                    if (gap && sb.Length > 0) sb.Append('-');
-                    gap = false;
-                    sb.Append(part);
-                    hasLetter |= isWord;
-                }
-                else
-                {
-                    gap = true;
-                }
-                i += length - 1;
-            }
-            if (!hasLetter) return "";
-            var handle = sb.ToString().Trim('.', '_', '-');
-            return handle.Length <= HandleLength ? handle : CutAt(handle, HandleLength) + "…";
-        }
-
-        /// <summary>The name of a sender in full: without control and format characters, trimmed.</summary>
-        public static string PlainName(string? name)
-        {
-            if (string.IsNullOrEmpty(name)) return "";
             var sb = new StringBuilder(name!.Length);
+            var dash = false;
             foreach (var c in name)
             {
-                var category = CharUnicodeInfo.GetUnicodeCategory(c);
-                if (category == UnicodeCategory.Control || category == UnicodeCategory.Format || category == UnicodeCategory.LineSeparator
-                    || category == UnicodeCategory.ParagraphSeparator)
-                    continue;
-                sb.Append(c);
+                if (TakesNoRoom(c)) continue;
+                if (char.IsLetterOrDigit(c) || c == '.' || c == '_')
+                {
+                    sb.Append(c);
+                    dash = false;
+                }
+                else if (!dash)
+                {
+                    sb.Append('-');
+                    dash = true;
+                }
             }
-            return sb.ToString().Trim();
+            var first = 0;
+            var last = sb.Length;
+            while (first < last && (sb[first] == '-' || sb[first] == '.')) first++;
+            while (last > first && (sb[last - 1] == '-' || sb[last - 1] == '.')) last--;
+            var handle = sb.ToString(first, last - first);
+            return Clip(handle, HandleLength);
         }
 
-        /// <summary>The name without its control and format characters, trimmed, and at most 64 characters (a longer one is cut and ends in "…").</summary>
-        private static string Shorten(string name)
-        {
-            var trimmed = PlainName(name);
-            return trimmed.Length <= NameLength ? trimmed : CutAt(trimmed, NameLength) + "…";
-        }
+        /// <summary>
+        /// The full name of a sender as one clean line: invisible characters dropped, controls and runs of white space one space,
+        /// the ends trimmed, cut at <see cref="PlainNameLength"/> with "…".
+        /// </summary>
+        public static string PlainName(string? name) => Clip(OneLine(name ?? ""), PlainNameLength);
 
-        /// <summary>The first line of the text that has any, white space collapsed, up to 512 characters and then "…".</summary>
+        /// <summary>
+        /// The preview of a message: its first line with text, without terminal escape sequences, invisible characters and controls,
+        /// white space collapsed, cut at <see cref="PreviewLength"/> with "…". Empty when no line has text.
+        /// </summary>
         public static string Preview(string body)
         {
             if (string.IsNullOrEmpty(body)) return "";
-            var at = 0;
-            while (at <= body.Length)
+            var text = AnsiText.Strip(body);
+            var i = 0;
+            while (i <= text.Length)
             {
-                var lineEnd = body.IndexOf('\n', at);
-                var end = lineEnd < 0 ? body.Length : lineEnd;
-                var tooLong = end - at > PreviewLength * 4; // a line this long is cut before it is cleaned
-                var line = Collapse(Invisible(AnsiText.Strip(body.Substring(at, tooLong ? PreviewLength * 4 : end - at))));
-                if (line.Length > 0 || tooLong)
-                    return tooLong || line.Length > PreviewLength ? CutAt(line, PreviewLength) + "…" : line;
-                if (lineEnd < 0) break;
-                at = lineEnd + 1;
+                var lineEnd = text.IndexOf('\n', i);
+                if (lineEnd < 0) lineEnd = text.Length;
+                var line = OneLine(text.Substring(i, lineEnd - i));
+                if (line.Length > 0) return Clip(line, PreviewLength);
+                i = lineEnd + 1;
             }
             return "";
         }
 
-        /// <summary>Control and invisible characters as spaces, so that two words they separated stay two.</summary>
-        private static string Invisible(string text)
+        /// <summary>The text with invisible characters dropped, every control and run of white space made one space, the ends trimmed.</summary>
+        private static string OneLine(string text)
         {
             var sb = new StringBuilder(text.Length);
+            var space = true; // true at the start, so leading space goes
             foreach (var c in text)
             {
-                var category = CharUnicodeInfo.GetUnicodeCategory(c);
-                var hidden = (category == UnicodeCategory.Control && !char.IsWhiteSpace(c)) || category == UnicodeCategory.Format
-                             || category == UnicodeCategory.LineSeparator || category == UnicodeCategory.ParagraphSeparator;
-                sb.Append(hidden && !IsJoiner(c) ? ' ' : c);
-            }
-            return sb.ToString();
-        }
-
-        /// <summary>The zero-width joiner and non-joiner, which emoji and some scripts need to be drawn right.</summary>
-        private static bool IsJoiner(char c) => c == (char)0x200C || c == (char)0x200D;
-
-        private static string Collapse(string text)
-        {
-            var sb = new StringBuilder(text.Length);
-            var space = false;
-            foreach (var c in text)
-            {
-                if (char.IsWhiteSpace(c))
+                if (TakesNoRoom(c)) continue;
+                if (char.IsWhiteSpace(c) || char.IsControl(c))
                 {
-                    space = sb.Length > 0;
+                    if (!space) sb.Append(' ');
+                    space = true;
                     continue;
                 }
-                if (space) sb.Append(' ');
-                space = false;
                 sb.Append(c);
+                space = false;
             }
+            if (sb.Length > 0 && sb[sb.Length - 1] == ' ') sb.Length--;
             return sb.ToString();
         }
 
-        /// <summary>The text up to <paramref name="length"/> characters, never between the two halves of a surrogate pair.</summary>
-        private static string CutAt(string text, int length)
+        /// <summary>A character that takes no room: the format characters (zero-width space and joiners, the byte order mark, soft hyphen…).</summary>
+        private static bool TakesNoRoom(char c) => CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.Format;
+
+        /// <summary>The text cut at <paramref name="length"/> characters with "…", never between the halves of a surrogate pair.</summary>
+        private static string Clip(string text, int length)
         {
             if (text.Length <= length) return text;
-            if (char.IsHighSurrogate(text[length - 1])) length--;
-            return text.Substring(0, length);
-        }
-
-        // ---- text ----
-
-        /// <summary>
-        /// The text as it is drawn: without terminal escapes, control characters (the line break and the tab stay), unpaired surrogates, and
-        /// format characters (the joiners stay). Cleaning a text twice gives what cleaning it once did.
-        /// </summary>
-        public static string Clean(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return text;
-            text = AnsiText.Strip(text);
-            var sb = new StringBuilder(text.Length);
-            for (var i = 0; i < text.Length; i++)
-            {
-                var c = text[i];
-                if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
-                {
-                    sb.Append(c).Append(text[i + 1]);
-                    i++;
-                    continue;
-                }
-                if (char.IsSurrogate(c)) continue;
-                var category = CharUnicodeInfo.GetUnicodeCategory(c);
-                if (category == UnicodeCategory.Control && c != '\n' && c != '\t') continue;
-                if ((category == UnicodeCategory.Format && !IsJoiner(c)) || category == UnicodeCategory.LineSeparator
-                    || category == UnicodeCategory.ParagraphSeparator)
-                    continue;
-                sb.Append(c);
-            }
-            return sb.ToString();
-        }
-
-        /// <summary>The text with <c>&amp;amp;</c>, <c>&amp;lt;</c> and <c>&amp;gt;</c> (and, with <paramref name="quotes"/>, <c>&amp;quot;</c> and <c>&amp;apos;</c>) turned back into what they stand for.</summary>
-        private static string Decode(string text, bool quotes = false)
-        {
-            if (text.IndexOf('&') < 0) return text;
-            var sb = new StringBuilder(text.Length);
-            for (var i = 0; i < text.Length; i++)
-            {
-                if (text[i] == '&')
-                {
-                    var semicolon = text.IndexOf(';', i);
-                    if (semicolon > i && semicolon - i <= 5)
-                    {
-                        string? replacement = null;
-                        switch (text.Substring(i + 1, semicolon - i - 1))
-                        {
-                            case "amp": replacement = "&"; break;
-                            case "lt": replacement = "<"; break;
-                            case "gt": replacement = ">"; break;
-                            case "quot" when quotes: replacement = "\""; break;
-                            case "apos" when quotes: replacement = "'"; break;
-                        }
-                        if (replacement != null)
-                        {
-                            sb.Append(replacement);
-                            i = semicolon;
-                            continue;
-                        }
-                    }
-                }
-                sb.Append(text[i]);
-            }
-            return sb.ToString();
+            var keep = char.IsHighSurrogate(text[length - 1]) ? length - 1 : length;
+            return text.Substring(0, keep) + Ellipsis;
         }
     }
 }
