@@ -208,7 +208,7 @@ public class PermissionTouchTests
     }
 
     [AvaloniaFact]
-    public void Touch_mcp_request_without_a_known_field_shows_the_first_text_of_its_input()
+    public void Touch_mcp_request_shows_the_first_text_of_its_input()
     {
         var c = new ChatConversation();
         c.Apply(new PermissionRequested("r1", "mcp__my-server__ping", "ping", null, "t1", J("{\"count\":3,\"target\":\"db-primary\",\"mode\":\"fast\"}"), null));
@@ -220,10 +220,21 @@ public class PermissionTouchTests
         Assert.Equal(new[] { "db-primary" }, UiHelpers.Texts(box));                      // as in 0.5.0
         ui.Window.Close();
 
-        var known = new ChatConversation();                                              // a field the rows know: that is the detail
+        // a field the rows know changes nothing here: the touch request shows the first text of the input, whole, as in 0.5.0,
+        // not the rows' summary (that field cut at 40 characters)
+        var known = new ChatConversation();
+        var longQuery = new string('q', 60);
         known.Apply(new PermissionRequested("r2", "mcp__my-server__search", "search", null, "t2", J("{\"target\":\"db-primary\",\"query\":\"orders\"}"), null));
+        Assert.Equal("orders", known.CurrentPermission!.Summary);
         ui = new Opened(known);
-        Assert.Equal(new[] { "orders" }, UiHelpers.Texts(ui.Prompt.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "SummaryBox")));
+        Assert.Equal(new[] { "db-primary" }, UiHelpers.Texts(ui.Prompt.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "SummaryBox")));
+        ui.Window.Close();
+
+        var cut = new ChatConversation();
+        cut.Apply(new PermissionRequested("r3", "mcp__my-server__search", "search", null, "t3", J("{\"query\":\"" + longQuery + "\"}"), null));
+        Assert.NotEqual(longQuery, cut.CurrentPermission!.Summary);                      // the summary is cut
+        ui = new Opened(cut);
+        Assert.Equal(new[] { longQuery }, UiHelpers.Texts(ui.Prompt.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "SummaryBox")));
         ui.Window.Close();
     }
 
