@@ -93,13 +93,17 @@ Send(StdinMessages.Initialize("init_1"));
 // view -> claude: each thing the user does is one line on claude's stdin
 var ids = 0;
 void Send(string line) { claude.StandardInput.Write(line + "\n"); claude.StandardInput.Flush(); }
-conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e.Text, e.Images));
+conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e));
 conversation.PermissionAnswered += (_, e) => Send(StdinMessages.PermissionResponse(e));
 conversation.PermissionModeRequested += (_, e) => Send(StdinMessages.SetPermissionMode("req_" + ++ids, e.Mode));
 conversation.ModelRequested += (_, e) => Send(StdinMessages.SetModel("req_" + ++ids, e.Model));
 conversation.EffortRequested += (_, e) => Send(StdinMessages.ApplyEffort("req_" + ++ids, e.Effort));
 conversation.StopRequested += (_, _) => Send(StdinMessages.Interrupt("req_" + ++ids));
 ```
+
+`StdinMessages.UserMessage(e)` writes the text, the images, a marker line for each file that landed and the message's
+`uuid`, by which the claude tells when it takes a message sent while it works
+(see [Replies and the timeline](#replies-and-the-timeline)). Use it for every message.
 
 On Windows, a `claude` installed with npm is `claude.cmd`: start it with `cmd /c claude ...`, or give its full path.
 
@@ -119,7 +123,7 @@ arguments, at once inside the handler or later:
 ```csharp
 conversation.MessageSubmitted += (_, e) =>
 {
-    if (!TrySend(StdinMessages.UserMessage(e.Text))) conversation.UndoSubmit(e);
+    if (!TrySend(StdinMessages.UserMessage(e))) conversation.UndoSubmit(e);
 };
 ```
 
@@ -137,7 +141,7 @@ along with the text, and a user's message shows them as thumbnails above its tex
 high and up to 120 px wide, as the extension's):
 
 ```csharp
-conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e.Text, e.Images));
+conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e)); // the text and the images
 ```
 
 `ChatConversation.AddImageAsync(bytes)` attaches an image from your own code. The shrinking and decoding use
@@ -157,23 +161,20 @@ over files). With `MaxFiles` at 0 the **+** dialog offers images only. A file is
 **Your app sends the files; the component only shows them.** The claude reads a file from a path on its own machine, so
 `MessageSubmitted` brings the files in `e.Files` and the text without them. Your app sends each file to the machine where
 the claude runs (from `ChatFile.LocalPath`, in parts, or from `ChatFile.Content`), writes `Progress` (0 to 1) as it goes
-and `RemotePath` when the file is there, then sends the message with one marker line per file at its end:
+and `RemotePath` when the file is there, then sends the message, which `StdinMessages.UserMessage(e)` writes with one
+marker line per file at its end:
 
 ```csharp
 conversation.MessageSubmitted += async (_, e) =>
 {
-    if (e.Files.Count == 0) { Send(StdinMessages.UserMessage(e.Text, e.Images)); return; }
     try
     {
-        var markers = new List<string>();
         foreach (var file in e.Files)
         {
             // yours: copy or upload the file; report the progress on the UI thread
             file.RemotePath = await UploadAsync(file, p => Dispatcher.UIThread.Post(() => file.Progress = p));
-            markers.Add(AttachedFileLine.Format(file.RemotePath)); // "[attached file: <path>]"
         }
-        var text = e.Text.Length == 0 ? string.Join("\n", markers) : e.Text + "\n" + string.Join("\n", markers);
-        Send(StdinMessages.UserMessage(text, e.Images));
+        Send(StdinMessages.UserMessage(e)); // the text, the images and "[attached file: <path>]" for each file
     }
     catch (Exception) // any failure: this handler is async void, so nothing may escape it
     {
@@ -186,7 +187,8 @@ While `Progress` is set and `RemotePath` is not, the chip says "Sending 42%" and
 `[attached file: <path>]`, alone on its line, at the end of the message; only the markers there count, so one the user
 writes in the middle of the text stays text. When the claude repeats the message, and in a session file, the
 conversation takes those lines off the text and shows a chip for each (named after the path's last part, with no size).
-`AttachedFileLine.Split(message)` does the same for your own code. Set `Progress` and `RemotePath` on the UI thread.
+For your own code, `AttachedFileLine.Format(path)` writes such a line and `AttachedFileLine.Split(message)` takes them
+off. Set `Progress` and `RemotePath` on the UI thread.
 
 ## Commands
 
@@ -200,8 +202,9 @@ conversation.Commands = new[] { new ChatCommand("review", "Review a pull request
 ```
 
 A command that is not local goes to the claude as the text of a message, like any other. The ones the conversation
-handles itself (`ChatConversation.LocalCommands`: `context`, `usage`, `remote-control`, `rc` and `chrome`) raise
-`CommandInvoked` instead, and send nothing:
+handles itself (`ChatConversation.LocalCommands`: `context`, `usage`, `remote-control`, `rc`, `chrome` and `copy`)
+raise `CommandInvoked` instead, and send nothing. `/copy` and `/copy N` need nothing of your app: the view copies the
+reply to the clipboard and says so in a line under it.
 
 ```csharp
 conversation.CommandInvoked += (_, e) =>
@@ -211,6 +214,7 @@ conversation.CommandInvoked += (_, e) =>
         case "context": Send(StdinMessages.GetContextUsage("req_" + ++ids)); break;  // its answer fills the panel
         case "chrome": Send(StdinMessages.GetChromeStatus("req_" + ++ids)); break;
         case "remote-control": case "rc": ToggleRemoteControl(); break;               // see below
+        // "copy": the view's own
     }
 };
 ```
@@ -402,6 +406,51 @@ may want to know:
 - The names of the Agent, Web Fetch, Web Search and Claude in Chrome rows are `ChatStrings` texts
   (`AgentToolTitle`, `WebFetchToolTitle`, `WebSearchToolTitle`, `ChromeToolTitle`), the same in both languages.
 
+## Replies and the timeline
+
+Around Claude's reply, a turn shows what the extension 2.1.310 shows: "Copy code" on a code block (with no syntax
+highlighting, as in the extension), a row under the finished turn to copy it and bookmark the reply, a long prompt
+folded behind "Show more" (`UserMessageItem.IsTextExpanded`), the prompt of the turn on screen pinned at the top of the
+list, a date line between days, a thinking line that counts its tokens, a card for a compaction and a working line with
+a star and verbs. Nothing to set up for those. What your app may want to know:
+
+- **The thumbs and the links need your app.** The row under a turn has "Good response" and "Bad response" only while
+  your app listens to `ChatConversation.FeedbackRequested`, and a link ("Learn how we use your feedback") only while it
+  listens to `LinkRequested`. The view never sends a rating or opens a page itself:
+
+  ```csharp
+  conversation.FeedbackRequested += (_, e) => SendFeedback(e.Item.Uuid, e.Positive, e.Details); // yours
+  conversation.LinkRequested += (_, e) => OpenInBrowser(e.Url);                               // yours
+  ```
+
+  The thumbs show only under a reply whose line had a `uuid` (`AssistantTextItem.Uuid`), and never in a read-only view.
+  A thumb down opens "What went wrong?", a layer of `CloseTopLayer()`; then `Details` is what the person wrote.
+  `Positive` is null when the person takes the rating back.
+- **Settings of the view** for the extension's settings your app reads and passes on: `ScrollToEndOnSend` (true: sending
+  brings the list back to its end), `ShowTimestamps` (true: the times and the date lines), `SpinnerVerbs` and
+  `SpinnerVerbsReplace` (verbs of your own for the working line, added to its own or alone) and `ReduceMotion` (false;
+  Avalonia 11.0 cannot ask the system, so your app sets it when the user wants less motion).
+
+  ```xml
+  <controls:ClaudeChatView Conversation="{Binding Chat}" ShowTimestamps="False" ReduceMotion="True" />
+  ```
+
+- **A message sent while Claude works waits** at the end of the list, in `ChatConversation.QueuedMessages`, not in
+  `Items`, until the claude takes it. Write every message with `StdinMessages.UserMessage(e)`, which sends its `uuid`:
+  the claude then says when it takes it (`command_lifecycle`). Without a uuid, the held messages go into the list at the
+  next request to the API or at the turn's end.
+- **New items in `Items`:** `MetaLineItem` (a line the conversation says about its own commands, such as what `/copy`
+  did), `CompactionItem` (where a `NoticeItem` of `NoticeKind.Compacted` used to be), `DividerItem` (what a command
+  printed in one line) and `ExternalMessageItem` (a message from another agent, another session or a channel, or a
+  task's notice, where a `UserMessageItem` with the raw markup used to be). The view has a template for each; an app
+  with templates of its own needs them too.
+- **The working line** follows `ChatConversation.Status` (what `system/status` says: "Compacting...") and
+  `IsRunningStartupHooks` ("Running start-up hooks...").
+- **Where it differs from the extension:** no syntax highlighting; the old tool rows are not pruned (the extension
+  2.1.310 keeps them all); while Claude works the reply box reads "Queue another message…", without the suggested
+  prompts and Ctrl+Esc hints the extension shows there; and the row of actions sits at the end of the turn and copies
+  the whole turn.
+
 ## Colors
 
 Every color, both fonts, the text sizes and a few places come from resources named `ClaudeChat.*` (the keys are in
@@ -436,14 +485,14 @@ The keys, all prefixed with `ClaudeChat.`:
 
 | Group | Keys |
 | --- | --- |
-| Theme colors (change with the VS Code theme) | `Background`, `Surface`, `Border`, `BorderStrong`, `Foreground`, `ForegroundMuted`, `Accent`, `AccentFill`, `AccentForeground`, `FocusBorder`, `Warning`, `Error`, `Success`, `InputBackground`, `InputBorder`, `InputActiveBorder`, `PermissionActiveBorder`, `InputPlaceholder`, `HoverBackground`, `OptionBorder`, `TimelineLine`, `Dot`, `ToolBackground`, `CodeBackground`, `CodeForeground`, `CodeBlockBackground`, `PillBackground`, `PillHoverBackground` |
+| Theme colors (change with the VS Code theme) | `Background`, `Surface`, `Border`, `BorderStrong`, `Foreground`, `ForegroundMuted`, `Accent`, `AccentFill`, `AccentForeground`, `FocusBorder`, `Warning`, `Error`, `Success`, `InputBackground`, `InputBorder`, `InputActiveBorder`, `PermissionActiveBorder`, `InputPlaceholder`, `HoverBackground`, `OptionBorder`, `TimelineLine`, `Dot`, `ToolBackground`, `CodeBackground`, `CodeForeground`, `CodeBlockBackground`, `PillBackground`, `PillHoverBackground`, `DisabledForeground` (the date line) |
 | The extension's own colors | `DotSucceeded`, `DotFailed`, `DotRejected` (not used since 0.6.0), `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground` |
 | Reply box and tool box shadows (`BoxShadows`) | `ComposerShadow`, `ComposerFocusShadow`, `ComposerFocusShadowAcceptEdits`, `ComposerFocusShadowPlan`, `ComposerFocusShadowAuto`, `ToolContentFocusShadow` (the focus of a tool box) |
 | Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade`, `DiffExpandHover`, `DiffExpandPillHoverBorder`, `DiffViewShadow` |
 | Fonts | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |
-| Sizes | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize`, `PromptHintFontSize` |
-| Places | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (the command or the diff of a permission request: a taller one scrolls), `PromptDetailPeekHeight` (the same while the field of "No" is open), `PlanCommentsMaxHeight` (the list of comments in the plan card) |
-| Icons (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.ChevronDown`, `Icon.ChevronUp`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External` |
+| Sizes | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize`, `PromptHintFontSize`, `WorkingGlyphFontSize` (the working line's star), `WorkingRowHeight` |
+| Places | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (the command or the diff of a permission request: a taller one scrolls), `PromptDetailPeekHeight` (the same while the field of "No" is open), `PlanCommentsMaxHeight` (the list of comments in the plan card), `FeedbackFieldHeight` (the field of "What went wrong?") |
+| Icons (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.ChevronDown`, `Icon.ChevronUp`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External`, `Icon.Bookmark`, `Icon.ThumbUp`, `Icon.ThumbDown` |
 | Menus and the command palette | `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`, `ListActiveForeground`, `EffortThumbShadow` |
 | Attachments | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |
 | Agent map and context ring | `ModalOverlay`, `AgentRunning`, `AgentWaiting`, `ContextRingTrack`, `ContextRingFill` |
@@ -477,7 +526,8 @@ viewer.
 
 The reply box and the permission request are hidden; the list still draws, scrolls and lets the user select text.
 Pending requests stay in `ChatConversation.PendingPermissions`, and the reply box keeps its draft, so setting
-`IsReadOnly` back to `false` shows everything again.
+`IsReadOnly` back to `false` shows everything again. The thumbs under a reply and the fade over the reply box go
+too; copying and bookmarking a reply still work.
 
 ## Touch layout
 
@@ -582,11 +632,12 @@ void OnBackPressed()
 }
 ```
 
-The layers, top-most first: the image preview; the Diff View; a menu of the reply box (the commands or the models); a sheet (the usage
-sheet before the others, and a page inside a sheet goes back to the first page before the sheet closes); an agent's card
-in the Agent map, which goes back to the map; the panel that is open (the Agent map, or the `/context` and `/usage`
-panels of the desktop layout); and the field where the user writes why a request is refused. A permission request is no
-layer: it has to be answered.
+The layers, top-most first: the image preview; the Diff View; "What went wrong?" of a bad rating; a menu of the reply
+box (the commands or the models); a sheet (the usage sheet before the others, and a page inside a sheet goes back to the
+first page before the sheet closes); the box of a comment on the plan; an agent's card in the Agent map, which goes back
+to the map; the panel that is open (the Agent map, or the `/context` and `/usage` panels of the desktop layout); the
+plan's document; and the field where the user writes why a request is refused. A permission request is no layer: it has
+to be answered.
 
 ### Your own parts under a sheet
 

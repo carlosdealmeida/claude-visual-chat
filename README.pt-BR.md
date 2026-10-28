@@ -93,13 +93,17 @@ Send(StdinMessages.Initialize("init_1"));
 // view -> claude: cada coisa que o usuário faz é uma linha no stdin do claude
 var ids = 0;
 void Send(string line) { claude.StandardInput.Write(line + "\n"); claude.StandardInput.Flush(); }
-conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e.Text, e.Images));
+conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e));
 conversation.PermissionAnswered += (_, e) => Send(StdinMessages.PermissionResponse(e));
 conversation.PermissionModeRequested += (_, e) => Send(StdinMessages.SetPermissionMode("req_" + ++ids, e.Mode));
 conversation.ModelRequested += (_, e) => Send(StdinMessages.SetModel("req_" + ++ids, e.Model));
 conversation.EffortRequested += (_, e) => Send(StdinMessages.ApplyEffort("req_" + ++ids, e.Effort));
 conversation.StopRequested += (_, _) => Send(StdinMessages.Interrupt("req_" + ++ids));
 ```
+
+O `StdinMessages.UserMessage(e)` escreve o texto, as imagens, uma linha marcadora para cada arquivo que chegou e o
+`uuid` da mensagem, pelo qual o claude avisa quando pega uma mensagem mandada enquanto ele trabalha
+(veja [Respostas e linha do tempo](#respostas-e-linha-do-tempo)). Use-o para todas as mensagens.
 
 Um `/model x` ou `/effort x` digitado também muda o claude, mas o chip só acompanha depois do próximo `system/init` ou
 de uma resposta do `GetSettings`; por isso envie o `GetSettings` depois deles.
@@ -122,7 +126,7 @@ evento, na hora, dentro do handler, ou depois:
 ```csharp
 conversation.MessageSubmitted += (_, e) =>
 {
-    if (!TrySend(StdinMessages.UserMessage(e.Text))) conversation.UndoSubmit(e);
+    if (!TrySend(StdinMessages.UserMessage(e))) conversation.UndoSubmit(e);
 };
 ```
 
@@ -141,7 +145,7 @@ usuário as mostra como miniaturas acima do texto, numa linha só com os arquivo
 largura, como na extensão):
 
 ```csharp
-conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e.Text, e.Images));
+conversation.MessageSubmitted += (_, e) => Send(StdinMessages.UserMessage(e)); // o texto e as imagens
 ```
 
 O `ChatConversation.AddImageAsync(bytes)` anexa uma imagem a partir do seu código. A redução e a decodificação usam o
@@ -162,24 +166,20 @@ por mensagem e `MaxFileBytes` (25 MB) cada um. Um arquivo recusado diz o motivo 
 **Quem manda os arquivos é o seu app; o componente só os mostra.** O claude lê um arquivo de um caminho na máquina
 dele, por isso o `MessageSubmitted` traz os arquivos em `e.Files` e o texto sem eles. O seu app manda cada arquivo para
 a máquina em que o claude roda (a partir do `ChatFile.LocalPath`, em partes, ou do `ChatFile.Content`), escreve o
-`Progress` (de 0 a 1) enquanto manda e o `RemotePath` quando o arquivo chega, e então manda a mensagem com uma linha
-marcadora por arquivo no fim:
+`Progress` (de 0 a 1) enquanto manda e o `RemotePath` quando o arquivo chega, e então manda a mensagem, que o
+`StdinMessages.UserMessage(e)` escreve com uma linha marcadora por arquivo no fim:
 
 ```csharp
 conversation.MessageSubmitted += async (_, e) =>
 {
-    if (e.Files.Count == 0) { Send(StdinMessages.UserMessage(e.Text, e.Images)); return; }
     try
     {
-        var markers = new List<string>();
         foreach (var file in e.Files)
         {
             // do seu app: copiar ou subir o arquivo; o progresso vai na thread da UI
             file.RemotePath = await UploadAsync(file, p => Dispatcher.UIThread.Post(() => file.Progress = p));
-            markers.Add(AttachedFileLine.Format(file.RemotePath)); // "[attached file: <caminho>]"
         }
-        var text = e.Text.Length == 0 ? string.Join("\n", markers) : e.Text + "\n" + string.Join("\n", markers);
-        Send(StdinMessages.UserMessage(text, e.Images));
+        Send(StdinMessages.UserMessage(e)); // o texto, as imagens e "[attached file: <caminho>]" para cada arquivo
     }
     catch (Exception) // qualquer falha: este handler é async void, então nada pode escapar dele
     {
@@ -192,7 +192,8 @@ Enquanto o `Progress` está definido e o `RemotePath` não, o chip diz "Enviando
 `[attached file: <caminho>]`, sozinha na linha, no fim da mensagem; só contam as marcadoras de lá, então uma que o
 usuário escreva no meio do texto continua texto. Quando o claude repete a mensagem, e num arquivo de sessão, a conversa
 tira essas linhas do texto e mostra um chip para cada uma (com o nome da última parte do caminho e sem tamanho). O
-`AttachedFileLine.Split(mensagem)` faz o mesmo para o seu código. Defina o `Progress` e o `RemotePath` na thread da UI.
+Para o seu código, o `AttachedFileLine.Format(caminho)` escreve uma linha dessas e o `AttachedFileLine.Split(mensagem)`
+as tira. Defina o `Progress` e o `RemotePath` na thread da UI.
 
 ## Comandos
 
@@ -206,8 +207,9 @@ conversation.Commands = new[] { new ChatCommand("review", "Revisar um pull reque
 ```
 
 Um comando que não é local vai ao claude como o texto de uma mensagem, como qualquer outro. Os que a própria conversa
-trata (`ChatConversation.LocalCommands`: `context`, `usage`, `remote-control`, `rc` e `chrome`) disparam o
-`CommandInvoked` e não mandam nada:
+trata (`ChatConversation.LocalCommands`: `context`, `usage`, `remote-control`, `rc`, `chrome` e `copy`) disparam o
+`CommandInvoked` e não mandam nada. O `/copy` e o `/copy N` não pedem nada ao seu app: a view copia a resposta para a
+área de transferência e diz isso numa linha embaixo.
 
 ```csharp
 conversation.CommandInvoked += (_, e) =>
@@ -217,6 +219,7 @@ conversation.CommandInvoked += (_, e) =>
         case "context": Send(StdinMessages.GetContextUsage("req_" + ++ids)); break;  // a resposta enche o painel
         case "chrome": Send(StdinMessages.GetChromeStatus("req_" + ++ids)); break;
         case "remote-control": case "rc": ToggleRemoteControl(); break;               // veja abaixo
+        // "copy": da própria view
     }
 };
 ```
@@ -408,6 +411,52 @@ Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt
 - Os nomes das linhas de Agent, Web Fetch, Web Search e Claude in Chrome são textos do `ChatStrings` (`AgentToolTitle`,
   `WebFetchToolTitle`, `WebSearchToolTitle`, `ChromeToolTitle`), iguais nas duas línguas.
 
+## Respostas e linha do tempo
+
+Em volta da resposta do Claude, um turno mostra o que a extensão 2.1.310 mostra: "Copiar código" num bloco de código
+(sem realce de sintaxe, como na extensão), uma fileira embaixo do turno terminado para copiá-lo e marcar a resposta, um
+prompt longo dobrado atrás de "Mostrar mais" (`UserMessageItem.IsTextExpanded`), o prompt do turno na tela fixo no topo
+da lista, uma linha de data entre os dias, uma linha de pensamento que conta os tokens, um cartão para a compactação e
+uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O que o seu app pode querer saber:
+
+- **Os polegares e os links dependem do seu app.** A fileira embaixo de um turno só tem "Boa resposta" e "Resposta ruim"
+  enquanto o seu app assina o `ChatConversation.FeedbackRequested`, e um link ("Saiba como usamos sua avaliação") só
+  enquanto ele assina o `LinkRequested`. A view nunca manda uma avaliação nem abre uma página sozinha:
+
+  ```csharp
+  conversation.FeedbackRequested += (_, e) => MandarAvaliacao(e.Item.Uuid, e.Positive, e.Details); // do seu app
+  conversation.LinkRequested += (_, e) => AbrirNoNavegador(e.Url);                                // do seu app
+  ```
+
+  Os polegares só aparecem embaixo de uma resposta cuja linha trouxe um `uuid` (`AssistantTextItem.Uuid`), e nunca numa
+  view somente leitura. O polegar para baixo abre "O que deu errado?", uma camada do `CloseTopLayer()`; aí o `Details` é
+  o que a pessoa escreveu. O `Positive` é null quando a pessoa desfaz a avaliação.
+- **Propriedades da view** para as configurações da extensão que o seu app lê e repassa: `ScrollToEndOnSend` (true:
+  mandar uma mensagem traz a lista de volta ao fim), `ShowTimestamps` (true: os horários e as linhas de data),
+  `SpinnerVerbs` e `SpinnerVerbsReplace` (verbos seus para a linha de trabalho, somados aos dela ou sozinhos) e
+  `ReduceMotion` (false; o Avalonia 11.0 não sabe perguntar ao sistema, então o seu app a liga quando o usuário quer
+  menos movimento).
+
+  ```xml
+  <controls:ClaudeChatView Conversation="{Binding Chat}" ShowTimestamps="False" ReduceMotion="True" />
+  ```
+
+- **Uma mensagem mandada enquanto o Claude trabalha espera** no fim da lista, em `ChatConversation.QueuedMessages`, e
+  não em `Items`, até o claude pegá-la. Escreva todas as mensagens com o `StdinMessages.UserMessage(e)`, que manda o
+  `uuid` dela: o claude então avisa quando a pega (`command_lifecycle`). Sem uuid, as mensagens retidas entram na lista
+  no próximo pedido à API ou no fim do turno.
+- **Itens novos em `Items`:** `MetaLineItem` (uma linha que a conversa diz sobre os próprios comandos, como o que o
+  `/copy` fez), `CompactionItem` (onde antes vinha um `NoticeItem` de `NoticeKind.Compacted`), `DividerItem` (o que um
+  comando imprimiu numa linha só) e `ExternalMessageItem` (uma mensagem de outro agente, de outra sessão ou de um canal,
+  ou o aviso de uma tarefa, onde antes vinha um `UserMessageItem` com a marcação crua). A view tem um modelo para cada
+  um; um app com modelos próprios também precisa deles.
+- **A linha de trabalho** segue o `ChatConversation.Status` (o que o `system/status` diz: "Compactando...") e o
+  `IsRunningStartupHooks` ("Executando os hooks de início...").
+- **Onde difere da extensão:** sem realce de sintaxe; as linhas antigas de ferramenta não são podadas (a extensão
+  2.1.310 guarda todas); enquanto o Claude trabalha a caixa de resposta diz "Pôr outra mensagem na fila…", sem os
+  prompts sugeridos e as dicas de Ctrl+Esc que a extensão mostra ali; e a fileira de ações fica no fim do turno e copia
+  o turno inteiro.
+
 ## Cores
 
 Todas as cores, as duas fontes, os tamanhos de texto e alguns lugares vêm de recursos chamados `ClaudeChat.*` (as
@@ -442,14 +491,14 @@ As chaves, todas com o prefixo `ClaudeChat.`:
 
 | Grupo | Chaves |
 | --- | --- |
-| Cores do tema (mudam com o tema do VS Code) | `Background`, `Surface`, `Border`, `BorderStrong`, `Foreground`, `ForegroundMuted`, `Accent`, `AccentFill`, `AccentForeground`, `FocusBorder`, `Warning`, `Error`, `Success`, `InputBackground`, `InputBorder`, `InputActiveBorder`, `PermissionActiveBorder`, `InputPlaceholder`, `HoverBackground`, `OptionBorder`, `TimelineLine`, `Dot`, `ToolBackground`, `CodeBackground`, `CodeForeground`, `CodeBlockBackground`, `PillBackground`, `PillHoverBackground` |
+| Cores do tema (mudam com o tema do VS Code) | `Background`, `Surface`, `Border`, `BorderStrong`, `Foreground`, `ForegroundMuted`, `Accent`, `AccentFill`, `AccentForeground`, `FocusBorder`, `Warning`, `Error`, `Success`, `InputBackground`, `InputBorder`, `InputActiveBorder`, `PermissionActiveBorder`, `InputPlaceholder`, `HoverBackground`, `OptionBorder`, `TimelineLine`, `Dot`, `ToolBackground`, `CodeBackground`, `CodeForeground`, `CodeBlockBackground`, `PillBackground`, `PillHoverBackground`, `DisabledForeground` (a linha de data) |
 | Cores próprias da extensão | `DotSucceeded`, `DotFailed`, `DotRejected` (sem uso desde a 0.6.0), `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground` |
 | Sombras da caixa de resposta e das caixas de ferramenta (`BoxShadows`) | `ComposerShadow`, `ComposerFocusShadow`, `ComposerFocusShadowAcceptEdits`, `ComposerFocusShadowPlan`, `ComposerFocusShadowAuto`, `ToolContentFocusShadow` (o foco de uma caixa de ferramenta) |
 | Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade`, `DiffExpandHover`, `DiffExpandPillHoverBorder`, `DiffViewShadow` |
 | Fontes | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |
-| Tamanhos | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize`, `PromptHintFontSize` |
-| Lugares | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (o comando ou o diff de um pedido de permissão: um mais alto rola), `PromptDetailPeekHeight` (o mesmo enquanto o campo do "Não" está aberto), `PlanCommentsMaxHeight` (a lista de comentários no cartão do plano) |
-| Ícones (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.ChevronDown`, `Icon.ChevronUp`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External` |
+| Tamanhos | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize`, `PromptHintFontSize`, `WorkingGlyphFontSize` (a estrela da linha de trabalho), `WorkingRowHeight` |
+| Lugares | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (o comando ou o diff de um pedido de permissão: um mais alto rola), `PromptDetailPeekHeight` (o mesmo enquanto o campo do "Não" está aberto), `PlanCommentsMaxHeight` (a lista de comentários no cartão do plano), `FeedbackFieldHeight` (o campo de "O que deu errado?") |
+| Ícones (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.ChevronDown`, `Icon.ChevronUp`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External`, `Icon.Bookmark`, `Icon.ThumbUp`, `Icon.ThumbDown` |
 | Menus e paleta de comandos | `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`, `ListActiveForeground`, `EffortThumbShadow` |
 | Anexos | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |
 | Mapa de agentes e anel de contexto | `ModalOverlay`, `AgentRunning`, `AgentWaiting`, `ContextRingTrack`, `ContextRingFill` |
@@ -484,7 +533,8 @@ fora do ar, um visualizador.
 
 A caixa de resposta e o pedido de permissão ficam ocultos; a lista continua sendo desenhada, rolando e deixando
 selecionar o texto. Os pedidos pendentes continuam em `ChatConversation.PendingPermissions` e a caixa de resposta
-guarda o rascunho, então voltar `IsReadOnly` para `false` mostra tudo de novo.
+guarda o rascunho, então voltar `IsReadOnly` para `false` mostra tudo de novo. Os polegares embaixo de uma resposta e
+o degradê sobre a caixa de resposta também somem; copiar e marcar uma resposta continuam valendo.
 
 ## Layout de toque
 
@@ -590,11 +640,12 @@ void OnBackPressed()
 }
 ```
 
-As camadas, a de cima primeiro: a prévia de imagem; o Diff View; um menu da caixa de resposta (os comandos ou os modelos); uma
-folha (a de uso antes das outras, e uma página dentro de uma folha volta para a primeira antes de a folha fechar); a
-ficha de um agente no mapa de agentes, que volta para o mapa; o painel que estiver aberto (o mapa de agentes ou os
-painéis `/context` e `/usage` do layout desktop); e o campo onde o usuário escreve por que recusou um pedido. Um pedido
-de permissão não é camada: tem de ser respondido.
+As camadas, a de cima primeiro: a prévia de imagem; o Diff View; o "O que deu errado?" de uma avaliação ruim; um menu da
+caixa de resposta (os comandos ou os modelos); uma folha (a de uso antes das outras, e uma página dentro de uma folha
+volta para a primeira antes de a folha fechar); a caixa de um comentário no plano; a ficha de um agente no mapa de
+agentes, que volta para o mapa; o painel que estiver aberto (o mapa de agentes ou os painéis `/context` e `/usage` do
+layout desktop); o documento do plano; e o campo onde o usuário escreve por que recusou um pedido. Um pedido de
+permissão não é camada: tem de ser respondido.
 
 ### As suas partes embaixo de uma folha
 

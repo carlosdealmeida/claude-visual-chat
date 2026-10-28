@@ -121,6 +121,122 @@ All notable changes to this project are written here. The format follows
   `WebSearchToolTitle` and `ChromeToolTitle`, which are the same in both languages, like `AgentTokens`.
 - New theme resources: `ClaudeChat.AgentWaiting`, `ClaudeChat.ToolContentFocusShadow` (also in "Dark Modern"),
   `ClaudeChat.DiffExpandHover`, `ClaudeChat.DiffExpandPillHoverBorder` and `ClaudeChat.DiffViewShadow`.
+- Under a finished turn, a row like the extension's: "Copy response" (the turn's text, with a check for 2 s) and
+  "Bookmark response" / "Remove bookmark" (`AssistantTextItem.IsBookmarked`), shown while the pointer or the keyboard is
+  on the end of the turn; a bookmarked reply keeps its icon in sight. In the touch layout the bookmark sits beside the
+  turn's copy button, always shown, as a target of 44 px, also in a read-only view.
+- `ChatConversation.FeedbackRequested` (`FeedbackRequestedEventArgs`: `Item`, `Positive`, `Details`). The row has "Good
+  response" and "Bad response" only while the host listens to it, only under a reply that has its line's `uuid`, and
+  never in a read-only view. The thumb down opens "What went wrong?" (Ctrl+Enter sends, Esc or "Skip" closes, at most
+  4,000 characters), a layer of `CloseTopLayer()` right under the Diff View. `Positive` is null when the person takes
+  the rating back. In the touch layout the thumbs sit beside the turn's copy button, at 44 px.
+- `ChatConversation.LinkRequested` (`LinkRequestedEventArgs.Url`): the host opens the view's web links, the component
+  never does. "Learn how we use your feedback" shows only while the host listens to it. As with the thumbs, a part that
+  needs the host shows only while the host subscribes to its event, and the tests prove that nothing shows without a
+  subscriber.
+- `AssistantTextItem.Uuid` and `AssistantBlock.Uuid` (`init`), from the `uuid` of the assistant line.
+- "Copy code" on the code blocks of a reply (fenced and indented): at the top right, shown while the pointer is over the
+  block (always, as a target of 44 px, in the touch layout); its icon turns into a check for 2 s.
+- `/copy` and `/copy N` copy Claude's last reply (or the Nth-latest of the last 20; a turn's whole text, as the copy
+  button takes it) to the clipboard and say how much was copied ("Copied to clipboard (N characters, M lines)"). Typed
+  while Claude works, the copy waits for the turn to end; Stop, or the work ending without a turn's end (a message taken
+  back with `UndoSubmit`), drops it. `copy` joins `ChatConversation.LocalCommands`: it raises `CommandInvoked` too,
+  which the host may ignore.
+- `MetaLineItem`: a line the conversation says about its own commands and events (what `/copy` did, a hook that blocked
+  the prompt, a background agent that finished), in italics and the secondary color, selectable, outside the timeline.
+- A prompt taller than 60 px folds behind "Show more" (inside the bubble, at the bottom right: under the pointer or the
+  keyboard on the desktop, always and at 44 px in the touch layout) and opens with "Show less" under it; the height
+  animates over 0.3 s. The state is in the item: `UserMessageItem.IsTextExpanded`.
+- The prompt of the turn on screen stays pinned at the top of the list, in a band of the side bar's color, until the
+  next prompt pushes it out. It spans the list's width and is at most 40 % of the view tall, with a scroll of its own. A
+  click on it with no text selected brings the start of its turn to the top after 300 ms; a press that moves more than 4
+  px (10 px in the touch layout) is a drag, not a click. The wheel over it, and a finger in the touch layout, scroll the
+  list. Prompts without text pin nothing.
+- `ClaudeChatView.ScrollToEndOnSend` (true by default; the extension's `scrollToBottomOnSend`): sending a message brings
+  the list back to its end and follows it again, even after scrolling up.
+- `ClaudeChatView.ShowTimestamps` (true by default, inherited; the extension's `showMessageTimestamps`): false hides the
+  messages' times and the date lines. A message's time has the whole date and time in its tooltip ("2026-10-25 15:45:12
+  GMT-3").
+- A date line ("Sat, Oct 25", with ", 2025" outside the current year) between wavy rules, before the first message and
+  wherever the day changes, in both layouts. It belongs to the first item of each day, so it moves when a message of
+  that day comes before it or when that item goes.
+- A fade of 150 px dims the end of the list into the background over the reply box (not in a read-only view).
+- A message sent while Claude works waits at the end of the list, under the working line, in the usual bubble, with no
+  time and no actions, until the claude takes it: `ChatConversation.QueuedMessages`. It moves into `Items` when the
+  claude says so for its uuid (`command_lifecycle`), when it repeats the message, or else at the first request to the
+  API after it was sent (`system/status` `requesting`), or at the turn's end. A screen reader hears "Message queued.".
+- `MessageSubmittedEventArgs.Uuid` and the overload `StdinMessages.UserMessage(MessageSubmittedEventArgs)`, which writes
+  the text, the images, the message's `uuid` and a marker line for each file that landed. A host that uses it should use
+  it for every message: once the claude has told of one message by its uuid, a request to the API no longer releases the
+  held ones, so a message written without its uuid stays held until the turn's end. The event `CommandLifecycle` reads
+  `command_lifecycle`.
+- "Ran at once, while Claude was working." under a command the claude ran at once (`ran_ahead`); only with a host that
+  sends the uuid.
+- A live token estimate on the thinking line ("Thinking... · 1.2k tokens"), counting up while Claude thinks:
+  `ThinkingItem.EstimatedTokens`, the event `ThinkingTokens` and `BlockDelta.EstimatedTokens` (`init`).
+- `CompactionItem`: a card "Compacted chat · manual · 36k tokens freed" that opens to the summary the claude wrote.
+  `SystemNotice.Trigger`, `PreTokens` and `PostTokens`, and `UserBlock.IsSynthetic` (all `init`).
+- The working line at the end of the list: a star that turns and a verb that changes (after 2 s, 3 s, then every 5 s),
+  written from left to right and followed by three dots, "Compacting..." while the claude makes room and "Running
+  start-up hooks..." while a `SessionStart` or `Setup` hook runs; it hides while a permission request waits.
+  `ClaudeChatView.SpinnerVerbs` and `SpinnerVerbsReplace` (the extension's `claudeCode.spinnerVerbs`: verbs added to the
+  line's own, or used alone; the host reads its setting, the view saves nothing) and `ReduceMotion` (the star still and
+  the verbs swapped whole; Avalonia 11.0 cannot ask the system, so the host that knows sets it), with their `*Property`
+  fields. `ChatConversation.Status` (what `system/status` says) and `IsRunningStartupHooks`; the events `HookStarted`
+  and `HookFinished`.
+- `DividerItem`: what a command printed in one line is a divider, its text between the date line's wavy rules; "Set
+  model to X" reads "Switched to X". A label cut short, or any label in a panel of 330 px or less, shows whole with a
+  tap.
+- The event `Informational` (`system/informational`, with `Level` and `Text`): a warning or an error, such as a hook
+  that blocked the prompt, is a meta line; plain information is not shown, as in the extension.
+- `ExternalMessageItem`: a message from another agent, another session or a channel, the notice of a task and the
+  wrapped notices of the claude (a teammate's message, terminal output, a tick, MCP updates) are a line in italics,
+  "Message from @maria: the first words…", that opens to the sender, the extra attributes and the body; a task's notice
+  opens to a list of its parts. A message is a card only from the sender its line's `origin` claims, and one without an
+  `origin` reads "Sender not recorded" (so does every card where the lines carry no `origin`, as through the Kairos
+  relay). `MessageOrigin` and `UserBlock.Origin` (`init`). A background agent that ends live adds a meta line with the
+  first line of its summary.
+- New `ChatStrings` texts, in English and Portuguese: `CopyResponse`, `CopyResponseToClipboard`, `BookmarkResponse`,
+  `RemoveBookmark`, `GoodResponse`, `BadResponse`, `FeedbackLearnHow`, `FeedbackThanks`, `FeedbackLearnHowShort`,
+  `FeedbackTitle`, `FeedbackPlaceholder`, `FeedbackSkip`, `FeedbackSend`; `CommandCopyDescription`, `CopyDone`,
+  `CopyNothing`, `CopyOnly`, `CopyOnlyOne` (its singular, "Só há 1 resposta..." in Portuguese), `CopyUsage`,
+  `CopyFailed`, `CopyWaiting`; `ShowMore`, `ShowLess`; `MonthNames`, `DateFormat`, `DateWithYearFormat`; `YouQueued`,
+  `MessageQueued`, `RanAtOnce`; `ThinkingNow`, `ThinkingTokensEstimate`, `CompactedChat`, `CompactedChatShort`,
+  `CompactionNoSummary`; `WorkingVerbs`, `CompactingLine`, `CompactingAnnouncement`, `StartupHooksLine`,
+  `WorkingAnnouncement`; `SwitchedTo`, `SwitchedModel`; `MessageFromPeer`, `MessageFromChannel`, `MessageFromSender`,
+  `SenderNotRecorded`, `TaggedNothing` and the names of a task's parts and of the wrapped notices (`TaggedTaskId` to
+  `TaggedCommandCaveat`; `TaggedTokens` is the same in both languages).
+- New theme resources: `ClaudeChat.DisabledForeground` (the date line; also in "Dark Modern"),
+  `ClaudeChat.WorkingGlyphFontSize`, `ClaudeChat.WorkingRowHeight`, `ClaudeChat.FeedbackFieldHeight`, the icons
+  `ClaudeChat.Icon.Bookmark`, `ClaudeChat.Icon.ThumbUp` and `ClaudeChat.Icon.ThumbDown`, and the template
+  `ClaudeChat.QueuedMessageTemplate`.
+
+### Breaking
+
+Nothing public was removed or renamed. These changes of 0.6.0 may still need a change in a host that reads `Items`,
+calls `StdinMessages.UserMessage`, styles the view or compares its texts:
+
+- `ChatConversation.Submit` while the conversation is busy (`IsBusy`) no longer adds the message to `Items`: it goes to
+  `QueuedMessages` until the claude takes it. A host that looked for the message in `Items` right after `Submit` must
+  look in the queue.
+- `StdinMessages.UserMessage(null)` with a literal `null` no longer compiles: the call is ambiguous between the two
+  overloads. Write `(string)null`.
+- `typeof(StdinMessages).GetMethod("UserMessage")`, by reflection without the parameter types, throws
+  `AmbiguousMatchException`. Pass the types.
+- A compaction (`compact_boundary`) is a `CompactionItem`, no longer a `NoticeItem` of `NoticeKind.Compacted`: a host
+  that looked for those notices must look for the card. `NoticeKind.Compacted` stays, not used.
+- What a command printed in one line (the `Compacted` of `/compact`, say) is a `DividerItem`, no longer a
+  `CommandOutputItem`; an output of several lines is still a `CommandOutputItem`.
+- A message from an agent, another session or a channel, and a wrapped notice, is an `ExternalMessageItem`, no longer a
+  `UserMessageItem` with the raw markup; the notice of a task in a session file, which did not show, is one too.
+  `Items.OfType<UserMessageItem>()` no longer sees these messages. A host with templates of its own needs one for
+  `ExternalMessageItem`, and for `MetaLineItem`, `CompactionItem` and `DividerItem`.
+- Style: the working line at the end of the list has the style key `Grid`, and Avalonia's type selector matches the
+  exact style key, so a selector `Panel.ClaudeChatWorking` no longer reaches it (a test confirms it; use
+  `Grid.ClaudeChatWorking`). `Ellipse.ClaudeChatWorkingDot` and the named parts `WorkingDot` and `WorkingText` are gone;
+  in their place are `TextBlock.ClaudeChatWorkingGlyph` and `TextBlock.ClaudeChatWorkingText`.
+- Text: `ChatStrings.Interrupted` reads "Interrupted", where it read "Interrupted by the user" (in Portuguese
+  "Interrompido", where it read "Interrompido por você"). A host that compared the text sees the new one.
 
 ### Changed
 
@@ -186,8 +302,8 @@ All notable changes to this project are written here. The format follows
   url its host, the rest at most 40 characters), and "" when none is there, where it was the first text of the input; for
   a Claude in Chrome tool, the line of its action. Glob reads `pattern: "..."` and Grep `"..." (in src, glob: *.cs,
   type: cs)`, Skill drops the leading "/", and TaskOutput reads `task: "<id>"`.
-- In the touch layout, the request of Glob and Grep shows that new summary, and that of an MCP tool the field above;
-  when an MCP tool has no known field, the request shows the first text of the input, as in 0.5.0.
+- In the touch layout, the request of Glob and Grep shows that new summary; that of an MCP tool still shows the first
+  text of its input, whole, as in 0.5.0.
 - The Edit and Write boxes are left out when the view is 500 px wide or less (the line under the name and the reason
   stay), like the extension; this is the desktop layout's only, and the touch layout keeps them. A diff in the list is
   its lines plus 20 px tall, at most 200 px, and fades only when its lines are taller than 200 px (it used to fade past
@@ -200,7 +316,32 @@ All notable changes to this project are written here. The format follows
   2.1.310; and the fields of the Claude in Chrome input that the rows read (`query`, `urlPattern`, `pattern`,
   `onlyErrors`, `text`, `scroll_direction`, `ref`, `coordinate`, `duration`) come from the schema of the tool, not from a
   recording of a real session, because none was made: a real session may show a summary or a thumbnail less. The Kairos
-  relay sends only text, so there a `computer` action reads "Action completed" with no thumbnail.
+  relay sends only text, so there a `computer` action reads "Action completed" with no thumbnail. The Claude in Chrome
+  rows have no "[Show Tab]" link.
+- A code block still open while a reply arrives is drawn as code up to its end, where it was plain text until its
+  closing fence came.
+- "At the end" of the list means within 50 px, where it meant within 4. Coming back down that close by the user's own
+  move makes the list follow its end again from there, and the next rows take it to the end; any scroll up from the very
+  end stops following. While the list does not follow, the first row on screen stays in place when rows change above it,
+  and the move that keeps it there is not taken for the user scrolling down.
+- The thinking line reads "Thinking..." (with dots) while Claude thinks; "Thinking" stays for a finished thought with no
+  known duration.
+- The working line has the star and the verbs where it had a dot and "Working...": `ChatStrings.Working` is no longer
+  drawn (it stays, not used).
+- A palette that lists `LocalCommands` shows `/copy` after `/chrome`.
+- The touch layout has the date lines too, where 0.5.0 showed no time at all, and each divider there is 44 px tall.
+- Where the group differs from the extension 2.1.310 or from the first design notes on purpose: the code blocks have no
+  syntax highlighting, as in the extension 2.1.310 (so there is no tokenizer, and code is in the text color); the old
+  tool rows are not pruned, as the extension 2.1.310 does not prune them; while Claude works the reply box reads "Queue
+  another message…", as the extension's, which also shows a suggested prompt or its Ctrl+Esc hints (shortcuts of VS
+  Code) in that place, and those are left out; the row of actions sits at the end of the turn, under its last reply, and
+  copies the whole turn, where the extension has one under each assistant message, and it shows with the pointer over
+  the end of the turn, without the extension's fade of 0.18 s; the scroll on send jumps to the end at once, with no
+  glide of 2 s; Ctrl+wheel scrolls the list (it zooms in the extension), so it stops following; a still finger on the
+  list does not stop following; the time format is `ChatStrings.TimeFormat`, not the claude's; the tooltips are plain
+  text; the working verbs are the component's own, in English and Portuguese; and the messages of agents, sessions and
+  channels are recognized by the component's own reading of their format, so a message of a shape the claude does not
+  write may be read a little differently from the extension.
 
 ### Removed
 
@@ -209,6 +350,9 @@ All notable changes to this project are written here. The format follows
   line). A host that styled them loses the effect; nothing public was removed.
 
 ### Fixed
+
+- The summary of a live compaction (a `user` line with `isSynthetic`) no longer shows as a message from the user: it is
+  the compaction card's. A subagent's synthetic line is not taken for it.
 
 ## [0.5.0] - 2026-10-27
 
