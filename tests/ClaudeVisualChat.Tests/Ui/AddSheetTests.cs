@@ -315,7 +315,8 @@ public class AddSheetTests
             var name = Part<TextBlock>(row, "ClaudeChatSheetName");
             var iconRight = icon.TranslatePoint(new Point(icon.Bounds.Width, 0), row)!.Value.X;
             Assert.True(iconRight <= name.TranslatePoint(default, row)!.Value.X, pair.Key);
-            Assert.Equal(row.Bounds.Height / 2, icon.TranslatePoint(new Point(0, icon.Bounds.Height / 2), row)!.Value.Y, 1);
+            // centered within a pixel: the row's text, and so its rounding, depends on the platform's fonts
+            Assert.InRange(icon.TranslatePoint(new Point(0, icon.Bounds.Height / 2), row)!.Value.Y, row.Bounds.Height / 2 - 1, row.Bounds.Height / 2 + 1);
         }
 
         // the mode's icon follows the mode
