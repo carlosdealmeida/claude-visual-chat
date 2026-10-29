@@ -94,6 +94,8 @@
          shadow of the pill with the label (the pill itself is the side bar's background) -->
     <SolidColorBrush x:Key="ClaudeChat.DropFill" Color="#26D97757" />
     <SolidColorBrush x:Key="ClaudeChat.DropBorder" Color="#D97757" />
+    <!-- the "Auto mode is enabled" card: 0 2 4 #00000012 -->
+    <BoxShadows x:Key="ClaudeChat.AutoNoticeShadow">0 2 4 0 #12000000</BoxShadows>
     <BoxShadows x:Key="ClaudeChat.DropLabelShadow">0 2 8 0 #00000026</BoxShadows>
     <!-- the image preview: the extension's backdrop and shadow; its close button is a menu's -->
     <SolidColorBrush x:Key="ClaudeChat.PreviewOverlay" Color="#D9000000" />
@@ -217,6 +219,7 @@
     <StreamGeometry x:Key="ClaudeChat.Icon.Add">M13,7.15 L13,18.85 M7.15,13 L18.85,13</StreamGeometry>
     <StreamGeometry x:Key="ClaudeChat.Icon.Slash">M7.8,6.5 L18.2,6.5 A1.3,1.3 0 0 1 19.5,7.8 L19.5,18.2 A1.3,1.3 0 0 1 18.2,19.5 L7.8,19.5 A1.3,1.3 0 0 1 6.5,18.2 L6.5,7.8 A1.3,1.3 0 0 1 7.8,6.5 Z M14.95,9.1 L11.05,16.9</StreamGeometry>
     <!-- an attachment's × and the preview's close, on a 20 px box with a 1.5 px line -->
+    <StreamGeometry x:Key="ClaudeChat.Icon.Bolt">M9,1.5 L3.5,9 L7.5,9 L6.5,14.5 L12.5,7 L8.5,7 Z</StreamGeometry>
     <StreamGeometry x:Key="ClaudeChat.Icon.Remove">M5.75,5.75 L14.25,14.25 M14.25,5.75 L5.75,14.25</StreamGeometry>
     <!-- on a 16 px box, stroked like the chevron; shapes after the Codicons (MIT) clock and close -->
     <StreamGeometry x:Key="ClaudeChat.Icon.Clock">M8,2 C11.3,2 14,4.7 14,8 C14,11.3 11.3,14 8,14 C4.7,14 2,11.3 2,8 C2,4.7 4.7,2 8,2 Z M8,4.5 L8,8 L10.5,9.5</StreamGeometry>
@@ -3229,6 +3232,92 @@
   <Style Selector="Button.ClaudeChatBannerClose Viewbox.ClaudeChatRemoveIcon">
     <Setter Property="Width" Value="12" />
     <Setter Property="Height" Value="12" />
+  </Style>
+
+  <!-- the "Switched to" band: the banner's look; the "Why?" is the muted text, underlined, after a dot; the explanation
+       under the line is the muted one, with 6 px at the right -->
+  <Style Selector=":is(Border).ClaudeChatBanner TextBlock.ClaudeChatBandDot">
+    <Setter Property="Margin" Value="6,0,6,0" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Button.ClaudeChatBandWhy">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatBandWhy:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatBandWhyText">
+    <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+    <Setter Property="TextDecorations" Value="Underline" />
+  </Style>
+  <Style Selector=":is(Border).ClaudeChatBanner TextBlock.ClaudeChatBandBody">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Margin" Value="0,6,6,0" />
+  </Style>
+
+  <!-- ===== the "Auto mode is enabled" card on an empty conversation ===== -->
+
+  <!-- 340 px at most, a .5 px border (one device pixel, as the banners'), radius 8, the editor's background, a soft shadow -->
+  <Style Selector=":is(Border).ClaudeChatAutoNotice">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.AutoNoticeShadow}" />
+  </Style>
+  <!-- 40 px at least; 12 px at the left, 6 at the right; a line under it -->
+  <Style Selector="Grid.ClaudeChatAutoNoticeHeader">
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Margin" Value="12,0,6,0" />
+  </Style>
+  <Style Selector="Path.ClaudeChatBoltIcon">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Bolt}" />
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAutoNoticeTitle">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Margin" Value="12,0,0,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector=":is(Border).ClaudeChatAutoNotice Button.ClaudeChatBannerClose">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatAutoNoticeContent">
+    <Setter Property="Margin" Value="12,12,12,12" />
+    <Setter Property="Spacing" Value="8" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAutoNoticeBody">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="LineHeight" Value="18" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAutoNoticeLink">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAutoNoticeLink:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAutoNoticeLink:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAutoNoticeLinkText">
+    <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="LineHeight" Value="18" />
+    <Setter Property="TextDecorations" Value="Underline" />
   </Style>
 
   <!-- ===== markdown (only inside a MarkdownBlock) ===== -->

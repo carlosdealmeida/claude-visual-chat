@@ -449,7 +449,7 @@ public class PublicApiTests
             "ClaudeVisualChat.ChatBrowserStatus", "ClaudeVisualChat.ChatRemoteControlStatus",
             "ClaudeVisualChat.EffortRequestedEventArgs", "ClaudeVisualChat.CommandInvokedEventArgs",
             "ClaudeVisualChat.RemoteControlLinkRequestedEventArgs", "ClaudeVisualChat.CommandOutputItem",
-            "ClaudeVisualChat.Protocol.SettingsApplied",
+            "ClaudeVisualChat.Protocol.SettingsApplied", "ClaudeVisualChat.Protocol.ModelRefusalFallback",
         })
         {
             Assert.Contains(type, names);
@@ -464,6 +464,7 @@ public class PublicApiTests
             "BrowserError", "RemoteControlStatus", "RemoteControlUrl", "RemoteControlError",
             "AddImageAsync", "RemoveAttachment", "SetEffort", "InvokeCommand", "DisconnectBrowser", "OpenRemoteControl",
             "ClosePanel", "EffortRequested", "CommandInvoked", "BrowserDisconnectRequested", "RemoteControlLinkRequested",
+            "AutoModeNoticeSeen", "LastModelFallback", "DismissModelFallback",
         })
         {
             Assert.True(conversation.GetMember(member).Length > 0, "ChatConversation." + member);

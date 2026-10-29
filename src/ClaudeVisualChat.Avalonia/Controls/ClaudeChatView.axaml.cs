@@ -550,6 +550,8 @@ public partial class ClaudeChatView : UserControl
             Prompt.Conversation = Conversation;
             BrowserBanner.Conversation = Conversation;
             RemoteControlBanner.Conversation = Conversation;
+            FallbackBand.Conversation = Conversation;
+            AutoNotice.Conversation = Conversation;
             TouchAgentsChip.Conversation = Conversation;
             QueuedList.Conversation = Conversation;
             ContextPanel.Conversation = Conversation;
@@ -633,6 +635,7 @@ public partial class ClaudeChatView : UserControl
                 SetValue(IsTinyProperty, width <= TinyWidth);
             }
             Sticky.CapHeight = Math.Max(0, StickyCap * Bounds.Height);
+            AutoNotice.ViewSize = Bounds.Size; // the view's own size, in either layout
             PlaceBookmarks();
         }
         else if (change.Property == LayoutProperty)

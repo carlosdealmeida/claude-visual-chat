@@ -104,6 +104,8 @@ public sealed class ChatConversation : ChatObservableObject
     private string? _remoteControlUrl;
     private string? _title;
     private string? _remoteControlError;
+    private bool _autoModeNoticeSeen;
+    private ModelRefusalFallback? _lastModelFallback;
 
     private readonly ObservableCollection<AssistantTextItem> _bookmarks = new ObservableCollection<AssistantTextItem>();
     private ChatStrings _strings = ChatStrings.English;
@@ -690,6 +692,30 @@ public sealed class ChatConversation : ChatObservableObject
         set => SetField(ref _remoteControlError, value);
     }
 
+    /// <summary>
+    /// True once the "Auto mode is enabled" notice of an empty conversation was closed. The host keeps it between sessions:
+    /// it is observable, and the notice stays away while it is true.
+    /// </summary>
+    public bool AutoModeNoticeSeen
+    {
+        get => _autoModeNoticeSeen;
+        set => SetField(ref _autoModeNoticeSeen, value);
+    }
+
+    /// <summary>
+    /// The last switch of model the claude's safeguards made (<c>system/model_refusal_fallback</c>), which the "Switched to" band
+    /// shows; null for none, or once <see cref="DismissModelFallback"/> closed it. A session file never sets it, and a newer
+    /// switch replaces it.
+    /// </summary>
+    public ModelRefusalFallback? LastModelFallback
+    {
+        get => _lastModelFallback;
+        private set => SetField(ref _lastModelFallback, value);
+    }
+
+    /// <summary>Closes the "Switched to" band (the × of it): <see cref="LastModelFallback"/> becomes null.</summary>
+    public void DismissModelFallback() => LastModelFallback = null;
+
     // ---- input ----
 
     /// <summary>Applies one line of <c>claude -p --output-format stream-json</c>; odd lines are ignored.</summary>
@@ -806,6 +832,9 @@ public sealed class ChatConversation : ChatObservableObject
             case RemoteControlChanged remote:
                 OnRemoteControlChanged(remote);
                 break;
+            case ModelRefusalFallback fallback:
+                if (!string.IsNullOrEmpty(fallback.FallbackModel)) LastModelFallback = fallback;
+                break;
             case AgentTaskStarted started:
                 OnAgentTaskStarted(started);
                 break;
@@ -883,6 +912,7 @@ public sealed class ChatConversation : ChatObservableObject
     public void Clear()
     {
         Items.Clear();
+        LastModelFallback = null; // a switch of the session that is gone
         _held.Clear();
         if (QueuedMessages.Count > 0) QueuedMessages.Clear();
         _claudeTellsLifecycle = false; // a claude of the next session may not tell: the requests release again until one does

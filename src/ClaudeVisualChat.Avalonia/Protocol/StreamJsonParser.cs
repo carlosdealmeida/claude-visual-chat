@@ -90,6 +90,11 @@ namespace ClaudeVisualChat.Protocol
                     {
                         new StatusChanged(JsonHelpers.Str(root, "status"), JsonHelpers.Str(root, "permissionMode")),
                     };
+                case "model_refusal_fallback":
+                    // the band is live state: the history reader (ReadNotice) leaves this line out
+                    return JsonHelpers.Str(root, "fallback_model") is { Length: > 0 } fallback
+                        ? new ClaudeEvent[] { new ModelRefusalFallback(JsonHelpers.Str(root, "original_model"), fallback, JsonHelpers.Str(root, "api_refusal_category")) }
+                        : None;
                 default:
                     return EventReader.ReadNotice(root);
             }

@@ -2259,6 +2259,78 @@ public class ChatConversationTests
         Assert.Equal(ChatRemoteControlStatus.Connected, live.RemoteControlStatus);
     }
 
+    private const string FallbackLine =
+        "{\"type\":\"system\",\"subtype\":\"model_refusal_fallback\",\"original_model\":\"claude-opus-5-5\",\"fallback_model\":\"claude-sonnet-5-5\",\"api_refusal_category\":\"cyber\"}";
+
+    [Fact]
+    public void A_model_refusal_fallback_line_sets_the_last_fallback()
+    {
+        var c = new ChatConversation();
+        var changed = new List<string?>();
+        c.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        Assert.Null(c.LastModelFallback);
+
+        c.AppendLine(FallbackLine);
+
+        Assert.Equal(new ModelRefusalFallback("claude-opus-5-5", "claude-sonnet-5-5", "cyber"), c.LastModelFallback);
+        Assert.Contains(nameof(ChatConversation.LastModelFallback), changed);
+        Assert.Empty(c.Items); // no generic notice for it
+    }
+
+    [Fact]
+    public void A_second_fallback_replaces_the_first_and_dismissing_clears_it()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(FallbackLine);
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"model_refusal_fallback\",\"original_model\":\"claude-sonnet-5-5\",\"fallback_model\":\"claude-haiku-5\"}");
+        Assert.Equal(new ModelRefusalFallback("claude-sonnet-5-5", "claude-haiku-5", null), c.LastModelFallback);
+
+        var changed = new List<string?>();
+        c.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        c.DismissModelFallback();
+        Assert.Null(c.LastModelFallback);
+        Assert.Contains(nameof(ChatConversation.LastModelFallback), changed);
+
+        changed.Clear();
+        c.DismissModelFallback(); // nothing to clear: nothing raised
+        Assert.Empty(changed);
+
+        c.AppendLine(FallbackLine); // a new one shows again
+        Assert.NotNull(c.LastModelFallback);
+    }
+
+    [Fact]
+    public void A_line_without_a_fallback_model_and_the_no_fallback_line_set_nothing()
+    {
+        var c = new ChatConversation();
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"model_refusal_fallback\",\"original_model\":\"claude-opus-5-5\"}");
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"model_refusal_no_fallback\",\"original_model\":\"claude-opus-5-5\"}");
+        Assert.Null(c.LastModelFallback);
+        Assert.Empty(c.Items);
+    }
+
+    [Fact]
+    public void Loading_a_history_leaves_no_fallback_and_no_item()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(FallbackLine);
+        c.LoadTranscript(new[] { FallbackLine });
+        Assert.Null(c.LastModelFallback); // a new session load starts clean, and the old line raises nothing
+        Assert.Empty(c.Items);
+    }
+
+    [Fact]
+    public void The_auto_mode_notice_seen_flag_is_observable()
+    {
+        var c = new ChatConversation();
+        var changed = new List<string?>();
+        c.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        Assert.False(c.AutoModeNoticeSeen);
+        c.AutoModeNoticeSeen = true;
+        Assert.True(c.AutoModeNoticeSeen);
+        Assert.Contains(nameof(ChatConversation.AutoModeNoticeSeen), changed);
+    }
+
     [Fact]
     public void Browser_state_is_the_hosts()
     {

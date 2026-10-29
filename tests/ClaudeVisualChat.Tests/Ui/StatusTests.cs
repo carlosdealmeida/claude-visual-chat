@@ -13,6 +13,8 @@ using Xunit;
 using PermissionCancelled = ClaudeVisualChat.Protocol.PermissionCancelled;
 using PermissionRequested = ClaudeVisualChat.Protocol.PermissionRequested;
 using PromptCacheUsed = ClaudeVisualChat.Protocol.PromptCacheUsed;
+using ModelRefusalFallback = ClaudeVisualChat.Protocol.ModelRefusalFallback;
+using StatusChanged = ClaudeVisualChat.Protocol.StatusChanged;
 using SystemNotice = ClaudeVisualChat.Protocol.SystemNotice;
 
 namespace ClaudeVisualChat.Tests.Ui;
@@ -427,5 +429,213 @@ public class StatusTests
         Assert.Contains(strings.BrowserConnecting, UiHelpers.Texts(o.BrowserBanner));
         Assert.Equal(strings.RemoteControlConnecting, ToolTip.GetTip(o.Chip));
         Assert.Contains(strings.DisconnectBrowser, UiHelpers.ButtonNames(o.BrowserBanner));
+    }
+
+    // ---- the auto mode notice and the switched model band (Task 42) ----
+
+    private static readonly ModelRefusalFallback Fallback = new ModelRefusalFallback("claude-opus-5-5", "claude-sonnet-5-5", "cyber");
+
+    private static ChatConversation AutoConversation()
+    {
+        var c = new ChatConversation();
+        c.Apply(new StatusChanged(null, "auto"));
+        return c;
+    }
+
+    private static AutoModeNotice NoticeOf(ClaudeChatView view) => view.GetVisualDescendants().OfType<AutoModeNotice>().Single();
+
+    private static ModelFallbackBand BandOf(ClaudeChatView view) => view.GetVisualDescendants().OfType<ModelFallbackBand>().Single();
+
+    private static void Click(Button button) => button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+    [AvaloniaFact]
+    public void The_auto_mode_notice_shows_on_an_empty_conversation_in_auto_mode()
+    {
+        var c = AutoConversation();
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        var strings = view.Strings;
+        var notice = NoticeOf(view);
+
+        Assert.True(notice.IsEffectivelyVisible);
+        var texts = UiHelpers.Texts(notice);
+        Assert.Contains(strings.AutoModeEnabled, texts);
+        Assert.Contains(strings.AutoModeNoticeBody, texts);
+        Assert.True(notice.Bounds.Width <= 340.5);
+
+        // another mode, or items: gone
+        c.Apply(new StatusChanged(null, "default"));
+        UiHelpers.Pump();
+        Assert.False(notice.IsVisible);
+        c.Apply(new StatusChanged(null, "auto"));
+        UiHelpers.Pump();
+        Assert.True(notice.IsVisible);
+        c.Submit("hello");
+        UiHelpers.Pump();
+        Assert.False(notice.IsVisible);
+        c.Clear();
+        UiHelpers.Pump();
+        Assert.True(notice.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(240, 700)]
+    [InlineData(1000, 390)]
+    public void The_auto_mode_notice_hides_in_a_view_under_250_by_400(double width, double height)
+    {
+        var view = new ClaudeChatView { Conversation = AutoConversation() };
+        var window = UiHelpers.Show(view, width, height);
+        Assert.False(NoticeOf(view).IsEffectivelyVisible);
+        window.Width = 1000;
+        window.Height = 700;
+        UiHelpers.Pump();
+        Assert.True(NoticeOf(view).IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Closing_the_notice_marks_it_seen()
+    {
+        var c = AutoConversation();
+        var view = new ClaudeChatView { Conversation = c, IsReadOnly = true }; // read-only: the notice sits over the list, so the x still works
+        var window = UiHelpers.Show(view);
+        var notice = NoticeOf(view);
+        Assert.True(notice.IsEffectivelyVisible);
+
+        Click(UiHelpers.ButtonWithText(notice, view.Strings.Dismiss));
+        UiHelpers.Pump();
+
+        Assert.True(c.AutoModeNoticeSeen);
+        Assert.False(notice.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_notice_already_seen_does_not_show()
+    {
+        var c = AutoConversation();
+        c.AutoModeNoticeSeen = true;
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        Assert.False(NoticeOf(view).IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Learn_more_shows_only_with_a_link_subscriber()
+    {
+        var c = AutoConversation();
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        var notice = NoticeOf(view);
+        var learn = view.Strings.LearnMore;
+        Assert.DoesNotContain(learn, UiHelpers.Texts(notice));
+
+        var links = new List<string>();
+        c.LinkRequested += (_, e) => links.Add(e.Url);
+        UiHelpers.Pump();
+        Assert.Contains(learn, UiHelpers.Texts(notice));
+        Click(UiHelpers.ButtonWithText(notice, learn));
+        Assert.Single(links);
+        Assert.StartsWith("https://", links[0]);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_fallback_band_reads_switched_to_the_fallback_model_and_closes()
+    {
+        var c = new ChatConversation();
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        var strings = view.Strings;
+        var band = BandOf(view);
+        Assert.False(band.IsEffectivelyVisible);
+
+        c.Apply(Fallback);
+        UiHelpers.Pump();
+        Assert.True(band.IsEffectivelyVisible);
+        Assert.Contains(strings.FormatSwitchedTo("Sonnet 5.5"), UiHelpers.Texts(band).Select(t => t.Trim()));
+
+        Click(UiHelpers.ButtonWithText(band, strings.Dismiss));
+        UiHelpers.Pump();
+        Assert.Null(c.LastModelFallback);
+        Assert.False(band.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Why_and_Hide_toggle_the_explanation_and_a_newer_fallback_replaces_the_band()
+    {
+        var c = new ChatConversation();
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        var strings = view.Strings;
+        var band = BandOf(view);
+        c.Apply(Fallback);
+        UiHelpers.Pump();
+
+        var explanation = strings.FormatModelFallbackWhy("Opus 5.5", "Sonnet 5.5");
+        Assert.DoesNotContain(explanation, UiHelpers.Texts(band));
+        Click(UiHelpers.ButtonWithText(band, strings.ModelFallbackWhy));
+        UiHelpers.Pump();
+        Assert.Contains(explanation, UiHelpers.Texts(band));
+        Click(UiHelpers.ButtonWithText(band, strings.ModelFallbackHide));
+        UiHelpers.Pump();
+        Assert.DoesNotContain(explanation, UiHelpers.Texts(band));
+
+        // open, then a newer one: its own text, closed again
+        Click(UiHelpers.ButtonWithText(band, strings.ModelFallbackWhy));
+        UiHelpers.Pump();
+        c.Apply(new ModelRefusalFallback("claude-sonnet-5-5", "claude-haiku-5", null));
+        UiHelpers.Pump();
+        Assert.Contains(strings.FormatSwitchedTo("Haiku 5"), UiHelpers.Texts(band).Select(t => t.Trim()));
+        Assert.DoesNotContain(strings.FormatModelFallbackWhy("Sonnet 5.5", "Haiku 5"), UiHelpers.Texts(band));
+        Assert.NotNull(UiHelpers.ButtonWithText(band, strings.ModelFallbackWhy));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_fallback_band_goes_under_a_permission_request()
+    {
+        var c = new ChatConversation();
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        var band = BandOf(view);
+        c.Apply(Fallback);
+        UiHelpers.Pump();
+        Assert.True(band.IsEffectivelyVisible);
+
+        c.Apply(new PermissionRequested("r1", "Bash", "Bash", null, "t1", System.Text.Json.JsonDocument.Parse("{\"command\":\"ls\"}").RootElement.Clone(), null));
+        UiHelpers.Pump();
+        Assert.False(band.IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void In_the_touch_layout_the_notice_and_the_band_have_buttons_of_44_px()
+    {
+        var c = AutoConversation();
+        c.LinkRequested += (_, _) => { };
+        var view = UiHelpers.TouchView(c);
+        var window = UiHelpers.ShowPhone(view);
+        var notice = NoticeOf(view);
+        Assert.True(notice.IsEffectivelyVisible);
+        var buttons = notice.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).ToList();
+        Assert.Equal(2, buttons.Count); // the x and Learn more
+        Assert.All(buttons, b => Assert.True(b.Bounds.Height >= 43.9, b.Bounds.Height.ToString()));
+
+        c.Apply(Fallback);
+        UiHelpers.Pump();
+        var band = BandOf(view);
+        Assert.True(band.IsEffectivelyVisible);
+        var bandButtons = band.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).ToList();
+        Assert.Equal(2, bandButtons.Count); // Why? and the x
+        Assert.All(bandButtons, b => Assert.True(b.Bounds.Height >= 43.9, b.Bounds.Height.ToString()));
+
+        window.Width = 240;
+        UiHelpers.Pump();
+        Assert.False(notice.IsEffectivelyVisible); // the view's own size
+        window.Close();
     }
 }

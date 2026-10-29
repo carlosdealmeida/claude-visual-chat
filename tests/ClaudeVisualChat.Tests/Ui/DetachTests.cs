@@ -1845,4 +1845,34 @@ public class DetachTests
         Assert.Contains("error CS1002", UiHelpers.Texts(m.View));
         m.Window.Close();
     }
+
+    [AvaloniaFact]
+    public void The_auto_mode_notice_and_the_fallback_band_survive_leaving_and_coming_back()
+    {
+        var c = Conversation();
+        c.Apply(new StatusChanged(null, "auto"));
+        c.Apply(new ClaudeVisualChat.Protocol.ModelRefusalFallback("claude-opus-5-5", "claude-sonnet-5-5", null));
+        var m = new Mounted(c);
+        var strings = m.View.Strings;
+        var notice = m.View.GetVisualDescendants().OfType<AutoModeNotice>().Single();
+        var band = m.View.GetVisualDescendants().OfType<ModelFallbackBand>().Single();
+        Assert.True(notice.IsEffectivelyVisible);
+        UiHelpers.ButtonWithText(band, strings.ModelFallbackWhy).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        UiHelpers.Pump();
+
+        m.Out();
+        c.AutoModeNoticeSeen = true; // what changes while out is drawn when it comes back
+        c.Apply(new ClaudeVisualChat.Protocol.ModelRefusalFallback("claude-sonnet-5-5", "claude-haiku-5", null));
+        UiHelpers.Pump();
+
+        m.In();
+        Assert.False(notice.IsVisible);
+        Assert.True(band.IsEffectivelyVisible);
+        Assert.Contains(strings.FormatSwitchedTo("Haiku 5"), UiHelpers.Texts(band).Select(t => t.Trim()));
+
+        c.Apply(new ClaudeVisualChat.Protocol.ModelRefusalFallback("claude-haiku-5", "claude-opus-5-5", null)); // and it follows the conversation again
+        UiHelpers.Pump();
+        Assert.Contains(strings.FormatSwitchedTo("Opus 5.5"), UiHelpers.Texts(band).Select(t => t.Trim()));
+        m.Window.Close();
+    }
 }

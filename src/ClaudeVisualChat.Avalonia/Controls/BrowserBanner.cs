@@ -27,13 +27,7 @@ internal abstract class ChatBanner : Border
     {
         Classes.Add("ClaudeChatBanner");
         _text.Classes.Add("ClaudeChatBannerText");
-        var icon = new Path();
-        icon.Classes.Add("ClaudeChatRemoveIcon");
-        var iconBox = new Viewbox { Child = icon };
-        iconBox.Classes.Add("ClaudeChatRemoveIcon");
-        _close = new Button { Content = iconBox };
-        _close.Classes.Add("ClaudeChatButton");
-        _close.Classes.Add("ClaudeChatBannerClose");
+        _close = CreateCloseButton();
         _close.Click += (_, _) =>
         {
             if (_tracked != null) Close(_tracked);
@@ -41,6 +35,19 @@ internal abstract class ChatBanner : Border
         DockPanel.SetDock(_close, Dock.Right);
         Child = new DockPanel { Children = { _close, _text } };
         IsVisible = false;
+    }
+
+    /// <summary>The × of a banner or notice: a 12 px icon in the banner's color (44 px square in the touch layout).</summary>
+    internal static Button CreateCloseButton()
+    {
+        var icon = new Path();
+        icon.Classes.Add("ClaudeChatRemoveIcon");
+        var iconBox = new Viewbox { Child = icon };
+        iconBox.Classes.Add("ClaudeChatRemoveIcon");
+        var close = new Button { Content = iconBox };
+        close.Classes.Add("ClaudeChatButton");
+        close.Classes.Add("ClaudeChatBannerClose");
+        return close;
     }
 
     /// <summary>The conversation whose state it shows.</summary>

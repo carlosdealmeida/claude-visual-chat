@@ -555,6 +555,10 @@ namespace ClaudeVisualChat.Protocol
                     return JsonHelpers.Str(root, "content") is { Length: > 0 } content
                         ? new ClaudeEvent[] { new Informational(JsonHelpers.Str(root, "level") ?? "info", content) }
                         : None;
+                case "model_refusal_fallback":
+                case "model_refusal_no_fallback":
+                    // a past switch is not told again: the band is live state (StreamJsonParser reads the live line)
+                    return None;
                 case "task_started":
                 case "task_progress":
                 case "task_updated":

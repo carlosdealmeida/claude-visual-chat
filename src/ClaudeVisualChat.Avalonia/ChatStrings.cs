@@ -351,6 +351,12 @@ public sealed record ChatStrings
         BrowserNoBrowsers = "Nenhum navegador conectado. Abra o Chrome com a extensão do Claude e confira se está na mesma conta do claude.ai.",
         BrowserFailed = "Erro no navegador: {0}",
         DisconnectBrowser = "Desconectar o navegador",
+        AutoModeEnabled = "Modo automático ativado",
+        AutoModeNoticeBody = "O modo automático deixa o Claude tratar os pedidos de permissão sozinho. O Claude confere cada chamada de ferramenta quanto a ações arriscadas e injeção de prompt antes de executar, roda as que avalia como de menor risco e bloqueia as demais.",
+        LearnMore = "Saiba mais",
+        ModelFallbackWhy = "Por quê?",
+        ModelFallbackHide = "Ocultar",
+        ModelFallbackWhyBody = "As salvaguardas de {0} sinalizaram esta mensagem. Isso às vezes acontece em conversas normais e seguras. {1} está respondendo no lugar, ou você pode editar e tentar de novo com {0}.",
         SelectModel = "Selecione um modelo",
         SelectModelTitle = "Selecionar modelo",
         OtherModels = "Outros modelos",
@@ -1501,6 +1507,24 @@ public sealed record ChatStrings
     /// <summary>The button that disconnects the browser.</summary>
     public string DisconnectBrowser { get; init; } = "Disconnect browser";
 
+    /// <summary>The title of the notice on an empty conversation in auto mode.</summary>
+    public string AutoModeEnabled { get; init; } = "Auto mode is enabled";
+
+    /// <summary>The body of that notice.</summary>
+    public string AutoModeNoticeBody { get; init; } = "Auto mode lets Claude handle permission prompts automatically. Claude checks each tool call for risky actions and prompt injection before executing, runs the ones it assesses as lower-risk, and blocks the rest.";
+
+    /// <summary>The link under the notice, shown only when the host opens links.</summary>
+    public string LearnMore { get; init; } = "Learn more";
+
+    /// <summary>The button of the band that opens the explanation.</summary>
+    public string ModelFallbackWhy { get; init; } = "Why?";
+
+    /// <summary>The button of the band that closes the explanation.</summary>
+    public string ModelFallbackHide { get; init; } = "Hide";
+
+    /// <summary>The explanation of the band: <c>{0}</c> is the model before, <c>{1}</c> the one answering.</summary>
+    public string ModelFallbackWhyBody { get; init; } = "{0}'s safeguards flagged this message. This sometimes happens with safe, normal conversations. {1} is answering instead, or you can edit and retry with {0}.";
+
     /// <summary>The title of the model menu.</summary>
     public string SelectModel { get; init; } = "Select a model";
 
@@ -2366,6 +2390,9 @@ public sealed record ChatStrings
 
     /// <summary><see cref="CacheExpired"/> with the idle time (<see cref="FormatIdle"/>).</summary>
     internal string FormatCacheExpired(TimeSpan idle) => CacheExpired.Replace("{0}", FormatIdle(idle));
+
+    internal string FormatModelFallbackWhy(string original, string fallback) =>
+        ModelFallbackWhyBody.Replace("{0}", original ?? "").Replace("{1}", fallback ?? "");
 
     internal string FormatRemoteControlFailed(string? reason) => RemoteControlFailed.Replace("{0}", reason ?? "");
 

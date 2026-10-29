@@ -190,6 +190,12 @@ namespace ClaudeVisualChat.Protocol
     /// <summary>Remote Control moved (<c>bridge_state</c>) or started (<c>session_url</c>).</summary>
     public sealed record RemoteControlChanged(string? State, string? Url, string? Detail) : ClaudeEvent;
 
+    /// <summary>
+    /// The claude's safeguards switched the model (<c>system/model_refusal_fallback</c>): the reply comes from
+    /// <paramref name="FallbackModel"/> instead of <paramref name="OriginalModel"/>. Live only: a session file never raises it.
+    /// </summary>
+    public sealed record ModelRefusalFallback(string? OriginalModel, string? FallbackModel, string? Category) : ClaudeEvent;
+
     /// <summary>A slash command the user ran; <paramref name="Name"/> has no leading slash.</summary>
     public sealed record CommandEcho(string Name, string Arguments) : ClaudeEvent;
 
