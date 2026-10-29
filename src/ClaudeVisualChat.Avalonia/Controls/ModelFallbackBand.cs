@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Automation;
@@ -16,7 +17,8 @@ internal sealed class ModelFallbackBand : Border
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<ModelFallbackBand>();
 
-    private readonly TextBlock _headline = new TextBlock();
+    private readonly TextBlock _headline = new TextBlock { TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
+    private readonly TextBlock _dot = new TextBlock { Text = "·" };
     private readonly TextBlock _why = new TextBlock();
     private readonly TextBlock _body = new TextBlock();
     private readonly Button _whyButton;
@@ -35,9 +37,8 @@ internal sealed class ModelFallbackBand : Border
         _body.Classes.Add("ClaudeChatBannerText");
         _body.Classes.Add("ClaudeChatBandBody");
         _body.IsVisible = false;
-        var dot = new TextBlock { Text = "·" };
-        dot.Classes.Add("ClaudeChatBannerText");
-        dot.Classes.Add("ClaudeChatBandDot");
+        _dot.Classes.Add("ClaudeChatBannerText");
+        _dot.Classes.Add("ClaudeChatBandDot");
         _why.Classes.Add("ClaudeChatBandWhyText");
         _whyButton = new Button { Content = _why };
         _whyButton.Classes.Add("ClaudeChatButton");
@@ -53,7 +54,7 @@ internal sealed class ModelFallbackBand : Border
 
         var lead = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
         lead.Children.Add(_headline);
-        lead.Children.Add(dot);
+        lead.Children.Add(_dot);
         lead.Children.Add(_whyButton);
         var row = new DockPanel { Children = { _close, lead } };
         Child = new StackPanel { Children = { row, _body } };
@@ -69,6 +70,28 @@ internal sealed class ModelFallbackBand : Border
             _conversation = value;
             if (_attached) Track(value);
         }
+    }
+
+    /// <summary>
+    /// The headline gives way (an ellipsis) so a long model id never pushes "Why?" and the × out of the band: its width is
+    /// what is left of the band after them.
+    /// </summary>
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var size = base.ArrangeOverride(finalSize);
+        if (_headline.IsVisible && _whyButton.Bounds.Width > 0)
+        {
+            var taken = Padding.Left + Padding.Right + BorderThickness.Left + BorderThickness.Right
+                + _close.Bounds.Width + _close.Margin.Left + _close.Margin.Right
+                + _whyButton.Bounds.Width + _dot.Bounds.Width + _dot.Margin.Left + _dot.Margin.Right;
+            var room = Math.Max(1, finalSize.Width - taken);
+            if (double.IsInfinity(_headline.MaxWidth) || Math.Abs(_headline.MaxWidth - room) > 0.5)
+            {
+                _headline.MaxWidth = room;
+                InvalidateMeasure();
+            }
+        }
+        return size;
     }
 
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;

@@ -356,7 +356,7 @@ public sealed record ChatStrings
         LearnMore = "Saiba mais",
         ModelFallbackWhy = "Por quê?",
         ModelFallbackHide = "Ocultar",
-        ModelFallbackWhyBody = "As salvaguardas de {0} sinalizaram esta mensagem. Isso às vezes acontece em conversas normais e seguras. {1} está respondendo no lugar, ou você pode editar e tentar de novo com {0}.",
+        ModelFallbackWhyBody = "As salvaguardas de {0} sinalizaram esta mensagem. Isso às vezes acontece em conversas normais e seguras. {1} está respondendo no lugar de {0}.",
         SelectModel = "Selecione um modelo",
         SelectModelTitle = "Selecionar modelo",
         OtherModels = "Outros modelos",
@@ -1523,7 +1523,7 @@ public sealed record ChatStrings
     public string ModelFallbackHide { get; init; } = "Hide";
 
     /// <summary>The explanation of the band: <c>{0}</c> is the model before, <c>{1}</c> the one answering.</summary>
-    public string ModelFallbackWhyBody { get; init; } = "{0}'s safeguards flagged this message. This sometimes happens with safe, normal conversations. {1} is answering instead, or you can edit and retry with {0}.";
+    public string ModelFallbackWhyBody { get; init; } = "{0}'s safeguards flagged this message. This sometimes happens with safe, normal conversations. {1} is answering instead of {0}.";
 
     /// <summary>The title of the model menu.</summary>
     public string SelectModel { get; init; } = "Select a model";

@@ -638,4 +638,28 @@ public class StatusTests
         Assert.False(notice.IsEffectivelyVisible); // the view's own size
         window.Close();
     }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_long_model_id_trims_and_keeps_Why_and_the_close_inside_the_band(bool touch)
+    {
+        var c = new ChatConversation();
+        var view = touch ? UiHelpers.TouchView(c) : new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view, touch ? 300 : 300, 700);
+        c.Apply(new ModelRefusalFallback("claude-opus-5-5", "claude-experimental-" + new string('x', 120) + "-model", null));
+        UiHelpers.Pump();
+        UiHelpers.DrawFrames();
+
+        var band = BandOf(view);
+        Assert.True(band.IsEffectivelyVisible);
+        var buttons = band.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).ToList();
+        Assert.Equal(2, buttons.Count);
+        foreach (var b in buttons)
+        {
+            var left = b.TranslatePoint(new Point(0, 0), band)!.Value.X;
+            Assert.True(left >= -0.5 && left + b.Bounds.Width <= band.Bounds.Width + 0.5, $"button at {left}, width {b.Bounds.Width}, band {band.Bounds.Width}");
+        }
+        window.Close();
+    }
 }

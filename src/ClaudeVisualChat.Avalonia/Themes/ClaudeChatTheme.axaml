@@ -218,8 +218,8 @@
     <!-- the bar's + and /, on its 26 px box with a 1.3 px line: a 13 px cross; a 14.3 px rounded square with a slash -->
     <StreamGeometry x:Key="ClaudeChat.Icon.Add">M13,7.15 L13,18.85 M7.15,13 L18.85,13</StreamGeometry>
     <StreamGeometry x:Key="ClaudeChat.Icon.Slash">M7.8,6.5 L18.2,6.5 A1.3,1.3 0 0 1 19.5,7.8 L19.5,18.2 A1.3,1.3 0 0 1 18.2,19.5 L7.8,19.5 A1.3,1.3 0 0 1 6.5,18.2 L6.5,7.8 A1.3,1.3 0 0 1 7.8,6.5 Z M14.95,9.1 L11.05,16.9</StreamGeometry>
-    <!-- an attachment's × and the preview's close, on a 20 px box with a 1.5 px line -->
     <StreamGeometry x:Key="ClaudeChat.Icon.Bolt">M9,1.5 L3.5,9 L7.5,9 L6.5,14.5 L12.5,7 L8.5,7 Z</StreamGeometry>
+    <!-- an attachment's × and the preview's close, on a 20 px box with a 1.5 px line -->
     <StreamGeometry x:Key="ClaudeChat.Icon.Remove">M5.75,5.75 L14.25,14.25 M14.25,5.75 L5.75,14.25</StreamGeometry>
     <!-- on a 16 px box, stroked like the chevron; shapes after the Codicons (MIT) clock and close -->
     <StreamGeometry x:Key="ClaudeChat.Icon.Clock">M8,2 C11.3,2 14,4.7 14,8 C14,11.3 11.3,14 8,14 C4.7,14 2,11.3 2,8 C2,4.7 4.7,2 8,2 Z M8,4.5 L8,8 L10.5,9.5</StreamGeometry>
@@ -3262,9 +3262,10 @@
 
   <!-- ===== the "Auto mode is enabled" card on an empty conversation ===== -->
 
-  <!-- 340 px at most, a .5 px border (one device pixel, as the banners'), radius 8, the editor's background, a soft shadow -->
+  <!-- 340 px at most, a .5 px border (the banners above draw theirs as 1 px; this one is the extension's .5), radius 8, the editor's
+       background, a soft shadow -->
   <Style Selector=":is(Border).ClaudeChatAutoNotice">
-    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderThickness" Value="0.5" />
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
