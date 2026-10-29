@@ -120,6 +120,20 @@ public class ContextBlockReaderTests
     }
 
     [Fact]
+    public void A_tab_label_drops_the_port()
+    {
+        Assert.Equal("localhost/docs", ContextBlockReader.Read("<browser tabGroupId=\"g\" tabId=\"1\">http://localhost:3000/docs</browser>")!.Subject);
+    }
+
+    [Fact]
+    public void Only_the_invisible_tag_characters_are_refused_not_the_variation_selectors_or_the_flags()
+    {
+        Assert.NotNull(ContextBlockReader.Read("<terminal name=\"a󠄀b\">\nx\n</terminal>"));
+        Assert.NotNull(ContextBlockReader.Read("<terminal name=\"a🏴󠁧󠁢󠁥󠁮󠁧󠁿\">\nx\n</terminal>"));
+        Assert.Null(ContextBlockReader.Read("<terminal name=\"a󠁧b\">\nx\n</terminal>"));
+    }
+
+    [Fact]
     public void An_opening_without_its_closing_is_no_block()
     {
         Assert.Null(ContextBlockReader.Read("<terminal name=\"t\">\nx\n"));

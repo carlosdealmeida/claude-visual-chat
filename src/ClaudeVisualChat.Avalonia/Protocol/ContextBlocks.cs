@@ -118,7 +118,7 @@ namespace ClaudeVisualChat.Protocol
             if (!Uri.TryCreate(address, UriKind.Absolute, out var uri)) return address;
             // Only web addresses name a host; anything else (javascript:, data:, file:) gets the bare label.
             if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) return "";
-            var host = uri.Authority;
+            var host = uri.Host;
             if (host.Length == 0) return address;
             var path = uri.AbsolutePath;
             return path == "/" || path.Length == 0 ? host : host + path;
@@ -210,7 +210,7 @@ namespace ClaudeVisualChat.Protocol
                 if (char.IsHighSurrogate(c))
                 {
                     if (i + 1 >= value.Length || !char.IsLowSurrogate(value[i + 1])) return false;
-                    if (c == '\uDB40') return false;             // hidden "tag" characters, U+E0000..U+E007F
+                    if (c == (char)0xDB40 && value[i + 1] <= (char)0xDC7F) return false;   // hidden tag characters, U+E0000..U+E007F
                     if (c == '\uD83C' && value[i + 1] == '\uDFF4')
                     {
                         var flag = AllowedFlagAt(value, i);
