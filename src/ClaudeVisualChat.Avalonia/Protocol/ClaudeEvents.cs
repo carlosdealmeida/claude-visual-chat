@@ -21,6 +21,9 @@ namespace ClaudeVisualChat.Protocol
     {
         /// <summary>The commands the terminal handles itself (<c>terminal_slash_commands</c>); empty when not told.</summary>
         public IReadOnlyList<string> TerminalCommands { get; init; } = Array.Empty<string>();
+
+        /// <summary>The fast mode (<c>fast_mode_state</c>): <c>on</c>, <c>cooldown</c> or <c>off</c>; null when the line has none.</summary>
+        public string? FastModeState { get; init; }
     }
 
     public sealed record StatusChanged(string? Status, string? PermissionMode) : ClaudeEvent;
@@ -144,6 +147,9 @@ namespace ClaudeVisualChat.Protocol
 
         /// <summary>For a turn that failed: the text the claude gives (<c>result</c>, else the first of <c>errors</c>); null when it gives none.</summary>
         public string? ErrorMessage { get; init; }
+
+        /// <summary>The fast mode (<c>fast_mode_state</c>): <c>on</c>, <c>cooldown</c> or <c>off</c>; null when the line has none.</summary>
+        public string? FastModeState { get; init; }
     }
 
     /// <summary>Marker for <c>compact_boundary</c> and <c>api_retry</c>.</summary>

@@ -3340,4 +3340,25 @@ public class ChatConversationTests
         Assert.Equal("overloaded_error", notices.Single(n => n.Kind == NoticeKind.ApiRetry).Message);
         Assert.Equal("Credit balance is too low", notices.Single(n => n.Kind == NoticeKind.TurnFailed).Message);
     }
+
+    [Fact]
+    public void The_fast_mode_state_keeps_the_last_value_seen()
+    {
+        var c = new ChatConversation();
+        var changes = new List<string?>();
+        c.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ChatConversation.FastModeState)) changes.Add(c.FastModeState); };
+        Assert.Null(c.FastModeState);
+
+        c.Apply(new SessionStarted("s", "m", null, null, null) { FastModeState = "on" });
+        Assert.Equal("on", c.FastModeState);
+        c.Apply(new TurnCompleted("success", false, 1, null, null, null)); // a result without the field leaves it as it was
+        Assert.Equal("on", c.FastModeState);
+        c.Apply(new TurnCompleted("success", false, 1, null, null, null) { FastModeState = "cooldown" });
+        Assert.Equal("cooldown", c.FastModeState);
+        c.Apply(new TurnCompleted("success", false, 1, null, null, null) { FastModeState = "turbo" }); // unknown: stored, not shown
+        Assert.Equal("turbo", c.FastModeState);
+        c.Apply(new TurnCompleted("success", false, 1, null, null, null) { FastModeState = "off" });
+        Assert.Equal("off", c.FastModeState);
+        Assert.Equal(new[] { "on", "cooldown", "turbo", "off" }, changes);
+    }
 }

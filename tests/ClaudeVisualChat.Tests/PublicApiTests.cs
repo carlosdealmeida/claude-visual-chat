@@ -464,11 +464,17 @@ public class PublicApiTests
             "BrowserError", "RemoteControlStatus", "RemoteControlUrl", "RemoteControlError",
             "AddImageAsync", "RemoveAttachment", "SetEffort", "InvokeCommand", "DisconnectBrowser", "OpenRemoteControl",
             "ClosePanel", "EffortRequested", "CommandInvoked", "BrowserDisconnectRequested", "RemoteControlLinkRequested",
-            "AutoModeNoticeSeen", "LastModelFallback", "DismissModelFallback",
+            "AutoModeNoticeSeen", "LastModelFallback", "DismissModelFallback", "FastModeState",
         })
         {
             Assert.True(conversation.GetMember(member).Length > 0, "ChatConversation." + member);
         }
+        // the fast mode bolt (0.6.0): the state is read-only on the conversation, and the two events carry it as an init property
+        Assert.Null(conversation.GetProperty("FastModeState")!.SetMethod?.IsPublic == true ? "public setter" : null);
+        foreach (var type in new[] { typeof(ClaudeVisualChat.Protocol.SessionStarted), typeof(ClaudeVisualChat.Protocol.TurnCompleted) })
+            Assert.Equal(typeof(string), type.GetProperty("FastModeState")!.PropertyType);
+        foreach (var text in new[] { "NetworkAccessToolTitle", "PermissionNetworkAccess", "FastModeEnabled", "FastModeCoolingDown" })
+            Assert.NotNull(typeof(ChatStrings).GetProperty(text));
 
         // the agent map (0.4.0)
         foreach (var type in new[]

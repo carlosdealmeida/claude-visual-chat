@@ -576,6 +576,10 @@ a star and verbs. Nothing to set up for those. What your app may want to know:
   (`system/model_refusal_fallback`, the `Protocol.ModelRefusalFallback` event), with "Why?" and "Hide". It is
   `ChatConversation.LastModelFallback`, and `DismissModelFallback()` closes it. A history read back never shows it, and
   it gives way to the browser notice and to a Remote Control error.
+- **The fast mode bolt** sits on the reply box's top border while the box has the keyboard and
+  `ChatConversation.FastModeState` (the last `fast_mode_state` of `system/init` and of a `result`) is `on` or `cooldown`;
+  its tooltip says which, and names the effort when it is known. A sandbox network access request shows as "Network
+  Access" with its host, and the card asks to allow the connection to that host.
 - **The working line** follows `ChatConversation.Status` (what `system/status` says: "Compacting...") and
   `IsRunningStartupHooks` ("Running start-up hooks...").
 - **Where it differs from the extension:** no syntax highlighting; the old tool rows are not pruned (the extension

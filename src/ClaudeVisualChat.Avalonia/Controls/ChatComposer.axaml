@@ -15,6 +15,9 @@
       <TextBlock Name="NoticeText" Classes="ClaudeChatBannerText" />
     </DockPanel>
   </Border>
+  <!-- the fast mode bolt sits on the box's top border (12 px of icon, centered on it), 12 px from the right; the code shows it
+       while the box has the keyboard and the fast mode is on or cooling down -->
+  <Grid>
   <!-- image files dropped anywhere on the box are attached -->
   <Border Name="Box" Classes="ClaudeChatComposer" DragDrop.AllowDrop="True">
     <StackPanel>
@@ -91,5 +94,10 @@
       <controls:ModelMenu Name="ModelMenu" />
     </StackPanel>
   </Border>
+  <Viewbox Name="FastModeBolt" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-6,12,0"
+           IsVisible="False" IsHitTestVisible="True">
+    <Path Classes="ClaudeChatFastModeBolt" />
+  </Viewbox>
+  </Grid>
   </StackPanel>
 </UserControl>

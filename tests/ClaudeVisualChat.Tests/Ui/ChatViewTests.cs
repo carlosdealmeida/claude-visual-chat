@@ -4290,4 +4290,32 @@ public class ChatViewTests
         Assert.False(line.IsExpanded);
         window.Close();
     }
+
+    // ---- the sandbox network access row ----
+
+    [AvaloniaFact]
+    public void The_network_access_row_reads_network_access_and_the_host()
+    {
+        var (c, tool) = SearchCall("SandboxNetworkAccess", new { host = "api.example.com" }, null);
+        var (view, window) = Open(c);
+
+        var title = ToolTitle(view, tool, "ToolName");
+        var detail = ToolTitle(view, tool, "DetailText");
+        Assert.Equal("Network Access", title.Text);
+        Assert.Equal("api.example.com", detail.Text);
+        Assert.DoesNotContain("file", detail.Classes);                           // the host is in the editor's font, not a link
+        Assert.DoesNotContain("plain", detail.Classes);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_network_access_row_with_an_empty_host_reads_only_the_name()
+    {
+        var (c, tool) = SearchCall("SandboxNetworkAccess", new { host = "" }, null);
+        var (view, window) = Open(c);
+
+        Assert.Equal("Network Access", ToolTitle(view, tool, "ToolName").Text);
+        Assert.False(ToolTitle(view, tool, "DetailText").IsVisible);
+        window.Close();
+    }
 }

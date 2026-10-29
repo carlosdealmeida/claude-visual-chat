@@ -152,6 +152,11 @@ internal partial class ChatComposer : UserControl
         AutomationProperties.SetLiveSetting(NoticeText, AutomationLiveSetting.Polite); // the notice is announced
         NoticeClose.Click += (_, _) => ClearNotice();
         Input.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
+        // the bolt of the fast mode shows only while the box has the keyboard (the box is this control's own child)
+        Box.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == IsKeyboardFocusWithinProperty) UpdateFastMode();
+        };
         Input.PropertyChanged += (_, e) =>
         {
             if (e.Property != TextBox.TextProperty) return;
@@ -380,6 +385,7 @@ internal partial class ChatComposer : UserControl
         TouchBar.Child = touch ? _touchBarContent : null;
         TouchBar.IsVisible = touch;
         UpdateBusy();
+        UpdateFastMode(); // no tooltip in the touch layout
         UpdateMic(); // the desktop layout has no microphone, and a dictation under way has nothing to stop it with there
     }
 
@@ -442,6 +448,10 @@ internal partial class ChatComposer : UserControl
             case nameof(ChatConversation.PaletteCommands):
                 UpdateHint(); // the command's hint may have come, or gone
                 break;
+            case nameof(ChatConversation.FastModeState):
+            case nameof(ChatConversation.Effort): // the tooltip names it
+                UpdateFastMode();
+                break;
             case nameof(ChatConversation.CurrentPermission):
                 if (_tracked?.CurrentPermission != null) ClosePopups(); // the request comes first, the menus would cover it
                 UpdateNotice(); // and a banner is hidden under a request
@@ -485,6 +495,21 @@ internal partial class ChatComposer : UserControl
         UpdateSend();
         RebuildModes();
         UpdateHint();
+        UpdateFastMode();
+    }
+
+    /// <summary>
+    /// The bolt on the box's top border: shown while the box has the keyboard and the fast mode is <c>on</c> (amber) or
+    /// <c>cooldown</c> (gray); any other state, a known <c>off</c> too, shows none. The tooltip is the state, then the effort when
+    /// it is known; the touch layout has no tooltip.
+    /// </summary>
+    private void UpdateFastMode()
+    {
+        var state = _tracked?.FastModeState;
+        var tip = _attached ? Strings.FastModeTip(state, _tracked?.Effort) : null;
+        FastModeBolt.IsVisible = tip != null && Box.IsKeyboardFocusWithin;
+        ((Avalonia.Controls.Shapes.Path)FastModeBolt.Child!).Classes.Set("cooldown", state == "cooldown");
+        ToolTip.SetTip(FastModeBolt, IsTouch ? null : tip);
     }
 
     /// <summary>

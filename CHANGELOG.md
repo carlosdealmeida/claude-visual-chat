@@ -348,6 +348,19 @@ All notable changes to this project are written here. The format follows
 - New theme resources: `ClaudeChat.ContextColor7` and `ContextColor8` (the context bar has eight colors, in the
   extension's order), `ClaudeChat.AutoNoticeShadow` and `ClaudeChat.Icon.Bolt`. The chip's blue dot is the existing
   `ClaudeChat.AgentWaiting`.
+- **The sandbox's network access request** (`SandboxNetworkAccess`, an ordinary permission request with the host in its
+  input). The tool line reads "Network Access" in bold and the host in the editor's font; the card asks "Allow network
+  connection to this host?" with the host in a box under it, and option 2 names the WebFetch `domain:<host>` rule the
+  claude suggests, with the label every request has. Without a host the row reads only the name and the card has no box.
+  New texts: `NetworkAccessToolTitle` and `PermissionNetworkAccess`.
+- **The fast mode bolt** on the reply box: a 12 px bolt on the box's top border, 12 px from the right, shown only while
+  the box has the keyboard and `ChatConversation.FastModeState` is `on` (amber, `ClaudeChat.FastModeBolt`) or `cooldown`
+  (gray, `ClaudeChat.DisabledForeground`). Its tooltip is "Fast mode enabled" or "Fast mode cooling down", then
+  " · Effort: High" when the effort is known; the touch layout shows the bolt with no tooltip. `FastModeState` is the last
+  `fast_mode_state` seen on `system/init` (`SessionStarted.FastModeState`) or on a `result`
+  (`TurnCompleted.FastModeState`): a line without the field leaves it as it was, a value that is not `on`, `cooldown`
+  or `off` is kept and shows no bolt, and a history read back never sets it. New texts: `FastModeEnabled` and
+  `FastModeCoolingDown`. The "Ultracode" suffix of the model chip is not here: it comes only from `get_settings`.
 
 ### Breaking
 

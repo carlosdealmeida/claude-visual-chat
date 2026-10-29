@@ -20,6 +20,23 @@ namespace ClaudeVisualChat.Tests.Protocol
             Assert.Equal("default", started.PermissionMode);
         }
 
+        private const string InitOn = "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s\",\"model\":\"m\",\"fast_mode_state\":\"on\"}";
+
+        [Fact]
+        public void Fast_mode_state_comes_from_init_and_result()
+        {
+            var parser = new StreamJsonParser();
+
+            Assert.Equal("on", Assert.IsType<SessionStarted>(Assert.Single(parser.Parse(InitOn))).FastModeState);
+            Assert.Equal("cooldown", Assert.IsType<TurnCompleted>(Assert.Single(parser.Parse(
+                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"fast_mode_state\":\"cooldown\"}"))).FastModeState);
+            // a line without the field says nothing (null), and a value that is not a string says nothing either
+            Assert.Null(Assert.IsType<TurnCompleted>(Assert.Single(parser.Parse(
+                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false}"))).FastModeState);
+            Assert.Null(Assert.IsType<SessionStarted>(Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"init\",\"fast_mode_state\":3}"))).FastModeState);
+        }
+
         [Fact]
         public void Command_lifecycle_gives_what_became_of_a_sent_message()
         {

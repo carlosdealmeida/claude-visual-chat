@@ -1875,4 +1875,28 @@ public class DetachTests
         Assert.Contains(strings.FormatSwitchedTo("Opus 5.5"), UiHelpers.Texts(band).Select(t => t.Trim()));
         m.Window.Close();
     }
+
+    [AvaloniaFact]
+    public void The_fast_mode_bolt_follows_the_state_again_when_the_view_comes_back()
+    {
+        var c = Conversation();
+        c.Apply(new SessionStarted("s", "m", null, null, null) { FastModeState = "on" });
+        var m = new Mounted(c);
+        Viewbox Bolt() => m.Composer.GetVisualDescendants().OfType<Viewbox>().Single(v => v.Name == "FastModeBolt");
+        UiHelpers.Input(m.View).Focus();
+        UiHelpers.Pump();
+        Assert.True(Bolt().IsEffectivelyVisible);
+
+        m.Out();
+        c.Apply(new SessionStarted("s", "m", null, null, null) { FastModeState = "cooldown" }); // changes while out: nothing throws
+        m.In();
+        UiHelpers.Input(m.View).Focus();
+        UiHelpers.Pump();
+
+        Assert.True(Bolt().IsEffectivelyVisible);
+        Assert.StartsWith("Fast mode cooling down", ToolTip.GetTip(Bolt()) as string, StringComparison.Ordinal);
+        c.Apply(new SessionStarted("s", "m", null, null, null) { FastModeState = "off" });  // and it follows again
+        Assert.False(Bolt().IsEffectivelyVisible);
+        m.Window.Close();
+    }
 }

@@ -1817,4 +1817,38 @@ public class PermissionPromptTests
         Assert.Equal("deny:r1:Mais curto\n\nComments on the plan:\n[Re: \"Edit notes.md\"] Qual linha?", Assert.Single(sent));
         window.Close();
     }
+
+    // ---- the sandbox network access request ----
+
+    [AvaloniaFact]
+    public void A_network_access_request_asks_to_allow_a_connection_to_the_host()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "SandboxNetworkAccess", "{\"host\":\"api.example.com\"}",
+            "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"WebFetch\",\"ruleContent\":\"domain:api.example.com\"}],\"destination\":\"session\"}]",
+            description: "Allow network connection to api.example.com?"));
+        var ui = Open(c);
+
+        Assert.Equal("Allow network connection to this host?", Title(ui));
+        Assert.Contains("api.example.com", ui.Texts);                             // the host on its own line, in the box
+        Assert.DoesNotContain("Details", ui.Texts);                               // not the "proceed with" card
+        Assert.DoesNotContain("Allow network connection to api.example.com?", ui.Texts); // the description is not shown
+        // option 2 names the WebFetch rule, from the suggestion's label (the long rule is cut, and the whole one is in its tooltip)
+        var option = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("ClaudeChatOptionText")).ElementAt(1);
+        Assert.StartsWith("Yes, allow domain:api.exampl", option.Text ?? option.Inlines?.Text, System.StringComparison.Ordinal); // the rule the label names, cut as it is
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_network_access_request_without_a_host_still_asks_and_shows_no_box()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "SandboxNetworkAccess", "{}"));
+        var ui = Open(c);
+
+        Assert.Equal("Allow network connection to this host?", Title(ui));
+        Assert.DoesNotContain("Details", ui.Texts);
+        Assert.Empty(ui.Answers);
+        ui.Window.Close();
+    }
 }

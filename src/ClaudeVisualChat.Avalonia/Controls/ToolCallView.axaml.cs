@@ -357,6 +357,10 @@ internal partial class ToolCallView : UserControl
         {
             ToolName.Text = name == "WebFetch" ? Strings.WebFetchToolTitle : Strings.WebSearchToolTitle;
         }
+        else if (name == "SandboxNetworkAccess")
+        {
+            ToolName.Text = Strings.NetworkAccessToolTitle; // the host follows, in the editor's font
+        }
         else if (name == ArtifactTool)
         {
             ToolName.Text = Strings.ArtifactToolTitle; // the file as the claude gave it, in the editor's font

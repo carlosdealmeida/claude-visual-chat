@@ -584,6 +584,10 @@ uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O q
   modelo (`system/model_refusal_fallback`, o evento `Protocol.ModelRefusalFallback`), com "Por quê?" e "Ocultar". Ela é o
   `ChatConversation.LastModelFallback`, e o `DismissModelFallback()` a fecha. Um histórico lido de volta nunca a mostra, e
   ela dá lugar ao aviso do navegador e a um erro do Remote Control.
+- **O raio do modo rápido** fica na borda de cima da caixa de resposta enquanto a caixa tem o teclado e o
+  `ChatConversation.FastModeState` (o último `fast_mode_state` do `system/init` e de um `result`) é `on` ou `cooldown`; a
+  dica diz qual, e nomeia o esforço quando ele é conhecido. Um pedido de acesso à rede do sandbox aparece como "Acesso à
+  rede" com o seu host, e o cartão pergunta se permite a conexão com esse host.
 - **A linha de trabalho** segue o `ChatConversation.Status` (o que o `system/status` diz: "Compactando...") e o
   `IsRunningStartupHooks` ("Executando os hooks de início...").
 - **Onde difere da extensão:** sem realce de sintaxe; as linhas antigas de ferramenta não são podadas (a extensão

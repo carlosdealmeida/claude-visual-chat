@@ -1618,4 +1618,104 @@ public class ComposerTests
         CheckTheHint(view, window, conversation);
         window.Close();
     }
+
+    // ---- the fast mode bolt ----
+
+    private static Viewbox Bolt(Opened ui) =>
+        ui.Composer.GetVisualDescendants().OfType<Viewbox>().Single(v => v.Name == "FastModeBolt");
+
+    private static Avalonia.Media.Color BoltColor(Viewbox bolt) =>
+        Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(Assert.IsType<Avalonia.Controls.Shapes.Path>(bolt.Child).Fill).Color;
+
+    private static void Fast(ChatConversation c, string? state) =>
+        c.Apply(new SessionStarted("s", "m", null, null, null) { FastModeState = state });
+
+    [AvaloniaFact]
+    public void The_fast_mode_bolt_shows_on_the_focused_box_with_its_tooltip()
+    {
+        var c = new ChatConversation();
+        Fast(c, "on");
+        c.Apply(new ClaudeVisualChat.Protocol.SettingsApplied(null, "high", true));
+        var ui = Open(c);
+
+        Assert.False(Bolt(ui).IsEffectivelyVisible);                 // the box has no focus: no bolt
+        ui.Input.Focus();
+        UiHelpers.Pump();
+        var bolt = Bolt(ui);
+        Assert.True(bolt.IsEffectivelyVisible);
+        Assert.Equal(12, bolt.Height);                              // 12 px, the glyph keeping its proportions
+        Assert.InRange(bolt.Bounds.Width, 9, 12);
+        Assert.Equal(Avalonia.Media.Color.Parse("#E5A54B"), BoltColor(bolt));
+        Assert.Equal("Fast mode enabled · Effort: High", ToolTip.GetTip(bolt));
+        // on the box's top border, 12 px from the right
+        Assert.Equal(Avalonia.Layout.VerticalAlignment.Top, bolt.VerticalAlignment);
+        Assert.Equal(Avalonia.Layout.HorizontalAlignment.Right, bolt.HorizontalAlignment);
+        Assert.Equal(12, bolt.Margin.Right);
+        var box = ui.Composer.GetVisualDescendants().OfType<Border>().First(b => b.Name == "Box");
+        var at = bolt.TranslatePoint(new Point(0, 0), box)!.Value;
+        Assert.InRange(at.X + bolt.Bounds.Width, box.Bounds.Width - 12 - 1, box.Bounds.Width - 12 + 1);
+        Assert.InRange(at.Y + 6, -1, 1);                             // centered on the top border
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_fast_mode_bolt_hides_when_the_box_loses_the_focus_and_for_off_and_unknown_states()
+    {
+        var c = new ChatConversation();
+        Fast(c, "on");
+        var ui = Open(c);
+        ui.Input.Focus();
+        UiHelpers.Pump();
+        Assert.True(Bolt(ui).IsEffectivelyVisible);
+        Assert.Equal("Fast mode enabled", ToolTip.GetTip(Bolt(ui)));  // no effort known: the fast mode text alone
+
+        ui.Window.FocusManager!.ClearFocus();
+        UiHelpers.Pump();
+        Assert.False(Bolt(ui).IsEffectivelyVisible);
+
+        ui.Input.Focus();
+        UiHelpers.Pump();
+        foreach (var state in new string?[] { "off", null, "turbo", "" })
+        {
+            Fast(c, state);
+            UiHelpers.Pump();
+            Assert.False(Bolt(ui).IsEffectivelyVisible, "state " + (state ?? "null"));
+        }
+        Fast(c, "on");
+        Assert.True(Bolt(ui).IsEffectivelyVisible);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_fast_mode_bolt_cooling_down_is_gray_and_says_so()
+    {
+        var c = new ChatConversation();
+        Fast(c, "cooldown");
+        var ui = Open(c);
+        ui.Input.Focus();
+        UiHelpers.Pump();
+
+        var bolt = Bolt(ui);
+        Assert.True(bolt.IsEffectivelyVisible);
+        var gray = Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(Resource(ui.View, "ClaudeChat.DisabledForeground"));
+        Assert.Equal(gray.Color, BoltColor(bolt));
+        Assert.Equal("Fast mode cooling down", ToolTip.GetTip(bolt));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_fast_mode_bolt_shows_in_the_touch_layout_without_a_tooltip()
+    {
+        var c = new ChatConversation();
+        Fast(c, "on");
+        var view = UiHelpers.TouchView(c);
+        var window = UiHelpers.Show(view);
+        UiHelpers.Input(view).Focus();
+        UiHelpers.Pump();
+
+        var bolt = UiHelpers.Composer(view).GetVisualDescendants().OfType<Viewbox>().Single(v => v.Name == "FastModeBolt");
+        Assert.True(bolt.IsEffectivelyVisible);
+        Assert.Null(ToolTip.GetTip(bolt));
+        window.Close();
+    }
 }

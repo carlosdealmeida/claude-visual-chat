@@ -810,7 +810,8 @@ internal partial class PermissionPrompt : UserControl
                 detail = "";
                 break;
             default:
-                SetTitle(strings.FormatUseToolQuestion(request.DisplayName));
+                SetTitle(request.ToolName == "SandboxNetworkAccess"
+                    ? strings.PermissionNetworkAccess : strings.FormatUseToolQuestion(request.DisplayName));
                 // an MCP tool shows the first text of its input, whole, as in 0.5.0 (not the rows' summary, a field cut at 40
                 // characters), and so does a tool whose summary has nothing to say: the user is asked about something
                 if (ToolPresentation.McpName(request.ToolName) != null || string.IsNullOrEmpty(detail))
@@ -855,6 +856,9 @@ internal partial class PermissionPrompt : UserControl
                 SetTitle(strings.PermissionWebSearch);
                 ExtraText.Text = strings.FormatSearchDomains(InputStrings(request, "allowed_domains"), InputStrings(request, "blocked_domains"));
                 return InputString(request, "query") ?? "";
+            case "SandboxNetworkAccess":
+                SetTitle(strings.PermissionNetworkAccess);
+                return InputString(request, "host") ?? "";
             case PlanTool:
                 // the plan itself is not in the card (the extension shows it beside the chat)
                 if (_withComments)

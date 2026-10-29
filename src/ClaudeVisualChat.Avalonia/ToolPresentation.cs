@@ -81,6 +81,7 @@ public static class ToolPresentation
                 }
                 case "WebFetch": return Str(input, "url");
                 case "WebSearch": return Str(input, "query");
+                case "SandboxNetworkAccess": return Str(input, "host");
                 case "Agent":
                 case "Task": return Str(input, "description");
                 case "Skill": return Str(input, "skill").TrimStart('/');

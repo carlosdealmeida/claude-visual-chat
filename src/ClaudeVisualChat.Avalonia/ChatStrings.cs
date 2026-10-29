@@ -94,6 +94,9 @@ public sealed record ChatStrings
         AgentToolTitle = "Agent:",
         WebFetchToolTitle = "Web Fetch",
         WebSearchToolTitle = "Web Search",
+        NetworkAccessToolTitle = "Acesso à rede",
+        FastModeEnabled = "Modo rápido ativado",
+        FastModeCoolingDown = "Modo rápido em espera",
         ArtifactToolTitle = "Artifact",
         ArtifactCreated = "Criado",
         ArtifactOpened = "Aberto",
@@ -187,6 +190,7 @@ public sealed record ChatStrings
         PermissionGrepAnywhere = "Permitir este comando grep",
         PermissionWebFetch = "Permitir abrir esta url?",
         PermissionWebSearch = "Permitir pesquisar isto?",
+        PermissionNetworkAccess = "Permitir conexão de rede com este host?",
         PermissionAllowedDomains = "Permitidos: {0}",
         PermissionBlockedDomains = "Bloqueados: {0}",
         PermissionSkill = "Usar a skill {0}?",
@@ -789,6 +793,15 @@ public sealed record ChatStrings
     /// <summary>The name of the Web Search tool, the same in every language.</summary>
     public string WebSearchToolTitle { get; init; } = "Web Search";
 
+    /// <summary>The name in bold of the sandbox's network access request on the tool line; the host follows it in the editor's font.</summary>
+    public string NetworkAccessToolTitle { get; init; } = "Network Access";
+
+    /// <summary>The tooltip of the bolt on the reply box while the fast mode is on.</summary>
+    public string FastModeEnabled { get; init; } = "Fast mode enabled";
+
+    /// <summary>The tooltip of the bolt on the reply box while the fast mode cools down.</summary>
+    public string FastModeCoolingDown { get; init; } = "Fast mode cooling down";
+
     /// <summary>The name of the Artifact tool, the same in every language.</summary>
     public string ArtifactToolTitle { get; init; } = "Artifact";
 
@@ -992,6 +1005,9 @@ public sealed record ChatStrings
 
     /// <summary>The desktop card's title for WebSearch; the query is in a box under it.</summary>
     public string PermissionWebSearch { get; init; } = "Allow searching for this query?";
+
+    /// <summary>The desktop card's title for the sandbox's network access request; the host is in a box under it.</summary>
+    public string PermissionNetworkAccess { get; init; } = "Allow network connection to this host?";
 
     /// <summary>The domains a web search is kept to, in a box under its query; <c>{0}</c> is the list.</summary>
     public string PermissionAllowedDomains { get; init; } = "Allowed: {0}";
@@ -2345,6 +2361,21 @@ public sealed record ChatStrings
         "auto" => ModeAuto,
         _ => mode ?? "",
     };
+
+    /// <summary>
+    /// The tooltip of the fast mode bolt: "Fast mode enabled" (or "cooling down"), then " · Effort: High" when the effort is known;
+    /// null for a state that shows no bolt.
+    /// </summary>
+    internal string? FastModeTip(string? state, string? effort)
+    {
+        var text = state switch
+        {
+            "on" => FastModeEnabled,
+            "cooldown" => FastModeCoolingDown,
+            _ => null,
+        };
+        return text == null || effort == null ? text : text + " · " + Effort + ": " + EffortLabel(effort);
+    }
 
     /// <summary>The label of an effort level; no level is <see cref="EffortAuto"/>, an unknown one keeps its name.</summary>
     internal string EffortLabel(string? level) => level switch

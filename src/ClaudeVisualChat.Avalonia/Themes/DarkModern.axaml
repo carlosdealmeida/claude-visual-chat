@@ -48,6 +48,7 @@
   <SolidColorBrush x:Key="ClaudeChat.BannerBackground" Color="#2A3043" />     <!-- BannerTint 25 % + editor.background -->
   <SolidColorBrush x:Key="ClaudeChat.BannerErrorForeground" Color="#E28F8B" /> <!-- errorForeground 50 % + foreground -->
   <SolidColorBrush x:Key="ClaudeChat.BannerErrorBackground" Color="#552C2A" /> <!-- errorForeground 25 % + editor.background -->
+  <SolidColorBrush x:Key="ClaudeChat.FastModeBolt" Color="#E5A54B" /> <!-- the fast mode bolt: the warning amber -->
   <SolidColorBrush x:Key="ClaudeChat.BannerWarningForeground" Color="#D9B98C" /> <!-- #E5A54B 50 % + foreground -->
   <SolidColorBrush x:Key="ClaudeChat.BannerWarningBackground" Color="#51412A" /> <!-- #E5A54B 25 % + editor.background -->
   <SolidColorBrush x:Key="ClaudeChat.AttachmentBackground" Color="#414141" /> <!-- input.background 85 % + descriptionForeground -->

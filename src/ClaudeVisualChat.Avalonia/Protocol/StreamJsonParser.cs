@@ -83,6 +83,7 @@ namespace ClaudeVisualChat.Protocol
                             JsonHelpers.Str(root, "claude_code_version"))
                         {
                             TerminalCommands = JsonHelpers.Strings(root, "terminal_slash_commands"),
+                            FastModeState = JsonHelpers.Str(root, "fast_mode_state"),
                         },
                     };
                 case "status":
@@ -267,6 +268,7 @@ namespace ClaudeVisualChat.Protocol
                     outputTokens)
                 {
                     ApiDurationMs = JsonHelpers.Long(root, "duration_api_ms"),
+                    FastModeState = JsonHelpers.Str(root, "fast_mode_state"),
                     ErrorMessage = JsonHelpers.Bool(root, "is_error") ? FailureText(root) : null,
                 },
             };

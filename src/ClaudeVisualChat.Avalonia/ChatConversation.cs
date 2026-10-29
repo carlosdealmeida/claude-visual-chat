@@ -74,6 +74,7 @@ public sealed class ChatConversation : ChatObservableObject
     private string? _requestedModel;
     private string? _effort;
     private string? _requestedEffort;
+    private string? _fastModeState;
     private string? _workingDirectory;
     private IReadOnlyList<ChatCommand> _commands = Array.Empty<ChatCommand>();
     private IReadOnlyList<string> _terminalCommands = Array.Empty<string>();
@@ -459,6 +460,17 @@ public sealed class ChatConversation : ChatObservableObject
         return null;
     }
 
+    /// <summary>
+    /// The fast mode the claude last reported (<c>fast_mode_state</c> of the init and of a result): <c>on</c>, <c>cooldown</c> or
+    /// <c>off</c>; null until it tells. A line without the field leaves it as it was, and a value this version does not know is kept
+    /// (the reply box shows the bolt for <c>on</c> and <c>cooldown</c> only). A history replay does not set it.
+    /// </summary>
+    public string? FastModeState
+    {
+        get => _fastModeState;
+        private set => SetField(ref _fastModeState, value);
+    }
+
     /// <summary>The effort the claude reports; null when it has none (or has not told). <see cref="SetEffort"/> only asks.</summary>
     public string? Effort
     {
@@ -737,6 +749,7 @@ public sealed class ChatConversation : ChatObservableObject
                 if (started.WorkingDirectory != null) WorkingDirectory = started.WorkingDirectory;
                 if (started.PermissionMode != null) PermissionMode = started.PermissionMode;
                 TerminalCommands = started.TerminalCommands;
+                if (started.FastModeState != null) FastModeState = started.FastModeState;
                 break;
             case CommandsAvailable available:
                 Commands = available.Commands;
@@ -2410,6 +2423,7 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnTurnCompleted(TurnCompleted e)
     {
+        if (e.FastModeState != null) FastModeState = e.FastModeState;
         ForgetStatus();
         RemoveTurnPermissions();
         EndStreaming();

@@ -77,6 +77,7 @@
     <!-- the same for the notice of the invisible characters taken out of the text: the extension's warning amber (#E5A54B) -->
     <SolidColorBrush x:Key="ClaudeChat.BannerWarningForeground" Color="#D2B285" />
     <SolidColorBrush x:Key="ClaudeChat.BannerWarningBackground" Color="#473822" />
+    <SolidColorBrush x:Key="ClaudeChat.FastModeBolt" Color="#E5A54B" />         <!-- the bolt on the reply box while the fast mode is on (cooling down: disabledForeground) -->
     <SolidColorBrush x:Key="ClaudeChat.FocusRing" Color="#D97757" />            <!-- the reply box with the focus, default mode -->
     <SolidColorBrush x:Key="ClaudeChat.Spinner" Color="#D97757" />              <!-- the working line's star, default mode -->
     <!-- an image attached to the reply box: a pill of input.background with 15 % of descriptionForeground; its border
@@ -3279,6 +3280,14 @@
   <Style Selector="Path.ClaudeChatBoltIcon">
     <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Bolt}" />
     <Setter Property="Fill" Value="{DynamicResource ClaudeChat.Foreground}" />
+  </Style>
+  <!-- the fast mode bolt on the reply box: the warning amber, gray (disabledForeground) while it cools down -->
+  <Style Selector="Path.ClaudeChatFastModeBolt">
+    <Setter Property="Data" Value="{DynamicResource ClaudeChat.Icon.Bolt}" />
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.FastModeBolt}" />
+  </Style>
+  <Style Selector="Path.ClaudeChatFastModeBolt.cooldown">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.DisabledForeground}" />
   </Style>
   <Style Selector="TextBlock.ClaudeChatAutoNoticeTitle">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
