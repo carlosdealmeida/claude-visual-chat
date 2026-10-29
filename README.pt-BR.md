@@ -785,7 +785,7 @@ As camadas, a de cima primeiro: a prévia de imagem; o Diff View; o "O que deu e
 caixa de resposta (os comandos ou os modelos); uma folha (a de uso antes das outras, e uma página dentro de uma folha
 volta para a primeira antes de a folha fechar); a caixa de um comentário no plano; a ficha de um agente no mapa de
 agentes, que volta para o mapa; o painel que estiver aberto (o mapa de agentes ou os painéis `/context` e `/usage` do
-layout desktop); o documento do plano; e o campo onde o usuário escreve por que recusou um pedido. Um pedido de
+layout desktop); o documento do plano; o painel de bookmarks; e o campo onde o usuário escreve por que recusou um pedido. Um pedido de
 permissão não é camada: tem de ser respondido.
 
 ### As suas partes embaixo de uma folha

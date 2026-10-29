@@ -774,7 +774,7 @@ The layers, top-most first: the image preview; the Diff View; "What went wrong?"
 box (the commands or the models); a sheet (the usage sheet before the others, and a page inside a sheet goes back to the
 first page before the sheet closes); the box of a comment on the plan; an agent's card in the Agent map, which goes back
 to the map; the panel that is open (the Agent map, or the `/context` and `/usage` panels of the desktop layout); the
-plan's document; and the field where the user writes why a request is refused. A permission request is no layer: it has
+plan's document; the bookmarks panel; and the field where the user writes why a request is refused. A permission request is no layer: it has
 to be answered.
 
 ### Your own parts under a sheet

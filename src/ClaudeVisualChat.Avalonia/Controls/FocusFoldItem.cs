@@ -262,7 +262,7 @@ internal sealed class FocusFoldItem : ChatItem
         {
             if (Items[i] is ToolCallItem tool) place[tool] = i;
         }
-        _atWork.Sort((a, b) => place[a].CompareTo(place[b]));
+        _atWork.Sort((a, b) => (place.TryGetValue(a, out var x) ? x : int.MaxValue).CompareTo(place.TryGetValue(b, out var y) ? y : int.MaxValue));
     }
 
     /// <summary>The session went idle, or back to work: the steps whose part depends on it are read again, and only then.</summary>

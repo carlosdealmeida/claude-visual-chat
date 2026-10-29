@@ -125,6 +125,8 @@ All notable changes to this project are written here. The format follows
   "Bookmark response" / "Remove bookmark" (`AssistantTextItem.IsBookmarked`), shown while the pointer or the keyboard is
   on the end of the turn; a bookmarked reply keeps its icon in sight. In the touch layout the bookmark sits beside the
   turn's copy button, always shown, as a target of 44 px, also in a read-only view.
+  `IsBookmarked` can be set by code (a host restoring bookmarks) on a reply of `Items`: the reply joins or leaves
+  `ChatConversation.Bookmarks` as a click on the button does.
 - `ChatConversation.FeedbackRequested` (`FeedbackRequestedEventArgs`: `Item`, `Positive`, `Details`). The row has "Good
   response" and "Bad response" only while the host listens to it, only under a reply that has its line's `uuid`, and
   never in a read-only view. The thumb down opens "What went wrong?" (Ctrl+Enter sends, Esc or "Skip" closes, at most
@@ -435,8 +437,8 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   layout the plan card has no line "Select text in the preview to add comments".
 - The plan's document sits below the `/context` and `/usage` panels and the Agent map, which show over it
   and close before it; the comment box sits above all of them.
-- The plan's document opens by itself only when the request carries the plan's text, and closes when the view turns
-  read-only. A plan that was cancelled or got no answer leaves the document open, as only an approval closes it.
+- The plan's document opens by itself only when the request carries the plan's text, and the one that opened by itself
+  closes when the view turns read-only (one opened from the plan's row in the list stays). A plan that was cancelled or got no answer leaves the document open, as only an approval closes it.
 - `ToolPresentation.Summary("ExitPlanMode", ...)` returns the plan file's name, or "", where it returned the first
   string of the input (the plan's text). An `ExitPlanMode` call that comes without the plan (`input: {}`) takes the
   `input` of its permission request.
