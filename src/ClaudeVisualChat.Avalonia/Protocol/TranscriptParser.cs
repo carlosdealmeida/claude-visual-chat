@@ -229,7 +229,10 @@ namespace ClaudeVisualChat.Protocol
         private static IReadOnlyList<ContextBlock> TakeContext(List<ContentBlock> blocks, MessageOrigin? origin)
         {
             if (origin != null && origin.Kind != "human") return Array.Empty<ContextBlock>();
-            if (blocks.Count < 2 || !(blocks[blocks.Count - 1] is TextContentBlock)) return Array.Empty<ContextBlock>();
+            if (blocks.Count < 2 || !(blocks[blocks.Count - 1] is TextContentBlock last)) return Array.Empty<ContextBlock>();
+            // the lines belong to a message: a blank text, or a slash command (which is no message), leaves the blocks as they were
+            var typed = PastedContent.Strip(last.Text);
+            if (string.IsNullOrWhiteSpace(typed) || CommandText.Read(typed) != null) return Array.Empty<ContextBlock>();
             List<ContextBlock>? found = null;
             for (var i = blocks.Count - 2; i >= 0; i--)
             {
@@ -492,13 +495,20 @@ namespace ClaudeVisualChat.Protocol
                 : null;
         }
 
+        /// <summary>The error an <c>api_retry</c> line names: its <c>error</c> as text, or the <c>message</c> of an error object.</summary>
+        private static string? RetryError(JsonElement root)
+        {
+            if (JsonHelpers.Str(root, "error") is { Length: > 0 } text) return text;
+            return JsonHelpers.Obj(root, "error") is { } error && JsonHelpers.Str(error, "message") is { Length: > 0 } message ? message : null;
+        }
+
         public static IReadOnlyList<ClaudeEvent> ReadNotice(JsonElement root)
         {
             var subtype = JsonHelpers.Str(root, "subtype");
             switch (subtype)
             {
                 case "api_retry":
-                    return new ClaudeEvent[] { new SystemNotice(subtype!) };
+                    return new ClaudeEvent[] { new SystemNotice(subtype!) { ErrorMessage = RetryError(root) } };
                 case "hook_started":
                     return JsonHelpers.Str(root, "hook_id") is { } startedId && JsonHelpers.Str(root, "hook_event") is { } hookEvent
                         ? new ClaudeEvent[] { new HookStarted(startedId, hookEvent) }

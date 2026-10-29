@@ -238,6 +238,19 @@ namespace ClaudeVisualChat.Protocol
                 outputTokens = JsonHelpers.Long(u, "output_tokens");
             }
 
+            string? FailureText(JsonElement line)
+            {
+                if (JsonHelpers.Str(line, "result") is { Length: > 0 } result) return result;
+                if (JsonHelpers.Arr(line, "errors") is { } errors)
+                {
+                    foreach (var error in errors.EnumerateArray())
+                    {
+                        if (error.ValueKind == JsonValueKind.String && error.GetString() is { Length: > 0 } text) return text;
+                    }
+                }
+                return null;
+            }
+
             return new ClaudeEvent[]
             {
                 new TurnCompleted(
@@ -249,6 +262,7 @@ namespace ClaudeVisualChat.Protocol
                     outputTokens)
                 {
                     ApiDurationMs = JsonHelpers.Long(root, "duration_api_ms"),
+                    ErrorMessage = JsonHelpers.Bool(root, "is_error") ? FailureText(root) : null,
                 },
             };
         }

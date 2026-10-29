@@ -3234,4 +3234,38 @@ public class ChatConversationTests
         });
         Assert.All(fromPeer.Items.OfType<UserMessageItem>(), u => Assert.Empty(u.Context));
     }
+
+    [Fact]
+    public void Context_lines_are_not_lost_when_the_last_block_is_a_command_or_blank()
+    {
+        // a slash command is no message: the context blocks stay messages of their own, as before
+        var c = new ChatConversation();
+        c.LoadTranscript(new[]
+        {
+            UserBlocks("<terminal name=\"t\">\nx\n</terminal>", "<command-name>/clear</command-name><command-args></command-args>"),
+        });
+        Assert.Contains(c.Items.OfType<UserMessageItem>(), u => u.Text.Contains("terminal"));
+
+        // a blank text: the same
+        var blank = new ChatConversation();
+        blank.LoadTranscript(new[] { UserBlocks("<terminal name=\"t\">\nx\n</terminal>", "  ") });
+        Assert.Contains(blank.Items.OfType<UserMessageItem>(), u => u.Text.Contains("terminal"));
+
+        // a text that is only the markers of attached files: the message stays, with its lines
+        var files = new ChatConversation();
+        files.LoadTranscript(new[] { UserBlocks("<terminal name=\"t\">\nx\n</terminal>", "[Attached file: /tmp/a.txt]") });
+        var user = Assert.Single(files.Items.OfType<UserMessageItem>(), u => u.Context.Count > 0);
+        Assert.Equal("terminal", user.Context[0].Kind);
+    }
+
+    [Fact]
+    public void A_failed_turn_and_an_api_retry_carry_the_message_the_claude_gave()
+    {
+        var c = new ChatConversation();
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"api_retry\",\"error\":\"overloaded_error\"}");
+        c.AppendLine("{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"result\":\"Credit balance is too low\",\"duration_ms\":5}");
+        var notices = c.Items.OfType<NoticeItem>().ToList();
+        Assert.Equal("overloaded_error", notices.Single(n => n.Kind == NoticeKind.ApiRetry).Message);
+        Assert.Equal("Credit balance is too low", notices.Single(n => n.Kind == NoticeKind.TurnFailed).Message);
+    }
 }

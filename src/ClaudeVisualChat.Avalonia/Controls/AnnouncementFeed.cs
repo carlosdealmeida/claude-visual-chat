@@ -24,6 +24,8 @@ internal sealed class AnnouncementFeed
     private bool _hooks;
     private string? _status;
     private PendingPermission? _permission;
+    private string? _browserError;
+    private string? _remoteError;
 
     public AnnouncementFeed(LiveAnnouncer announcer, Func<ChatStrings> strings)
     {
@@ -47,6 +49,8 @@ internal sealed class AnnouncementFeed
         _hooks = _tracked.IsRunningStartupHooks;
         _status = _tracked.Status;
         _permission = _tracked.CurrentPermission;
+        _browserError = _tracked.BrowserError;
+        _remoteError = _tracked.RemoteControlError;
         _tracked.PropertyChanged += OnChanged;
         _tracked.Items.CollectionChanged += OnItemsChanged;
         _tracked.QueuedMessages.CollectionChanged += OnQueueChanged;
@@ -87,6 +91,18 @@ internal sealed class AnnouncementFeed
                 _hooks = hooks;
                 if (started && live) _announcer.Announce(strings.AnnounceStartupHooks);
                 break;
+            case nameof(ChatConversation.BrowserError):
+                var browser = c.BrowserError;
+                var browserFailed = !string.IsNullOrEmpty(browser) && browser != _browserError;
+                _browserError = browser;
+                if (browserFailed && live) _announcer.Announce(strings.FormatAnnounceError(browser!));
+                break;
+            case nameof(ChatConversation.RemoteControlError):
+                var remote = c.RemoteControlError;
+                var remoteFailed = !string.IsNullOrEmpty(remote) && remote != _remoteError;
+                _remoteError = remote;
+                if (remoteFailed && live) _announcer.Announce(strings.FormatAnnounceError(remote!));
+                break;
             case nameof(ChatConversation.CurrentPermission):
                 var request = c.CurrentPermission;
                 var arrived = request != null && !ReferenceEquals(request, _permission);
@@ -113,8 +129,9 @@ internal sealed class AnnouncementFeed
         var strings = _strings();
         foreach (var item in e.NewItems)
         {
-            if (item is NoticeItem { Kind: NoticeKind.TurnFailed } notice)
-                _announcer.Announce(strings.FormatAnnounceError(strings.Notice(notice.Kind)));
+            // the error banners of the list: the message the claude gave, or the notice's own text when it gave none
+            if (item is NoticeItem { Kind: NoticeKind.TurnFailed or NoticeKind.ApiRetry } notice)
+                _announcer.Announce(strings.FormatAnnounceError(string.IsNullOrWhiteSpace(notice.Message) ? strings.Notice(notice.Kind) : notice.Message!));
         }
     }
 

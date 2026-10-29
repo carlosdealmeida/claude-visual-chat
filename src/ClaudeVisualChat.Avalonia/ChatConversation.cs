@@ -1709,7 +1709,7 @@ public sealed class ChatConversation : ChatObservableObject
         }
         // the files the host sent are named by lines at the end of the text: chips, not text
         var (shown, paths) = AttachedFileLine.Split(text);
-        if (shown.Length == 0 && images == null && paths.Count == 0) return;
+        if (shown.Length == 0 && images == null && paths.Count == 0 && e.Context.Count == 0) return; // lines the IDE sent keep their message
         // Split takes the line breaks before the markers off: a sent text that ended with one still matches
         if (e.ParentToolUseId == null && _echoes.Count > 0
             && (_echoes[0].Text == text || _echoes[0].Text.TrimEnd('\r', '\n') == shown))
@@ -2388,7 +2388,7 @@ public sealed class ChatConversation : ChatObservableObject
             RejectToolsLeftRunning();
             StopForegroundAgents();
         }
-        if (e.IsError && !_interruptedThisTurn) Items.Add(new NoticeItem(NoticeKind.TurnFailed));
+        if (e.IsError && !_interruptedThisTurn) Items.Add(new NoticeItem(NoticeKind.TurnFailed) { Message = e.ErrorMessage });
         Items.Add(new TurnFooterItem(e.DurationMs, e.InputTokens, e.OutputTokens, e.CostUsd, e.IsError));
         AddToSession(e);
         _turnTools.Clear();
@@ -2514,7 +2514,7 @@ public sealed class ChatConversation : ChatObservableObject
         }
         else if (e.Subtype == "api_retry")
         {
-            AddNotice(NoticeKind.ApiRetry, null);
+            AddNotice(NoticeKind.ApiRetry, null, e.ErrorMessage);
         }
     }
 
@@ -2531,11 +2531,11 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>Adds a notice unless the same notice is already the last item (one compaction is marked twice).</summary>
-    private void AddNotice(NoticeKind kind, string? parentToolUseId)
+    private void AddNotice(NoticeKind kind, string? parentToolUseId, string? message = null)
     {
         var target = Container(parentToolUseId);
         if (target.Count > 0 && target[target.Count - 1] is NoticeItem last && last.Kind == kind) return;
-        target.Add(new NoticeItem(kind));
+        target.Add(new NoticeItem(kind) { Message = message });
     }
 
     // ---- placement ----

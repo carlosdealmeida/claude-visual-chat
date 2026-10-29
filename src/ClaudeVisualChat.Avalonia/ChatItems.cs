@@ -485,6 +485,9 @@ public sealed class NoticeItem : ChatItem
     }
 
     public NoticeKind Kind { get; }
+
+    /// <summary>The error text the claude gave for a failed turn or a retry; null when it gave none. Screen readers hear it.</summary>
+    public string? Message { get; init; }
 }
 
 /// <summary>

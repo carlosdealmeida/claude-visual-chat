@@ -139,12 +139,12 @@ public class AccessibilityTests
 
         for (var i = 1; i <= 6; i++) announcer.Announce("text " + i);
 
-        Assert.Equal(5, announcer.Pending);                 // the sixth was dropped
+        Assert.Equal(5, announcer.Pending);                 // the oldest was dropped
         Assert.True(announcer.IsTicking);
         announcer.Tick();
-        Assert.Equal("text 1", AutomationProperties.GetName(announcer));
+        Assert.Equal("text 2", AutomationProperties.GetName(announcer));
         Assert.Equal(4, announcer.Pending);                 // one per tick
-        Assert.Equal(new[] { "text 2", "text 3", "text 4", "text 5" }, Drain(announcer));
+        Assert.Equal(new[] { "text 3", "text 4", "text 5", "text 6" }, Drain(announcer));
         Assert.False(announcer.IsTicking);                  // nothing waits: no timer
         window.Close();
     }
@@ -289,5 +289,35 @@ public class AccessibilityTests
         var (_, other, again) = Open(busy);
         Assert.Equal(0, again.Pending);
         other.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_error_is_announced_with_the_message_the_claude_gave()
+    {
+        var c = new ChatConversation();
+        var (_, window, announcer) = Open(c);
+
+        c.Apply(new TurnCompleted("error_during_execution", true, 10, 0, 1, 1) { ErrorMessage = "Credit balance is too low" });
+        Assert.Contains("Error: Credit balance is too low", Drain(announcer));
+
+        c.BrowserError = "No browser connected";
+        Assert.Equal(new[] { "Error: No browser connected" }, Drain(announcer));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_full_queue_drops_the_oldest_so_a_late_request_is_read()
+    {
+        var c = new ChatConversation();
+        var (_, window, announcer) = Open(c);
+        for (var i = 1; i <= 5; i++) announcer.Announce("old " + i);
+
+        c.Apply(new PermissionRequested("r1", "Edit", "Edit", null, "t1", J("{}"), null));
+
+        var said = Drain(announcer);
+        Assert.Equal(5, said.Count);
+        Assert.DoesNotContain("old 1", said);
+        Assert.Equal("Claude is requesting permission to use Edit.", said[^1]);
+        window.Close();
     }
 }

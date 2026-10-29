@@ -141,6 +141,9 @@ namespace ClaudeVisualChat.Protocol
     {
         /// <summary>The time the turn spent on the API (<c>duration_api_ms</c>), which the claude counts from the start of its process; null when the line has none.</summary>
         public long? ApiDurationMs { get; init; }
+
+        /// <summary>For a turn that failed: the text the claude gives (<c>result</c>, else the first of <c>errors</c>); null when it gives none.</summary>
+        public string? ErrorMessage { get; init; }
     }
 
     /// <summary>Marker for <c>compact_boundary</c> and <c>api_retry</c>.</summary>
@@ -154,6 +157,9 @@ namespace ClaudeVisualChat.Protocol
 
         /// <summary>For <c>compact_boundary</c>: the tokens it holds after (<c>post_tokens</c>); null when not told.</summary>
         public long? PostTokens { get; init; }
+
+        /// <summary>For <c>api_retry</c>: the error that made the claude try again (<c>error</c>); null when not told.</summary>
+        public string? ErrorMessage { get; init; }
     }
 
     /// <summary>

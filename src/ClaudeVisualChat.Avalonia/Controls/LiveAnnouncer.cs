@@ -11,7 +11,7 @@ namespace ClaudeVisualChat.Controls;
 /// <summary>
 /// The view's live region for a screen reader: a text with no size (shown, so it stays in the automation tree) whose name is the
 /// sentence last announced, with <see cref="AutomationLiveSetting.Polite"/> so the reader says it when it is free. Sentences wait in a
-/// queue of five at most (the sixth is dropped), one is said every 400 ms, and none while a modal is over the view
+/// queue of five at most (when a sixth comes, the oldest is dropped), one is said every 400 ms, and none while a modal is over the view
 /// (<see cref="IsPaused"/>). The timer follows the rule of the window: it runs only while something waits and the view is in the
 /// window, and leaving it empties the queue (what it held is stale by the time the view returns).
 /// </summary>
@@ -53,10 +53,11 @@ internal sealed class LiveAnnouncer : Control
     /// <summary>The sentences waiting, in order.</summary>
     internal IReadOnlyCollection<string> Waiting => _queue;
 
-    /// <summary>Adds a sentence to the queue; nothing is queued out of the window, for a blank text, or when five wait.</summary>
+    /// <summary>Adds a sentence to the queue, dropping the oldest when five wait; nothing is queued out of the window or for a blank text.</summary>
     internal void Announce(string text)
     {
-        if (!_attached || string.IsNullOrWhiteSpace(text) || _queue.Count >= MaxQueued) return;
+        if (!_attached || string.IsNullOrWhiteSpace(text)) return;
+        if (_queue.Count >= MaxQueued) _queue.Dequeue(); // the oldest goes, so the newest state (a request, a question, a plan) is read
         _queue.Enqueue(text);
         if (!_timer.IsEnabled) _timer.Start();
     }
