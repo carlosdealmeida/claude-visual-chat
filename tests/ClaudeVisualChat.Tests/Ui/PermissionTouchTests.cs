@@ -1195,4 +1195,17 @@ public class PermissionTouchTests
         Assert.Equal(PermissionDecision.Allow, Assert.Single(ui.Answers).Decision);
         ui.Window.Close();
     }
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Touch)]
+    [InlineData(ChatLayout.Desktop)]
+    public void The_network_access_card_asks_to_allow_the_connection_in_both_layouts(ChatLayout layout)
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "SandboxNetworkAccess", "{\"host\":\"api.example.com\"}"));
+        var ui = new Opened(c, layout: layout);
+
+        Assert.Equal(ChatStrings.PortugueseBrazil.PermissionNetworkAccess, layout == ChatLayout.Touch ? ui.Title : DesktopTitle(ui));
+        ui.Window.Close();
+    }
 }
