@@ -225,6 +225,29 @@ public class BookmarksTests
 
     // ---- the list ----
 
+    [Fact]
+    public void Setting_IsBookmarked_by_code_puts_the_reply_in_the_list_and_takes_it_out_both_ways()
+    {
+        var (c, replies) = Talk(3);
+        replies[1].IsBookmarked = true;                                      // a host restoring a bookmark
+        Assert.Equal(new[] { replies[1] }, c.Bookmarks);
+        replies[0].IsBookmarked = true;
+        Assert.Equal(new[] { replies[1], replies[0] }, c.Bookmarks);
+        replies[1].IsBookmarked = false;
+        Assert.Equal(new[] { replies[0] }, c.Bookmarks);
+        c.ToggleBookmark(replies[0]);                                        // the click still works on a reply set by code
+        Assert.Empty(c.Bookmarks);
+        Assert.False(replies[0].IsBookmarked);
+
+        var late = new AssistantTextItem { Text = "restored", IsBookmarked = true };
+        c.Items.Add(late);                                                   // marked before it joined the list
+        Assert.Equal(new[] { late }, c.Bookmarks);
+        c.Items.Remove(late);                                                // it keeps its bookmark, as the panel's "no longer shown" tells
+        Assert.Equal(new[] { late }, c.Bookmarks);
+        late.IsBookmarked = false;
+        Assert.Empty(c.Bookmarks);
+    }
+
     [AvaloniaFact]
     public void The_empty_panel_explains_how_to_bookmark()
     {

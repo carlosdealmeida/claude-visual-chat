@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using ClaudeVisualChat.Imaging;
@@ -118,6 +119,45 @@ public sealed class ChatConversation : ChatObservableObject
     {
         Bookmarks = new ReadOnlyObservableCollection<AssistantTextItem>(_bookmarks);
         PendingPermissions.CollectionChanged += OnPendingPermissionsChanged;
+        Items.CollectionChanged += OnItemsChangedForBookmarks;
+    }
+
+    private readonly HashSet<AssistantTextItem> _watched = new HashSet<AssistantTextItem>();
+
+    /// <summary>
+    /// The list follows the mark: a reply of the list that is bookmarked by code (a host restoring them) joins <see cref="Bookmarks"/>,
+    /// and leaves it when unmarked, as a click on the bookmark button does. A reply that leaves the list keeps its bookmark (the
+    /// panel says it is no longer shown); the items emptied take the bookmarks with them.
+    /// </summary>
+    private void OnItemsChangedForBookmarks(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+        {
+            foreach (var old in _watched) old.PropertyChanged -= OnWatchedItemChanged;
+            _watched.Clear();
+            if (_bookmarks.Count > 0) _bookmarks.Clear();
+            foreach (var item in Items) Watch(item);
+            return;
+        }
+        if (e.NewItems != null)
+            foreach (var added in e.NewItems.OfType<AssistantTextItem>()) Watch(added);
+    }
+
+    private void Watch(ChatItem item)
+    {
+        if (!(item is AssistantTextItem reply) || !_watched.Add(reply)) return;
+        reply.PropertyChanged += OnWatchedItemChanged;
+        if (reply.IsBookmarked && !_bookmarks.Contains(reply)) _bookmarks.Add(reply);
+    }
+
+    private void OnWatchedItemChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(AssistantTextItem.IsBookmarked) || !(sender is AssistantTextItem reply)) return;
+        if (reply.IsBookmarked)
+        {
+            if (!_bookmarks.Contains(reply)) _bookmarks.Add(reply);
+        }
+        else _bookmarks.Remove(reply);
     }
 
     public event EventHandler<MessageSubmittedEventArgs>? MessageSubmitted;
@@ -275,7 +315,7 @@ public sealed class ChatConversation : ChatObservableObject
     {
         if (item == null) throw new ArgumentNullException(nameof(item));
         var text = (details ?? "").Trim();
-        if (text.Length > MaxFeedbackLength) text = text.Substring(0, MaxFeedbackLength);
+        if (text.Length > MaxFeedbackLength) text = LongPastes.Truncate(text, MaxFeedbackLength);
         _feedbackRequested?.Invoke(this, new FeedbackRequestedEventArgs(item, false, text));
     }
 
@@ -929,7 +969,7 @@ public sealed class ChatConversation : ChatObservableObject
         _held.Clear();
         if (QueuedMessages.Count > 0) QueuedMessages.Clear();
         _claudeTellsLifecycle = false; // a claude of the next session may not tell: the requests release again until one does
-        _bookmarks.Clear(); // they were items of the list
+        if (_bookmarks.Count > 0) _bookmarks.Clear(); // they were items of the list
         _pendingCopy = null;
         Agents.Clear();
         _agentsStoppedByHistory.Clear();

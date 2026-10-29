@@ -1127,6 +1127,21 @@ public class PermissionPromptTests
     }
 
     [AvaloniaFact]
+    public void The_text_of_no_never_ends_in_half_an_emoji()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "git push --force"));
+        var ui = Open(c);
+        ui.DenyField!.Text = new string('x', 3999) + "😀 and more";    // the emoji straddles the cut at 4,000
+
+        UiHelpers.Click(ui.Window, ui.Option(No));
+
+        var message = Assert.Single(ui.Answers).Message!;
+        Assert.Equal(new string('x', 3999), message);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_text_of_no_is_cut_at_4000_characters()
     {
         // the host's contract: the refusal carries 4,000 characters at most

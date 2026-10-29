@@ -1116,7 +1116,7 @@ internal partial class PermissionPrompt : UserControl
             return;
         }
         var message = text!.Trim();
-        if (message.Length > MaxDenyLength) message = message.Substring(0, MaxDenyLength);
+        if (message.Length > MaxDenyLength) message = LongPastes.Truncate(message, MaxDenyLength);
         Answer(PermissionDecision.Deny, message);
     }
 

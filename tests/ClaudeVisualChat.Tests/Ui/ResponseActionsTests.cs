@@ -371,6 +371,16 @@ public class ResponseActionsTests
     }
 
     [AvaloniaFact]
+    public void The_feedback_details_never_end_in_half_an_emoji()
+    {
+        var (c, last, _) = Turn();
+        string? sent = null;
+        c.FeedbackRequested += (_, e) => sent = e.Details;
+        c.SendFeedbackDetails(last, new string('y', 3999) + "😀 and more");
+        Assert.Equal(new string('y', 3999), sent);
+    }
+
+    [AvaloniaFact]
     public void The_learn_link_shows_only_with_a_link_subscriber()
     {
         var (c, _, _) = Turn();
