@@ -851,20 +851,28 @@ O exemplo toca uma gravação numa janela do tamanho de um celular:
   dele e o "Stop agent". O microfone existe no layout de toque, quando o seu app entrega à view o ditado dele (veja
   [Ditado](#ditado)); o layout desktop não tem.
 - Fica fora desta versão, como a extensão 2.1.310 os tem: o LaTeX (a extensão o desenha com KaTeX, e esta versão não traz
-  dependência nova); o cartão "Session paused", que precisa do `request_user_dialog`, recusado pela máquina do Kairós; a
-  sugestão de tornar o modo automático o padrão (precisa do `auto_default_nudge`); e um texto de "Por quê?" para cada
+  dependência nova); o cartão "Session paused" e o do modo automático cobrado, que precisam do `request_user_dialog`,
+  recusado pela máquina do Kairós; a sugestão de tornar o modo automático o padrão (precisa do `auto_default_nudge`); as
+  sugestões de prompt (precisam do `--prompt-suggestions`, que a máquina não passa); o sufixo "Ultracode" do chip do
+  modelo (precisa do `get_settings`, que a máquina corta); e um texto de "Por quê?" para cada
   categoria da troca de modelo (há um texto genérico). O mapa de agentes não tem a linha de cauda para um agente vivo fora
-  de qualquer dobra: o mapa o lista.
+  de qualquer dobra: o mapa o lista. O CHANGELOG (em inglês) lista o que fica de fora em "Waiting".
 
 ## App de exemplo
 
 O `samples/ClaudeVisualChat.Sample` toca as sessões gravadas de `tests/fixtures` (uma edição, comandos Bash, um
-subagente, um erro, um pedido negado, uma interrupção, trocas de modo e de modelo, uma imagem, comandos `/` e uma troca de effort) como stream ao vivo ou como sessão
-gravada, em inglês ou em português. O painel da direita mostra cada evento que a view devolve e a linha que o seu app
+subagente, um erro, um pedido negado, uma interrupção, trocas de modo e de modelo, uma imagem, comandos `/`, uma troca de
+effort, um plano aprovado, em modo automático e recusado com retorno, uma mensagem na fila e um hook que bloqueia) como
+stream ao vivo ou como sessão gravada, em inglês ou em português. O painel da direita mostra cada evento que a view devolve e a linha que o seu app
 escreveria no stdin por ele. Mais uma sessão, a `agents`, é inventada no próprio exemplo (`DemoSession.cs`), porque
 nenhuma gravação curta a tem: sete agentes (um chamado por outro, três ainda trabalhando), 71 % do contexto em uso e
 um arquivo deixado na caixa de resposta. Mandá-lo mostra um envio de mentira, o progresso e a mensagem com a linha
-marcadora.
+marcadora. Outras duas são inventadas no `TourSession.cs`, para o que nenhuma gravação tem: a `tour` (um plano para
+aprovar e comentar, selecionando texto no documento dele, uma compactação, uma mensagem de outra sessão, a faixa "Switched
+to", uma resposta com bookmark e o raio do modo rápido na borda de cima da caixa de resposta, quando a caixa tem o teclado)
+e a `auto-mode` (uma conversa vazia no modo automático, com o aviso "Auto mode is enabled"). O log mostra também
+`SubmitUndone`, `LinkRequested` e `FeedbackRequested`; o exemplo escuta os dois últimos, então os links e os polegares
+aparecem.
 
 ```sh
 dotnet run --project samples/ClaudeVisualChat.Sample

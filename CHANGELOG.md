@@ -549,6 +549,10 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   - The "Switched to" band is not shown in a reopened history, and only one banner shows at a time: it gives way to
     the browser notice and to a Remote Control error.
 
+- The sample app has two made-up scenarios for what no recording shows: `tour` (a plan to approve and comment on, a compaction, a
+  message from another session, the "Switched to" band, a bookmarked reply, the fast mode bolt) and `auto-mode` (an empty
+  conversation with the "Auto mode is enabled" notice). Its log shows `SubmitUndone`, `LinkRequested` and `FeedbackRequested`.
+
 ### Removed
 
 - Style only: the classes `TextBlock.ClaudeChatRejected` (the "Rejected" label),
@@ -557,8 +561,63 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
 
 ### Fixed
 
+- The fast mode bolt was cut in half at the top edge of the reply box: the box's control clipped what overflowed it, and the bolt
+  sits 6 px above. It shows whole now.
 - The summary of a live compaction (a `user` line with `isSynthetic`) no longer shows as a message from the user: it is
   the compaction card's. A subagent's synthetic line is not taken for it.
+
+### Deliberate differences from the extension 2.1.310
+
+The appearance and behaviour are those of the Claude Code extension 2.1.310, measured and described, with these
+exceptions, each kept on purpose (the sections above say each one in its place):
+
+- **What the host cannot do.** The contract with the Kairos machine did not change: the answer to a permission request
+  carries only the decision and, on a refusal, the message (4,000 characters at most); the modes are `plan`, `default`,
+  `acceptEdits` and `auto`; an unknown local command is ignored. So "Yes, and manually approve edits" asks for the mode
+  `default` through `PermissionModeRequested`, where the extension sends `updatedPermissions` with `setMode`; a refusal
+  has no refusal sentence of the extension's; the command of a Bash request cannot be edited; and each quoted passage of a
+  plan comment is shortened to fit the 4,000, where the extension sends it whole.
+- **What needs the host.** The links ("Learn more", "Manage usage on claude.ai"), the thumbs and the feedback box show
+  only while the host listens to `LinkRequested` or `FeedbackRequested`; the component opens nothing and sends nothing
+  to Anthropic by itself. The "Ultracode" suffix of the model chip comes only from `get_settings`.
+- **The plan.** The plan's document is a panel over the list, where the extension opens an editor tab beside the chat; a
+  passage to comment lies inside one paragraph or heading and does not cross blocks; the card's list of comments is 160 px
+  high (`ClaudeChat.PlanCommentsMaxHeight`), where the extension's depends on the window; "No, keep planning" with an
+  empty field sends "User chose to stay in plan mode and continue planning"; and in the touch layout the plan card has no
+  line "Select text in the preview to add comments".
+- **Tool rows and requests.** Edit and Write keep their diff in the card, where the extension opens it in a tab; a Write is
+  told to have succeeded only when its input has a `content` that is not a text; a request that comes without `agent_id`
+  belongs to the agent whose step asked, so one from an unseen step may mark the wrong agent; the diff and the commands have
+  no syntax highlighting, as in the extension 2.1.310, so there is no tokenizer; the old tool rows are not pruned; the
+  Claude in Chrome rows read the fields of the tool's schema, have no "[Show Tab]" link, and on the Kairos relay a
+  `computer` action has no thumbnail; and the Focus view has no "Run in background" (the VS Code host's).
+- **The list and the reply box.** The row of actions sits at the end of the turn and copies the whole turn, where the
+  extension has one under each assistant message, with no fade of 0.18 s; the scroll on send jumps at once, with no glide of
+  2 s; Ctrl+wheel scrolls the list, where it zooms in the extension; the tooltips are plain text; the time format is
+  `ChatStrings.TimeFormat`, not the claude's; the working verbs are the component's own; and the reply box shows no suggested
+  prompt and none of the extension's Ctrl+Esc hints.
+- **Pastes, drops and the palette.** A paste cut by the 50,000 limit is not sent as an `inline_pastes` entry; the direction of
+  a text follows the control (`FlowDirection`), not each paragraph; the "Effort" row of the palette steps through the levels
+  where the extension has a slider; the palette has no Customize or Settings rows yet (nor Rewind, Clear conversation,
+  Export or the footer); and a file dropped while a permission request waits is attached, where the extension ignores it.
+- **Messages from elsewhere.** The messages of agents, sessions and channels are recognized by the component's own reading
+  of their format, so one of a shape the claude does not write may be read a little differently.
+- **Group 6.** The "Why?" text of the "Switched to" band is one generic text, not one by category; the agent card has no
+  prompt, tool calls, "Open transcript" or "Stop agent"; the Agent map has no tail row for a live agent outside any fold;
+  and the "Switched to" band is not shown in a reopened history, and gives way to the browser notice and to a Remote Control
+  error (one banner at a time).
+- **Not confirmed.** The live event of Win32 screen readers in Avalonia 11.0.10 was not tried with a real screen reader.
+
+### Waiting
+
+What stays out of 0.6.0, and why. Each item is waiting for something the component does not have:
+
+- **LaTeX.** The extension draws it with KaTeX; this release takes no new dependency, so a formula shows as its source.
+- **The "Session paused" card and the billed auto-mode card.** Both need `request_user_dialog`, which the Kairos machine
+  refuses.
+- **The suggestion to make auto mode the default.** It needs `auto_default_nudge`, which does not reach the component.
+- **Prompt suggestions.** They need `--prompt-suggestions`, which the machine does not pass to the claude.
+- **Ultracode.** It needs `get_settings` to say so, and the machine cuts that reply down to the model and the effort.
 
 ## [0.5.0] - 2026-10-27
 

@@ -841,19 +841,27 @@ The sample plays a recording in a phone-sized window: `dotnet run --project samp
   transcript and "Stop agent". The microphone is there in the touch layout, once your app gives the view its speech to
   text (see [Dictation](#dictation)); the desktop layout has none.
 - Left out of this release, as the extension 2.1.310 has them: LaTeX (the extension draws it with KaTeX, and this release
-  takes no new dependency); the "Session paused" card, which needs the `request_user_dialog` that the Kairos machine
-  refuses; the suggestion to make auto mode the default (it needs `auto_default_nudge`); and a "Why?" text for each
-  category of the model switch (there is one generic text). The Agent map has no tail row for a live agent outside any
+  takes no new dependency); the "Session paused" card and the billed auto-mode card, which need the `request_user_dialog`
+  that the Kairos machine refuses; the suggestion to make auto mode the default (it needs `auto_default_nudge`); prompt
+  suggestions (they need `--prompt-suggestions`, which the machine does not pass); the "Ultracode" suffix of the model chip
+  (it needs `get_settings`, which the machine cuts); and a "Why?" text for each category of the model switch (there is one
+  generic text). The CHANGELOG lists these under "Waiting". The Agent map has no tail row for a live agent outside any
   fold: the map lists it.
 
 ## Sample app
 
 `samples/ClaudeVisualChat.Sample` plays the recorded sessions of `tests/fixtures` (an edit, Bash commands, a subagent,
-an error, a denied request, an interruption, mode and model changes, an image, slash commands and an effort change) as a live stream or as a saved session, in
-English or Portuguese. The panel on the right shows each event the view sends back and the stdin line your app would
+an error, a denied request, an interruption, mode and model changes, an image, slash commands, an effort change, a plan
+approved, in auto mode and refused with feedback, a queued message and a blocked hook) as a live stream or as a saved
+session, in English or Portuguese. The panel on the right shows each event the view sends back and the stdin line your app would
 write for it. One more session, `agents`, is made up in the sample (`DemoSession.cs`), since no short recording has
 it: seven agents (one called by another, three still at work), 71 % of the context used, and a file left in the reply
-box. Sending it shows a made-up upload, its progress and the message with its marker line.
+box. Sending it shows a made-up upload, its progress and the message with its marker line. Two more are made up in
+`TourSession.cs` for what no recording has: `tour` (a plan to approve and to comment on by selecting text in its
+document, a compaction, a message from another session, the "Switched to" band, a bookmarked reply, and the fast mode bolt
+on the reply box's top border once the box has the keyboard) and `auto-mode` (an empty conversation in auto mode, with the
+"Auto mode is enabled" notice). The log also shows `SubmitUndone`, `LinkRequested` and `FeedbackRequested`; the sample
+listens to the last two, so the links and the thumbs show.
 
 ```sh
 dotnet run --project samples/ClaudeVisualChat.Sample
