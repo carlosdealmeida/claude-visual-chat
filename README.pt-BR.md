@@ -206,7 +206,7 @@ As teclas da caixa, como na extensão 2.1.310:
   volta. Um `/comando` recuperado não abre a paleta até ser editado.
 - **Ctrl+J** quebra a linha. **Shift+Tab** anda pelos modos de permissão `default`, `acceptEdits`, `plan`, `auto` e de
   novo `default`, só entre os de `ClaudeChatView.AvailableModes`, e dispara o `PermissionModeRequested`. **Ctrl+Alt+F**
-  é o atalho da Focus view. A view somente leitura não age por nenhum deles, e o Ctrl+J e o Shift+Tab não fazem nada com
+  alterna o [modo foco](#modo-foco). A view somente leitura não age por nenhum deles, e o Ctrl+J e o Shift+Tab não fazem nada com
   a paleta ou o menu de modelo abertos.
 - `ClaudeChatView.UseCtrlEnterToSend` (false): o Enter envia. Em true, só Ctrl ou Cmd+Enter envia e o Enter quebra a
   linha (o layout de toque sempre quebra a linha no Enter e envia com Ctrl ou Cmd+Enter).
@@ -452,6 +452,34 @@ Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt
   é tomado como do agente cujo passo pediu.
 - Os nomes das linhas de Agent, Web Fetch, Web Search e Claude in Chrome são textos do `ChatStrings` (`AgentToolTitle`,
   `WebFetchToolTitle`, `WebSearchToolTitle`, `ChromeToolTitle`), iguais nas duas línguas.
+
+## Modo foco
+
+`ClaudeChatView.FocusView` (false por padrão) esconde o trabalho e deixa a conversa, como o modo foco da extensão. A
+sequência de chamadas de ferramenta e pensamentos de cada rodada vira uma linha que se abre para os passos e termina em
+"Recolher". Os prompts e o texto do Claude ficam onde estão. O Ctrl+Alt+F alterna, e o interruptor "Modo foco" da paleta de
+comandos também (dica "Mostrar só os seus prompts e as respostas do Claude"); a view somente leitura não ouve o atalho. Um app que
+quer o modo ligado por padrão define:
+
+```xml
+<controls:ClaudeChatView Conversation="{Binding Chat}" FocusView="True" />
+```
+
+O que uma dobra mostra:
+
+- **O rótulo:** "3 chamadas de ferramenta" ("1 chamada de ferramenta"), com " · 1 com falha" quando alguma falhou, e "Pensou por 4 s" quando são só
+  pensamentos. Uma chamada recusada ou interrompida conta como falha, e a que ficou sem resultado com a sessão ociosa
+  também, então um histórico reaberto não pisca.
+- **Ao vivo, só enquanto a sessão trabalha:** "Executando Bash…", "Pensando…", "Aguardando permissão…" ou "Aguardando a sua
+  resposta…", com a contagem depois, e a bolinha piscando. Um passo que espera permissão mantém a dobra aberta até o pedido
+  ser respondido, também quando ele chega depois do fim do turno (um subagente em segundo plano).
+- **A lista de tarefas mais recente** (`TodoWrite`) logo depois da dobra da sua sequência.
+- **Os subagentes ao vivo** como linhas sob a dobra, aberta ou fechada, na ordem da lista: até 4, ou 3 e "+N agentes a mais"
+  com os outros somados. Cada uma traz a descrição e o que faz, depois "1,2k tokens · 3 ferramentas · 1m 5s" com o tempo correndo.
+
+Diferenças da extensão, de propósito: não há a ação "Run in background" (é do host VS Code); não há a cauda de agentes ao
+vivo cuja chamada não está em nenhuma dobra; e num histórico reaberto uma chamada sem resultado conta como falha na dobra,
+enquanto a linha dela mostra a bolinha cinza.
 
 ## Respostas e linha do tempo
 

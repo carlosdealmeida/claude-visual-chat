@@ -200,8 +200,8 @@ The keys of the box, as in the extension 2.1.310:
   at the end, goes to the next one and, past the newest, gives the draft back. Clearing the box ends the walk. A
   recalled `/command` does not open the palette until it is edited.
 - **Ctrl+J** breaks the line. **Shift+Tab** walks the permission modes `default`, `acceptEdits`, `plan`, `auto` and
-  back, only among `ClaudeChatView.AvailableModes`, and raises `PermissionModeRequested`. **Ctrl+Alt+F** is the Focus
-  view's shortcut. A read-only view acts on none of them, and Ctrl+J and Shift+Tab do nothing while the palette or the
+  back, only among `ClaudeChatView.AvailableModes`, and raises `PermissionModeRequested`. **Ctrl+Alt+F** toggles the
+  [Focus view](#the-focus-view). A read-only view acts on none of them, and Ctrl+J and Shift+Tab do nothing while the palette or the
   model menu is open.
 - `ClaudeChatView.UseCtrlEnterToSend` (false): Enter sends. Set to true, only Ctrl or Cmd+Enter sends and Enter breaks
   the line (the touch layout always breaks the line on Enter and sends on Ctrl or Cmd+Enter).
@@ -447,6 +447,35 @@ may want to know:
   `agent_id` is taken for the agent whose step asked.
 - The names of the Agent, Web Fetch, Web Search and Claude in Chrome rows are `ChatStrings` texts
   (`AgentToolTitle`, `WebFetchToolTitle`, `WebSearchToolTitle`, `ChromeToolTitle`), the same in both languages.
+
+## The Focus view
+
+`ClaudeChatView.FocusView` (false by default) hides the work and keeps the conversation, as the extension's Focus view does.
+Each round's run of tool calls and thoughts becomes one row that opens to the steps and ends in "Collapse". Prompts and
+Claude's text stay where they are. Ctrl+Alt+F toggles it, and so does the "Focus view" switch in the command palette
+(tooltip "Show only your prompts and Claude's responses"); a read-only view does not hear the shortcut. An app that wants it
+on by default sets it:
+
+```xml
+<controls:ClaudeChatView Conversation="{Binding Chat}" FocusView="True" />
+```
+
+What a fold shows:
+
+- **Its label:** "3 tool calls" ("1 tool call"), with " · 1 failed" when some failed, and "Thought for 4s" for thoughts
+  only. A refused or interrupted call counts as failed, and so does one with no result once the session is idle, so a
+  history read back does not blink.
+- **Live, only while the session works:** "Running Bash…", "Thinking…", "Waiting for permission…" or "Waiting for your
+  answer…", with the count after it, and a blinking dot. A step that waits for permission keeps its fold open until the
+  request is answered, also when it comes after the turn ended (a subagent in the background).
+- **The latest `TodoWrite` list** right after the fold of its run.
+- **Live subagents** as rows under the fold, open or closed, in the order of the list: up to 4, or 3 and "+N more
+  agents" with the others added up. Each reads its description and what it does, then "1.2k tokens · 3 tools · 1m 5s"
+  with the time running.
+
+Differences from the extension, on purpose: no "Run in background" action (the VS Code host's); no tail of live agents whose
+call is in no fold; and in a reopened history a call without a result counts as failed in the fold, while its own row shows
+the gray dot.
 
 ## Replies and the timeline
 

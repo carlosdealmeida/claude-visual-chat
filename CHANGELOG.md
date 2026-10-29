@@ -222,7 +222,7 @@ All notable changes to this project are written here. The format follows
   model menu open.
 - Reply box shortcuts: Ctrl+J breaks the line; Shift+Tab walks the permission modes `default`, `acceptEdits`, `plan`,
   `auto` and back to `default`, only among `ClaudeChatView.AvailableModes`, raising `PermissionModeRequested`;
-  Ctrl+Alt+F is the Focus view's shortcut, which the view hears wherever the keyboard is inside it. A read-only view
+  Ctrl+Alt+F toggles the Focus view (below), which the view hears wherever the keyboard is inside it. A read-only view
   acts on none of them, and Ctrl+J and Shift+Tab do nothing while the palette or the model menu is open.
 - `ClaudeChatView.UseCtrlEnterToSend` (false by default; the extension's `useCtrlEnterToSend`): true makes only Ctrl or
   Cmd+Enter send and Enter break the line. The touch layout keeps its own rule (Enter breaks the line, Ctrl+Enter
@@ -265,6 +265,24 @@ All notable changes to this project are written here. The format follows
   `PaletteAccountUsage`, `PaletteHelpDocs`; `DropToAttach`, `UnsupportedFileTypes`.
 - New theme resources: `ClaudeChat.BannerWarningForeground` and `ClaudeChat.BannerWarningBackground` (the notice over
   the reply box, in both themes), `ClaudeChat.DropFill`, `ClaudeChat.DropBorder` and `ClaudeChat.DropLabelShadow`.
+- The Focus view, as the extension's: `ClaudeChatView.FocusView` (false by default; a host that wants it on by default
+  sets true) folds each round's run of tool calls and thoughts into one row that opens to the steps and ends in
+  "Collapse". Ctrl+Alt+F and the command palette's "Focus view" switch (tooltip "Show only your prompts and Claude's
+  responses") toggle it; a read-only view does not hear the shortcut. The fold reads "3 tool calls · 1 failed",
+  "Thought for 4s" for thoughts only and, while the session works, "Running Bash…", "Thinking…", "Waiting for
+  permission…" or "Waiting for your answer…" with the count after it. A refused or interrupted call counts as failed, and
+  so does one left without a result once the session is idle, so a history read back never blinks. Prompts and Claude's
+  text stay in sight; the latest `TodoWrite` list shows right after the fold of its run; a step that waits for
+  permission keeps its fold open, even when the request comes after the turn ended (a subagent in the background), and
+  closing it does nothing until the request is answered. The live subagents of a fold show as rows under it, open or
+  closed, in the order of the list: up to 4, or 3 and "+N more agents" with the others' numbers added, each with its
+  description, what it does, and "1.2k tokens · 3 tools · 1m 5s", the time running (a clock that ticks only while the
+  view is attached). The folded list follows the conversation row by row, with no reset, so a long conversation stays
+  fast. The turns are still counted in `ChatConversation.Items` (`/copy N` copies the same replies).
+- New `ChatStrings` texts, in English and Portuguese: `PaletteFocusView`, `PaletteFocusViewTip`, `FocusToolCalls`,
+  `FocusToolCallsOne`, `FocusFailed`, `FocusHiddenSteps`, `FocusHiddenStepsOne`, `FocusThinkingNow`, `FocusRunning`,
+  `FocusWaitingForPermission`, `FocusWaitingForAnswer`, `FocusCollapse`, `FocusMoreAgents`, `FocusAgentTools`,
+  `FocusAgentToolsOne` and `FocusAgentsCombined`.
 
 ### Breaking
 
@@ -421,6 +439,10 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   the "Effort" row of the palette steps through the levels where the extension has a slider; the palette has no
   Customize or Settings rows yet (nor Rewind, Bookmarks, Clear conversation, Export or the footer); and a file dropped
   while a permission request waits is attached, where the extension ignores the drop.
+- Where the Focus view differs from the extension 2.1.310 on purpose: there is no "Run in background" action, which is
+  the VS Code host's; there is no tail of live agents whose call is in no fold (an agent started by a subagent, or a
+  task with no tool use id): its parent's row still shows it works, and the Agent map lists it; and in a history read
+  back, a call without a result counts as failed in the fold, while its own row shows the gray dot.
 
 ### Removed
 
