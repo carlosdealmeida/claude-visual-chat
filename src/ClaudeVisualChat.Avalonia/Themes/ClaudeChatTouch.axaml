@@ -159,11 +159,11 @@
   <Style Selector="controls|ToolCallView:touch Border.ClaudeChatDiffExpandPill">
     <Setter Property="IsVisible" Value="True" />
   </Style>
-  <!-- the copy button of a command: always shown, a finger's target, and the command's text stops short of it -->
   <!-- the Artifact line's link is a target of 44 px -->
   <Style Selector="controls|ToolCallView:touch Button.ClaudeChatArtifactLink">
     <Setter Property="MinHeight" Value="44" />
   </Style>
+  <!-- the copy button of a command: always shown, a finger's target, and the command's text stops short of it -->
   <Style Selector="controls|ToolCallView:touch Button.ClaudeChatCopyCode">
     <Setter Property="Template" Value="{StaticResource ClaudeChat.TouchCopyCodeTemplate}" />
     <Setter Property="Width" Value="44" />

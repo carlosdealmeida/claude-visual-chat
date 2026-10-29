@@ -162,6 +162,7 @@ internal partial class ToolCallView : UserControl
         base.OnAttachedToVisualTree(e);
         _attached = true;
         Track(DataContext as ToolCallItem);
+        TrackHost();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -169,6 +170,7 @@ internal partial class ToolCallView : UserControl
         base.OnDetachedFromVisualTree(e);
         _attached = false;
         Track(null); // the item outlives the view: let go of its events
+        TrackHost();
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -220,9 +222,27 @@ internal partial class ToolCallView : UserControl
             _item.Children.CollectionChanged += OnChildrenChanged;
         }
         TrackAgent(_item?.Agent);
+        TrackHost();
         // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
         if (_attached) Refresh();
     }
+
+    private ChatConversation? _host; // the conversation an Artifact row listens to, while the row is in the window
+
+    /// <summary>
+    /// An Artifact row shows its link only while the host listens to <see cref="ChatConversation.LinkRequested"/>, so it follows
+    /// the conversation's host handlers (as the rows under a reply do) while it is in the window; any other row listens to nothing.
+    /// </summary>
+    private void TrackHost()
+    {
+        var wanted = _attached && _item?.Name == ArtifactTool ? this.FindAncestorOfType<ClaudeChatView>()?.Conversation : null;
+        if (ReferenceEquals(wanted, _host)) return;
+        if (_host != null) _host.HostHandlersChanged -= OnHostHandlersChanged;
+        _host = wanted;
+        if (_host != null) _host.HostHandlersChanged += OnHostHandlersChanged;
+    }
+
+    private void OnHostHandlersChanged(object? sender, EventArgs e) => UpdateBody();
 
     /// <summary>An Agent call's row follows its agent too: the prompt, whether it runs in the background, and its line's state.</summary>
     private void TrackAgent(AgentInfo? agent)
@@ -268,6 +288,10 @@ internal partial class ToolCallView : UserControl
                 UpdateChildren();
                 break;
             case nameof(ToolCallItem.Name):
+                TrackHost();
+                UpdateHeader();
+                UpdateBody();
+                break;
             case nameof(ToolCallItem.Summary):
             case nameof(ToolCallItem.Input):
                 UpdateHeader();
@@ -639,23 +663,18 @@ internal partial class ToolCallView : UserControl
         _ => strings.NotebookPending,
     };
 
-    /// <summary>The cell's new source whole (up to <see cref="MaxExpandedChars"/>), in a thin frame; "[No content]" for an empty one.</summary>
+    /// <summary>The cell's new source whole (up to <see cref="MaxExpandedChars"/>), in a thin frame; "[No content]" when the call has no new source.</summary>
     private static Border NotebookBox(string? source, ChatStrings strings)
     {
         var block = new SelectableTextBlock
         {
-            Text = string.IsNullOrEmpty(source) ? strings.NotebookNoContent : Shown(source!, whole: true),
-            TextWrapping = TextWrapping.NoWrap,
+            // "[No content]" only without the field; an empty source is an empty box, like the extension's
+            Text = source == null ? strings.NotebookNoContent : Shown(source, whole: true),
+            TextWrapping = TextWrapping.Wrap, // unclipped, with no scroll bar: a long line wraps and nothing is lost
         };
         block.Classes.Add("ClaudeChatToolText");
         block.Classes.Add("ClaudeChatNotebookText");
-        var scroller = new ScrollViewer
-        {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Content = block,
-        };
-        var box = new Border { Child = scroller };
+        var box = new Border { Child = block };
         box.Classes.Add("ClaudeChatNotebookBox");
         return box;
     }

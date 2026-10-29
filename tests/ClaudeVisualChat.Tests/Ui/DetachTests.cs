@@ -962,6 +962,36 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void An_artifact_row_follows_the_host_only_while_the_view_is_in()
+    {
+        var c = Conversation();
+        var artifact = new ToolCallItem
+        {
+            Name = "Artifact", Summary = "r.html", Status = ToolStatus.Succeeded,
+            ResultText = "Created a new Artifact at https://claude.ai/artifact/abc",
+            Input = System.Text.Json.JsonDocument.Parse("{\"file_path\":\"r.html\"}").RootElement.Clone(),
+        };
+        c.Items.Add(artifact);
+        c.Items.Add(new ToolCallItem { Name = "Read", Summary = "a.txt", Status = ToolStatus.Succeeded });
+        var m = new Mounted(c);
+        var mounted = HostHandlers(c);
+        c.Items.RemoveAt(0);
+        UiHelpers.Pump();
+        Assert.True(mounted > HostHandlers(c));                              // the artifact's row listens; a Read's row does not
+        c.Items.Insert(0, artifact);
+        UiHelpers.Pump();
+        Assert.Equal(mounted, HostHandlers(c));
+
+        m.Out();
+        Assert.True(HostHandlers(c) < mounted);                              // out: it lets go of the conversation
+        c.LinkRequested += (_, _) => { };                                    // the host began to listen meanwhile
+        m.In();
+        Assert.Equal(mounted, HostHandlers(c));                              // back: it listens again
+        Assert.Contains(UiHelpers.Texts(m.View), t => t.Contains("Open artifact"));   // and draws the link it is owed
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void What_went_wrong_comes_back_after_the_view_returns()
     {
         var c = Conversation();

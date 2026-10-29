@@ -4111,10 +4111,11 @@ public class ChatViewTests
     [AvaloniaTheory]
     [InlineData(ToolStatus.Running, "Pending")]
     [InlineData(ToolStatus.Failed, "Failed")]
+    [InlineData(ToolStatus.Rejected, "Failed")]
     public void A_notebook_edit_reads_pending_or_failed(ToolStatus status, string word)
     {
         var c = new ChatConversation();
-        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/n.ipynb\",\"cell_id\":\"c1\",\"new_source\":\"y\"}", status, status == ToolStatus.Failed ? "boom" : null));
+        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/n.ipynb\",\"cell_id\":\"c1\",\"new_source\":\"y\"}", status, status == ToolStatus.Running ? null : "boom"));
         var (view, window) = Open(c);
 
         Assert.Contains(UiHelpers.Texts(view), t => t == word);
@@ -4123,15 +4124,41 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
-    public void A_notebook_edit_with_an_empty_source_reads_no_content()
+    public void A_notebook_edit_without_a_source_reads_no_content_and_an_empty_one_is_an_empty_box()
     {
         var c = new ChatConversation();
-        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/n.ipynb\",\"new_source\":\"\"}", ToolStatus.Succeeded, "ok"));
+        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/n.ipynb\"}", ToolStatus.Succeeded, "ok"));
+        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/m.ipynb\",\"new_source\":\"\"}", ToolStatus.Succeeded, "ok"));
         var (view, window) = Open(c);
 
         var texts = UiHelpers.Texts(view);
-        Assert.Contains("[No content]", texts);
+        Assert.Single(texts, t => t == "[No content]");               // only the call without the field
         Assert.Contains("n.ipynb", texts);                            // no cell id: no colon
+        Assert.Contains("m.ipynb", texts);
+        var boxes = view.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ClaudeChatNotebookBox")).ToList();
+        Assert.Equal(2, boxes.Count);
+        Assert.DoesNotContain(boxes.SelectMany(b => b.GetVisualDescendants()), v => v is ScrollViewer); // unclipped, no scroll bar
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_artifact_link_follows_the_host_that_listens_and_is_a_common_links_height()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(ArtifactCall("Created a new Artifact at https://claude.ai/artifact/abc"));
+        var (view, window) = Open(c);
+        Assert.DoesNotContain(UiHelpers.Texts(view), t => t.Contains("Open artifact"));
+
+        EventHandler<LinkRequestedEventArgs> onLink = (_, _) => { };
+        c.LinkRequested += onLink;                                        // the host began to listen: no redraw of the list needed
+        UiHelpers.Pump();
+        var link = UiHelpers.ButtonWithText(view, "Open artifact ↗");
+        Assert.True(link.Bounds.Height < 44, link.Bounds.ToString());     // 44 px is the touch layout's
+
+        c.LinkRequested -= onLink;                                        // and stopped
+        UiHelpers.Pump();
+        Assert.DoesNotContain(UiHelpers.Texts(view), t => t.Contains("Open artifact"));
+        Assert.Contains(UiHelpers.Texts(view), t => t.StartsWith("Created", StringComparison.Ordinal));
         window.Close();
     }
 
@@ -4142,7 +4169,7 @@ public class ChatViewTests
         c.LinkRequested += (_, _) => { };
         c.Items.Add(new UserMessageItem("q"));
         c.Items.Add(ArtifactCall("Created a new Artifact at https://claude.ai/artifact/abc"));
-        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/n.ipynb\",\"cell_id\":\"c1\",\"new_source\":\"\"}", ToolStatus.Succeeded, "ok"));
+        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/n.ipynb\",\"cell_id\":\"c1\"}", ToolStatus.Succeeded, "ok"));
         c.Items.Add(new TurnFooterItem(null, null, null, null, false));
         var view = UiHelpers.TouchView(c);
         UiHelpers.ShowPhone(view);
