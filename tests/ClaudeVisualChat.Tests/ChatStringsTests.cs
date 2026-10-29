@@ -586,6 +586,8 @@ public class ChatStringsTests
         Assert.Equal(("Idle", "Ocioso"), (En.AgentMainIdle, Pt.AgentMainIdle));
         Assert.Equal("1 waiting for your permission", En.FormatAgentCount(En.AgentCountWaiting, 1));
         Assert.Equal("2 failed", En.FormatAgentCount(En.AgentCountFailed, 2));
+        Assert.Equal("2 working", En.FormatAgentCount(En.AgentCountRunning, 2));
+        Assert.Equal("Trabalhando: 2", Pt.FormatAgentCount(Pt.AgentCountRunning, 2));
         Assert.Equal("Falharam: 2", Pt.FormatAgentCount(Pt.AgentCountFailed, 2));
     }
 

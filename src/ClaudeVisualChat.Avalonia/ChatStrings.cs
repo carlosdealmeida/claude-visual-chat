@@ -279,7 +279,7 @@ public sealed record ChatStrings
         AgentMainWorking = "Trabalhando",
         AgentMainIdle = "Ocioso",
         AgentCountWaiting = "Aguardando sua permissão: {0}",
-        AgentCountRunning = "Rodando: {0}",
+        AgentCountRunning = "Trabalhando: {0}",
         AgentCountFinished = "Terminados: {0}",
         AgentCountFailed = "Falharam: {0}",
         AgentCountStopped = "Parados: {0}",
@@ -1191,7 +1191,7 @@ public sealed record ChatStrings
     public string AgentCountWaiting { get; init; } = "{0} waiting for your permission";
 
     /// <summary>The main card, open: <c>{0}</c> agents work, none of them waiting.</summary>
-    public string AgentCountRunning { get; init; } = "{0} running";
+    public string AgentCountRunning { get; init; } = "{0} working";
 
     /// <summary>The main card, open: <c>{0}</c> agents finished.</summary>
     public string AgentCountFinished { get; init; } = "{0} finished";

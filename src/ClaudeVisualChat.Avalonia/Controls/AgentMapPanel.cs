@@ -152,6 +152,7 @@ internal sealed class AgentMapPanel : Border
         _mainRow = new Border { Child = mainBody };
         _mainRow.Classes.Add("ClaudeChatAgentRow");
         _mainRow.Classes.Add("main");
+        AutomationProperties.SetControlTypeOverride(_mainRow, Avalonia.Automation.Peers.AutomationControlType.Button); // a Border that acts as a button
         // a click (or Enter, or Space) opens the card and closes it again; closed it reads like an agent's row
         _mainRow.PointerPressed += (_, e) =>
         {
@@ -585,8 +586,8 @@ internal sealed class AgentMapPanel : Border
             }
         }
         AddMainLine(strings.FormatAgentsChip(conversation.Agents.Count));
-        if (waiting > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountWaiting, waiting));
         if (running > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountRunning, running));
+        if (waiting > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountWaiting, waiting));
         if (finished > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountFinished, finished));
         if (failed > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountFailed, failed));
         if (stopped > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountStopped, stopped));

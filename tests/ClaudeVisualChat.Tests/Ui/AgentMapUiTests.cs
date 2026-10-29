@@ -273,6 +273,72 @@ public class AgentMapUiTests
     }
 
     [AvaloniaFact]
+    public void The_open_main_card_lines_read_and_come_in_the_extensions_order()
+    {
+        var c = Play(new[]
+        {
+            Call("toolu_a", "A"), Call("toolu_b", "B"), Call("toolu_c", "C"), Call("toolu_d", "D"), Call("toolu_e", "E"), Call("toolu_f", "F"),
+            Ends("toolu_c", "completed"), Ends("toolu_d", "failed"), Ends("toolu_e", "stopped"),
+        });
+        c.Apply(new SessionStarted("s1", "opus", null, "default", "2.1.306"));
+        var o = new Opened(c);
+        c.Agents.Single(a => a.Id == "toolu_b").IsWaitingForPermission = true; // a and f work, b waits
+        c.ShowAgents();
+        UiHelpers.Pump();
+        var main = o.Map.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatAgentRow") && b.Classes.Contains("main"));
+        UiHelpers.Click(o.Window, main);
+        UiHelpers.Pump();
+        Assert.Equal(
+            new[] { "This session", "Working · opus", "6 agents", "2 working", "1 waiting for your permission", "1 finished", "1 failed", "1 stopped" },
+            UiHelpers.Texts(main));
+        o.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_main_card_is_a_button_to_assistive_tools_and_enter_and_space_toggle_it()
+    {
+        var c = Play(new[] { Call("toolu_a", "A") });
+        var o = new Opened(c);
+        c.ShowAgents();
+        UiHelpers.Pump();
+        var main = o.Map.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatAgentRow") && b.Classes.Contains("main"));
+        Assert.Equal(Avalonia.Automation.Peers.AutomationControlType.Button, Avalonia.Automation.AutomationProperties.GetControlTypeOverride(main));
+        Assert.True(main.Focusable);
+
+        main.Focus();
+        UiHelpers.Press(o.Window, Key.Enter);
+        UiHelpers.Pump();
+        Assert.Contains("1 agent", UiHelpers.Texts(main));
+        UiHelpers.Press(o.Window, Key.Enter);
+        UiHelpers.Pump();
+        Assert.DoesNotContain("1 agent", UiHelpers.Texts(main));
+        UiHelpers.Press(o.Window, Key.Space);
+        UiHelpers.Pump();
+        Assert.Contains("1 agent", UiHelpers.Texts(main));
+        UiHelpers.Press(o.Window, Key.Space);
+        UiHelpers.Pump();
+        Assert.DoesNotContain("1 agent", UiHelpers.Texts(main));
+        o.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void In_the_touch_layout_the_main_card_is_at_least_a_finger_high()
+    {
+        var c = Play(new[] { Call("toolu_a", "A") });
+        var view = new ClaudeChatView { Conversation = c, Layout = ChatLayout.Touch };
+        var window = UiHelpers.Show(view, 384, 832);
+        c.ShowAgents();
+        UiHelpers.Pump();
+        var main = view.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatAgentRow") && b.Classes.Contains("main"));
+        Assert.True(main.MinHeight >= 44);
+        Assert.True(main.Bounds.Height >= 44);
+        UiHelpers.Click(window, main);
+        UiHelpers.Pump();
+        Assert.Contains("1 agent", UiHelpers.Texts(main)); // a tap opens it here too
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Chip_acende_enquanto_um_agente_roda()
     {
         var c = Play(Until("\"task_started\""));
