@@ -416,6 +416,7 @@ internal sealed class AgentMapPanel : Border
         {
             Unwatch();
             _timer.Stop();
+            _return.Forget();
         }
     }
 

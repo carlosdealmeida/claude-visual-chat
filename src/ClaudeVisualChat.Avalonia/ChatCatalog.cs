@@ -41,6 +41,10 @@ namespace ClaudeVisualChat
 
     public sealed record UsageLimits(IReadOnlyList<UsageWindow> Windows);
 
-    /// <summary>The login the claude reported when it started. Each part is null when the claude does not say.</summary>
+    /// <summary>
+    /// The login the claude reported when it started. Each part is null when the claude does not say. <paramref name="AuthMethod"/> is a
+    /// code (<c>claudeai</c>, <c>api-key</c>, <c>bedrock</c>, <c>vertex</c> or <c>foundry</c>), null for none or one that is not known;
+    /// <paramref name="Plan"/> is written for reading ("Max").
+    /// </summary>
     public sealed record AccountInfo(string? AuthMethod, string? Email, string? Organization, string? Plan);
 }

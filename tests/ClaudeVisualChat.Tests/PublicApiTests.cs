@@ -848,7 +848,7 @@ public class PublicApiTests
             typeof(AccountInfo).GetConstructors().Single().GetParameters().Select(p => p.Name).ToArray());
 
         // the conversation's: read only from outside
-        foreach (var (member, kind) in new[] { ("Account", typeof(AccountInfo)), ("SessionCostUsd", typeof(double)), ("SessionDurationMs", typeof(long)) })
+        foreach (var (member, kind) in new[] { ("Account", typeof(AccountInfo)), ("SessionCostUsd", typeof(double)), ("SessionDurationMs", typeof(long)), ("SessionApiDurationMs", typeof(long)) })
         {
             var property = typeof(ChatConversation).GetProperty(member);
             Assert.Equal(kind, property?.PropertyType);
@@ -869,7 +869,7 @@ public class PublicApiTests
             "ContextCustomAgents", "ContextLoading", "ContextFailed", "AccountUsageTitle", "AccountSection", "AccountUsageSection",
             "AccountAuthMethod", "AccountEmail", "AccountOrganization", "AccountPlan", "UsageBarSession", "UsageBarWeekly",
             "UsageBarWeeklySonnet", "UsageBarWeeklyModel", "UsageResetsIn", "UsageResetsSoon", "UsageTotalCost", "UsageTotalApiDuration",
-            "UsageNoPlanLimits", "UsageManage", "UsageLoading", "UsageFailed", "UsageRetry",
+            "UsageNoPlanLimits", "UsageTotalWallDuration", "AuthClaudeAi", "AuthApiKey", "AuthBedrock", "AuthVertex", "AuthFoundry", "UsageManage", "UsageLoading", "UsageFailed", "UsageRetry",
         })
         {
             var property = typeof(ChatStrings).GetProperty(text);
@@ -880,6 +880,10 @@ public class PublicApiTests
         // the events of the protocol
         Assert.Contains("ClaudeVisualChat.Protocol.AccountReported", names);
         Assert.NotNull(typeof(ClaudeVisualChat.Protocol.ControlAcknowledged).GetProperty("Error"));
+        var apiTime = typeof(ClaudeVisualChat.Protocol.TurnCompleted).GetProperty("ApiDurationMs");
+        Assert.Equal(typeof(long?), apiTime?.PropertyType);
+        Assert.Contains(apiTime!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        Assert.Equal(6, typeof(ClaudeVisualChat.Protocol.TurnCompleted).GetConstructors().Max(c => c.GetParameters().Length)); // no new positional parameter
         Assert.Equal(3, typeof(ClaudeVisualChat.Protocol.ControlAcknowledged).GetConstructors().Max(c => c.GetParameters().Length));
     }
 }

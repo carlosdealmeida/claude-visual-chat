@@ -126,7 +126,7 @@
     <SolidColorBrush x:Key="ClaudeChat.ContextColor4" Color="#86CF86" />        <!-- charts.green -->
     <SolidColorBrush x:Key="ClaudeChat.ContextColor5" Color="#E0B97F" />        <!-- charts.yellow -->
     <SolidColorBrush x:Key="ClaudeChat.ContextColor6" Color="#EF8773" />        <!-- charts.red -->
-    <SolidColorBrush x:Key="ClaudeChat.ContextColor7" Color="#4EC9B0" />        <!-- terminal.ansiCyan -->
+    <SolidColorBrush x:Key="ClaudeChat.ContextColor7" Color="#11A8CD" />        <!-- terminal.ansiCyan -->
     <SolidColorBrush x:Key="ClaudeChat.ContextColor8" Color="#BFBFBF" />        <!-- charts.foreground -->
     <!-- the usage modal's bars: the progress bar's color, and the clay's from 80 % -->
     <SolidColorBrush x:Key="ClaudeChat.ProgressBackground" Color="#0E70C0" />   <!-- progressBar.background -->
@@ -2518,11 +2518,6 @@
   <Style Selector="Border.ClaudeChatContextSwatch.free">
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.PillHoverBackground}" />
   </Style>
-  <!-- the free space's swatch: empty, with an outline -->
-  <Style Selector="Border.ClaudeChatContextSwatch.empty">
-    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
-    <Setter Property="BorderThickness" Value="1" />
-  </Style>
   <Style Selector="Border.ClaudeChatContextSegment.color1, Border.ClaudeChatContextSwatch.color1">
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.ContextColor1}" />
   </Style>
@@ -2558,6 +2553,9 @@
     <Setter Property="FontSize" Value="11" />
     <Setter Property="Opacity" Value="0.5" />
     <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal Grid.ClaudeChatModalTableHeader > TextBlock.ClaudeChatModalHeaderCell:not(:first-child)">
+    <Setter Property="HorizontalAlignment" Value="Right" />
   </Style>
   <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalName">
     <Setter Property="TextTrimming" Value="CharacterEllipsis" />

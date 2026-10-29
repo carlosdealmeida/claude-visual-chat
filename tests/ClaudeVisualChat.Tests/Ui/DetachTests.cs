@@ -1685,7 +1685,7 @@ public class DetachTests
         var m = new Mounted(Conversation());
         var c = m.Conversation;
         c.Apply(new ContextUsageReported(new ContextUsage(30, 100, 30, new[] { new ContextCategory("Messages", 30, "used") })));
-        c.Apply(new ClaudeVisualChat.Protocol.AccountReported(new AccountInfo("Claude AI", "a@b.co", null, "Max")));
+        c.Apply(new ClaudeVisualChat.Protocol.AccountReported(new AccountInfo("claudeai", "a@b.co", null, "Max")));
         c.Apply(new ClaudeVisualChat.Protocol.UsageLimitsReported(new UsageLimits(new[] { new UsageWindow("five_hour", 0.5, null) })));
 
         foreach (var command in new[] { "context", "usage" })
@@ -1703,7 +1703,7 @@ public class DetachTests
             m.Out();                                              // out of the window: the events go, nothing throws
             Handlers(c, out var left);
             Assert.True(left < shown);
-            c.Apply(new ClaudeVisualChat.Protocol.AccountReported(new AccountInfo("API Key", null, null, null)));
+            c.Apply(new ClaudeVisualChat.Protocol.AccountReported(new AccountInfo("api-key", null, null, null)));
             c.ClosePanel();                                       // the panel closes while the view is out
             c.InvokeCommand(command, "");
 
@@ -1713,7 +1713,7 @@ public class DetachTests
             Assert.True(Modal().IsEffectivelyVisible);
             if (command == "usage") Assert.Contains("API Key", UiHelpers.Texts(Modal()));
             else Assert.Equal(before, UiHelpers.Texts(Modal()));
-            c.Apply(new ClaudeVisualChat.Protocol.AccountReported(new AccountInfo("Claude AI", "a@b.co", null, "Max")));
+            c.Apply(new ClaudeVisualChat.Protocol.AccountReported(new AccountInfo("claudeai", "a@b.co", null, "Max")));
             c.ClosePanel();
             UiHelpers.Pump();
             Assert.False(Modal().IsVisible);

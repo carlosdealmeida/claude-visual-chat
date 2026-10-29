@@ -134,7 +134,11 @@ namespace ClaudeVisualChat.Protocol
     /// <summary><paramref name="InputTokens"/> adds the cache creation and cache read tokens.</summary>
     public sealed record TurnCompleted(
         string Subtype, bool IsError, long? DurationMs, double? CostUsd, long? InputTokens, long? OutputTokens)
-        : ClaudeEvent;
+        : ClaudeEvent
+    {
+        /// <summary>The time the turn spent on the API (<c>duration_api_ms</c>), which the claude counts from the start of its process; null when the line has none.</summary>
+        public long? ApiDurationMs { get; init; }
+    }
 
     /// <summary>Marker for <c>compact_boundary</c> and <c>api_retry</c>.</summary>
     public sealed record SystemNotice(string Subtype) : ClaudeEvent

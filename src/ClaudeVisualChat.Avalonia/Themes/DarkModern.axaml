@@ -69,7 +69,7 @@
   <SolidColorBrush x:Key="ClaudeChat.ContextColor4" Color="#89D185" />        <!-- charts.green -->
   <SolidColorBrush x:Key="ClaudeChat.ContextColor5" Color="#CCA700" />        <!-- charts.yellow -->
   <SolidColorBrush x:Key="ClaudeChat.ContextColor6" Color="#F14C4C" />        <!-- charts.red -->
-  <SolidColorBrush x:Key="ClaudeChat.ContextColor7" Color="#29B8DB" />        <!-- terminal.ansiCyan -->
+  <SolidColorBrush x:Key="ClaudeChat.ContextColor7" Color="#11A8CD" />        <!-- terminal.ansiCyan -->
   <SolidColorBrush x:Key="ClaudeChat.ContextColor8" Color="#CCCCCC" />        <!-- charts.foreground -->
   <SolidColorBrush x:Key="ClaudeChat.ProgressBackground" Color="#0078D4" />   <!-- progressBar.background -->
   <!-- the context ring: the track is the foreground at 15 %; the fill is the same as the default theme -->

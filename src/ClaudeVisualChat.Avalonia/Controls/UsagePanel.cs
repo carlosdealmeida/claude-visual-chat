@@ -294,7 +294,13 @@ internal sealed class ContextPanel : ChatInfoPanel
     internal static string ColorOf(int index) => "color" + (index % Colors + 1);
 
     /// <summary>The same for the modal, which has eight colors.</summary>
-    internal static string ModalColorOf(int index) => "color" + (index % ModalColors + 1);
+    internal static string ModalColorOf(int index) => "color" + ModalOrder[index % ModalColors];
+
+    /// <summary>
+    /// The extension's order of the bar: orange, blue, green, yellow, purple, red, cyan, the foreground. The numbers are those of the
+    /// <c>ClaudeChat.ContextColor</c> resources (the touch layout's sheet keeps its own order of the first six).
+    /// </summary>
+    private static readonly int[] ModalOrder = { 3, 1, 4, 5, 2, 6, 7, 8 };
 
     /// <summary>
     /// The pieces of the bar of <see cref="ChatInfoPanel.Bar"/> in the touch layout: one per used category, in order, as long as its
@@ -317,7 +323,7 @@ internal sealed class ContextPanel : ChatInfoPanel
 
     /// <summary>The categories the modal draws in its bar and its table: not the free space, not the deferred ones.</summary>
     private static IEnumerable<ContextCategory> InWindow(ContextUsage usage) =>
-        usage.Categories.Where(c => c.Kind != "free" && c.Kind != "deferred");
+        usage.Categories.Where(c => c.Kind != "free" && c.Kind != "deferred" && c.Tokens > 0);
 
     /// <summary>
     /// The pieces of the modal's bar: one per category in the window, in order, as long as its tokens and in its color, then the rest
@@ -364,10 +370,11 @@ internal sealed class ContextPanel : ChatInfoPanel
             table.Children.Add(TableRow("empty", category.Name, strings.FormatNumber(category.Tokens), Share(usage, category, strings), header: false));
         body.Children.Add(table);
 
+        // the biggest five, the biggest first, as the extension lists them
         if (usage.MemoryFiles.Count > 0)
-            body.Children.Add(List(strings.ContextMemoryFiles, usage.MemoryFiles.Take(ListLength).Select(f => (Tilde(f.Path), strings.FormatShortTokens(f.Tokens)))));
+            body.Children.Add(List(strings.ContextMemoryFiles, "/memory", usage.MemoryFiles.OrderByDescending(f => f.Tokens).Take(ListLength).Select(f => (Tilde(f.Path), strings.FormatShortTokens(f.Tokens)))));
         if (usage.Agents.Count > 0)
-            body.Children.Add(List(strings.ContextCustomAgents, usage.Agents.Take(ListLength).Select(a => (a.Name, strings.FormatShortTokens(a.Tokens)))));
+            body.Children.Add(List(strings.ContextCustomAgents, "/agents", usage.Agents.OrderByDescending(a => a.Tokens).Take(ListLength).Select(a => (a.Name, strings.FormatShortTokens(a.Tokens)))));
         return body;
     }
 
@@ -396,6 +403,10 @@ internal sealed class ContextPanel : ChatInfoPanel
             square.Classes.Add(swatch!);
             first.Children.Add(square);
         }
+        else
+        {
+            first.Margin = new Thickness(18, 0, 0, 0); // over the names: past the 10 px swatch and its 8 px
+        }
         first.Children.Add(Text(header ? name.ToUpperInvariant() : name, header ? "ClaudeChatModalHeaderCell" : "ClaudeChatModalName"));
         var amount = Text(header ? tokens.ToUpperInvariant() : tokens, header ? "ClaudeChatModalHeaderCell" : "ClaudeChatModalTokens");
         var percent = Text(header ? share.ToUpperInvariant() : share, header ? "ClaudeChatModalHeaderCell" : "ClaudeChatModalShare");
@@ -407,11 +418,11 @@ internal sealed class ContextPanel : ChatInfoPanel
     }
 
     /// <summary>A list under a small title: a line per item with its tokens at the right.</summary>
-    private static Control List(string title, IEnumerable<(string Name, string Tokens)> items)
+    private static Control List(string title, string hint, IEnumerable<(string Name, string Tokens)> items)
     {
         var list = new StackPanel();
         list.Classes.Add("ClaudeChatModalList");
-        list.Children.Add(SectionTitle(title, "ClaudeChatModalListTitle"));
+        list.Children.Add(TwoColumns(SectionTitle(title, "ClaudeChatModalListTitle"), Text(hint, "ClaudeChatModalListTitle"))); // "/memory", "/agents": where to change them
         foreach (var (name, tokens) in items)
         {
             var line = TwoColumns(Text(name, "ClaudeChatModalListName"), Text(tokens, "ClaudeChatModalListTokens"));
@@ -421,21 +432,15 @@ internal sealed class ContextPanel : ChatInfoPanel
         return list;
     }
 
+    private static readonly System.Text.RegularExpressions.Regex HomeFolder =
+        new System.Text.RegularExpressions.Regex(@"^(?:/Users/[^/]+|/home/[^/]+|/root|[A-Za-z]:\\Users\\[^\\]+)(?=[/\\]|$)");
+
     /// <summary>A path with the home folder written "~".</summary>
     internal static string Tilde(string path)
     {
-        string home;
-        try
-        {
-            home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        }
-        catch (Exception)
-        {
-            return path;
-        }
-        if (string.IsNullOrEmpty(home) || path.Length <= home.Length || !path.StartsWith(home, StringComparison.OrdinalIgnoreCase)) return path;
-        var next = path[home.Length];
-        return next == '/' || next == '\\' ? "~" + path.Substring(home.Length) : path;
+        // any home folder, not only this machine's: the claude may run on another one
+        var match = HomeFolder.Match(path);
+        return match.Success ? "~" + path.Substring(match.Length) : path;
     }
 }
 
@@ -466,7 +471,7 @@ internal sealed class UsagePanel : ChatInfoPanel
 
     protected override bool Shows(string? propertyName) =>
         propertyName == nameof(ChatConversation.UsageLimits) || propertyName == nameof(ChatConversation.Account)
-        || propertyName == nameof(ChatConversation.SessionCostUsd) || propertyName == nameof(ChatConversation.SessionDurationMs)
+        || propertyName == nameof(ChatConversation.SessionCostUsd) || propertyName == nameof(ChatConversation.SessionDurationMs) || propertyName == nameof(ChatConversation.SessionApiDurationMs)
         || propertyName == nameof(ChatConversation.UsageError);
 
     protected override Control? Failure(ChatConversation conversation, ChatStrings strings)
@@ -483,7 +488,7 @@ internal sealed class UsagePanel : ChatInfoPanel
     {
         var account = conversation.Account;
         var windows = conversation.UsageLimits?.Windows ?? Array.Empty<UsageWindow>();
-        var hasTotals = conversation.SessionCostUsd > 0 || conversation.SessionDurationMs > 0;
+        var hasTotals = conversation.SessionCostUsd > 0 || conversation.SessionApiDurationMs > 0 || conversation.SessionDurationMs > 0;
         if (account == null && windows.Count == 0 && !hasTotals) return null;
 
         var body = new StackPanel();
@@ -501,7 +506,8 @@ internal sealed class UsagePanel : ChatInfoPanel
         else if (hasTotals)
         {
             if (conversation.SessionCostUsd > 0) usage.Children.Add(Figure(strings.UsageTotalCost, "$" + strings.FormatMoney(conversation.SessionCostUsd)));
-            if (conversation.SessionDurationMs > 0) usage.Children.Add(Figure(strings.UsageTotalApiDuration, strings.FormatDuration(conversation.SessionDurationMs)));
+            if (conversation.SessionApiDurationMs > 0) usage.Children.Add(Figure(strings.UsageTotalApiDuration, strings.FormatDuration(conversation.SessionApiDurationMs)));
+            if (conversation.SessionDurationMs > 0) usage.Children.Add(Figure(strings.UsageTotalWallDuration, strings.FormatDuration(conversation.SessionDurationMs)));
         }
         else
         {
@@ -530,7 +536,6 @@ internal sealed class UsagePanel : ChatInfoPanel
             foreach (var window in windows.Where(w => w.Model == null && w.Name == name)) yield return window;
         }
         foreach (var window in windows.Where(w => w.Model != null)) yield return window;
-        foreach (var window in windows.Where(w => w.Model == null && Array.IndexOf(order, w.Name) < 0)) yield return window;
     }
 
     private static Control AccountSection(AccountInfo account, ChatStrings strings)
@@ -540,7 +545,7 @@ internal sealed class UsagePanel : ChatInfoPanel
         section.Children.Add(SectionTitle(strings.AccountSection, "ClaudeChatModalSectionTitle"));
         foreach (var (label, value) in new[]
         {
-            (strings.AccountAuthMethod, account.AuthMethod), (strings.AccountEmail, account.Email),
+            (strings.AccountAuthMethod, strings.AuthMethodLabel(account.AuthMethod)), (strings.AccountEmail, account.Email),
             (strings.AccountOrganization, account.Organization), (strings.AccountPlan, account.Plan),
         })
         {

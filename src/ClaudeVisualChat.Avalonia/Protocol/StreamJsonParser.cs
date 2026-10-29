@@ -246,7 +246,10 @@ namespace ClaudeVisualChat.Protocol
                     JsonHelpers.Long(root, "duration_ms"),
                     JsonHelpers.Double(root, "total_cost_usd"),
                     inputTokens,
-                    outputTokens),
+                    outputTokens)
+                {
+                    ApiDurationMs = JsonHelpers.Long(root, "duration_api_ms"),
+                },
             };
         }
     }

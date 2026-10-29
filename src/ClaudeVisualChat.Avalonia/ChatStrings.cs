@@ -365,6 +365,12 @@ public sealed record ChatStrings
         UsageTotalCost = "Custo total",
         UsageTotalApiDuration = "Duração total (API)",
         UsageNoPlanLimits = "Os limites do plano não estão disponíveis para este tipo de login.",
+        UsageTotalWallDuration = "Duração total (relógio)",
+        AuthClaudeAi = "Claude AI",
+        AuthApiKey = "Chave de API",
+        AuthBedrock = "Amazon Bedrock",
+        AuthVertex = "Google Vertex AI",
+        AuthFoundry = "Microsoft Foundry",
         UsageManage = "Gerenciar o uso em claude.ai",
         UsageLoading = "Carregando os dados de uso…",
         UsageFailed = "Falha ao carregar os dados de uso",
@@ -1532,6 +1538,24 @@ public sealed record ChatStrings
     /// <summary>The usage section of a login that has no limits and no figures to show.</summary>
     public string UsageNoPlanLimits { get; init; } = "Plan limits aren't available for this login method.";
 
+    /// <summary>The time the session took on the clock, for a login without a plan.</summary>
+    public string UsageTotalWallDuration { get; init; } = "Total duration (wall)";
+
+    /// <summary>The login form of an account that signed in with claude.ai.</summary>
+    public string AuthClaudeAi { get; init; } = "Claude AI";
+
+    /// <summary>The login form of an account that uses an API key.</summary>
+    public string AuthApiKey { get; init; } = "API Key";
+
+    /// <summary>The login form of an account that goes through Amazon Bedrock.</summary>
+    public string AuthBedrock { get; init; } = "Amazon Bedrock";
+
+    /// <summary>The login form of an account that goes through Google Vertex AI.</summary>
+    public string AuthVertex { get; init; } = "Google Vertex AI";
+
+    /// <summary>The login form of an account that goes through Microsoft Foundry.</summary>
+    public string AuthFoundry { get; init; } = "Microsoft Foundry";
+
     /// <summary>The link to the usage page; it shows only when the host opens links.</summary>
     public string UsageManage { get; init; } = "Manage usage on claude.ai";
 
@@ -2317,9 +2341,20 @@ public sealed record ChatStrings
             "five_hour" => UsageBarSession,
             "seven_day" => UsageBarWeekly,
             "seven_day_sonnet" => UsageBarWeeklySonnet,
-            _ => window.Name ?? "",
+            _ => "",
         };
     }
+
+    /// <summary>The words for the login form code of <see cref="AccountInfo.AuthMethod"/>; null, so that no row shows, for none or one it does not know.</summary>
+    internal string? AuthMethodLabel(string? code) => code switch
+    {
+        "claudeai" => AuthClaudeAi,
+        "api-key" => AuthApiKey,
+        "bedrock" => AuthBedrock,
+        "vertex" => AuthVertex,
+        "foundry" => AuthFoundry,
+        _ => null,
+    };
 
     /// <summary>The label of a usage limit; one without a label keeps its name.</summary>
     internal string UsageWindowLabel(string name) => name switch

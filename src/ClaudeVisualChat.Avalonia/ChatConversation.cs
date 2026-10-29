@@ -85,6 +85,8 @@ public sealed class ChatConversation : ChatObservableObject
     private double _sessionCostUsd;
     private double _lastResultCostUsd;
     private long _sessionDurationMs;
+    private long _sessionApiDurationMs;
+    private long _lastResultApiMs;
     private string? _contextError;
     private string? _usageError;
     private string _permissionMode = "default";
@@ -542,7 +544,9 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>
     /// What the session cost so far, in US dollars, from the turns' <c>result</c> lines. The claude counts the cost of its process
-    /// from the start, so the figure only grows within one; a figure lower than the one before is a new process, and adds.
+    /// from the start, so the figure only grows within one; a figure lower than the one before is a new process, and adds. This is
+    /// a heuristic: the first figure of a resumed process that is not lower than the last one of the one before is read as growth of
+    /// that one, and the session's total comes out too low by the difference.
     /// </summary>
     public double SessionCostUsd
     {
@@ -550,11 +554,21 @@ public sealed class ChatConversation : ChatObservableObject
         private set => SetField(ref _sessionCostUsd, value);
     }
 
-    /// <summary>The time the turns took, in milliseconds, added up from the <c>result</c> lines.</summary>
+    /// <summary>The time the turns took on the clock ("wall" time), in milliseconds: the <c>duration_ms</c> of the <c>result</c> lines, added up.</summary>
     public long SessionDurationMs
     {
         get => _sessionDurationMs;
         private set => SetField(ref _sessionDurationMs, value);
+    }
+
+    /// <summary>
+    /// The time the session spent on the API, in milliseconds: the <c>duration_api_ms</c> of the <c>result</c> lines. The claude counts it from the
+    /// start of its process, so it follows the same rule as <see cref="SessionCostUsd"/>; a turn that never reached the API reports 0 and adds nothing.
+    /// </summary>
+    public long SessionApiDurationMs
+    {
+        get => _sessionApiDurationMs;
+        private set => SetField(ref _sessionApiDurationMs, value);
     }
 
     /// <summary>Why <c>/context</c> got no data (the error of the host's last answer, while the panel is open); null when it did not fail.</summary>
@@ -719,7 +733,7 @@ public sealed class ChatConversation : ChatObservableObject
                 break;
             case UsageLimitsReported limits:
                 UsageError = null;
-                UsageLimits = limits.Limits;
+                UsageLimits = MergeLimits(UsageLimits, limits.Limits);
                 break;
             case AccountReported account:
                 Account = account.Account;
@@ -2301,7 +2315,7 @@ public sealed class ChatConversation : ChatObservableObject
             if (!_autoModeAsked)
             {
                 if (ShownPanel == ChatPanel.Context && ContextUsage == null) ContextError = e.Error ?? "";
-                else if (ShownPanel == ChatPanel.Usage) UsageError = e.Error ?? "";
+                else if (ShownPanel == ChatPanel.Usage && UsageLimits == null && Account == null) UsageError = e.Error ?? "";
                 return;
             }
             // the auto mode a plan was approved with was refused: the next best, which needs no gate
@@ -2355,14 +2369,36 @@ public sealed class ChatConversation : ChatObservableObject
         ReleaseHeld(_held.Count);
     }
 
+    /// <summary>
+    /// A report of the limits replaces the windows it names and keeps the others: the rate limit events carry the two windows, and
+    /// the host's <c>get_usage</c> reply carries those and the Sonnet's and the models', which a later event must not take away.
+    /// </summary>
+    private static UsageLimits MergeLimits(UsageLimits? before, UsageLimits reported)
+    {
+        if (before == null || reported.Windows.Count == 0) return reported; // an empty report empties the list, as it always did
+        var windows = new List<UsageWindow>(reported.Windows);
+        foreach (var old in before.Windows)
+        {
+            if (!reported.Windows.Any(w => w.Name == old.Name && w.Model == old.Model)) windows.Add(old);
+        }
+        return new UsageLimits(windows);
+    }
+
     /// <summary>The turn's time and cost go into the session's totals.</summary>
     private void AddToSession(TurnCompleted e)
     {
         if (e.DurationMs is long duration && duration > 0) SessionDurationMs += duration;
-        if (e.CostUsd is not double cost || cost <= 0) return;
-        // the cost is the process's running total: the part since the last result is new; lower than the last, a new process began
-        SessionCostUsd += cost >= _lastResultCostUsd ? cost - _lastResultCostUsd : cost;
-        _lastResultCostUsd = cost;
+        // the cost and the API time are the process's running totals: the part since the last result is new; lower than the last, a new process began
+        if (e.CostUsd is double cost && cost > 0)
+        {
+            SessionCostUsd += cost >= _lastResultCostUsd ? cost - _lastResultCostUsd : cost;
+            _lastResultCostUsd = cost;
+        }
+        if (e.ApiDurationMs is long api && api > 0)
+        {
+            SessionApiDurationMs += api >= _lastResultApiMs ? api - _lastResultApiMs : api;
+            _lastResultApiMs = api;
+        }
     }
 
     /// <summary>

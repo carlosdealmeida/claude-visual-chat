@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
@@ -270,16 +271,78 @@ namespace ClaudeVisualChat.Protocol
             if (JsonHelpers.Obj(body, "account") is { } account)
             {
                 var read = new AccountInfo(
-                    JsonHelpers.Str(account, "authMethod") ?? JsonHelpers.Str(account, "tokenSource") ?? JsonHelpers.Str(account, "apiKeySource"),
+                    LoginOf(account),
                     JsonHelpers.Str(account, "email"),
                     JsonHelpers.Str(account, "organization"),
-                    JsonHelpers.Str(account, "plan") ?? JsonHelpers.Str(account, "subscriptionType"));
+                    PlanOf(JsonHelpers.Str(account, "subscriptionType")));
                 if (read.AuthMethod != null || read.Email != null || read.Organization != null || read.Plan != null)
                     events.Add(new AccountReported(read));
             }
 
+            // the reply to get_usage, which the host passes on: the limits, 0 to 100, with ISO dates
+            if (JsonHelpers.Obj(body, "rate_limits") is { } limits && ReadUsageReply(limits) is { Count: > 0 } windows)
+                events.Add(new UsageLimitsReported(new UsageLimits(windows)));
+
             if (JsonHelpers.Str(body, "session_url") is { } url)
                 events.Add(new RemoteControlChanged(null, url, null));
+        }
+
+        /// <summary>
+        /// The login, as a code the strings write out (<c>claudeai</c>, <c>api-key</c>, <c>bedrock</c>, <c>vertex</c>, <c>foundry</c>), from
+        /// the account's <c>apiProvider</c>, <c>tokenSource</c> and <c>apiKeySource</c>; null for none or for a value it does not know,
+        /// so that a raw identifier is never shown.
+        /// </summary>
+        private static string? LoginOf(JsonElement account)
+        {
+            switch (JsonHelpers.Str(account, "apiProvider"))
+            {
+                case "bedrock": return "bedrock";
+                case "vertex": return "vertex";
+                case "foundry": return "foundry";
+            }
+            var token = JsonHelpers.Str(account, "tokenSource");
+            if (token != null && (token == "claude.ai" || token.StartsWith("CLAUDE_CODE_OAUTH_TOKEN", StringComparison.Ordinal) || token == "CCR_OAUTH_TOKEN_FILE"))
+                return "claudeai";
+            var key = JsonHelpers.Str(account, "apiKeySource");
+            return !string.IsNullOrEmpty(key) && key != "none" ? "api-key" : null;
+        }
+
+        /// <summary>The plan as the extension writes it: "max" is "Max", "enterprise_plus" is "Enterprise Plus"; none is null.</summary>
+        private static string? PlanOf(string? subscription)
+        {
+            if (string.IsNullOrWhiteSpace(subscription) || subscription == "none") return null;
+            var words = subscription!.Split(new[] { '_', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            return string.Join(" ", words.Select(w => char.ToUpperInvariant(w[0]) + w.Substring(1)));
+        }
+
+        private static List<UsageWindow> ReadUsageReply(JsonElement limits)
+        {
+            var list = new List<UsageWindow>();
+            foreach (var name in new[] { "five_hour", "seven_day", "seven_day_sonnet" })
+            {
+                if (limits.TryGetProperty(name, out var window) && window.ValueKind == JsonValueKind.Object && ReadUsageWindow(name, window, null) is { } read)
+                    list.Add(read);
+            }
+            if (JsonHelpers.Arr(limits, "model_scoped") is { } scoped)
+            {
+                foreach (var entry in scoped.EnumerateArray())
+                {
+                    var model = JsonHelpers.Str(entry, "display_name");
+                    if (!string.IsNullOrEmpty(model) && ReadUsageWindow("model_scoped", entry, model) is { } read) list.Add(read);
+                }
+            }
+            return list;
+        }
+
+        private static UsageWindow? ReadUsageWindow(string name, JsonElement window, string? model)
+        {
+            var utilization = JsonHelpers.Double(window, "utilization");
+            if (utilization == null) return null;
+            DateTimeOffset? resets = null;
+            if (JsonHelpers.Str(window, "resets_at") is { } text
+                && DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var at))
+                resets = at;
+            return new UsageWindow(name, utilization.Value / 100, resets) { Model = model };
         }
 
         private static IReadOnlyList<ContextFile> ReadContextFiles(JsonElement? array)
@@ -339,37 +402,22 @@ namespace ClaudeVisualChat.Protocol
         {
             var info = JsonHelpers.Obj(root, "rate_limit_info");
             var windows = info == null ? null : JsonHelpers.Obj(info.Value, "unifiedWindows");
-            var scoped = info == null ? null : JsonHelpers.Arr(info.Value, "model_scoped");
-            if (windows == null && scoped == null) return None;
+            if (windows == null) return None;
             var list = new List<UsageWindow>();
-            if (windows != null)
+            foreach (var window in windows.Value.EnumerateObject())
             {
-                foreach (var window in windows.Value.EnumerateObject())
-                {
-                    if (ReadWindow(window.Name, window.Value, null) is { } read) list.Add(read);
-                }
-            }
-            if (scoped != null)
-            {
-                // one entry per model: the weekly limit of that model
-                foreach (var entry in scoped.Value.EnumerateArray())
-                {
-                    var model = JsonHelpers.Str(entry, "model") ?? JsonHelpers.Str(entry, "name");
-                    if (model != null && ReadWindow("model_scoped", entry, model) is { } read) list.Add(read);
-                }
+                if (ReadWindow(window.Name, window.Value) is { } read) list.Add(read);
             }
             return list.Count == 0 ? None : new ClaudeEvent[] { new UsageLimitsReported(new UsageLimits(list)) };
         }
 
-        private static UsageWindow? ReadWindow(string name, JsonElement window, string? model)
+        private static UsageWindow? ReadWindow(string name, JsonElement window)
         {
             var utilization = JsonHelpers.Double(window, "utilization");
             if (utilization == null) return null;
             var resets = JsonHelpers.Long(window, "resetsAt");
             return new UsageWindow(name, utilization.Value, resets == null ? (DateTimeOffset?)null : DateTimeOffset.FromUnixTimeSeconds(resets.Value))
-            {
-                Model = model,
-            };
+;
         }
 
         /// <summary>The <c>non_execution_kind</c> of the <c>tool_result_meta</c> entry for that tool call.</summary>
