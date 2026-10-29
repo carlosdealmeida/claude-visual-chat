@@ -334,10 +334,17 @@ All notable changes to this project are written here. The format follows
   `ContextMemoryFiles`, `ContextCustomAgents`, `ContextLoading`, `ContextFailed`, `AccountUsageTitle`,
   `AccountSection`, `AccountUsageSection`, `AccountAuthMethod`, `AccountEmail`, `AccountOrganization`, `AccountPlan`,
   `Auth*`, `UsageBar*`, `UsageResetsIn`, `UsageResetsSoon`, `UsageTotal*`, `UsageNoPlanLimits`, `UsageManage`,
-  `UsageLoading`, `UsageFailed`, `UsageRetry`; the texts of the bookmarks panel; `ArtifactCreated`, `ArtifactOpened`,
+  `UsageLoading`, `UsageFailed`, `UsageRetry`; `PaletteBookmarks`, `PaletteBookmarksTip`, `BookmarksTitle`,
+  `BookmarksEmpty`, `BookmarksSelectHint`, `BookmarkShowInConversation`, `BookmarkNotShown`, `BookmarkResize`,
+  `AgoJustNow`, `AgoMinutes`, `AgoHours`, `AgoDays`; `ArtifactToolTitle`, `ArtifactCreated`, `ArtifactOpened`,
   `ArtifactPublished`, `ArtifactOpenLink`, `NotebookEditTitle`, `NotebookPending`, `NotebookSuccess`, `NotebookFailed`,
-  `NotebookNoContent`; the announcements for screen readers and the names of the messages; `AutoModeEnabled`,
-  `AutoModeNoticeBody`, `LearnMore`, `ModelFallbackWhy`, `ModelFallbackHide` and `ModelFallbackWhyBody`.
+  `NotebookNoContent`; `ContextTerminal`, `ContextBrowserTab`, `ContextBrowserTabBare`, `ContextBrowserInstructions`,
+  `ContextSelection`, `ContextNone`, `ContextCaptionTerminal`, `ContextCaptionBrowserTab`,
+  `ContextCaptionBrowserInstructions`, `ContextCaptionSelection`; `You`, `YouSaid`, `Claude`, `ClaudeThinking`,
+  `ClaudeTool`, `AnnounceWorking`, `AnnounceReady`, `AnnounceCompacting`, `AnnounceStartupHooks`, `AnnouncePermission`,
+  `AnnounceQuestion`, `AnnouncePlan`, `AnnounceError`, `AnnounceReply`, `AnnounceCodeBlock`, `AnnounceCodeBlockOne`;
+  `AutoModeEnabled`, `AutoModeNoticeBody`, `LearnMore`, `ModelFallbackWhy`, `ModelFallbackHide` and
+  `ModelFallbackWhyBody`.
 - New theme resources: `ClaudeChat.ContextColor7` and `ContextColor8` (the context bar has eight colors, in the
   extension's order), `ClaudeChat.AutoNoticeShadow` and `ClaudeChat.Icon.Bolt`. The chip's blue dot is the existing
   `ClaudeChat.AgentWaiting`.

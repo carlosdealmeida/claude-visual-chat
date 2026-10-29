@@ -290,12 +290,69 @@ numbers are what the claude last reported, and `ContextUsage` comes from the ans
 
 The touch layout keeps its usage sheet in their place, unchanged.
 
+## Model and effort
+
+The bar shows a chip with the model and its effort (**Opus 5.5 High**). It opens a menu with the models and a slider
+for the effort levels the chosen model takes. The models come from the conversation (not from the view):
+
+```csharp
+conversation.AvailableModels = new[]
+{
+    new ChatModel("opus", "claude-opus-5-5", "Opus 5.5", "For complex work and everyday tasks",
+        new[] { "low", "medium", "high", "xhigh", "max" }),
+    new ChatModel("haiku", "claude-haiku-4-5-20251001", "Haiku 4.5", "Fastest for quick answers",
+        Array.Empty<string>()), // takes no effort
+};
+```
+
+The `initialize` answer brings the same list, and `AppendLine` fills it in. Like the model and the mode, the effort is
+requested first and shown once the claude confirms: `EffortRequested` comes with the level (`null` for the model's
+own), and the answer to `get_settings`, or a `SettingsApplied`, moves the chip. A model id with a suffix
+(`claude-opus-5-5[1m]`) finds its model, and the chip shows it (**Opus 5.5 [1m] High**).
+
+```csharp
+conversation.EffortRequested += (_, e) =>
+{
+    Send(StdinMessages.ApplyEffort("req_" + ++ids, e.Effort));
+    Send(StdinMessages.GetSettings("req_" + ++ids)); // its answer says the level now in force
+};
+```
+
+A typed `/model x` or `/effort x` changes the claude too, but the chip follows only after the next `system/init` or
+a `GetSettings` answer, so send `GetSettings` after them.
+
+## Prompt cache, browser and Remote Control
+
+- **Prompt cache.** A clock in the bar counts the minutes the claude's prompt cache has left, from the cache usage of
+  the last reply. It turns red when the cache has likely expired. `Clock` is the time source it reads (the sample plays
+  the recording's own).
+- **Browser.** Your app reports the state of the browser extension: `BrowserStatus` (`Off`, `Connecting`, `Connected`,
+  `NoBrowser`, `Error`, with `BrowserError`). A banner over the box tells it, and its disconnect button raises
+  `BrowserDisconnectRequested`; the state changes only when you set it.
+- **Remote Control.** `RemoteControlStatus` (`Off`, `Connecting`, `Connected`, `Error`), `RemoteControlUrl` and
+  `RemoteControlError` show a pill in the bar. A click on it raises `RemoteControlLinkRequested` (`RemoteControlLinkRequestedEventArgs`) with the link, which
+  your app opens (the library opens nothing). The claude's `bridge_state` lines move the status by themselves.
+
+```csharp
+conversation.BrowserStatus = ChatBrowserStatus.Connected;
+conversation.BrowserDisconnectRequested += (_, _) =>
+{
+    DisconnectBrowser(); // yours
+    conversation.BrowserStatus = ChatBrowserStatus.Off;
+};
+
+conversation.RemoteControlStatus = ChatRemoteControlStatus.Connecting;
+Send(StdinMessages.RemoteControl("req_" + ++ids, true)); // the answer brings the link
+conversation.RemoteControlLinkRequested += (_, e) =>
+    Process.Start(new ProcessStartInfo(e.Url) { UseShellExecute = true });
+```
+
 ## Agent map
 
 ![The Agent map of the sample's made-up session: the main agent at the left, its agents at the right, newest on top, three of them at work](https://raw.githubusercontent.com/carlosdealmeida/claude-visual-chat/main/docs/screenshot-agents.png)
 
 Once the conversation has had an agent, the bar shows a chip with how many are at work (**● 3 agents**, **0 agents**
-when all have ended, as the extension counts them); its dot turns green while one is. A click on it, or `ChatConversation.ShowAgents()`, opens the
+when all have ended, as the extension counts them); its dot is blue, green, red or grey (see below). A click on it, or `ChatConversation.ShowAgents()`, opens the
 Agent map over the view (`ShownPanel` is `ChatPanel.Agents`): the main agent's card at the left, with its model and the
 tokens in its context, and the agents at its right, the newest on top, each with its dot, description, time and
 tokens ("7m 14s · 168.5k tokens"); an agent another one called goes under its caller. A click on an agent opens its

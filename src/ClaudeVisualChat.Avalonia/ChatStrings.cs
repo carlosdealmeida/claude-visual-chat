@@ -2608,7 +2608,7 @@ public sealed record ChatStrings
         return UsageResetsIn.Replace("{0}", time);
     }
 
-    /// <summary>The bar's label of a limit window: its own for the two windows and the Sonnet one, "Weekly {model}" for a model's. <c>UsagePanel</c> draws a bar only for those windows, so any other name reads as the Sonnet one.</summary>
+    /// <summary>The bar's label of a limit window: its own for the two windows and the Sonnet one, "Weekly {model}" for a model's. Any other name gives its own raw name, which the panel never draws a bar for.</summary>
     internal string UsageBarLabel(UsageWindow window)
     {
         if (window.Model != null) return UsageBarWeeklyModel.Replace("{0}", window.Model);
@@ -2616,7 +2616,8 @@ public sealed record ChatStrings
         {
             "five_hour" => UsageBarSession,
             "seven_day" => UsageBarWeekly,
-            _ => UsageBarWeeklySonnet, // the only other name a bar is made for (UsagePanel skips the rest)
+            "seven_day_sonnet" => UsageBarWeeklySonnet,
+            _ => window.Name ?? "", // UsagePanel makes no bar for any other name
         };
     }
 

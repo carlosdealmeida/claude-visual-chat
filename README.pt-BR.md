@@ -297,12 +297,66 @@ somente leitura. Os números são os que o claude informou por último, e o `Con
 
 No layout de toque a folha de uso fica no lugar deles, sem mudança.
 
+## Modelo e effort
+
+A barra mostra um chip com o modelo e o effort (**Opus 5.5 High**). Ele abre um menu com os modelos e um controle
+deslizante com os níveis de effort que o modelo escolhido aceita. Os modelos vêm da conversa (não da view):
+
+```csharp
+conversation.AvailableModels = new[]
+{
+    new ChatModel("opus", "claude-opus-5-5", "Opus 5.5", "Para trabalho complexo e o dia a dia",
+        new[] { "low", "medium", "high", "xhigh", "max" }),
+    new ChatModel("haiku", "claude-haiku-4-5-20251001", "Haiku 4.5", "O mais rápido para respostas curtas",
+        Array.Empty<string>()), // não aceita effort
+};
+```
+
+A resposta do `initialize` traz a mesma lista, e o `AppendLine` a preenche. Como o modelo e o modo, o effort é pedido
+primeiro e só aparece depois que o claude confirma: o `EffortRequested` traz o nível (`null` para o do próprio
+modelo), e a resposta do `get_settings`, ou um `SettingsApplied`, move o chip. Um id de modelo com sufixo (`claude-opus-5-5[1m]`) encontra o seu modelo, e o chip mostra o sufixo
+(**Opus 5.5 [1m] High**).
+
+```csharp
+conversation.EffortRequested += (_, e) =>
+{
+    Send(StdinMessages.ApplyEffort("req_" + ++ids, e.Effort));
+    Send(StdinMessages.GetSettings("req_" + ++ids)); // a resposta diz o nível que vale agora
+};
+```
+
+## Cache de prompt, browser e Remote Control
+
+- **Cache de prompt.** Um relógio na barra conta os minutos que restam ao cache de prompt do claude, a partir do uso
+  de cache da última resposta. Fica vermelho quando o cache provavelmente expirou. O `Clock` é a fonte de hora que ele
+  lê (o exemplo toca a da própria gravação).
+- **Browser.** O seu app informa o estado da extensão de browser: `BrowserStatus` (`Off`, `Connecting`, `Connected`,
+  `NoBrowser`, `Error`, com `BrowserError`). Uma faixa sobre a caixa o conta, e o botão de desconectar dispara o
+  `BrowserDisconnectRequested`; o estado só muda quando você o define.
+- **Remote Control.** O `RemoteControlStatus` (`Off`, `Connecting`, `Connected`, `Error`), o `RemoteControlUrl` e o
+  `RemoteControlError` mostram uma pílula na barra. Um clique nela dispara o `RemoteControlLinkRequested` (`RemoteControlLinkRequestedEventArgs`) com o link,
+  que o seu app abre (a biblioteca não abre nada). As linhas `bridge_state` do claude movem o estado sozinhas.
+
+```csharp
+conversation.BrowserStatus = ChatBrowserStatus.Connected;
+conversation.BrowserDisconnectRequested += (_, _) =>
+{
+    DisconnectBrowser(); // do seu app
+    conversation.BrowserStatus = ChatBrowserStatus.Off;
+};
+
+conversation.RemoteControlStatus = ChatRemoteControlStatus.Connecting;
+Send(StdinMessages.RemoteControl("req_" + ++ids, true)); // a resposta traz o link
+conversation.RemoteControlLinkRequested += (_, e) =>
+    Process.Start(new ProcessStartInfo(e.Url) { UseShellExecute = true });
+```
+
 ## Mapa de agentes
 
 ![O mapa de agentes da sessão inventada do exemplo: o agente principal à esquerda, os agentes dele à direita, o mais novo em cima, três deles trabalhando](docs/screenshot-agents-pt.png)
 
 Depois que a conversa teve um agente, a barra mostra um chip com quantos estão trabalhando (**● 3 agentes**,
-**0 agentes** quando todos terminaram, como a extensão conta); a bolinha fica verde enquanto algum trabalha. Um clique nele, ou o
+**0 agentes** quando todos terminaram, como a extensão conta); a bolinha é azul, verde, vermelha ou cinza (veja abaixo). Um clique nele, ou o
 `ChatConversation.ShowAgents()`, abre o mapa de agentes sobre a view (o `ShownPanel` vira `ChatPanel.Agents`): o
 cartão do agente principal à esquerda, com o modelo e os tokens no contexto dele, e os agentes à direita, o mais novo
 em cima, cada um com a bolinha, a descrição, o tempo e os tokens ("7m 14s · 168,5k tokens"); um agente chamado por

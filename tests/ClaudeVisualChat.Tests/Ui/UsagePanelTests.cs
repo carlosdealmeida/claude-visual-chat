@@ -160,6 +160,16 @@ public class UsagePanelTests
     }
 
     [Fact]
+    public void Each_known_window_has_its_own_bar_label_and_an_unknown_one_keeps_its_name()
+    {
+        var en = ChatStrings.English;
+        Assert.Equal(en.UsageBarSession, en.UsageBarLabel(new UsageWindow("five_hour", 0.1, null)));
+        Assert.Equal(en.UsageBarWeekly, en.UsageBarLabel(new UsageWindow("seven_day", 0.1, null)));
+        Assert.Equal(en.UsageBarWeeklySonnet, en.UsageBarLabel(new UsageWindow("seven_day_sonnet", 0.1, null)));
+        Assert.Equal("seven_day_new", en.UsageBarLabel(new UsageWindow("seven_day_new", 0.1, null)));
+    }
+
+    [Fact]
     public void A_get_usage_reply_replaces_every_window_and_a_rate_limit_event_still_merges()
     {
         string Reply(string limits) =>
