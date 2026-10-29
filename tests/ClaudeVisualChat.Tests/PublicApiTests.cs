@@ -326,6 +326,25 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_auto_mode_and_model_fallback_strings_and_the_view_property_fields_exist()
+    {
+        // the auto mode notice and the model fallback band (0.6.0): texts, init only
+        foreach (var text in new[]
+                 {
+                     "AutoModeEnabled", "AutoModeNoticeBody", "LearnMore", "ModelFallbackWhy", "ModelFallbackHide", "ModelFallbackWhyBody",
+                 })
+        {
+            var strings = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), strings?.PropertyType);
+            Assert.Contains(strings!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+        }
+        // the two styled property fields of the view, by their names
+        var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
+        Assert.Equal(typeof(Avalonia.StyledProperty<bool>), view.GetField("ScrollToEndOnSendProperty")?.FieldType);
+        Assert.Equal(typeof(Avalonia.StyledProperty<bool>), view.GetField("ShowTimestampsProperty")?.FieldType);
+    }
+
+    [Fact]
     public void The_focus_view_api_exists()
     {
         // the extension's claudeCode.focusView (0.6.0): a property of the view, off by default
