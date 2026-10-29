@@ -249,9 +249,10 @@ conversation.Commands = new[] { new ChatCommand("review", "Revisar um pull reque
 ```
 
 Um comando que não é local vai ao claude como o texto de uma mensagem, como qualquer outro. Os que a própria conversa
-trata (`ChatConversation.LocalCommands`: `context`, `usage`, `remote-control`, `rc`, `chrome` e `copy`) disparam o
+trata (`ChatConversation.LocalCommands`: `context`, `usage`, `remote-control`, `rc`, `chrome`, `copy`, `tasks` e `bashes`) disparam o
 `CommandInvoked` e não mandam nada. O `/copy` e o `/copy N` não pedem nada ao seu app: a view copia a resposta para a
-área de transferência e diz isso numa linha embaixo.
+área de transferência e diz isso numa linha embaixo. O `/tasks` e o `/bashes` também abrem o [Mapa de agentes](#mapa-de-agentes)
+sozinhos, e o seu app pode ignorar o `CommandInvoked` deles.
 
 ```csharp
 conversation.CommandInvoked += (_, e) =>
@@ -270,65 +271,31 @@ No `/chrome`, o claude responde ao `GetChromeStatus` com um `ControlAcknowledged
 ou `paired_browser`; o componente não lê isso por você: o seu app lê o `ControlAcknowledged.Response` e define o
 `conversation.BrowserStatus`.
 
-O `/context` e o `/usage` também abrem um painel sobre a caixa de resposta (`ChatConversation.ShownPanel`) com os
-números que o claude informou por último: o `ContextUsage` vem da resposta do `get_context_usage`; o `UsageLimits`, das linhas
-`rate_limit_event` que o claude escreve, então o seu app só precisa passar todas as linhas pelo `AppendLine`.
-(`conversation.Apply(new UsageLimitsReported(limits))` é uma substituição opcional.) Sem dados ainda, o painel mostra
-"…" enquanto a conversa está ocupada e "Ainda sem dados de uso" nos demais casos. O Esc fecha o painel.
+O `/context` e o `/usage` abrem modais sobre a view inteira, como os da extensão (`ChatConversation.ShownPanel`): "Uso do
+contexto" e "Conta e uso". Eles tomam o teclado enquanto estão abertos e o devolvem a quem o tinha; um pedido de
+permissão que chega nesse meio-tempo espera o modal fechar. O Esc fecha um deles, e os dois abrem também com a view
+somente leitura. Os números são os que o claude informou por último, e o `ContextUsage` vem da resposta do
+`get_context_usage`:
 
-## Modelo e effort
+- **Uso do contexto** mostra o modelo (`ContextUsage.Model`), a barra por categoria com a tabela dela, e os cinco maiores
+  arquivos de memória (`ContextUsage.MemoryFiles`) e agentes personalizados (`ContextUsage.Agents`), por tokens.
+- **Conta e uso** mostra a conta (`ChatConversation.Account`: `AuthMethod`, `Email`, `Organization` e `Plan`, vindos da
+  conta na resposta do `initialize`), uma barra para cada limite com "Renova em 45m" embaixo, e o custo da sessão
+  (`SessionCostUsd`) e os tempos (`SessionApiDurationMs`, e `SessionDurationMs` para o tempo de relógio). O "Gerenciar o
+  uso em claude.ai" só aparece onde o seu app trata o `LinkRequested`. O `AuthMethod` é um código (`claudeai`,
+  `api-key`, `bedrock`, `vertex`, `foundry`, `gateway`, `third-party`); a lista pode crescer, e um código que o seu app
+  não conhece vale como nenhum. O `Plan` é o nome do plano, pronto para mostrar ("Max"), e não é traduzido.
+- **Os limites.** O `UsageLimits` junta dois relatórios: as linhas `rate_limit_event` que o claude escreve (a sessão e a
+  semana; o seu app só precisa passar todas as linhas pelo `AppendLine`) e a resposta do `get_usage`. Um evento de limite
+  troca as janelas que nomeia e mantém as outras; a resposta do `get_usage` é um retrato inteiro e troca todas as
+  janelas. **A barra do Sonnet e as barras por modelo (`UsageWindow.Model`) só aparecem quando o seu app entrega a
+  resposta do `get_usage` à conversa** (a resposta de controle, pelo `AppendLine`): o componente nunca manda esse
+  pedido, como nunca manda o `get_context_usage`. (`conversation.Apply(new UsageLimitsReported(limits))` é uma
+  substituição opcional.) Sem dados ainda, o modal mostra "Carregando os dados de uso…" enquanto a conversa está ocupada
+  e "Falha ao carregar os dados de uso" com um botão para tentar de novo depois de um erro de controle
+  (`ControlAcknowledged.Error`; a conta chega como `AccountReported`).
 
-A barra mostra um chip com o modelo e o effort (**Opus 5.5 High**). Ele abre um menu com os modelos e um controle
-deslizante com os níveis de effort que o modelo escolhido aceita. Os modelos vêm da conversa (não da view):
-
-```csharp
-conversation.AvailableModels = new[]
-{
-    new ChatModel("opus", "claude-opus-5-5", "Opus 5.5", "Para trabalho complexo e o dia a dia",
-        new[] { "low", "medium", "high", "xhigh", "max" }),
-    new ChatModel("haiku", "claude-haiku-4-5-20251001", "Haiku 4.5", "O mais rápido para respostas curtas",
-        Array.Empty<string>()), // não aceita effort
-};
-```
-
-A resposta do `initialize` traz a mesma lista, e o `AppendLine` a preenche. Como o modelo e o modo, o effort é pedido
-primeiro e só aparece depois que o claude confirma: o `EffortRequested` traz o nível (`null` para o do próprio
-modelo), e a resposta do `get_settings`, ou um `SettingsApplied`, move o chip. Um id de modelo com sufixo (`claude-opus-5-5[1m]`) encontra o seu modelo, e o chip mostra o sufixo
-(**Opus 5.5 [1m] High**).
-
-```csharp
-conversation.EffortRequested += (_, e) =>
-{
-    Send(StdinMessages.ApplyEffort("req_" + ++ids, e.Effort));
-    Send(StdinMessages.GetSettings("req_" + ++ids)); // a resposta diz o nível que vale agora
-};
-```
-
-## Cache de prompt, browser e Remote Control
-
-- **Cache de prompt.** Um relógio na barra conta os minutos que restam ao cache de prompt do claude, a partir do uso
-  de cache da última resposta. Fica vermelho quando o cache provavelmente expirou. O `Clock` é a fonte de hora que ele
-  lê (o exemplo toca a da própria gravação).
-- **Browser.** O seu app informa o estado da extensão de browser: `BrowserStatus` (`Off`, `Connecting`, `Connected`,
-  `NoBrowser`, `Error`, com `BrowserError`). Uma faixa sobre a caixa o conta, e o botão de desconectar dispara o
-  `BrowserDisconnectRequested`; o estado só muda quando você o define.
-- **Remote Control.** O `RemoteControlStatus` (`Off`, `Connecting`, `Connected`, `Error`), o `RemoteControlUrl` e o
-  `RemoteControlError` mostram uma pílula na barra. Um clique nela dispara o `RemoteControlLinkRequested` (`RemoteControlLinkRequestedEventArgs`) com o link,
-  que o seu app abre (a biblioteca não abre nada). As linhas `bridge_state` do claude movem o estado sozinhas.
-
-```csharp
-conversation.BrowserStatus = ChatBrowserStatus.Connected;
-conversation.BrowserDisconnectRequested += (_, _) =>
-{
-    DisconnectBrowser(); // do seu app
-    conversation.BrowserStatus = ChatBrowserStatus.Off;
-};
-
-conversation.RemoteControlStatus = ChatRemoteControlStatus.Connecting;
-Send(StdinMessages.RemoteControl("req_" + ++ids, true)); // a resposta traz o link
-conversation.RemoteControlLinkRequested += (_, e) =>
-    Process.Start(new ProcessStartInfo(e.Url) { UseShellExecute = true });
-```
+No layout de toque a folha de uso fica no lugar deles, sem mudança.
 
 ## Mapa de agentes
 
@@ -359,6 +326,16 @@ do chip fica azul enquanto um agente espera uma permissão, verde enquanto os ag
 trabalha e um falhou, e cinza no resto. A ficha da extensão
 também traz o prompt do agente, as chamadas de ferramenta dele, "Open transcript" e "Stop agent", que precisam da
 transcrição do próprio agente e de um jeito de pará-lo; eles não estão aqui.
+
+## Respostas marcadas
+
+O botão de marcar embaixo de uma resposta a marca, e a lista é o `ChatConversation.Bookmarks`, público e observável, na
+ordem em que foram marcadas (ela esvazia junto com os itens). A linha "Respostas marcadas" da paleta de comandos, ou o
+`ClaudeChatView.ShowBookmarks()` e o `HideBookmarks()`, mostra a lista num painel ao lado da conversa (embaixo dela numa
+view estreita e no layout de toque), com uma barra para redimensionar (o clique duplo restaura o tamanho), a idade de
+cada resposta ("há 5 min", reescrita a cada minuto enquanto o painel aparece), "Mostrar na conversa" e "Desmarcar
+resposta". É um painel lateral, não uma camada: os modais, o Diff View, o documento do plano e a prévia de imagem o
+cobrem, e o Esc só o fecha enquanto o teclado está nele. Funciona também numa view somente leitura.
 
 ## Anel de contexto
 
@@ -453,6 +430,11 @@ Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt
   seu claude não tem `/tasks`, troque o texto: `ChatStrings.PortugueseBrazil with { AgentTasksHint = "..." }`. `AgentInfo.Prompt`
   e `AgentInfo.IsWaitingForPermission` estão nos agentes de `ChatConversation.Agents`; um pedido que vem sem `agent_id`
   é tomado como do agente cujo passo pediu.
+- **Linhas de Insight, Artifact e notebook.** Um bloco de Insight (um cabeçalho com estrela e "Insight", e uma régua de 20
+  ou mais traços de caixa, em código inline) aparece em linhas próprias na cor do texto, sem fundo. A ferramenta Artifact
+  diz "Criado", "Aberto" ou "Publicado" com um link "Abrir artefato", só onde o seu app trata o `LinkRequested`. A edição
+  de célula de notebook diz "Editar célula do notebook", o estado dela ("Pendente", "Sucesso", "Falhou") e o código novo
+  inteiro.
 - Os nomes das linhas de Agent, Web Fetch, Web Search e Claude in Chrome são textos do `ChatStrings` (`AgentToolTitle`,
   `WebFetchToolTitle`, `WebSearchToolTitle`, `ChromeToolTitle`), iguais nas duas línguas.
 
@@ -529,6 +511,25 @@ uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O q
   cartão diz "Remetente não registrado", e uma linha meta sem `origin` fica de fora. Ao vivo, o claude só escreve o
   `origin` nas linhas que repete, e os arquivos de sessão o gravam; por isso, por um relay que não as repete, como o do
   Kairós, esses cartões só aparecem a partir de um histórico.
+- **Linhas de contexto sob um prompt.** O que o IDE mandou junto com um prompt (a saída de um terminal, uma aba do
+  navegador, as instruções do navegador, o código selecionado no editor) aparece como linhas sob a mensagem, abertas até o
+  conteúdo, e escondidas no modo foco. São o `UserMessageItem.Context`, uma lista de `MessageContext(Kind, Label,
+  Content)` com o `Kind` `terminal`, `browser-tab`, `browser-instructions` ou `selection`, preenchida quando um arquivo
+  de sessão é lido de volta. Os rótulos ficam na língua em que o item foi montado; os chips da extensão para o arquivo
+  aberto e para a seleção não aparecem.
+- **Leitores de tela.** As mensagens têm nome ("Você", "Você, na fila", "Claude" e o da ferramenta), um texto escondido
+  "Você: ..." vem antes de cada prompt, e uma região viva educada anuncia trabalhando, pronto, compactando, pedidos de
+  permissão, perguntas, revisões de plano, erros e cada resposta terminada: no máximo 5 frases esperam, uma é dita a cada
+  400 ms, ela faz pausa sob um modal, e uma fila cheia perde a mais antiga. O "Erro: ..." leva a mensagem do próprio
+  claude, que é o `TurnCompleted.ErrorMessage`, o `SystemNotice.ErrorMessage` e o `NoticeItem.Message`. O evento vivo dos
+  leitores de tela do Win32 no Avalonia 11.0.10 não foi confirmado com um leitor de tela de verdade.
+- **O aviso "Modo automático ativado"** aparece numa conversa vazia quando o modo é `auto`, até a pessoa fechá-lo. Guarde
+  o `ChatConversation.AutoModeNoticeSeen` entre as sessões e devolva-o; o "Saiba mais" só aparece onde o seu app trata o
+  `LinkRequested`.
+- **A faixa "Modelo trocado para {modelo}"** aparece acima da caixa de resposta quando as salvaguardas do claude trocam de
+  modelo (`system/model_refusal_fallback`, o evento `Protocol.ModelRefusalFallback`), com "Por quê?" e "Ocultar". Ela é o
+  `ChatConversation.LastModelFallback`, e o `DismissModelFallback()` a fecha. Um histórico lido de volta nunca a mostra, e
+  ela dá lugar ao aviso do navegador e a um erro do Remote Control.
 - **A linha de trabalho** segue o `ChatConversation.Status` (o que o `system/status` diz: "Compactando...") e o
   `IsRunningStartupHooks` ("Executando os hooks de início...").
 - **Onde difere da extensão:** sem realce de sintaxe; as linhas antigas de ferramenta não são podadas (a extensão
@@ -582,7 +583,8 @@ As chaves, todas com o prefixo `ClaudeChat.`:
 | Anexos | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |
 | Mapa de agentes e anel de contexto | `ModalOverlay`, `AgentRunning`, `AgentWaiting`, `ContextRingTrack`, `ContextRingFill` |
 | Faixas e Remote Control | `BannerBackground`, `BannerForeground`, `BannerTint`, `BannerErrorBackground`, `BannerErrorForeground`, `RemoteControlForeground`, `RemoteControlHoverBackground`, `RemoteControlHoverForeground` |
-| Painéis `/context` e `/usage` | `ContextColor1` a `ContextColor6` (as cores de gráfico da barra de contexto), `PanelShadow` |
+| Modais `/context` e `/usage` | `ContextColor1` a `ContextColor8` (as cores de gráfico da barra de contexto), `PanelShadow` |
+| Aviso do modo automático | `AutoNoticeShadow` (e o ícone `Icon.Bolt`) |
 | Layout de toque (veja [Layout de toque](#layout-de-toque)) | `UserBubble`, `SheetBackground`, `SheetGroupBackground`, `SheetHandle`, `SheetOverlay`, `PermissionWarningBorder` |
 
 O `ScrollBarGutter` é o espaço que a lista deixa à direita para uma barra de rolagem desenhada por cima dela, como a do
@@ -790,6 +792,11 @@ O exemplo toca uma gravação numa janela do tamanho de um celular:
 - Alguns botões da extensão não estão aqui, porque dependem de recursos do host: na ficha de um agente, a transcrição
   dele e o "Stop agent". O microfone existe no layout de toque, quando o seu app entrega à view o ditado dele (veja
   [Ditado](#ditado)); o layout desktop não tem.
+- Fica fora desta versão, como a extensão 2.1.310 os tem: o LaTeX (a extensão o desenha com KaTeX, e esta versão não traz
+  dependência nova); o cartão "Session paused", que precisa do `request_user_dialog`, recusado pela máquina do Kairós; a
+  sugestão de tornar o modo automático o padrão (precisa do `auto_default_nudge`); e um texto de "Por quê?" para cada
+  categoria da troca de modelo (há um texto genérico). O mapa de agentes não tem a linha de cauda para um agente vivo fora
+  de qualquer dobra: o mapa o lista.
 
 ## App de exemplo
 

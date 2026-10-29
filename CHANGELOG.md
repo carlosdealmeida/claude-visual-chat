@@ -283,6 +283,64 @@ All notable changes to this project are written here. The format follows
   `FocusToolCallsOne`, `FocusFailed`, `FocusHiddenSteps`, `FocusHiddenStepsOne`, `FocusThinkingNow`, `FocusRunning`,
   `FocusWaitingForPermission`, `FocusWaitingForAnswer`, `FocusCollapse`, `FocusMoreAgents`, `FocusAgentTools`,
   `FocusAgentToolsOne` and `FocusAgentsCombined`.
+- The Agent map and the agents chip, as the extension's. The chip's dot turns blue while an agent waits for your
+  permission, green while agents work, red only while nothing works and an agent failed, and grey otherwise, with a
+  tooltip for each state. `/tasks` and `/bashes` are local commands: they open the Agent map (and still raise
+  `CommandInvoked`, which needs nothing from the host). New `ChatConversation.Title` (`string?`, set by the host,
+  observable, kept by `Clear`): the map's main card says it, or "This session"; a click on the card opens it to
+  "Working" or "Idle" and how many agents are in each state.
+- "Context usage" and "Account & Usage": `/context` and `/usage` open modals like the extension's. "Context usage" has
+  the model, the bar and its table, and the five biggest memory files and custom agents, by tokens. "Account & Usage"
+  has the account, a bar for each limit window (the session, the week, the week's Sonnet and each model's week),
+  "Resets in 45m" under each, the session's cost and times, and "Manage usage on claude.ai" where the host listens to
+  `LinkRequested`. The per-model and Sonnet bars show only when the host passes the reply to `get_usage` to the
+  conversation (the component never sends it, as it never sends `get_context_usage`); a rate limit event alone gives
+  the session and week bars. The touch layout's usage sheet is unchanged.
+- New public API for them: `ChatConversation.Account` (`AccountInfo`: `AuthMethod`, `Email`, `Organization`, `Plan`),
+  `SessionCostUsd`, `SessionDurationMs` (the turns' wall time) and `SessionApiDurationMs`; `ContextUsage.Model`,
+  `MemoryFiles` (`ContextFile`) and `Agents` (`ContextAgent`); `UsageWindow.Model`; and, in `Protocol`,
+  `AccountReported`, `ControlAcknowledged.Error` (the text of a failed control reply), `TurnCompleted.ApiDurationMs`
+  and `TurnCompleted.ErrorMessage`. `AccountInfo.AuthMethod` is a code (`claudeai`, `api-key`, `bedrock`, `vertex`,
+  `foundry`, `gateway`, `third-party`); the list may grow, and a code a host does not know is none. `Plan` is the
+  plan's name, ready to show ("Max"), and is not translated.
+- The bookmarks panel: command menu > Bookmarks, `ClaudeChatView.ShowBookmarks()` and `HideBookmarks()`, and
+  `ChatConversation.Bookmarks` now public (observable, in the order marked, emptied with the items). It shows your
+  bookmarked replies beside the conversation, or below it in a narrow view and in the touch layout, with a bar to
+  resize it (a double click restores the size), the age of each reply (rewritten every minute while it shows), "Show in
+  conversation" and "Remove bookmark". Esc closes it only when the keyboard is in it. It is a side panel: the modals,
+  the Diff View, the plan's document and the image preview cover it.
+- Insight blocks (a star and "Insight" header, and a rule of 20 or more box-drawing dashes, in inline code) show on
+  their own lines in the text color with no background; the Artifact tool row reads "Created", "Opened" or "Published"
+  with an "Open artifact" link that goes through the host's `LinkRequested` (without a subscriber only the word
+  shows); the notebook cell edit row reads "Edit Notebook Cell" with its state ("Pending", "Success", "Failed") and
+  the whole new source.
+- Context lines under a prompt: the output of a terminal, a browser tab, the browser's instructions and the code
+  selected in the editor that the IDE sent along with it are lines under the message, open to their content and hidden
+  in the Focus view, instead of text in the message. `UserMessageItem.Context` (`IReadOnlyList<MessageContext>`,
+  `init`) and the record `MessageContext(Kind, Label, Content)`; the kinds are `terminal`, `browser-tab`,
+  `browser-instructions` and `selection`. A message read back from a session file has them.
+- For screen readers: messages are named "You", "You, queued", "Claude" and by their tool, a hidden "You: ..." text
+  comes before each prompt, and a polite live region announces working, ready, compacting, permission requests,
+  questions, plan reviews, errors and each finished reply. It holds up to 5 sentences, says one every 400 ms, waits
+  while a modal is open, and drops the oldest when the queue is full. "Error: {0}" carries the claude's own message:
+  `TurnCompleted.ErrorMessage`, `SystemNotice.ErrorMessage` and the new `NoticeItem.Message` (`init`).
+- The "Auto mode is enabled" notice on an empty conversation when the mode is `auto`, closed by its x or by
+  `ChatConversation.AutoModeNoticeSeen = true` (the host keeps the flag between sessions; "Learn more" shows only
+  where the host listens to `LinkRequested`). The "Switched to {model}" band, with "Why?" and "Hide", when the claude's
+  safeguards switch models: the `Protocol.ModelRefusalFallback` event, `ChatConversation.LastModelFallback` and
+  `DismissModelFallback()`. A reopened history never shows the band.
+- New `ChatStrings` texts, in English and Portuguese: `CommandTasksDescription`, `AgentsChip*Tip`, `AgentThisSession`,
+  `AgentMainWorking`, `AgentMainIdle`, `AgentCount*`; `ContextHeader`, `ContextColumn*`, `ContextShareTiny`,
+  `ContextMemoryFiles`, `ContextCustomAgents`, `ContextLoading`, `ContextFailed`, `AccountUsageTitle`,
+  `AccountSection`, `AccountUsageSection`, `AccountAuthMethod`, `AccountEmail`, `AccountOrganization`, `AccountPlan`,
+  `Auth*`, `UsageBar*`, `UsageResetsIn`, `UsageResetsSoon`, `UsageTotal*`, `UsageNoPlanLimits`, `UsageManage`,
+  `UsageLoading`, `UsageFailed`, `UsageRetry`; the texts of the bookmarks panel; `ArtifactCreated`, `ArtifactOpened`,
+  `ArtifactPublished`, `ArtifactOpenLink`, `NotebookEditTitle`, `NotebookPending`, `NotebookSuccess`, `NotebookFailed`,
+  `NotebookNoContent`; the announcements for screen readers and the names of the messages; `AutoModeEnabled`,
+  `AutoModeNoticeBody`, `LearnMore`, `ModelFallbackWhy`, `ModelFallbackHide` and `ModelFallbackWhyBody`.
+- New theme resources: `ClaudeChat.ContextColor7` and `ContextColor8` (the context bar has eight colors, in the
+  extension's order), `ClaudeChat.AutoNoticeShadow` and `ClaudeChat.Icon.Bolt`. The chip's blue dot is the existing
+  `ClaudeChat.AgentWaiting`.
 
 ### Breaking
 
@@ -317,6 +375,12 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
 - Text: a file of a type that cannot be attached, dropped, picked with the **+** or pasted, says "Unsupported file
   type(s): {0}" (`ChatStrings.UnsupportedFileTypes`, with the types), where it said "Only PDF, text and CSV files".
   `ChatStrings.FileNotSupported` stays for a file of an accepted type that cannot be read.
+- Text: the Agent map's main card reads "This session" (`ChatStrings.AgentThisSession`), where it read "Main agent"
+  (`AgentMain` stays, not shown). A limit's renewal in the usage panel reads "Resets in 45m" (`UsageResetsIn`), where it
+  read "Resets 3:30 PM". A host that compared the texts sees the new ones.
+- `ChatConversation.UsageLimits` merges what the claude reports instead of replacing it: a `rate_limit_event` replaces
+  only the windows it names and keeps the others, and the reply to `get_usage`, which is a whole snapshot, replaces
+  every window. A host that read `UsageLimits` after each event used to see only the last report's windows.
 
 ### Changed
 
@@ -443,6 +507,27 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   the VS Code host's; there is no tail of live agents whose call is in no fold (an agent started by a subagent, or a
   task with no tool use id): its parent's row still shows it works, and the Agent map lists it; and in a history read
   back, a call without a result counts as failed in the fold, while its own row shows the gray dot.
+- The `/context` and `/usage` panels are modals: they take the keyboard while open and give it back to the one that had
+  it, and a permission request that arrives meanwhile waits until the modal closes.
+- The layers (the modals, the Agent map, the comment box, the sheets, the Diff View, the preview) cover the bookmarks
+  panel, and the plan's comment box stays inside the chat area, so it does not cover the panel.
+- Where group 6 differs from the extension 2.1.310 on purpose:
+  - Left out: LaTeX (the extension draws it with KaTeX, and this release takes no new dependency); the "Session paused"
+    card, which needs the `request_user_dialog` that the Kairos machine refuses; the suggestion to make auto mode the
+    default, which needs `auto_default_nudge`; the "Why?" text by category, where there is one generic text; and the
+    agent card's prompt, tool calls, "Open transcript" and "Stop agent".
+  - The Agent map has no tail row for a live agent outside any fold (an agent started by a subagent, or a task with no
+    tool use id): the map lists it, as before.
+  - The usage modal keeps "Resets in ..."; it shows the account section only with `Account`, the Sonnet bar whenever
+    there is data (no plan gate), and "Manage usage on claude.ai" whenever the host listens to `LinkRequested`; its
+    bar uses `maxTokens`, not `rawMaxTokens`. A host that does not pass the reply to `get_usage` has no Sonnet or
+    per-model bar.
+  - The context lines keep the labels in the language the item was built in (they do not follow a later change of
+    `Strings`), the chips of the open file and of the selection are not shown, and a browser tab shows its host and
+    path without the port, or only "Browser tab" for an empty address or one that is not http or https.
+  - The live event of Win32 screen readers in Avalonia 11.0.10 was not confirmed with a real screen reader.
+  - The "Switched to" band is not shown in a reopened history, and only one banner shows at a time: it gives way to
+    the browser notice and to a Remote Control error.
 
 ### Removed
 
