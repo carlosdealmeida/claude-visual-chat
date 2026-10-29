@@ -126,6 +126,12 @@
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
 
+  <!-- the line under a message for what the IDE sent along, which a tap opens: a finger tall -->
+  <Style Selector="controls|ClaudeChatView:touch ToggleButton.ClaudeChatContextHead">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
   <!-- the line of a message from another session, which a tap opens: a finger tall -->
   <Style Selector="controls|ClaudeChatView:touch ToggleButton.ClaudeChatExternalHead">
     <Setter Property="MinHeight" Value="44" />

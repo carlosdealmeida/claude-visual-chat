@@ -73,6 +73,9 @@ namespace ClaudeVisualChat.Protocol
         /// task's notice (<c>task-notification</c>), and the claude writes it when it replays a message. Null when the line says nothing.
         /// </summary>
         public MessageOrigin? Origin { get; init; }
+
+        /// <summary>The terminal, browser and selection blocks that came before the text of this message; empty by default.</summary>
+        internal IReadOnlyList<ContextBlock> Context { get; init; } = Array.Empty<ContextBlock>();
     }
 
     /// <summary>

@@ -273,7 +273,18 @@
            tooltip), then a box as wide as the list (in the touch layout, no time and a bubble at the right: the class touch, from
            the view's layout, tells the styles of Themes/ClaudeChatTouch.axaml) -->
       <DataTemplate DataType="cvc:UserMessageItem">
-        <StackPanel>
+        <StackPanel AutomationProperties.Name="{Binding $parent[controls:ClaudeChatView].Strings.You}"
+                    AutomationProperties.ControlTypeOverride="Group">
+          <!-- what a screen reader reads before the prompt, in place of a heading (this Avalonia has no heading level): "You: ..." cut
+               at 120 characters. It is shown, with no size, so it stays in the automation tree (a hidden control would leave it) -->
+          <TextBlock Classes="ClaudeChatScreenReaderText">
+            <TextBlock.Text>
+              <MultiBinding Converter="{x:Static controls:ChatConverters.YouSaid}">
+                <Binding Path="Text" />
+                <Binding Path="$parent[controls:ClaudeChatView].Strings" />
+              </MultiBinding>
+            </TextBlock.Text>
+          </TextBlock>
           <controls:DateSeparator />
           <StackPanel Classes="ClaudeChatUserTurn"
                       Classes.touch="{Binding $parent[controls:ClaudeChatView].Layout, Converter={x:Static controls:ChatConverters.IsTouch}}">
@@ -304,12 +315,16 @@
                 </controls:FoldedText>
               </StackPanel>
             </Border>
+            <!-- what the IDE sent along: expandable lines under the bubble, not in the Focus view -->
+            <controls:MessageContextLines
+                IsVisible="{Binding $parent[controls:ClaudeChatView].FocusView, Converter={x:Static BoolConverters.Not}}" />
           </StackPanel>
         </StackPanel>
       </DataTemplate>
 
       <DataTemplate DataType="cvc:AssistantTextItem">
-        <controls:ChatTimelineRow StampTip="{Binding Timestamp, Converter={x:Static controls:ChatConverters.FullTime}}">
+        <controls:ChatTimelineRow AutomationProperties.Name="{Binding $parent[controls:ClaudeChatView].Strings.Claude}"
+                                  StampTip="{Binding Timestamp, Converter={x:Static controls:ChatConverters.FullTime}}">
           <controls:ChatTimelineRow.Stamp>
             <MultiBinding Converter="{x:Static controls:ChatConverters.Time}">
               <Binding Path="Timestamp" />
@@ -323,7 +338,7 @@
 
       <!-- "Thinking", and the arrow after it when there is something to open -->
       <DataTemplate DataType="cvc:ThinkingItem">
-        <controls:ChatTimelineRow>
+        <controls:ChatTimelineRow AutomationProperties.Name="{Binding $parent[controls:ClaudeChatView].Strings.ClaudeThinking}">
           <StackPanel>
             <ToggleButton Classes="ClaudeChatDisclosure" HorizontalAlignment="Left"
                           Classes.interactive="{Binding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -1072,6 +1087,48 @@
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
     <Setter Property="Margin" Value="0,8" />
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+  <!-- the text only a screen reader reads: shown, but with no size, nothing drawn, nothing hit -->
+  <Style Selector="TextBlock.ClaudeChatScreenReaderText">
+    <Setter Property="Width" Value="0" />
+    <Setter Property="Height" Value="0" />
+    <Setter Property="Opacity" Value="0" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="IsHitTestVisible" Value="False" />
+    <Setter Property="Focusable" Value="False" />
+  </Style>
+  <!-- the lines under a message for what the IDE sent along: like a meta line (4 px over and under, italic, the secondary color at
+       80 %, 1 when open or under the pointer), a chevron of 16 px; what opens is 4 px under the line, its labels italic -->
+  <Style Selector="controls|MessageContextLines">
+    <Setter Property="Margin" Value="0,4,0,0" />
+  </Style>
+  <Style Selector="ToggleButton.ClaudeChatContextHead">
+    <Setter Property="Margin" Value="0,4" />
+    <Setter Property="Padding" Value="8,0" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatContextLine">
+    <Setter Property="Spacing" Value="4" />
+    <Setter Property="Opacity" Value="0.8" />
+  </Style>
+  <Style Selector="ToggleButton.ClaudeChatContextHead:pointerover StackPanel.ClaudeChatContextLine, ToggleButton.ClaudeChatContextHead:checked StackPanel.ClaudeChatContextLine">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatContextLabel, TextBlock.ClaudeChatContextCaption">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="FontStyle" Value="Italic" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatContextLabel">
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatContextBody">
+    <Setter Property="Margin" Value="8,0,0,4" />
+  </Style>
+  <Style Selector="SelectableTextBlock.ClaudeChatContextText">
+    <Setter Property="FontFamily" Value="{DynamicResource ClaudeChat.MonoFontFamily}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
   </Style>
   <!-- the card of a compaction: 4 px over and under, 8 px of padding; its line is italic, in the secondary color at 80 %, with a
        chevron of 12 px; the summary opens 8 px under it -->

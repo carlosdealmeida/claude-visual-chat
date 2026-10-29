@@ -13,6 +13,8 @@
          not a layer: it takes its room from the chat -->
     <Grid Name="Split" ColumnDefinitions="*,Auto" RowDefinitions="*,Auto">
     <Grid Name="ChatArea" RowDefinitions="*,Auto,Auto">
+      <!-- what a screen reader is told as it happens: a text with no size, in the tree, polite (see LiveAnnouncer) -->
+      <controls:LiveAnnouncer Name="Announcer" HorizontalAlignment="Left" VerticalAlignment="Top" />
       <ScrollViewer Name="Scroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <!-- as wide as the view, like the extension's; the list's padding is ClaudeChat.ListPadding -->
         <controls:ChatItemList Name="ItemList" Classes="ClaudeChatItems">

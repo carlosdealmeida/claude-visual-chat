@@ -11,6 +11,26 @@ public abstract class ChatItem : ChatObservableObject
 {
 }
 
+/// <summary>
+/// A line under a message, for something the IDE sent along with it: the output of a terminal, a browser tab, the browser's
+/// instructions, or the code selected in the editor. <paramref name="Kind"/> is a stable code (<c>terminal</c>, <c>browser-tab</c>,
+/// <c>browser-instructions</c>, <c>selection</c>), <paramref name="Label"/> the text of the line ("Terminal output: build"), in the
+/// language of the conversation, and <paramref name="Content"/> what the block held (empty for a block that held nothing).
+/// </summary>
+public sealed record MessageContext(string Kind, string Label, string Content)
+{
+    /// <summary>
+    /// Whether the line is open to its content. It is kept here, not in the control, because the list recycles its rows; the view
+    /// changes it, and it takes no part in equality.
+    /// </summary>
+    internal bool IsExpanded { get; set; }
+
+    public bool Equals(MessageContext? other) =>
+        other != null && Kind == other.Kind && Label == other.Label && Content == other.Content;
+
+    public override int GetHashCode() => (Kind, Label, Content).GetHashCode();
+}
+
 /// <summary>A message the user sent.</summary>
 public sealed class UserMessageItem : ChatItem
 {
@@ -40,6 +60,12 @@ public sealed class UserMessageItem : ChatItem
     /// session file has the files its marker lines name, with no size.
     /// </summary>
     public IReadOnlyList<ChatFile> Files { get; }
+
+    /// <summary>
+    /// What the IDE sent before the text, as expandable lines under the message (a terminal's output, a browser tab, the browser's
+    /// instructions, a selection of code); empty when there is none. Only a message read back from a session file has them.
+    /// </summary>
+    public IReadOnlyList<MessageContext> Context { get; init; } = Array.Empty<MessageContext>();
 
     /// <summary>When it was sent; null when unknown. The view shows it above the message.</summary>
     public DateTimeOffset? Timestamp

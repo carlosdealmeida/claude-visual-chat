@@ -233,6 +233,9 @@ public partial class ClaudeChatView : UserControl
     private ChatConversation? _tracked;
     private bool _attached;
 
+    /// <summary>What the conversation tells the live region; it follows the conversation only while the view is in the window.</summary>
+    private readonly AnnouncementFeed _announcements;
+
     /// <summary>The Focus view's list, while <see cref="FocusView"/> is on.</summary>
     private FocusProjection? _focusList;
 
@@ -333,6 +336,10 @@ public partial class ClaudeChatView : UserControl
                 if (e.Property == IsVisibleProperty) IsSheetOpen = ModelSheet.IsOpen || AddSheet.IsOpen || UsageSheet.IsOpen;
             };
         }
+        // the live region: no sentence while a modal covers the view
+        Announcer.IsPaused = () => AgentMap.IsVisible || ContextPanel.IsVisible || UsagePanel.IsVisible || DiffViewer.IsOpen
+            || Preview.IsVisible || Feedback.IsOpen;
+        _announcements = new AnnouncementFeed(Announcer, () => Strings);
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnKeyDownNotTaken, RoutingStrategies.Bubble);
         FocusViewToggleRequested += (_, _) => FocusView = !FocusView;
@@ -788,6 +795,7 @@ public partial class ClaudeChatView : UserControl
                 _tracked.Strings = Strings; // the lines it says itself come in this view's language
             }
         }
+        _announcements.Track(_attached ? conversation : null); // told only what happens while the view is in the window
         // the Focus view's list follows the conversation only while the view is in the window, and reads it whole when it comes back
         if (_attached) _focusList?.Start();
         else _focusList?.Stop();

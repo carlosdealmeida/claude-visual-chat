@@ -183,6 +183,8 @@ namespace ClaudeVisualChat.Protocol
                 else blocks.Add(block);
             }
             if (blocks.Count == 0 && images.Count == 0) return None;
+            var origin = ReadOrigin(root);
+            var context = TakeContext(blocks, origin);
             // Images ride with the first text; an image on its own gets an empty text to ride with.
             var carrier = blocks.FindIndex(b => b is TextContentBlock);
             if (carrier < 0 && images.Count > 0)
@@ -198,7 +200,6 @@ namespace ClaudeVisualChat.Protocol
             var meta = JsonHelpers.Prop(root, "tool_result_meta"); // stream
             var denialKind = JsonHelpers.Str(root, "toolDenialKind"); // session file
             var timestamp = JsonHelpers.Time(root, "timestamp");
-            var origin = ReadOrigin(root);
             var events = new List<ClaudeEvent>(blocks.Count);
             for (var i = 0; i < blocks.Count; i++)
             {
@@ -215,9 +216,28 @@ namespace ClaudeVisualChat.Protocol
                     && (NonExecutionKind(meta, toolResult.ToolUseId) ?? denialKind) is { } kind)
                     b = toolResult with { NonExecutionKind = kind };
                 var user = new UserBlock(parent, b, result, isMeta, isCompact) { Timestamp = timestamp, IsSynthetic = isSynthetic, Origin = origin };
+                if (i == blocks.Count - 1 && context.Count > 0) user = user with { Context = context };
                 events.Add(i == carrier && images.Count > 0 ? user with { Images = images } : user);
             }
             return events;
+        }
+
+        /// <summary>
+        /// The context blocks before the last text block of a message the person wrote (no origin, or a human one), taken out of
+        /// <paramref name="blocks"/>: they are lines under that message, not messages of their own. Any other earlier block stays.
+        /// </summary>
+        private static IReadOnlyList<ContextBlock> TakeContext(List<ContentBlock> blocks, MessageOrigin? origin)
+        {
+            if (origin != null && origin.Kind != "human") return Array.Empty<ContextBlock>();
+            if (blocks.Count < 2 || !(blocks[blocks.Count - 1] is TextContentBlock)) return Array.Empty<ContextBlock>();
+            List<ContextBlock>? found = null;
+            for (var i = blocks.Count - 2; i >= 0; i--)
+            {
+                if (!(blocks[i] is TextContentBlock text) || ContextBlockReader.Read(text.Text) is not { } context) continue;
+                (found ??= new List<ContextBlock>()).Insert(0, context);
+                blocks.RemoveAt(i);
+            }
+            return found ?? (IReadOnlyList<ContextBlock>)Array.Empty<ContextBlock>();
         }
 
         /// <summary>Where the line says it came from (<c>origin</c>); null when it says nothing, or no kind.</summary>

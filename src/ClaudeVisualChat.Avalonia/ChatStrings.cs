@@ -315,6 +315,29 @@ public sealed record ChatStrings
         CopyCancelled = "Cópia cancelada",
         YouQueued = "Você, na fila",
         MessageQueued = "Mensagem na fila.",
+        ContextTerminal = "Saída do terminal: {0}",
+        ContextBrowserTab = "Aba do navegador: {0}",
+        ContextBrowserTabBare = "Aba do navegador",
+        ContextBrowserInstructions = "Instruções do navegador",
+        ContextSelection = "Código selecionado: {0}",
+        ContextNone = "(nenhum)",
+        ContextCaptionTerminal = "Saída",
+        ContextCaptionBrowserTab = "Endereço",
+        ContextCaptionBrowserInstructions = "Instruções",
+        ContextCaptionSelection = "Código",
+        You = "Você",
+        YouSaid = "Você: {0}",
+        ClaudeThinking = "Claude, pensando",
+        AnnounceWorking = "O Claude está trabalhando.",
+        AnnounceReady = "Pronto para a sua mensagem.",
+        AnnounceCompacting = "Compactando a conversa.",
+        AnnounceStartupHooks = "Executando os hooks de início.",
+        AnnouncePermission = "O Claude pede permissão para usar {0}.",
+        AnnounceQuestion = "O Claude está fazendo uma pergunta para você.",
+        AnnouncePlan = "O Claude terminou um plano e espera a sua revisão.",
+        AnnounceError = "Erro: {0}",
+        AnnounceCodeBlock = "(bloco de código, {0} linhas)",
+        AnnounceCodeBlockOne = "(bloco de código, 1 linha)",
         RanAtOnce = "Rodou na hora, enquanto o Claude trabalhava.",
         CacheWarm = "Cache do prompt ativo, cerca de {0} min restantes.",
         CacheExpired = "Cache do prompt provavelmente expirado (parado há {0}).",
@@ -1358,6 +1381,84 @@ public sealed record ChatStrings
     /// <summary>What a screen reader says when a message sent while Claude works is held.</summary>
     public string MessageQueued { get; init; } = "Message queued.";
 
+    /// <summary>The line under a message for the output of a terminal the IDE sent with it; <c>{0}</c> is the terminal's name.</summary>
+    public string ContextTerminal { get; init; } = "Terminal output: {0}";
+
+    /// <summary>The line for a browser tab the IDE sent with a message; <c>{0}</c> is its host and path.</summary>
+    public string ContextBrowserTab { get; init; } = "Browser tab: {0}";
+
+    /// <summary>The line for a browser tab that has no address.</summary>
+    public string ContextBrowserTabBare { get; init; } = "Browser tab";
+
+    /// <summary>The line for the instructions the IDE sent about the browser.</summary>
+    public string ContextBrowserInstructions { get; init; } = "Browser instructions";
+
+    /// <summary>The line for code selected in the editor; <c>{0}</c> is the file, with <c>#A-B</c> for the lines.</summary>
+    public string ContextSelection { get; init; } = "Selected code: {0}";
+
+    /// <summary>What an open context line says when its block held nothing.</summary>
+    public string ContextNone { get; init; } = "(none)";
+
+    /// <summary>The italic label over the content of an open terminal line.</summary>
+    public string ContextCaptionTerminal { get; init; } = "Output";
+
+    /// <summary>The italic label over the content of an open browser tab line.</summary>
+    public string ContextCaptionBrowserTab { get; init; } = "Address";
+
+    /// <summary>The italic label over the content of an open browser instructions line.</summary>
+    public string ContextCaptionBrowserInstructions { get; init; } = "Instructions";
+
+    /// <summary>The italic label over the content of an open selection line.</summary>
+    public string ContextCaptionSelection { get; init; } = "Code";
+
+    /// <summary>What a screen reader says of a message the user sent.</summary>
+    public string You { get; init; } = "You";
+
+    /// <summary>The hidden text a screen reader reads before each message, cut at 120 characters; <c>{0}</c> is the message.</summary>
+    public string YouSaid { get; init; } = "You: {0}";
+
+    /// <summary>What a screen reader says of Claude's reply.</summary>
+    public string Claude { get; init; } = "Claude";
+
+    /// <summary>What a screen reader says of a reply that is still only a thought.</summary>
+    public string ClaudeThinking { get; init; } = "Claude, thinking";
+
+    /// <summary>What a screen reader says of a tool call; <c>{0}</c> is the name the row shows.</summary>
+    public string ClaudeTool { get; init; } = "Claude, {0}";
+
+    /// <summary>Said by the live region when Claude starts working.</summary>
+    public string AnnounceWorking { get; init; } = "Claude is working.";
+
+    /// <summary>Said by the live region when Claude is done and waits for the user.</summary>
+    public string AnnounceReady { get; init; } = "Ready for your input.";
+
+    /// <summary>Said by the live region when the conversation is being compacted.</summary>
+    public string AnnounceCompacting { get; init; } = "Compacting conversation.";
+
+    /// <summary>Said by the live region while start-up hooks run.</summary>
+    public string AnnounceStartupHooks { get; init; } = "Running start-up hooks.";
+
+    /// <summary>Said by the live region for a permission request; <c>{0}</c> is the tool.</summary>
+    public string AnnouncePermission { get; init; } = "Claude is requesting permission to use {0}.";
+
+    /// <summary>Said by the live region when Claude asks the user a question (AskUserQuestion).</summary>
+    public string AnnounceQuestion { get; init; } = "Claude is asking you a question.";
+
+    /// <summary>Said by the live region when Claude finished a plan and waits for the user's review.</summary>
+    public string AnnouncePlan { get; init; } = "Claude has finished a plan and is waiting for your review.";
+
+    /// <summary>Said by the live region for an error; <c>{0}</c> is its text.</summary>
+    public string AnnounceError { get; init; } = "Error: {0}";
+
+    /// <summary>Said by the live region for a reply; <c>{0}</c> is the reply, its code blocks read as <see cref="AnnounceCodeBlock"/>.</summary>
+    public string AnnounceReply { get; init; } = "Claude: {0}";
+
+    /// <summary>A block of code inside a reply read by the live region; <c>{0}</c> is its lines.</summary>
+    public string AnnounceCodeBlock { get; init; } = "(code block, {0} lines)";
+
+    /// <summary>A block of one line of code inside a reply read by the live region.</summary>
+    public string AnnounceCodeBlockOne { get; init; } = "(code block, 1 line)";
+
     /// <summary>The line under a held message that the claude ran at once, while it was working (a command such as <c>/status</c>).</summary>
     public string RanAtOnce { get; init; } = "Ran at once, while Claude was working.";
 
@@ -2082,6 +2183,49 @@ public sealed record ChatStrings
             default: return null;
         }
     }
+
+    /// <summary>The text of a context line under a message, from its kind code and what it names.</summary>
+    internal string FormatContextLabel(string kind, string subject) => kind switch
+    {
+        "terminal" => ContextTerminal.Replace("{0}", subject),
+        "browser-tab" => subject.Length == 0 ? ContextBrowserTabBare : ContextBrowserTab.Replace("{0}", subject),
+        "browser-instructions" => ContextBrowserInstructions,
+        "selection" => ContextSelection.Replace("{0}", subject),
+        _ => subject,
+    };
+
+    /// <summary>The italic label over the content of an open context line of this kind.</summary>
+    internal string ContextCaption(string kind) => kind switch
+    {
+        "terminal" => ContextCaptionTerminal,
+        "browser-tab" => ContextCaptionBrowserTab,
+        "browser-instructions" => ContextCaptionBrowserInstructions,
+        "selection" => ContextCaptionSelection,
+        _ => "",
+    };
+
+    /// <summary>The longest part of a message the hidden text before it reads.</summary>
+    internal const int YouSaidMax = 120;
+
+    /// <summary>The hidden text before a message: the first 120 characters of it on one line, after "You: ".</summary>
+    internal string FormatYouSaid(string text)
+    {
+        var flat = text.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ').Trim();
+        var cut = flat.Length > YouSaidMax ? YouSaidMax : flat.Length;
+        if (cut < flat.Length && cut > 0 && char.IsHighSurrogate(flat[cut - 1])) cut--; // not in the middle of a pair
+        return YouSaid.Replace("{0}", flat.Substring(0, cut));
+    }
+
+    internal string FormatClaudeTool(string tool) => ClaudeTool.Replace("{0}", tool);
+
+    internal string FormatAnnouncePermission(string tool) => AnnouncePermission.Replace("{0}", tool);
+
+    internal string FormatAnnounceError(string text) => AnnounceError.Replace("{0}", text);
+
+    internal string FormatAnnounceReply(string text) => AnnounceReply.Replace("{0}", text);
+
+    internal string FormatAnnounceCodeBlock(int lines) =>
+        lines == 1 ? AnnounceCodeBlockOne : AnnounceCodeBlock.Replace("{0}", FormatNumber(lines));
 
     /// <summary>"47 lines", "1 line".</summary>
     internal string FormatLines(int lines) => lines == 1 ? OneLine : Lines.Replace("{0}", FormatNumber(lines));

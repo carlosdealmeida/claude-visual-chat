@@ -912,4 +912,36 @@ public class PublicApiTests
         Assert.Equal(6, typeof(ClaudeVisualChat.Protocol.TurnCompleted).GetConstructors().Max(c => c.GetParameters().Length)); // no new positional parameter
         Assert.Equal(3, typeof(ClaudeVisualChat.Protocol.ControlAcknowledged).GetConstructors().Max(c => c.GetParameters().Length));
     }
+
+    [Fact]
+    public void The_context_lines_and_screen_reader_texts_are_public_and_the_pieces_behind_them_are_not()
+    {
+        // a message read from a session file carries the lines the IDE sent along (0.6.0)
+        var context = typeof(UserMessageItem).GetProperty("Context");
+        Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<MessageContext>), context?.PropertyType);
+        Assert.Contains(context!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        Assert.True(typeof(MessageContext).IsPublic);
+        foreach (var name in new[] { "Kind", "Label", "Content" })
+            Assert.Equal(typeof(string), typeof(MessageContext).GetProperty(name)?.PropertyType);
+        Assert.Null(typeof(MessageContext).GetProperty("IsExpanded", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance));
+
+        var exported = Library.GetExportedTypes().Select(t => t.FullName).ToList();
+        foreach (var hidden in new[] { "LiveAnnouncer", "AnnouncementFeed", "MessageContextLines" })
+            Assert.DoesNotContain("ClaudeVisualChat.Controls." + hidden, exported);
+        Assert.DoesNotContain("ClaudeVisualChat.Protocol.ContextBlock", exported);
+
+        foreach (var name in new[]
+        {
+            "ContextTerminal", "ContextBrowserTab", "ContextBrowserTabBare", "ContextBrowserInstructions", "ContextSelection", "ContextNone",
+            "ContextCaptionTerminal", "ContextCaptionBrowserTab", "ContextCaptionBrowserInstructions", "ContextCaptionSelection",
+            "You", "YouSaid", "Claude", "ClaudeThinking", "ClaudeTool", "AnnounceWorking", "AnnounceReady", "AnnounceCompacting",
+            "AnnounceStartupHooks", "AnnouncePermission", "AnnounceQuestion", "AnnouncePlan", "AnnounceError", "AnnounceReply",
+            "AnnounceCodeBlock", "AnnounceCodeBlockOne",
+        })
+        {
+            var property = typeof(ChatStrings).GetProperty(name);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+        }
+    }
 }

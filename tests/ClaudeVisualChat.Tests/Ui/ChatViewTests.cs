@@ -4184,4 +4184,110 @@ public class ChatViewTests
         var link = UiHelpers.ButtonWithText(view, "Abrir artefato ↗");
         Assert.True(link.Bounds.Height >= 44, link.Bounds.ToString());
     }
+
+    // ---- the lines under a message for what the IDE sent along ----
+
+    private static UserMessageItem WithContext(string text, params MessageContext[] lines) =>
+        new UserMessageItem(text) { Context = lines };
+
+    private static List<ToggleButton> ContextHeads(Visual root) =>
+        root.GetVisualDescendants().OfType<ToggleButton>().Where(b => b.Classes.Contains("ClaudeChatContextHead")).ToList();
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void Context_lines_expand_to_their_content_and_hide_in_focus_view(ChatLayout layout)
+    {
+        var terminal = new MessageContext("terminal", "Terminal output: build", "error CS1002");
+        var browser = new MessageContext("browser-tab", "Browser tab", "");
+        var c = new ChatConversation();
+        c.Items.Add(WithContext("why?", terminal, browser));
+        c.Items.Add(new AssistantTextItem { Text = "Because." });
+        c.Items.Add(new TurnFooterItem(null, null, null, null, false));
+        var view = new ClaudeChatView { Conversation = c, Layout = layout };
+        var window = layout == ChatLayout.Touch ? UiHelpers.ShowPhone(view) : UiHelpers.Show(view);
+
+        // two closed lines, in the order of the message, under the bubble, labelled and named for a screen reader
+        var heads = ContextHeads(view);
+        Assert.Equal(2, heads.Count);
+        Assert.Equal(new[] { "Terminal output: build", "Browser tab" }, heads.Select(h => AutomationProperties.GetName(h)).ToArray());
+        Assert.DoesNotContain("error CS1002", UiHelpers.Texts(view));
+        var bubble = view.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatUser"));
+        Assert.True(heads[0].TranslatePoint(default, view)!.Value.Y >= bubble.TranslatePoint(new Point(0, bubble.Bounds.Height), view)!.Value.Y - 1);
+        Assert.True(heads[0].TranslatePoint(default, view)!.Value.Y < heads[1].TranslatePoint(default, view)!.Value.Y);
+        if (layout == ChatLayout.Touch) Assert.All(heads, h => Assert.True(h.Bounds.Height >= 44, h.Bounds.ToString()));
+        else Assert.All(heads, h => Assert.Equal(16, h.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Bounds.Width));
+
+        // a click opens one: the italic label, then what the block held; the state is the line's own
+        UiHelpers.Click(window, heads[0]);
+        Assert.True(terminal.IsExpanded);
+        var texts = UiHelpers.Texts(view);
+        Assert.Contains("Output", texts);
+        Assert.Contains("error CS1002", texts);
+        var caption = view.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Output");
+        Assert.Equal(FontStyle.Italic, caption.FontStyle);
+        Assert.False(browser.IsExpanded);
+
+        // an empty block reads "(none)"
+        UiHelpers.Click(window, heads[1]);
+        Assert.Contains("Address", UiHelpers.Texts(view));
+        Assert.Contains("(none)", UiHelpers.Texts(view));
+
+        // another message's row takes the state of its own message: the view drawn again shows the lines as they are
+        view.Conversation = null;
+        UiHelpers.Pump();
+        view.Conversation = c;
+        UiHelpers.Pump();
+        Assert.Contains("error CS1002", UiHelpers.Texts(view));
+
+        // closed again
+        UiHelpers.Click(window, ContextHeads(view)[0]);
+        Assert.False(terminal.IsExpanded);
+        Assert.DoesNotContain("error CS1002", UiHelpers.Texts(view));
+
+        // in the Focus view they are gone
+        view.FocusView = true;
+        UiHelpers.Pump();
+        Assert.DoesNotContain(ContextHeads(view), h => h.IsEffectivelyVisible);
+        view.FocusView = false;
+        UiHelpers.Pump();
+        Assert.Contains(ContextHeads(view), h => h.IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Context_lines_are_labelled_in_portuguese_when_the_view_is()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(WithContext("oi", new MessageContext("terminal", "Saída do terminal: build", ""), new MessageContext("selection", "Código selecionado: a.cs#1-2", "x")));
+        var (view, window) = Open(c, ChatStrings.PortugueseBrazil);
+
+        var heads = ContextHeads(view);
+        UiHelpers.Click(window, heads[0]);
+        UiHelpers.Click(window, heads[1]);
+        var texts = UiHelpers.Texts(view);
+        Assert.Contains("Saída", texts);
+        Assert.Contains("(nenhum)", texts);
+        Assert.Contains("Código", texts);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_context_line_opens_and_closes_from_the_keyboard()
+    {
+        var line = new MessageContext("terminal", "Terminal output: build", "error CS1002");
+        var c = new ChatConversation();
+        c.Items.Add(WithContext("why?", line));
+        var (view, window) = Open(c);
+        var head = ContextHeads(view).Single();
+
+        Assert.True(head.Focusable);
+        head.Focus(NavigationMethod.Tab);
+        UiHelpers.Press(window, Key.Space);
+        Assert.True(line.IsExpanded);
+        Assert.Contains("error CS1002", UiHelpers.Texts(view));
+        UiHelpers.Press(window, Key.Space);
+        Assert.False(line.IsExpanded);
+        window.Close();
+    }
 }

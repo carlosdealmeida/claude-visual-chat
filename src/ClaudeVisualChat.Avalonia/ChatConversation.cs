@@ -842,10 +842,26 @@ public sealed class ChatConversation : ChatObservableObject
         IsStreaming = streaming;
     }
 
+    /// <summary>True while <see cref="LoadTranscript"/> runs: what changes then is history, which a screen reader is not told.</summary>
+    internal bool IsLoadingHistory { get; private set; }
+
     /// <summary>Replaces the items with a Claude Code session file (<c>.jsonl</c>), line by line.</summary>
     public void LoadTranscript(IEnumerable<string> lines)
     {
         if (lines == null) throw new ArgumentNullException(nameof(lines));
+        IsLoadingHistory = true;
+        try
+        {
+            Replay(lines);
+        }
+        finally
+        {
+            IsLoadingHistory = false;
+        }
+    }
+
+    private void Replay(IEnumerable<string> lines)
+    {
         Clear();
         foreach (var line in lines)
         {
@@ -1703,7 +1719,22 @@ public sealed class ChatConversation : ChatObservableObject
         }
         List<ChatFile>? files = null;
         foreach (var path in paths) (files ??= new List<ChatFile>()).Add(ChatFile.FromRemotePath(path));
-        Place(new UserMessageItem(shown, images, files) { Timestamp = e.Timestamp, IsUserPrompt = !e.IsSynthetic && e.ParentToolUseId == null }, e.ParentToolUseId);
+        Place(new UserMessageItem(shown, images, files)
+        {
+            Timestamp = e.Timestamp,
+            IsUserPrompt = !e.IsSynthetic && e.ParentToolUseId == null,
+            Context = ContextLines(e.Context),
+        }, e.ParentToolUseId);
+    }
+
+    /// <summary>The lines under a message for the blocks the IDE sent before its text, labelled in the language of the conversation.</summary>
+    private IReadOnlyList<MessageContext> ContextLines(IReadOnlyList<ContextBlock> blocks)
+    {
+        if (blocks.Count == 0) return Array.Empty<MessageContext>();
+        var lines = new List<MessageContext>(blocks.Count);
+        foreach (var block in blocks)
+            lines.Add(new MessageContext(block.Kind, Strings.FormatContextLabel(block.Kind, block.Subject), block.Content));
+        return lines;
     }
 
     /// <summary>

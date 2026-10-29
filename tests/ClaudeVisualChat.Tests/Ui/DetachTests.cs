@@ -1795,4 +1795,54 @@ public class DetachTests
         Assert.Contains("Show in conversation", UiHelpers.Texts(Panel()));
         m.Window.Close();
     }
+
+    [AvaloniaFact]
+    public void The_live_region_stops_its_timer_and_forgets_its_queue_when_the_view_leaves()
+    {
+        var c = Conversation();
+        var m = new Mounted(c);
+        var announcer = m.View.GetVisualDescendants().OfType<LiveAnnouncer>().Single();
+
+        announcer.Announce("waiting");
+        Assert.True(announcer.IsTicking);
+        Assert.Equal(1, announcer.Pending);
+
+        m.Out();
+        Assert.False(announcer.IsTicking);                       // no timer ticks out of the window
+        Assert.Equal(0, announcer.Pending);                      // and what waited is stale by the time the view returns
+        announcer.Announce("while out");
+        FocusViewTests.SetBusy(c, true);                         // the conversation no longer reaches the view
+        Assert.Equal(0, announcer.Pending);
+        Assert.False(announcer.IsTicking);
+        announcer.Tick();                                        // a late tick finds nothing to do
+        Assert.Equal("", announcer.Spoken);
+
+        m.In();
+        Assert.Equal(0, announcer.Pending);                      // what happened meanwhile (it works now) is not told
+        FocusViewTests.SetBusy(c, false);
+        Assert.Contains("Ready for your input.", announcer.Waiting);
+        Assert.True(announcer.IsTicking);
+        m.Out();
+        Assert.False(announcer.IsTicking);
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Context_lines_come_back_as_they_were_after_the_view_returns()
+    {
+        var c = Conversation();
+        var line = new MessageContext("terminal", "Terminal output: build", "error CS1002");
+        c.Items.Add(new UserMessageItem("why?") { Context = new[] { line } });
+        var m = new Mounted(c);
+        Avalonia.Controls.Primitives.ToggleButton Head() => m.View.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => b.Classes.Contains("ClaudeChatContextHead"));
+
+        UiHelpers.Click(m.Window, Head());
+        Assert.True(line.IsExpanded);
+
+        m.Out();
+        m.In();
+        Assert.True(Head().IsChecked);
+        Assert.Contains("error CS1002", UiHelpers.Texts(m.View));
+        m.Window.Close();
+    }
 }

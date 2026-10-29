@@ -378,6 +378,8 @@ internal partial class ToolCallView : UserControl
             detail = Str(item?.Input, "description") ?? "";
             kind = "plain";
         }
+        // a screen reader hears the tool by the name the row shows
+        AutomationProperties.SetName(this, Strings.FormatClaudeTool(ToolName.Text ?? name));
         DetailText.Text = ChatText.ClipLines(detail, BoxLines, MaxLineChars);
         DetailText.IsVisible = detail.Length > 0;
         DetailText.Classes.Set("file", kind == "file");

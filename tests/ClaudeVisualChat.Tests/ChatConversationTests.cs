@@ -3126,4 +3126,112 @@ public class ChatConversationTests
         var line = Assert.Single(c.Items.OfType<MetaLineItem>());
         Assert.Equal("a.txt: Simple sentence describing a cat resting on a mat.…", line.Text);
     }
+
+    // ---- context lines under a prompt ----
+
+    private static string UserBlocks(params string[] texts) =>
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[" +
+        string.Join(",", texts.Select(t => "{\"type\":\"text\",\"text\":" + JsonSerializer.Serialize(t) + "}")) +
+        "]},\"parent_tool_use_id\":null}";
+
+    private static UserMessageItem LoadedUser(params string[] texts)
+    {
+        var c = new ChatConversation();
+        c.LoadTranscript(new[] { UserBlocks(texts) });
+        return Assert.Single(c.Items.OfType<UserMessageItem>());
+    }
+
+    [Fact]
+    public void A_terminal_output_block_becomes_a_context_line_on_the_user_message()
+    {
+        var c = new ChatConversation();
+        c.LoadTranscript(new[] { UserBlocks("<terminal name=\"build\">\nerror CS1002\nerror CS1003\n</terminal>", "why does it fail?") });
+
+        var user = Assert.IsType<UserMessageItem>(Assert.Single(c.Items));
+        Assert.Equal("why does it fail?", user.Text);
+        var line = Assert.Single(user.Context);
+        Assert.Equal("terminal", line.Kind);
+        Assert.Equal("Terminal output: build", line.Label);
+        Assert.Equal("error CS1002\nerror CS1003", line.Content);
+    }
+
+    [Fact]
+    public void Two_context_blocks_and_the_prompt_are_one_message_with_two_lines_in_order()
+    {
+        var user = LoadedUser(
+            "<browser tabGroupId=\"g1\" tabId=\"42\">https://example.com/docs/intro</browser>",
+            "<ide_selection>The user selected the lines 3 to 9 from C:\\src\\app\\Program.cs:\nvar x = 1;\n</ide_selection>",
+            "explain this");
+
+        Assert.Equal("explain this", user.Text);
+        Assert.Equal(2, user.Context.Count);
+        Assert.Equal("browser-tab", user.Context[0].Kind);
+        Assert.Equal("Browser tab: example.com/docs/intro", user.Context[0].Label);
+        Assert.Equal("https://example.com/docs/intro", user.Context[0].Content);
+        Assert.Equal("selection", user.Context[1].Kind);
+        Assert.Equal("Selected code: Program.cs#3-9", user.Context[1].Label);
+        Assert.Contains("var x = 1;", user.Context[1].Content);
+    }
+
+    [Fact]
+    public void The_other_context_formats_read_as_the_extension_does()
+    {
+        var bare = LoadedUser("<browser tabGroupId=\"g\" tabId=\"1\"></browser>", "x");
+        Assert.Equal("Browser tab", bare.Context[0].Label);
+        Assert.Equal("", bare.Context[0].Content);          // an empty block reads "(none)" when opened
+
+        var root = LoadedUser("<browser tabGroupId=\"g\" tabId=\"1\">https://example.com/</browser>", "x");
+        Assert.Equal("Browser tab: example.com", root.Context[0].Label); // the path of "/" is left out
+
+        var instructions = LoadedUser("<browser_instruction>Use the tab 3.</browser_instruction>", "x");
+        Assert.Equal("browser-instructions", instructions.Context[0].Kind);
+        Assert.Equal("Browser instructions", instructions.Context[0].Label);
+        Assert.Equal("Use the tab 3.", instructions.Context[0].Content);
+
+        var whole = LoadedUser("<ide_selection>The user selected from /home/a/b.py:\nprint(1)\n</ide_selection>", "x");
+        Assert.Equal("Selected code: b.py", whole.Context[0].Label); // no lines named: the file alone
+
+        var empty = LoadedUser("<terminal name=\"t\"></terminal>", "x");
+        Assert.Equal("", empty.Context[0].Content);
+    }
+
+    [Fact]
+    public void A_context_line_is_labelled_in_the_language_of_the_conversation()
+    {
+        var c = new ChatConversation { Strings = ChatStrings.PortugueseBrazil };
+        c.LoadTranscript(new[] { UserBlocks("<terminal name=\"build\">\nx\n</terminal>", "oi") });
+        var user = Assert.Single(c.Items.OfType<UserMessageItem>());
+        Assert.Equal("Saída do terminal: build", user.Context[0].Label);
+    }
+
+    [Fact]
+    public void A_block_that_is_not_a_context_stays_a_message_of_its_own_as_before()
+    {
+        var c = new ChatConversation();
+        c.LoadTranscript(new[]
+        {
+            UserBlocks("just a note", "and the question"),
+            UserBlocks("<ide_opened_file>The user opened the file a.cs in the IDE.</ide_opened_file>", "next"),
+        });
+
+        var users = c.Items.OfType<UserMessageItem>().ToList();
+        Assert.Equal(4, users.Count);
+        Assert.All(users, u => Assert.Empty(u.Context));
+    }
+
+    [Fact]
+    public void A_context_block_without_a_prompt_after_it_or_from_another_origin_is_no_context()
+    {
+        var onlyContext = new ChatConversation();
+        onlyContext.LoadTranscript(new[] { UserBlocks("<terminal name=\"t\">\nx\n</terminal>") });
+        Assert.All(onlyContext.Items.OfType<UserMessageItem>(), u => Assert.Empty(u.Context));
+
+        var fromPeer = new ChatConversation();
+        fromPeer.LoadTranscript(new[]
+        {
+            UserBlocks("<terminal name=\"t\">\nx\n</terminal>", "hello")
+                .Replace("{\"type\":\"user\",", "{\"type\":\"user\",\"origin\":{\"kind\":\"peer\"},"),
+        });
+        Assert.All(fromPeer.Items.OfType<UserMessageItem>(), u => Assert.Empty(u.Context));
+    }
 }
