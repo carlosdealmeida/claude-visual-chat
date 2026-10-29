@@ -1704,6 +1704,21 @@ public class ComposerTests
     }
 
     [AvaloniaFact]
+    public void The_fast_mode_bolt_is_not_clipped_by_the_composer_where_it_overflows_the_box_upward()
+    {
+        // the bolt sits 6 px above the box's top border; a UserControl clips to its bounds unless it says not to
+        var c = new ChatConversation();
+        Fast(c, "on");
+        var ui = Open(c);
+        ui.Input.Focus();
+        UiHelpers.Pump();
+        var bolt = Bolt(ui);
+        Assert.True(bolt.Bounds.Y < 0);
+        for (Avalonia.Visual? v = bolt.GetVisualParent(); v != null && !ReferenceEquals(v, ui.Composer.GetVisualParent()); v = v.GetVisualParent())
+            Assert.False(v.ClipToBounds, v.GetType().Name + " clips the bolt");
+    }
+
+    [AvaloniaFact]
     public void The_fast_mode_bolt_shows_in_the_touch_layout_without_a_tooltip()
     {
         var c = new ChatConversation();

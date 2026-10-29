@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="using:ClaudeVisualChat.Controls"
-             x:Class="ClaudeVisualChat.Controls.ChatComposer">
+             x:Class="ClaudeVisualChat.Controls.ChatComposer" ClipToBounds="False">
   <StackPanel>
   <!-- the notice of the invisible characters taken out of the text: a banner over the box, its last 8 px under it (the box comes
        after it, so it is drawn over them) -->
