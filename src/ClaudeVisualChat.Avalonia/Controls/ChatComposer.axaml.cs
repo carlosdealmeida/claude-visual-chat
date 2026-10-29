@@ -508,8 +508,9 @@ internal partial class ChatComposer : UserControl
         var state = _tracked?.FastModeState;
         var tip = _attached ? Strings.FastModeTip(state, _tracked?.Effort) : null;
         FastModeBolt.IsVisible = tip != null && Box.IsKeyboardFocusWithin;
-        ((Avalonia.Controls.Shapes.Path)FastModeBolt.Child!).Classes.Set("cooldown", state == "cooldown");
+        FastModeBoltPath.Classes.Set("cooldown", state == "cooldown");
         ToolTip.SetTip(FastModeBolt, IsTouch ? null : tip);
+        FastModeBolt.IsHitTestVisible = !IsTouch; // the tooltip needs the pointer on the desktop; a finger has none, and the bolt would take the taps of what is under it
     }
 
     /// <summary>

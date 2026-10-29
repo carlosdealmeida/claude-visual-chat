@@ -1731,6 +1731,23 @@ public class ComposerTests
         var bolt = UiHelpers.Composer(view).GetVisualDescendants().OfType<Viewbox>().Single(v => v.Name == "FastModeBolt");
         Assert.True(bolt.IsEffectivelyVisible);
         Assert.Null(ToolTip.GetTip(bolt));
+        Assert.False(bolt.IsHitTestVisible);                                  // it takes no tap from what is under it
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_fast_mode_bolt_takes_the_pointer_on_the_desktop_for_its_tooltip()
+    {
+        var c = new ChatConversation();
+        Fast(c, "on");
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        UiHelpers.Input(view).Focus();
+        UiHelpers.Pump();
+
+        var bolt = UiHelpers.Composer(view).GetVisualDescendants().OfType<Viewbox>().Single(v => v.Name == "FastModeBolt");
+        Assert.True(bolt.IsHitTestVisible);
+        Assert.NotNull(ToolTip.GetTip(bolt));
         window.Close();
     }
 }
