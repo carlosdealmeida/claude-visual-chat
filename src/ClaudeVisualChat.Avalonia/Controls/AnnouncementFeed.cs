@@ -27,10 +27,17 @@ internal sealed class AnnouncementFeed
     private string? _browserError;
     private string? _remoteError;
 
-    public AnnouncementFeed(LiveAnnouncer announcer, Func<ChatStrings> strings)
+    private readonly Func<bool> _readOnly;
+
+    /// <param name="announcer">Where the sentences go.</param>
+    /// <param name="strings">The texts, as the view has them now.</param>
+    /// <param name="readOnly">Whether the view is read-only now: a request for a permission, a plan or an answer is not told then, since the
+    /// person cannot answer it there.</param>
+    public AnnouncementFeed(LiveAnnouncer announcer, Func<ChatStrings> strings, Func<bool>? readOnly = null)
     {
         _announcer = announcer;
         _strings = strings;
+        _readOnly = readOnly ?? (() => false);
     }
 
     /// <summary>Follows <paramref name="conversation"/>, or lets go of the one followed (null). What it holds now is not told.</summary>
@@ -107,7 +114,7 @@ internal sealed class AnnouncementFeed
                 var request = c.CurrentPermission;
                 var arrived = request != null && !ReferenceEquals(request, _permission);
                 _permission = request;
-                if (arrived && live) _announcer.Announce(Request(request!, strings));
+                if (arrived && live && !_readOnly()) _announcer.Announce(Request(request!, strings));
                 break;
         }
     }

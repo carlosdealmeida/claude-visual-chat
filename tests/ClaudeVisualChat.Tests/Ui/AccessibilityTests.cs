@@ -259,6 +259,27 @@ public class AccessibilityTests
         window.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData("Edit")]
+    [InlineData("ExitPlanMode")]
+    [InlineData("AskUserQuestion")]
+    public void A_read_only_view_does_not_announce_requests_it_cannot_answer(string tool)
+    {
+        var c = new ChatConversation();
+        var (view, window, announcer) = Open(c);
+        view.IsReadOnly = true;
+        UiHelpers.Pump();
+
+        c.Apply(new PermissionRequested("r1", tool, tool, null, "t1", J("{}"), null));
+        Assert.Empty(Drain(announcer));
+
+        view.IsReadOnly = false;                                          // answerable again: the next request is told
+        c.AnswerPermission(c.CurrentPermission!, PermissionDecision.Deny, null);
+        c.Apply(new PermissionRequested("r2", tool, tool, null, "t2", J("{}"), null));
+        Assert.Single(Drain(announcer));
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_permission_request_is_announced_in_portuguese_too()
     {

@@ -344,7 +344,7 @@ public partial class ClaudeChatView : UserControl
         // the live region: no sentence while a modal covers the view
         Announcer.IsPaused = () => AgentMap.IsVisible || ContextPanel.IsVisible || UsagePanel.IsVisible || DiffViewer.IsOpen
             || Preview.IsVisible || Feedback.IsOpen;
-        _announcements = new AnnouncementFeed(Announcer, () => Strings);
+        _announcements = new AnnouncementFeed(Announcer, () => Strings, () => IsReadOnly);
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnKeyDownNotTaken, RoutingStrategies.Bubble);
         FocusViewToggleRequested += (_, _) => FocusView = !FocusView;
