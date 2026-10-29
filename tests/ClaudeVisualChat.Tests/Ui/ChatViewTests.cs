@@ -1936,6 +1936,24 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
+    public void Show_in_conversation_puts_the_reply_under_the_pinned_prompt_not_behind_it()
+    {
+        var (c, first, _) = TwoLongTurns();
+        var (view, window) = Open(c);
+        var sticky = Sticky(view);
+        var reply = (AssistantTextItem)c.Items[20];
+
+        Assert.True(view.ShowInConversation(reply));
+        UiHelpers.Pump();
+
+        Assert.True(sticky.IsVisible);                                    // the turn's prompt is pinned over the top
+        Assert.Same(first, sticky.Item);
+        var bandBottom = sticky.Band.TranslatePoint(new Point(0, sticky.Band.Bounds.Height), view)!.Value.Y;
+        Assert.True(RowTop(view, reply) >= bandBottom - 0.5, "the reply begins at " + RowTop(view, reply) + ", the band ends at " + bandBottom);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_next_prompt_pushes_the_pinned_one_out()
     {
         var (c, first, second) = TwoLongTurns();

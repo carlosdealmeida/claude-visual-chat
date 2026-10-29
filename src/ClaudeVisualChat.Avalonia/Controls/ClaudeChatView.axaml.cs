@@ -1180,6 +1180,13 @@ public partial class ClaudeChatView : UserControl
         var index = items.IndexOf(item);
         if (index < 0) return false;
         ScrollRowToTop(index);
+        // the pinned prompt of the reply's turn now covers the top of the list: the reply goes under its band
+        UpdateSticky();
+        if (Sticky.IsVisible)
+        {
+            Sticky.UpdateLayout();
+            ScrollListBy(-Sticky.Bounds.Height);
+        }
         return true;
     }
 
