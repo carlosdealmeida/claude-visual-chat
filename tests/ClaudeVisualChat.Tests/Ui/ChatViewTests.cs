@@ -1915,6 +1915,27 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
+    public void The_pinned_prompt_waits_for_the_bubble_not_for_the_date_line_and_time()
+    {
+        var (c, first, _) = TwoLongTurns();
+        first.Timestamp = new DateTimeOffset(2026, 10, 25, 9, 30, 0, TimeSpan.Zero);
+        var (view, window) = Open(c);
+        var sticky = Sticky(view);
+        ScrollRowTo(view, first, 0);
+        var row = UiHelpers.ItemList(view).ContainerFromItem(first)!;
+        var bubble = row.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatUser"));
+        var offset = bubble.TranslatePoint(default, row)!.Value.Y;
+        Assert.True(offset > 20);                                         // the date line and the time are over it
+
+        ScrollRowTo(view, first, -(offset - 10));                         // the row's top is gone; the bubble is still in sight
+        Assert.False(sticky.IsVisible);
+        ScrollRowTo(view, first, -(offset + 5));                          // the bubble left the top: the band takes its place
+        Assert.True(sticky.IsVisible);
+        Assert.Same(first, sticky.Item);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_next_prompt_pushes_the_pinned_one_out()
     {
         var (c, first, second) = TwoLongTurns();

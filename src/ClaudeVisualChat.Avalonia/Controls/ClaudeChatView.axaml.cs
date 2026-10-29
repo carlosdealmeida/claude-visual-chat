@@ -1366,7 +1366,7 @@ public partial class ClaudeChatView : UserControl
         }
         // its own row on screen: it is where it is, nothing to pin
         var own = ItemList.ContainerFromIndex(promptIndex);
-        if (own != null && own.IsVisible && Top(own) is double ownTop && ownTop > -0.5 && ownTop < Scroller.Viewport.Height)
+        if (own != null && own.IsVisible && Top(Bubble(own) ?? own) is double ownTop && ownTop > -0.5 && ownTop < Scroller.Viewport.Height)
         {
             Sticky.Hide();
             return;
@@ -1386,6 +1386,17 @@ public partial class ClaudeChatView : UserControl
         }
         PlaceSticky();
         Sticky.Show(prompt, nextTop);
+    }
+
+    /// <summary>
+    /// The bubble of a user message's row: what the pinned prompt stands in for. The row begins with the date line and the time, which
+    /// are not the prompt, so the band waits for the bubble itself to leave the top. Null when the row has no bubble drawn yet.
+    /// </summary>
+    private static Control? Bubble(Control row)
+    {
+        foreach (var d in row.GetVisualDescendants())
+            if (d is Border b && b.Classes.Contains("ClaudeChatUser")) return b;
+        return null;
     }
 
     /// <summary>Where <paramref name="row"/> begins, from the top of the list's viewport.</summary>
