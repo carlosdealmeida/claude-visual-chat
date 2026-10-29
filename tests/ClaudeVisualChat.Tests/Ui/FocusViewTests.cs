@@ -255,9 +255,8 @@ public class FocusViewTests
         Assert.Equal(0, resets);
         _output.WriteLine("1,100 items (100 rounds) appended to 3,000 and drawn: " + Ms(appended) + "; one insert in the middle: " + Ms(inserted)
                           + "; its removal: " + Ms(clock.Elapsed));
-        // budgets for a busy machine; the numbers are in the output
-        Assert.True(appended.TotalMilliseconds < 20_000, Ms(appended));
-        Assert.True(inserted.TotalMilliseconds < 2_000, Ms(inserted));
+        // the times are output only: they measure layout and Markdown under the machine's load; the projection's cost is pinned by
+        // FocusProjection.ItemsRead in FocusProjectionTests
         window.Close();
     }
 

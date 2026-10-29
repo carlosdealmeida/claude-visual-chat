@@ -161,6 +161,8 @@ internal sealed class FocusFoldItem : ChatItem
         public bool Failed;
         public bool Running;
         public FocusLive Waits;
+        /// <summary>A request about it waits (the session at work or not): its fold is open.</summary>
+        public bool Asks;
         public bool AtWork;
         public bool Progress;
         public bool Thought;
@@ -173,10 +175,10 @@ internal sealed class FocusFoldItem : ChatItem
     private readonly FocusProjection _owner;
     private readonly Dictionary<ChatItem, Part> _parts = new Dictionary<ChatItem, Part>();
 
-    /// <summary>The calls of its agents at work, in the order they came to work.</summary>
+    /// <summary>The calls of its agents at work, in the order of the list (as the extension walks its messages).</summary>
     private readonly List<ToolCallItem> _atWork = new List<ToolCallItem>();
 
-    private int _tools, _failed, _thoughts, _streaming, _knownMs, _running, _permissions, _answers, _progress, _busyParts;
+    private int _tools, _failed, _thoughts, _streaming, _knownMs, _running, _permissions, _asking, _answers, _progress, _busyParts;
     private long _ms;
     private ToolCallItem? _runningTool;
     private FocusFoldState _state = FocusFoldState.Empty;
@@ -248,7 +250,19 @@ internal sealed class FocusFoldItem : ChatItem
         Count(item, had, -1, now);
         Count(item, now, +1, had);
         if (had.Running != now.Running) _runningTool = LastRunning();
+        if (now.AtWork && !had.AtWork && _atWork.Count > 1) SortAtWork();
         Publish();
+    }
+
+    /// <summary>An agent came to work after others: the calls at work go back to the order of the list.</summary>
+    private void SortAtWork()
+    {
+        var place = new Dictionary<ChatItem, int>();
+        for (var i = 0; i < Items.Count; i++)
+        {
+            if (Items[i] is ToolCallItem tool) place[tool] = i;
+        }
+        _atWork.Sort((a, b) => place[a].CompareTo(place[b]));
     }
 
     /// <summary>The session went idle, or back to work: the steps whose part depends on it are read again, and only then.</summary>
@@ -262,7 +276,7 @@ internal sealed class FocusFoldItem : ChatItem
     {
         _parts.Clear();
         _atWork.Clear();
-        _tools = _failed = _thoughts = _streaming = _knownMs = _running = _permissions = _answers = _progress = _busyParts = 0;
+        _tools = _failed = _thoughts = _streaming = _knownMs = _running = _permissions = _asking = _answers = _progress = _busyParts = 0;
         _ms = 0;
         _owner.CountRead(Items.Count);
         foreach (var item in Items) Count(item, PartOf(item), +1);
@@ -287,9 +301,13 @@ internal sealed class FocusFoldItem : ChatItem
             // unless it is the call of an agent that still runs
             part.Failed = tool.Status == ToolStatus.Failed || tool.Status == ToolStatus.Rejected || (noResult && !busy && !agentRuns);
             part.Progress = agentRuns;
+            // a request about the call, or about its agent, holds the fold open even idle (a subagent in the background asks after the turn
+            // ended); only the live label needs the session at work
+            var asks = noResult ? _owner.WaitingFor(tool) : FocusLive.None;
+            if (asks == FocusLive.Permission || agent is { IsWaitingForPermission: true }) part.Asks = true;
             if (busy)
             {
-                if (part.Running) part.Waits = _owner.WaitingFor(tool);
+                if (part.Running) part.Waits = asks;
                 if (agent is { IsWaitingForPermission: true }) part.Waits = FocusLive.Permission;
             }
             part.AtWork = agent != null ? agentRuns : busy && noResult && FocusProjection.IsAgentTool(tool.Name);
@@ -316,6 +334,7 @@ internal sealed class FocusFoldItem : ChatItem
         if (part.Running) _running += sign;
         if (part.Progress) _progress += sign;
         if (part.Busy) _busyParts += sign;
+        if (part.Asks) _asking += sign;
         if (part.Waits == FocusLive.Permission) _permissions += sign;
         else if (part.Waits == FocusLive.Answer) _answers += sign;
         if (part.AtWork && !other.AtWork)
@@ -354,7 +373,7 @@ internal sealed class FocusFoldItem : ChatItem
             : _running > 0 ? FocusLive.Running
             : _streaming > 0 ? FocusLive.Thinking
             : FocusLive.None;
-        var forced = live == FocusLive.Permission;
+        var forced = _asking > 0;
         if (forced != _forcedOpen)
         {
             var was = IsExpanded;

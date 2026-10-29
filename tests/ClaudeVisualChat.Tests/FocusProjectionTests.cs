@@ -104,6 +104,7 @@ public class FocusProjectionTests
         return rows.Select(r => r is FocusFoldItem f
             ? "[" + string.Join(",", f.Items.Select(Name)) + "] " + En.FormatFocusLabel(f.State) + (f.State.HasLiveLabel ? " + " + En.FormatFocusCount(f.State) : "")
               + (f.State.IsLive ? " live" : "") + (f.State.HasFailed ? " failed" : "") + " agents " + f.State.Agents.Count + "+" + f.State.MoreAgents
+              + (f.State.Agents.Count > 0 ? " (" + string.Join(" ; ", f.State.Agents.Select(a => a.Line)) + ")" : "")
             : Name((ChatItem)r)).ToList();
     }
 
@@ -447,6 +448,41 @@ public class FocusProjectionTests
     }
 
     [Fact]
+    public void The_agent_rows_follow_the_order_of_the_list_whatever_the_order_they_started_working()
+    {
+        // three agents start working in the order 2, 0, 1: the rows read 0, 1, 2, as a projection made whole reads them
+        var agents = Enumerable.Range(0, 3).Select(i =>
+        {
+            var call = Call("Agent", ToolStatus.Running, "toolu_" + i);
+            call.Summary = "A" + i;
+            call.Agent = new AgentInfo("toolu_" + i) { Description = "A" + i, Status = AgentStatus.Completed };
+            return call;
+        }).ToList();
+        var f = Follow(new UserMessageItem("go"), agents[0], agents[1], agents[2]);
+        foreach (var i in new[] { 2, 0, 1 }) agents[i].Agent!.Status = AgentStatus.Running;
+        Assert.Equal(new[] { "A0", "A1", "A2" }, f.Fold(1).State.Agents.Select(a => a.Line).ToArray());
+        Assert.Equal(Fresh(f.Conversation), Shape(f.Rows, f.Items));
+    }
+
+    [Fact]
+    public void A_pending_request_holds_its_fold_open_even_when_the_session_is_idle()
+    {
+        // a subagent in the background asks after the turn ended: the fold opens, and only the live label needs the session at work
+        var agent = Call("Agent", ToolStatus.Running, "toolu_bg");
+        agent.Agent = new AgentInfo("toolu_bg") { Description = "bg", Status = AgentStatus.Running };
+        var f = Follow(false, new UserMessageItem("go"), Call("Read"), agent);
+        var fold = f.Fold(1);
+        Assert.False(fold.IsExpanded);
+        agent.Agent.IsWaitingForPermission = true;
+        Assert.True(fold.IsExpanded);
+        Assert.False(fold.State.HasLiveLabel);   // idle: no "Waiting for permission…"
+        fold.IsExpanded = false;
+        Assert.True(fold.IsExpanded);            // closing it does nothing until the request is answered
+        agent.Agent.IsWaitingForPermission = false;
+        Assert.False(fold.IsExpanded);
+    }
+
+    [Fact]
     public void Every_change_leaves_the_rows_a_fresh_projection_would_make()
     {
         // several rounds, then hundreds of mixed changes with a fixed seed: adds at the end and in the middle, removes, replaces, moves both
@@ -476,7 +512,7 @@ public class FocusProjectionTests
                 case 3: return new ThinkingItem { IsStreaming = random.Next(2) == 0, DurationMs = random.Next(2) == 0 ? 1500 : (long?)null };
                 case 4: return Todo(random.Next(3), random.Next(3) == 0 ? ToolStatus.Running : ToolStatus.Succeeded);
                 case 5:
-                    var agent = new ToolCallItem { Name = "Agent", Status = ToolStatus.Running, Summary = "sub" };
+                    var agent = new ToolCallItem { Name = "Agent", Status = ToolStatus.Running, Summary = "sub" + random.Next(1000) };
                     if (random.Next(2) == 0) agent.Agent = new AgentInfo("x" + random.Next()) { Status = AgentStatus.Running, IsBackground = random.Next(2) == 0 };
                     return agent;
                 default: return Call(random.Next(2) == 0 ? "Read" : "Bash", (ToolStatus)random.Next(4));
