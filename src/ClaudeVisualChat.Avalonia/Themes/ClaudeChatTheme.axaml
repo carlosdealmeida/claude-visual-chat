@@ -2653,7 +2653,7 @@
     <Setter Property="Opacity" Value="0.5" />
     <Setter Property="HorizontalAlignment" Value="Left" />
   </Style>
-  <Style Selector="Border.ClaudeChatInfoModal Grid.ClaudeChatModalTableHeader > TextBlock.ClaudeChatModalHeaderCell:not(:first-child)">
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalHeaderCell.ClaudeChatModalHeaderRight">
     <Setter Property="HorizontalAlignment" Value="Right" />
   </Style>
   <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalName">

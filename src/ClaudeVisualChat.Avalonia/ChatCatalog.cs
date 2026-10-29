@@ -39,12 +39,19 @@ namespace ClaudeVisualChat
         public string? Model { get; init; }
     }
 
-    public sealed record UsageLimits(IReadOnlyList<UsageWindow> Windows);
+    /// <summary>The limit windows. A reply to <c>get_usage</c> is a whole snapshot and replaces every window; a rate limit event only replaces the windows it names.</summary>
+    public sealed record UsageLimits(IReadOnlyList<UsageWindow> Windows)
+    {
+        /// <summary>True for a <c>get_usage</c> reply: the conversation then drops windows the reply no longer lists.</summary>
+        internal bool IsSnapshot { get; init; }
+    }
 
     /// <summary>
     /// The login the claude reported when it started. Each part is null when the claude does not say. <paramref name="AuthMethod"/> is a
-    /// code (<c>claudeai</c>, <c>api-key</c>, <c>bedrock</c>, <c>vertex</c> or <c>foundry</c>), null for none or one that is not known;
-    /// <paramref name="Plan"/> is written for reading ("Max").
+    /// code (<c>claudeai</c>, <c>api-key</c>, <c>bedrock</c>, <c>vertex</c>, <c>foundry</c>, <c>gateway</c> or <c>third-party</c>), null for none.
+    /// The list of codes may grow: a host should treat a code it does not know as none (the panel shows no row for it).
+    /// <paramref name="Plan"/> is the plan's product name, ready to show ("Max", "Enterprise Plus") and not translated; the claude's
+    /// <c>subscriptionType</c> is turned into it when the account is read, with each word in capitals, and "none" gives null.
     /// </summary>
     public sealed record AccountInfo(string? AuthMethod, string? Email, string? Organization, string? Plan);
 }

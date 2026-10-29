@@ -646,7 +646,7 @@ public class StatusTests
     {
         var c = new ChatConversation();
         var view = touch ? UiHelpers.TouchView(c) : new ClaudeChatView { Conversation = c };
-        var window = UiHelpers.Show(view, touch ? 300 : 300, 700);
+        var window = UiHelpers.Show(view, 300, 700);
         c.Apply(new ModelRefusalFallback("claude-opus-5-5", "claude-experimental-" + new string('x', 120) + "-model", null));
         UiHelpers.Pump();
         UiHelpers.DrawFrames();
@@ -660,6 +660,15 @@ public class StatusTests
             var left = b.TranslatePoint(new Point(0, 0), band)!.Value.X;
             Assert.True(left >= -0.5 && left + b.Bounds.Width <= band.Bounds.Width + 0.5, $"button at {left}, width {b.Bounds.Width}, band {band.Bounds.Width}");
         }
+
+        // the title is cut but still readable, not squeezed to a sliver; a wider window gives it more room
+        var title = band.GetVisualDescendants().OfType<TextBlock>().Single(t => t.IsEffectivelyVisible && (t.Text ?? "").Contains("xxxx"));
+        var narrow = title.Bounds.Width;
+        Assert.True(narrow > 40, "the title is " + narrow + " px");
+        window.Width = 600;
+        UiHelpers.Pump();
+        UiHelpers.DrawFrames();
+        Assert.True(title.Bounds.Width > narrow + 20, "the title is " + title.Bounds.Width + " px, was " + narrow);
         window.Close();
     }
 }

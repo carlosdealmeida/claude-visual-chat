@@ -601,6 +601,31 @@ public class BookmarksTests
         w2.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_plan_comment_box_stays_inside_the_chat_area_with_the_panel_open(bool narrow)
+    {
+        var (c, replies) = Talk(2);
+        Mark(c, replies[0]);
+        c.Apply(new PermissionRequested("r1", "ExitPlanMode", "ExitPlanMode", null, "t1",
+            System.Text.Json.JsonDocument.Parse("{\"plan\":\"# Rewrite the parser\\n\\nIntro line.\"}").RootElement.Clone(), null));
+        var (view, window) = narrow ? Open(c, 480, 700) : Open(c);
+        view.ShowBookmarks();
+        UiHelpers.Pump();
+        var chat = view.GetVisualDescendants().OfType<Grid>().Single(g => g.Name == "ChatArea");
+        var box = view.GetVisualDescendants().OfType<PlanCommentBox>().Single();
+        // the passage is at the far right and at the very bottom of the chat: the box is turned back inside, over the passage
+        var selection = new Rect(chat.Bounds.Right - 30, chat.Bounds.Bottom - 40, 28, 22);
+        box.Open(new PlanCommentRequest(c.CurrentPlan!, "Intro line.", selection));
+        UiHelpers.Pump();
+        var frame = box.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatPlanCommentBox"));
+        var at = frame.TranslatePoint(default, view)!.Value;
+        Assert.True(at.X >= chat.Bounds.X - 0.5 && at.X + frame.Bounds.Width <= chat.Bounds.Right + 0.5, "inside to the right: " + at.X + " + " + frame.Bounds.Width + " in " + chat.Bounds);
+        Assert.True(at.Y >= chat.Bounds.Y - 0.5 && at.Y + frame.Bounds.Height <= chat.Bounds.Bottom + 0.5, "inside to the bottom: " + at.Y + " + " + frame.Bounds.Height + " in " + chat.Bounds);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void The_ages_tick_every_minute_while_the_panel_shows_and_stop_when_it_closes()
     {
@@ -620,6 +645,7 @@ public class BookmarksTests
         c.Clock = () => Now + TimeSpan.FromMinutes(7);
         panel.TickAges();                                                    // what the timer's tick does
         Assert.Equal("12m ago", Age());
+        Assert.Equal("Reply 1 first line, 12m ago", Avalonia.Automation.AutomationProperties.GetName(row));   // the row's name follows the age on screen
         Assert.Same(row, Rows(panel)[0]);                                    // the rows stay, so the keyboard stays
         view.HideBookmarks();
         Assert.False(panel.AgesTicking);

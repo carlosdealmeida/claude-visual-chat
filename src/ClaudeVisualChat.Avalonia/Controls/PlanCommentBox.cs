@@ -130,6 +130,23 @@ internal sealed class PlanCommentBox : Panel
         return true;
     }
 
+    /// <summary>
+    /// The room the box may use, in this layer's coordinates: the chat area, so that the bookmarks panel beside or below the chat is
+    /// not covered. Empty (the default) means the whole layer.
+    /// </summary>
+    internal Rect Area
+    {
+        get => _area;
+        set
+        {
+            if (_area == value) return;
+            _area = value;
+            InvalidateArrange();
+        }
+    }
+
+    private Rect _area;
+
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
 
     private bool IsTouch => GetValue(LayoutProperty) == ChatLayout.Touch;
@@ -157,7 +174,8 @@ internal sealed class PlanCommentBox : Panel
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var width = Math.Max(0, Math.Min(BoxWidth, availableSize.Width - 2 * Gap));
+        var room = _area.Width > 0 ? Math.Min(availableSize.Width, _area.Width) : availableSize.Width;
+        var width = Math.Max(0, Math.Min(BoxWidth, room - 2 * Gap));
         _box.Width = double.IsNaN(width) || double.IsInfinity(width) ? BoxWidth : width;
         _box.Measure(availableSize);
         return default;
@@ -167,12 +185,13 @@ internal sealed class PlanCommentBox : Panel
     protected override Size ArrangeOverride(Size finalSize)
     {
         var size = _box.DesiredSize;
-        var x = Math.Max(0, Math.Min(_selection.Left, finalSize.Width - size.Width - Gap));
+        var room = _area.Width > 0 && _area.Height > 0 ? _area.Intersect(new Rect(finalSize)) : new Rect(finalSize);
+        var x = Math.Max(room.X, Math.Min(_selection.Left, room.Right - size.Width - Gap));
         var y = _selection.Bottom + Gap;
-        if (y + size.Height > finalSize.Height - Gap)
+        if (y + size.Height > room.Bottom - Gap)
         {
             var over = _selection.Top - Gap - size.Height;
-            y = over >= 0 ? over : Math.Max(0, finalSize.Height - size.Height);
+            y = over >= room.Y ? over : Math.Max(room.Y, room.Bottom - size.Height);
         }
         _box.Arrange(new Rect(new Point(x, y), size));
         return finalSize;

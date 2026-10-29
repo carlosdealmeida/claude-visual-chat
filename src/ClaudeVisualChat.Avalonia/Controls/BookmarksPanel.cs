@@ -68,13 +68,15 @@ internal sealed class BookmarksPanel : Border
     /// <summary>A row drawn: the button, its reply, and the text that says how long ago (null when the reply has no time).</summary>
     private sealed class Built
     {
-        internal Built(Button row, AssistantTextItem item, TextBlock? age)
+        internal Built(Button row, AssistantTextItem item, TextBlock? age, string first)
         {
+            First = first;
             Row = row;
             Item = item;
             Age = age;
         }
 
+        internal string First { get; }
         internal Button Row { get; }
         internal AssistantTextItem Item { get; }
         internal TextBlock? Age { get; }
@@ -281,7 +283,9 @@ internal sealed class BookmarksPanel : Border
         foreach (var built in _built)
         {
             if (built.Age == null || built.Item.Timestamp is not DateTimeOffset written || now is not DateTimeOffset current) continue;
-            built.Age.Text = strings.FormatAgo(current - written);
+            var age = strings.FormatAgo(current - written);
+            built.Age.Text = age;
+            AutomationProperties.SetName(built.Row, built.First + ", " + age);
         }
     }
 
@@ -433,7 +437,7 @@ internal sealed class BookmarksPanel : Border
             _selected = item;
             UpdateSelection();
         };
-        return new Built(row, item, ageLine);
+        return new Built(row, item, ageLine, first.Text ?? "");
     }
 
     /// <summary>The first line of the reply that has a text, trimmed.</summary>

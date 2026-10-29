@@ -2434,12 +2434,12 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
-    /// A report of the limits replaces the windows it names and keeps the others: the rate limit events carry the two windows, and
-    /// the host's <c>get_usage</c> reply carries those and the Sonnet's and the models', which a later event must not take away.
+    /// A rate limit event replaces the windows it names and keeps the others: it carries only the two windows, and a later one must not
+    /// take away the Sonnet's and the models' that the host's <c>get_usage</c> reply brought. That reply is a whole snapshot and replaces them all.
     /// </summary>
     private static UsageLimits MergeLimits(UsageLimits? before, UsageLimits reported)
     {
-        if (before == null || reported.Windows.Count == 0) return reported; // an empty report empties the list, as it always did
+        if (before == null || reported.IsSnapshot || reported.Windows.Count == 0) return reported; // an empty report empties the list, as it always did
         var windows = new List<UsageWindow>(reported.Windows);
         foreach (var old in before.Windows)
         {

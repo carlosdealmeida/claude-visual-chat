@@ -873,7 +873,7 @@ public class PublicApiTests
             "ContextCustomAgents", "ContextLoading", "ContextFailed", "AccountUsageTitle", "AccountSection", "AccountUsageSection",
             "AccountAuthMethod", "AccountEmail", "AccountOrganization", "AccountPlan", "UsageBarSession", "UsageBarWeekly",
             "UsageBarWeeklySonnet", "UsageBarWeeklyModel", "UsageResetsIn", "UsageResetsSoon", "UsageTotalCost", "UsageTotalApiDuration",
-            "UsageNoPlanLimits", "UsageTotalWallDuration", "AuthClaudeAi", "AuthApiKey", "AuthBedrock", "AuthVertex", "AuthFoundry", "UsageManage", "UsageLoading", "UsageFailed", "UsageRetry",
+            "UsageNoPlanLimits", "UsageTotalWallDuration", "AuthClaudeAi", "AuthApiKey", "AuthBedrock", "AuthVertex", "AuthFoundry", "AuthGateway", "AuthThirdParty", "UsageManage", "UsageLoading", "UsageFailed", "UsageRetry",
         })
         {
             var property = typeof(ChatStrings).GetProperty(text);

@@ -304,14 +304,14 @@ namespace ClaudeVisualChat.Protocol
 
             // the reply to get_usage, which the host passes on: the limits, 0 to 100, with ISO dates
             if (JsonHelpers.Obj(body, "rate_limits") is { } limits && ReadUsageReply(limits) is { Count: > 0 } windows)
-                events.Add(new UsageLimitsReported(new UsageLimits(windows)));
+                events.Add(new UsageLimitsReported(new UsageLimits(windows) { IsSnapshot = true }));
 
             if (JsonHelpers.Str(body, "session_url") is { } url)
                 events.Add(new RemoteControlChanged(null, url, null));
         }
 
         /// <summary>
-        /// The login, as a code the strings write out (<c>claudeai</c>, <c>api-key</c>, <c>bedrock</c>, <c>vertex</c>, <c>foundry</c>), from
+        /// The login, as a code the strings write out (<c>claudeai</c>, <c>api-key</c>, <c>bedrock</c>, <c>vertex</c>, <c>foundry</c>, <c>gateway</c>, <c>third-party</c>), from
         /// the account's <c>apiProvider</c>, <c>tokenSource</c> and <c>apiKeySource</c>; null for none or for a value it does not know,
         /// so that a raw identifier is never shown.
         /// </summary>
@@ -322,6 +322,10 @@ namespace ClaudeVisualChat.Protocol
                 case "bedrock": return "bedrock";
                 case "vertex": return "vertex";
                 case "foundry": return "foundry";
+                case "gateway": return "gateway";
+                case "anthropicAws":
+                case "anthropicGoogleCloud":
+                case "mantle": return "third-party";
             }
             var token = JsonHelpers.Str(account, "tokenSource");
             if (token != null && (token == "claude.ai" || token.StartsWith("CLAUDE_CODE_OAUTH_TOKEN", StringComparison.Ordinal) || token == "CCR_OAUTH_TOKEN_FILE"))
@@ -439,8 +443,7 @@ namespace ClaudeVisualChat.Protocol
             var utilization = JsonHelpers.Double(window, "utilization");
             if (utilization == null) return null;
             var resets = JsonHelpers.Long(window, "resetsAt");
-            return new UsageWindow(name, utilization.Value, resets == null ? (DateTimeOffset?)null : DateTimeOffset.FromUnixTimeSeconds(resets.Value))
-;
+            return new UsageWindow(name, utilization.Value, resets == null ? (DateTimeOffset?)null : DateTimeOffset.FromUnixTimeSeconds(resets.Value));
         }
 
         /// <summary>The <c>non_execution_kind</c> of the <c>tool_result_meta</c> entry for that tool call.</summary>

@@ -98,6 +98,9 @@ public class UsagePanelTests
         Assert.Equal("api-key", Account("\"email\":\"x\",\"tokenSource\":\"none\",\"apiKeySource\":\"ANTHROPIC_API_KEY\"").AuthMethod);
         Assert.Equal("bedrock", Account("\"email\":\"x\",\"apiProvider\":\"bedrock\",\"apiKeySource\":\"ANTHROPIC_API_KEY\"").AuthMethod);
         Assert.Equal("vertex", Account("\"email\":\"x\",\"apiProvider\":\"vertex\"").AuthMethod);
+        Assert.Equal("gateway", Account("\"email\":\"x\",\"apiProvider\":\"gateway\"").AuthMethod);
+        foreach (var provider in new[] { "anthropicAws", "anthropicGoogleCloud", "mantle" })
+            Assert.Equal("third-party", Account("\"email\":\"x\",\"apiProvider\":\"" + provider + "\"").AuthMethod);
         Assert.Null(Account("\"email\":\"x\",\"tokenSource\":\"none\"").AuthMethod);          // none or unknown: no login form, never the raw text
         Assert.Null(Account("\"email\":\"x\",\"tokenSource\":\"something-new\"").AuthMethod);
         Assert.Equal("Team", Account("\"email\":\"x\",\"subscriptionType\":\"team\"").Plan);
@@ -144,6 +147,33 @@ public class UsagePanelTests
         Assert.Equal(3, c.UsageLimits!.Windows.Count);
         Assert.Equal(0.6, c.UsageLimits.Windows.Single(w => w.Name == "five_hour").Utilization);
         Assert.Contains(c.UsageLimits.Windows, w => w.Model == "Opus");
+    }
+
+    [Fact]
+    public void The_gateway_and_third_party_logins_read_in_both_languages()
+    {
+        Assert.Equal("Cloud gateway", ChatStrings.English.AuthMethodLabel("gateway"));
+        Assert.Equal("Third Party", ChatStrings.English.AuthMethodLabel("third-party"));
+        Assert.Equal("Gateway na nuvem", ChatStrings.PortugueseBrazil.AuthMethodLabel("gateway"));
+        Assert.Equal("Terceiros", ChatStrings.PortugueseBrazil.AuthMethodLabel("third-party"));
+        Assert.Null(ChatStrings.English.AuthMethodLabel("something-new"));
+    }
+
+    [Fact]
+    public void A_get_usage_reply_replaces_every_window_and_a_rate_limit_event_still_merges()
+    {
+        string Reply(string limits) =>
+            "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"q\",\"response\":{\"rate_limits\":" + limits + "}}}";
+        var c = new ChatConversation();
+        foreach (var e in new StreamJsonParser().Parse(Reply(
+            "{\"five_hour\":{\"utilization\":50,\"resets_at\":null},\"seven_day_sonnet\":{\"utilization\":3,\"resets_at\":null},"
+            + "\"model_scoped\":[{\"display_name\":\"Opus\",\"utilization\":25,\"resets_at\":null}]}"))) c.Apply(e);
+        Assert.Equal(3, c.UsageLimits!.Windows.Count);
+        // the second reply is a full snapshot: no Opus and no Sonnet any more
+        foreach (var e in new StreamJsonParser().Parse(Reply("{\"five_hour\":{\"utilization\":60,\"resets_at\":null}}"))) c.Apply(e);
+        var only = Assert.Single(c.UsageLimits!.Windows);
+        Assert.Equal("five_hour", only.Name);
+        Assert.Equal(0.6, only.Utilization, 6);
     }
 
     [Fact]

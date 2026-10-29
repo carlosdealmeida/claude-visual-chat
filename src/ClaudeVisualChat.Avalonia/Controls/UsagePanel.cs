@@ -410,6 +410,11 @@ internal sealed class ContextPanel : ChatInfoPanel
         first.Children.Add(Text(header ? name.ToUpperInvariant() : name, header ? "ClaudeChatModalHeaderCell" : "ClaudeChatModalName"));
         var amount = Text(header ? tokens.ToUpperInvariant() : tokens, header ? "ClaudeChatModalHeaderCell" : "ClaudeChatModalTokens");
         var percent = Text(header ? share.ToUpperInvariant() : share, header ? "ClaudeChatModalHeaderCell" : "ClaudeChatModalShare");
+        if (header)
+        {
+            amount.Classes.Add("ClaudeChatModalHeaderRight");   // TOKENS and USAGE sit at the right, over their figures
+            percent.Classes.Add("ClaudeChatModalHeaderRight");
+        }
         Grid.SetColumn(amount, 1);
         Grid.SetColumn(percent, 2);
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,80,64"), Children = { first, amount, percent } };

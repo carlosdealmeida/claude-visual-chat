@@ -322,6 +322,11 @@ public partial class ClaudeChatView : UserControl
         };
         // "Add Comment" in the document opens the comment box over the passage; what it adds goes back to the document
         PlanDocument.CommentRequested += (_, e) => PlanComment.Open(e);
+        // the box stays in the chat area: the bookmarks panel beside or below it is not covered
+        ChatArea.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == BoundsProperty) PlanComment.Area = ChatArea.Bounds;
+        };
         PlanComment.Submitted += (_, text) => PlanDocument.AddComment(text);
         PlanComment.Closed += (_, cancelled) =>
         {

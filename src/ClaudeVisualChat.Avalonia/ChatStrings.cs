@@ -422,6 +422,8 @@ public sealed record ChatStrings
         AuthBedrock = "Amazon Bedrock",
         AuthVertex = "Google Vertex AI",
         AuthFoundry = "Microsoft Foundry",
+        AuthGateway = "Gateway na nuvem",
+        AuthThirdParty = "Terceiros",
         UsageManage = "Gerenciar o uso em claude.ai",
         UsageLoading = "Carregando os dados de uso…",
         UsageFailed = "Falha ao carregar os dados de uso",
@@ -1769,6 +1771,12 @@ public sealed record ChatStrings
     /// <summary>The login form of an account that goes through Microsoft Foundry.</summary>
     public string AuthFoundry { get; init; } = "Microsoft Foundry";
 
+    /// <summary>The login form of an account that goes through a cloud gateway.</summary>
+    public string AuthGateway { get; init; } = "Cloud gateway";
+
+    /// <summary>The login form of an account that goes through another provider (Anthropic on AWS, on Google Cloud, Mantle).</summary>
+    public string AuthThirdParty { get; init; } = "Third Party";
+
     /// <summary>The link to the usage page; it shows only when the host opens links.</summary>
     public string UsageManage { get; init; } = "Manage usage on claude.ai";
 
@@ -2600,7 +2608,7 @@ public sealed record ChatStrings
         return UsageResetsIn.Replace("{0}", time);
     }
 
-    /// <summary>The bar's label of a limit window: its own for the two windows and the Sonnet one, "Weekly {model}" for a model's.</summary>
+    /// <summary>The bar's label of a limit window: its own for the two windows and the Sonnet one, "Weekly {model}" for a model's. <c>UsagePanel</c> draws a bar only for those windows, so any other name reads as the Sonnet one.</summary>
     internal string UsageBarLabel(UsageWindow window)
     {
         if (window.Model != null) return UsageBarWeeklyModel.Replace("{0}", window.Model);
@@ -2608,8 +2616,7 @@ public sealed record ChatStrings
         {
             "five_hour" => UsageBarSession,
             "seven_day" => UsageBarWeekly,
-            "seven_day_sonnet" => UsageBarWeeklySonnet,
-            _ => "",
+            _ => UsageBarWeeklySonnet, // the only other name a bar is made for (UsagePanel skips the rest)
         };
     }
 
@@ -2621,6 +2628,8 @@ public sealed record ChatStrings
         "bedrock" => AuthBedrock,
         "vertex" => AuthVertex,
         "foundry" => AuthFoundry,
+        "gateway" => AuthGateway,
+        "third-party" => AuthThirdParty,
         _ => null,
     };
 

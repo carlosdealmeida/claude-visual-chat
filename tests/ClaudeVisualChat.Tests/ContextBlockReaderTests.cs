@@ -128,9 +128,9 @@ public class ContextBlockReaderTests
     [Fact]
     public void Only_the_invisible_tag_characters_are_refused_not_the_variation_selectors_or_the_flags()
     {
-        Assert.NotNull(ContextBlockReader.Read("<terminal name=\"a󠄀b\">\nx\n</terminal>"));
-        Assert.NotNull(ContextBlockReader.Read("<terminal name=\"a🏴󠁧󠁢󠁥󠁮󠁧󠁿\">\nx\n</terminal>"));
-        Assert.Null(ContextBlockReader.Read("<terminal name=\"a󠁧b\">\nx\n</terminal>"));
+        Assert.NotNull(ContextBlockReader.Read("<terminal name=\"a\U000E0100b\">\nx\n</terminal>"));
+        Assert.NotNull(ContextBlockReader.Read("<terminal name=\"a\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F\">\nx\n</terminal>"));
+        Assert.Null(ContextBlockReader.Read("<terminal name=\"a\U000E0067b\">\nx\n</terminal>"));
     }
 
     [Fact]
