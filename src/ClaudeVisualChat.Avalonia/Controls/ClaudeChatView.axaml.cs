@@ -165,9 +165,9 @@ public partial class ClaudeChatView : UserControl
 
     /// <summary>
     /// True to show the Focus view, like the extension's: in each round, every run of tool calls, their results and thoughts is one row
-    /// ("3 tool calls · 1 failed", "Running Bash…" while one runs) that opens to them, and only the prompts, Claude's text, the latest
-    /// TodoWrite, a background agent's call and the other lines stay in sight; the subagents at work show as rows under their fold, and a
-    /// step waiting for permission opens its fold. False (the default) shows every row. Ctrl+Alt+F and the command menu's "Focus view"
+    /// ("3 tool calls · 1 failed", "Running Bash…" while the session works and one runs) that opens to them, and only the prompts, Claude's
+    /// text and the other lines stay in sight, with the latest TodoWrite right after its run's fold; the subagents at work show as rows
+    /// under their fold, their time running, and a step waiting for permission keeps its fold open. False (the default) shows every row. Ctrl+Alt+F and the command menu's "Focus view"
     /// switch turn it on and off. The extension's <c>claudeCode.focusView</c>; a host that keeps that setting sets this, the view saves nothing.
     /// </summary>
     public static readonly StyledProperty<bool> FocusViewProperty =

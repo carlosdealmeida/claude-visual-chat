@@ -264,6 +264,7 @@ public sealed record ChatStrings
         FocusMoreAgents = "+{0} agentes a mais",
         FocusAgentTools = "{0} ferramentas",
         FocusAgentToolsOne = "1 ferramenta",
+        FocusAgentsCombined = "{0} somados",
         CommandContextDescription = "Mostrar o uso do contexto",
         CommandUsageDescription = "Mostrar os limites de uso do plano",
         CommandRemoteControlDescription = "Ligar ou desligar o Remote Control",
@@ -1131,6 +1132,9 @@ public sealed record ChatStrings
     /// <summary>The same for one.</summary>
     public string FocusAgentToolsOne { get; init; } = "1 tool";
 
+    /// <summary>The numbers of the agents at work without a row of their own, added: <c>{0}</c> is "3.0k tokens · 6 tools · 3m 0s".</summary>
+    public string FocusAgentsCombined { get; init; } = "{0} combined";
+
     /// <summary>What the context command does, in the menu.</summary>
     public string CommandContextDescription { get; init; } = "Show context usage";
 
@@ -1653,9 +1657,10 @@ public sealed record ChatStrings
     }
 
     /// <summary>
-    /// The label of a fold of the Focus view, from what it stands for: "3 tool calls · 1 failed"; for thoughts only "Thinking…", "Thought
-    /// for 4s" (at least 1 s) or "Thinking"; else "5 hidden steps", with the failures too. While a step is under way, the live label
-    /// ("Running Bash…", "Waiting for permission…", "Waiting for your answer…"), which <see cref="FormatFocusCount"/> follows.
+    /// The label of a fold of the Focus view, from what it stands for: with a tool call in it, "3 tool calls · 1 failed" (the calls only);
+    /// for thoughts only "Thinking…", "Thought for 4s" (at least 1 s) or "Thinking"; else "5 hidden steps". While the session works and a
+    /// step is under way, the live label ("Running Bash…", "Waiting for permission…", "Waiting for your answer…", or "Thinking…" in a run
+    /// with calls), which <see cref="FormatFocusCount"/> follows.
     /// </summary>
     internal string FormatFocusLabel(Controls.FocusFoldState state)
     {
@@ -1666,6 +1671,7 @@ public sealed record ChatStrings
             case Controls.FocusLive.Running:
                 var name = state.RunningTool ?? "";
                 return FocusRunning.Replace("{0}", ToolPresentation.McpName(name) is { } mcp ? mcp.Tool : name);
+            case Controls.FocusLive.Thinking: return FocusThinkingNow;
             default: return FormatFocusCount(state);
         }
     }
@@ -1674,9 +1680,9 @@ public sealed record ChatStrings
     internal string FormatFocusCount(Controls.FocusFoldState state)
     {
         var failed = state.FailedCount > 0 ? FocusFailed.Replace("{0}", FormatNumber(state.FailedCount)) : "";
-        if (state.ThinkingCount == 0 && state.ToolCount > 0)
+        if (state.ToolCount > 0)
             return (state.ToolCount == 1 ? FocusToolCallsOne : FocusToolCalls.Replace("{0}", FormatNumber(state.ToolCount))) + failed;
-        if (state.ToolCount == 0 && state.ThinkingCount > 0 && state.ThinkingCount == state.StepCount)
+        if (state.ThinkingCount > 0 && state.ThinkingCount == state.StepCount)
         {
             if (state.IsThinking) return FocusThinkingNow;
             return state.ThoughtMs is long ms ? FormatThoughtFor(Math.Max(1000, ms)) : Thinking;
@@ -1687,14 +1693,27 @@ public sealed record ChatStrings
     /// <summary>"+3 more agents".</summary>
     internal string FormatFocusMoreAgents(int count) => FocusMoreAgents.Replace("{0}", FormatNumber(count));
 
-    /// <summary>The second line of a subagent's row in a fold: "1.2k tokens · 3 tools · 1m 5s", what is known of it.</summary>
-    internal string FormatFocusAgentStats(Controls.FocusAgentRow row)
+    /// <summary>
+    /// The second line of a subagent's row in a fold, at <paramref name="now"/>: "1.2k tokens · 3 tools · 1m 5s", the tokens and tools only
+    /// once it used tokens, the time from its start. The row of the agents without one of their own adds theirs up: "… combined".
+    /// </summary>
+    internal string FormatFocusAgentStats(Controls.FocusAgentRow row, DateTimeOffset now)
     {
         var parts = new List<string>(3);
-        if (row.Tokens is long tokens) parts.Add(FormatAgentTokens(tokens));
-        if (row.Tools is int tools) parts.Add(tools == 1 ? FocusAgentToolsOne : FocusAgentTools.Replace("{0}", FormatNumber(tools)));
-        if (row.DurationMs is long ms) parts.Add(FormatAgentTime(ms));
-        return string.Join(Separator, parts);
+        if (row.Tokens is long tokens && tokens > 0)
+        {
+            parts.Add(FormatAgentTokens(tokens));
+            if (row.Tools is int tools) parts.Add(tools == 1 ? FocusAgentToolsOne : FocusAgentTools.Replace("{0}", FormatNumber(tools)));
+        }
+        if (row.Starts.Count > 0)
+        {
+            long ms = 0;
+            foreach (var start in row.Starts) ms += Math.Max(0, (long)(now - start).TotalMilliseconds);
+            parts.Add(FormatAgentTime(ms));
+        }
+        if (parts.Count == 0) return "";
+        var stats = string.Join(Separator, parts);
+        return row.Combined ? FocusAgentsCombined.Replace("{0}", stats) : stats;
     }
 
     /// <summary>" · 1.2k tokens": what follows "Thinking..." while the claude counts; the count is whole below 1,000, else thousands with a decimal.</summary>

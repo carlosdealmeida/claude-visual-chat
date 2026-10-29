@@ -10,14 +10,15 @@ namespace ClaudeVisualChat.Controls;
 /// <summary>
 /// The conversation's list as the Focus view shows it, like the extension's: in each round (a prompt up to its
 /// <see cref="TurnFooterItem"/>), every run of steps (tool calls with their results, thoughts) is one <see cref="FocusFoldItem"/>; what a
-/// subagent wrote is inside its call, so it goes with it. The prompts, Claude's text and every other line stay as they are, and so do the
-/// latest TodoWrite (the plan of the work) and the call of a background agent (its row tells what the agent does), which cut a run in
-/// two. The live subagents are rows of their fold; the permission request is the view's, under the list.
+/// subagent wrote is inside its call, so it goes with it. The prompts, Claude's text and every other line stay as they are. The latest
+/// TodoWrite of the conversation (the last one that ended well with a list; none when that list is empty) leaves its run's fold and comes
+/// right after it, without cutting the run. The live subagents are rows of their fold; the permission request is the view's, under the list.
 /// <para>
 /// It follows <see cref="ChatConversation.Items"/> step by step and tells its own changes one row at a time (Add, Remove, Replace): an
-/// item that comes at the end costs a constant time, however long the list; any other change reads only the run it touches. It tells
-/// Reset only when the conversation's list does, or when <see cref="Start"/> reads it whole again (the view coming back). While stopped
-/// (the view out of the window) it holds no handler on the conversation or its items, and keeps the rows it had.
+/// item that comes at the end costs a constant time, however long the list and its run; any other change reads only the runs it touches.
+/// It tells Reset only when the conversation's list does, or when <see cref="Start"/> reads it whole again (the view coming back). It
+/// follows the session's work too (<see cref="ChatConversation.IsBusy"/>): idle, no fold is live. While stopped (the view out of the
+/// window) it holds no handler on the conversation or its items, and keeps the rows it had.
 /// </para>
 /// </summary>
 internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCollectionChanged
@@ -30,7 +31,7 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
     /// <summary>Each item of the conversation's list and the row that holds it: itself, or its fold.</summary>
     private readonly Dictionary<ChatItem, object> _holderOf = new Dictionary<ChatItem, object>();
 
-    /// <summary>The agents of the calls followed, and their calls.</summary>
+    /// <summary>The agents of the calls followed, and their calls, both ways.</summary>
     private readonly Dictionary<AgentInfo, ToolCallItem> _agentCalls = new Dictionary<AgentInfo, ToolCallItem>();
 
     private readonly Dictionary<ToolCallItem, AgentInfo> _agentOf = new Dictionary<ToolCallItem, AgentInfo>();
@@ -54,6 +55,15 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
     /// <summary>True between <see cref="Start"/> and <see cref="Stop"/>.</summary>
     internal bool IsStarted => _started;
 
+    /// <summary>Whether the session works: the folds are live only then.</summary>
+    internal bool IsBusy => _conversation.IsBusy;
+
+    /// <summary>
+    /// How many items it has read to make rows and fold totals (a measure of its cost, for the tests): an item that comes at the end is
+    /// not read again, a change in the middle reads its runs, a start reads the whole list.
+    /// </summary>
+    internal long ItemsRead { get; private set; }
+
     public int Count => _rows.Count;
 
     public object this[int index] => _rows[index];
@@ -68,6 +78,7 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
         _started = true;
         _conversation.Items.CollectionChanged += OnItemsChanged;
         _conversation.PendingPermissions.CollectionChanged += OnPermissionsChanged;
+        _conversation.PropertyChanged += OnConversationChanged;
         Rebuild();
     }
 
@@ -78,32 +89,58 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
         _started = false;
         _conversation.Items.CollectionChanged -= OnItemsChanged;
         _conversation.PendingPermissions.CollectionChanged -= OnPermissionsChanged;
+        _conversation.PropertyChanged -= OnConversationChanged;
         UnwatchAll();
     }
 
     /// <summary>An Agent (or Task) call.</summary>
     internal static bool IsAgentTool(string name) => name == "Agent" || name == "Task";
 
+    /// <summary>A fold read <paramref name="count"/> of its steps again.</summary>
+    internal void CountRead(int count) => ItemsRead += count;
+
+    /// <summary>What a running call of the main agent waits for: a request with its tool use id, or nothing.</summary>
+    internal FocusLive WaitingFor(ToolCallItem call)
+    {
+        if (call.ToolUseId.Length == 0) return FocusLive.None;
+        foreach (var request in _conversation.PendingPermissions)
+        {
+            if (request.ToolUseId != call.ToolUseId) continue;
+            return request.ToolName == "AskUserQuestion" ? FocusLive.Answer : FocusLive.Permission;
+        }
+        return FocusLive.None;
+    }
+
     // ---- what is folded ----
 
     /// <summary>A step of a round, which a fold may stand for: a tool call or a thought.</summary>
     private static bool IsStep(ChatItem item) => item is ToolCallItem || item is ThinkingItem;
 
-    /// <summary>A step that stays in sight: the latest TodoWrite, and the call of an agent that runs in the background.</summary>
-    private bool StaysShown(ChatItem item) =>
-        item is ToolCallItem call && (ReferenceEquals(call, _latestTodo) || IsBackgroundAgent(call));
+    private static bool IsTodo(ChatItem item) => item is ToolCallItem { Name: TodoWrite };
 
-    private bool IsFolded(ChatItem item) => IsStep(item) && !StaysShown(item);
-
-    /// <summary>An Agent call whose agent runs in the background: as its agent tells, or the call's own flag while it is linked to none.</summary>
-    private static bool IsBackgroundAgent(ToolCallItem call)
+    /// <summary>The entries of a TodoWrite that ended well, or null when it did not end well or carries no list.</summary>
+    private static int? TodoEntries(ToolCallItem call)
     {
-        if (call.Agent is { } agent) return agent.IsBackground;
-        return IsAgentTool(call.Name) && call.Input.ValueKind == JsonValueKind.Object
-            && call.Input.TryGetProperty("run_in_background", out var flag) && flag.ValueKind == JsonValueKind.True;
+        if (call.Status != ToolStatus.Succeeded || call.Input.ValueKind != JsonValueKind.Object
+            || !call.Input.TryGetProperty("todos", out var todos) || todos.ValueKind != JsonValueKind.Array)
+            return null;
+        return todos.GetArrayLength();
     }
 
-    private static bool IsTodo(ChatItem item) => item is ToolCallItem { Name: TodoWrite };
+    /// <summary>
+    /// The latest TodoWrite, from the end: the last one that ended well with a list, or none when that list is empty. Read only when a
+    /// TodoWrite came, left or changed.
+    /// </summary>
+    private ToolCallItem? FindLatestTodo()
+    {
+        var items = _conversation.Items;
+        for (var i = items.Count - 1; i >= 0; i--)
+        {
+            if (!(items[i] is ToolCallItem { Name: TodoWrite } call) || !(TodoEntries(call) is int entries)) continue;
+            return entries > 0 ? call : null;
+        }
+        return null;
+    }
 
     // ---- the whole list ----
 
@@ -113,51 +150,69 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
         _rows.Clear();
         _holderOf.Clear();
         var items = _conversation.Items;
-        _latestTodo = null;
-        for (var i = items.Count - 1; i >= 0 && _latestTodo == null; i--)
-        {
-            if (IsTodo(items[i])) _latestTodo = (ToolCallItem)items[i];
-        }
-        FocusFoldItem? open = null; // the fold the next folded step joins
-        foreach (var item in items)
-        {
-            Watch(item);
-            if (IsFolded(item))
-            {
-                if (open == null)
-                {
-                    open = NewFold();
-                    _rows.Add(open);
-                }
-                open.Items.Add(item);
-                _holderOf[item] = open;
-            }
-            else
-            {
-                open = null;
-                _rows.Add(item);
-                _holderOf[item] = item;
-            }
-        }
-        foreach (var row in _rows)
-        {
-            if (row is FocusFoldItem fold) fold.Refresh();
-        }
+        _latestTodo = FindLatestTodo();
+        foreach (var item in items) Watch(item);
+        _rows.AddRange(BuildRows(0, items.Count, null));
         CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
     }
 
-    private FocusFoldItem NewFold() => new FocusFoldItem(WaitingFor);
+    private FocusFoldItem NewFold() => new FocusFoldItem(this);
 
-    /// <summary>What a running call of the main agent waits for: a request with its tool use id, or nothing.</summary>
-    private FocusLive WaitingFor(ToolCallItem call)
+    /// <summary>
+    /// The rows of the items from <paramref name="from"/> to <paramref name="to"/>: each item that is no step, and for each run of steps
+    /// its fold, followed by the latest TodoWrite when the run holds it. A fold of <paramref name="reuse"/> that held any step of a run
+    /// stands for it again (open or closed as it was). Each item is told which row holds it.
+    /// </summary>
+    private List<object> BuildRows(int from, int to, Dictionary<ChatItem, FocusFoldItem>? reuse)
     {
-        if (call.ToolUseId.Length == 0) return FocusLive.None;
-        foreach (var request in _conversation.PendingPermissions)
+        var items = _conversation.Items;
+        var rows = new List<object>();
+        var used = new HashSet<FocusFoldItem>();
+        List<ChatItem>? run = null;
+        FocusFoldItem? runFold = null;
+        ToolCallItem? todo = null;
+        void EndRun()
         {
-            if (request.ToolUseId != call.ToolUseId) continue;
-            return request.ToolName == "AskUserQuestion" ? FocusLive.Answer : FocusLive.Permission;
+            if (run != null)
+            {
+                var fold = runFold ?? NewFold();
+                used.Add(fold);
+                fold.SetItems(run);
+                foreach (var step in run) _holderOf[step] = fold;
+                rows.Add(fold);
+            }
+            if (todo != null)
+            {
+                rows.Add(todo);
+                _holderOf[todo] = todo;
+            }
+            run = null;
+            runFold = null;
+            todo = null;
         }
-        return FocusLive.None;
+        for (var i = from; i < to; i++)
+        {
+            var item = items[i];
+            ItemsRead++;
+            if (!IsStep(item))
+            {
+                EndRun();
+                rows.Add(item);
+                _holderOf[item] = item;
+            }
+            else if (ReferenceEquals(item, _latestTodo))
+            {
+                todo = (ToolCallItem)item;
+            }
+            else
+            {
+                run ??= new List<ChatItem>();
+                run.Add(item);
+                if (runFold == null && reuse != null && reuse.TryGetValue(item, out var had) && !used.Contains(had)) runFold = had;
+            }
+        }
+        EndRun();
+        return rows;
     }
 
     // ---- the conversation's changes ----
@@ -173,24 +228,24 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
                 break;
             case NotifyCollectionChangedAction.Add when e.NewItems != null:
                 foreach (ChatItem item in e.NewItems) Watch(item);
-                if (ContainsTodo(e.NewItems)) FindLatestTodo();
-                Rework(e.NewStartingIndex, e.NewStartingIndex + e.NewItems.Count, null);
+                WithLatestTodo(ContainsTodo(e.NewItems), () => Rework(e.NewStartingIndex, e.NewStartingIndex + e.NewItems.Count, null));
                 break;
             case NotifyCollectionChangedAction.Remove when e.OldItems != null:
                 Forget(e.OldItems);
-                if (ContainsTodo(e.OldItems)) FindLatestTodo();
-                Rework(e.OldStartingIndex, e.OldStartingIndex, e.OldItems);
+                WithLatestTodo(ContainsTodo(e.OldItems), () => Rework(e.OldStartingIndex, e.OldStartingIndex, e.OldItems));
                 break;
             case NotifyCollectionChangedAction.Replace when e.NewItems != null && e.OldItems != null:
                 Forget(e.OldItems);
                 foreach (ChatItem item in e.NewItems) Watch(item);
-                if (ContainsTodo(e.OldItems) || ContainsTodo(e.NewItems)) FindLatestTodo();
-                Rework(e.NewStartingIndex, e.NewStartingIndex + e.NewItems.Count, e.OldItems);
+                WithLatestTodo(ContainsTodo(e.OldItems) || ContainsTodo(e.NewItems),
+                    () => Rework(e.NewStartingIndex, e.NewStartingIndex + e.NewItems.Count, e.OldItems));
                 break;
             case NotifyCollectionChangedAction.Move when e.OldItems != null:
-                // the moved items keep their followers; the old place and the new are reworked one after the other
-                Rework(e.OldStartingIndex, e.OldStartingIndex, e.OldItems, keep: true);
-                Rework(e.NewStartingIndex, e.NewStartingIndex + e.OldItems.Count, null);
+                // the items between the old place and the new are the same ones, in another order: that stretch is read again, with the runs
+                // on both sides of it
+                var low = Math.Min(e.OldStartingIndex, e.NewStartingIndex);
+                var high = Math.Max(e.OldStartingIndex, e.NewStartingIndex) + e.OldItems.Count;
+                WithLatestTodo(ContainsTodo(e.OldItems), () => Rework(low, high, null));
                 break;
             default:
                 Rebuild();
@@ -208,59 +263,73 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
     }
 
     /// <summary>
-    /// An item at the end of the list: a row at the end of the rows, or a step that joins the fold at the end. A constant time, unless it
-    /// is a TodoWrite, which folds the one before it (a run in the middle).
+    /// Does <paramref name="rework"/>, after finding the latest TodoWrite again when <paramref name="todoMoved"/>; the one it was and the one
+    /// it is now have their runs read again too, wherever they are.
+    /// </summary>
+    private void WithLatestTodo(bool todoMoved, Action rework)
+    {
+        var earlier = _latestTodo;
+        if (todoMoved) _latestTodo = FindLatestTodo();
+        rework();
+        ReworkTodos(earlier);
+    }
+
+    /// <summary>The latest TodoWrite changed from <paramref name="earlier"/>: the runs of both are read again.</summary>
+    private void ReworkTodos(ToolCallItem? earlier)
+    {
+        var latest = _latestTodo;
+        if (ReferenceEquals(earlier, latest)) return;
+        if (earlier != null && _holderOf.ContainsKey(earlier)) ReworkAround(earlier);
+        if (latest != null && _holderOf.ContainsKey(latest)) ReworkAround(latest);
+    }
+
+    /// <summary>
+    /// An item at the end of the list: a row at the end of the rows, or a step that joins the fold of the run at the end (which may have
+    /// the latest TodoWrite after it). A constant time; a TodoWrite, which may become the latest, reads its run instead.
     /// </summary>
     private void Append(ChatItem item, int index)
     {
         Watch(item);
-        ToolCallItem? earlierTodo = null;
+        var items = _conversation.Items;
         if (IsTodo(item))
         {
-            earlierTodo = _latestTodo;
-            _latestTodo = (ToolCallItem)item;
+            var earlier = _latestTodo;
+            _latestTodo = FindLatestTodo();
+            Rework(index, index + 1, null);
+            ReworkTodos(earlier);
+            return;
         }
-        if (IsFolded(item))
-        {
-            var items = _conversation.Items;
-            var last = _rows.Count > 0 ? _rows[_rows.Count - 1] as FocusFoldItem : null;
-            if (last != null && index > 0 && _holderOf.TryGetValue(items[index - 1], out var before) && ReferenceEquals(before, last))
-            {
-                _holderOf[item] = last;
-                last.Add(item);
-            }
-            else
-            {
-                var fold = NewFold();
-                fold.Add(item);
-                _holderOf[item] = fold;
-                InsertRow(_rows.Count, fold);
-            }
-        }
-        else
+        if (!IsStep(item))
         {
             _holderOf[item] = item;
             InsertRow(_rows.Count, item);
+            return;
         }
-        if (earlierTodo != null) ReworkAround(earlierTodo);
-    }
-
-    /// <summary>Finds the latest TodoWrite again, from the end; the one it was and the one it is now are reworked.</summary>
-    private void FindLatestTodo()
-    {
-        var items = _conversation.Items;
-        ToolCallItem? latest = null;
-        for (var i = items.Count - 1; i >= 0 && latest == null; i--)
+        if (index > 0 && IsStep(items[index - 1]))
         {
-            if (IsTodo(items[i])) latest = (ToolCallItem)items[i];
+            // the run at the end goes on: its fold, found from the step before (or the one before the latest TodoWrite)
+            var holder = _holderOf[items[index - 1]];
+            if (ReferenceEquals(holder, _latestTodo) && index > 1 && IsStep(items[index - 2])) holder = _holderOf[items[index - 2]];
+            if (holder is FocusFoldItem fold)
+            {
+                _holderOf[item] = fold;
+                fold.Add(item);
+                return;
+            }
+            // the run so far is the latest TodoWrite alone, the last row: its fold comes before it
+            var first = NewFold();
+            first.Add(item);
+            _holderOf[item] = first;
+            InsertRow(_rows.Count - 1, first);
+            return;
         }
-        var earlier = _latestTodo;
-        _latestTodo = latest;
-        if (earlier != null && !ReferenceEquals(earlier, latest) && _holderOf.ContainsKey(earlier)) ReworkAround(earlier);
-        if (latest != null && !ReferenceEquals(earlier, latest) && _holderOf.ContainsKey(latest)) ReworkAround(latest);
+        var opened = NewFold();
+        opened.Add(item);
+        _holderOf[item] = opened;
+        InsertRow(_rows.Count, opened);
     }
 
-    /// <summary>The run around <paramref name="item"/> is read again: it came to stay in sight, or to fold.</summary>
+    /// <summary>The run around <paramref name="item"/> is read again; it is looked for from the end, where the changes are.</summary>
     private void ReworkAround(ChatItem item)
     {
         var items = _conversation.Items;
@@ -278,7 +347,7 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
     /// of its steps stays the same fold (open or closed as it was), and the rest is told one row at a time. <paramref name="removed"/>
     /// are items that left the list from there. The time is that of the runs read and of finding their place among the rows.
     /// </summary>
-    private void Rework(int start, int end, IList? removed, bool keep = false)
+    private void Rework(int start, int end, IList? removed)
     {
         var items = _conversation.Items;
         var from = start;
@@ -304,47 +373,9 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
         }
         if (removed != null)
         {
-            foreach (ChatItem item in removed)
-            {
-                if (keep) continue;
-                _holderOf.Remove(item);
-            }
+            foreach (ChatItem item in removed) _holderOf.Remove(item);
         }
-
-        // the rows they have now
-        var rows = new List<object>();
-        var used = new HashSet<FocusFoldItem>();
-        List<ChatItem>? run = null;
-        FocusFoldItem? runFold = null;
-        void EndRun()
-        {
-            if (run == null) return;
-            var fold = runFold ?? NewFold();
-            used.Add(fold);
-            fold.SetItems(run);
-            foreach (var step in run) _holderOf[step] = fold;
-            rows.Add(fold);
-            run = null;
-            runFold = null;
-        }
-        for (var i = from; i < to; i++)
-        {
-            var item = items[i];
-            if (IsFolded(item))
-            {
-                run ??= new List<ChatItem>();
-                run.Add(item);
-                if (runFold == null && folds.TryGetValue(item, out var had) && !used.Contains(had)) runFold = had;
-            }
-            else
-            {
-                EndRun();
-                rows.Add(item);
-                _holderOf[item] = item;
-            }
-        }
-        EndRun();
-        Splice(rowFrom, rowTo, rows);
+        Splice(rowFrom, rowTo, BuildRows(from, to, folds));
     }
 
     /// <summary>
@@ -466,20 +497,24 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
         {
             case nameof(ToolCallItem.Agent):
                 WatchAgent(call, call.Agent);
-                Reconsider(call);
-                break;
-            case nameof(ToolCallItem.Input):
-                Reconsider(call);
-                break;
-            case nameof(ToolCallItem.Name):
-                FindLatestTodo();
-                Reconsider(call);
+                RefreshFoldOf(call);
                 break;
             case nameof(ToolCallItem.ToolUseId):
                 if (call.ToolUseId.Length > 0) _callsById[call.ToolUseId] = call;
                 RefreshFoldOf(call);
                 break;
             case nameof(ToolCallItem.Status):
+            case nameof(ToolCallItem.Input):
+            case nameof(ToolCallItem.Name):
+                // a TodoWrite that ends, or gets its list, may be the latest now; one that changes its name may come or go as one
+                if (IsTodo(call) || e.PropertyName == nameof(ToolCallItem.Name))
+                {
+                    var earlier = _latestTodo;
+                    _latestTodo = FindLatestTodo();
+                    ReworkTodos(earlier);
+                }
+                RefreshFoldOf(call);
+                break;
             case nameof(ToolCallItem.Summary):
                 RefreshFoldOf(call);
                 break;
@@ -496,9 +531,17 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
 
     private void OnAgentChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!(sender is AgentInfo agent) || !_agentCalls.TryGetValue(agent, out var call)) return;
-        if (e.PropertyName == nameof(AgentInfo.IsBackground)) Reconsider(call);
-        else RefreshFoldOf(call);
+        if (sender is AgentInfo agent && _agentCalls.TryGetValue(agent, out var call)) RefreshFoldOf(call);
+    }
+
+    /// <summary>The session went idle, or back to work: the folds whose steps depend on it read them again.</summary>
+    private void OnConversationChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ChatConversation.IsBusy)) return;
+        foreach (var row in _rows)
+        {
+            if (row is FocusFoldItem fold) fold.OnBusyChanged();
+        }
     }
 
     /// <summary>A request came or went: the fold of the call it is about reads it.</summary>
@@ -528,19 +571,6 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
     private void RefreshFoldOf(ChatItem item)
     {
         if (_holderOf.TryGetValue(item, out var holder) && holder is FocusFoldItem fold) fold.Update(item);
-    }
-
-    /// <summary>A call may have come to stay in sight, or to fold: its run is read again when it did.</summary>
-    private void Reconsider(ToolCallItem call)
-    {
-        if (!_holderOf.TryGetValue(call, out var holder)) return;
-        var folded = holder is FocusFoldItem;
-        if (folded == IsFolded(call))
-        {
-            if (holder is FocusFoldItem fold) fold.Update(call);
-            return;
-        }
-        ReworkAround(call);
     }
 
     // ---- the lists' members ----

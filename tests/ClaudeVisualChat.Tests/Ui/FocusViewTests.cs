@@ -26,6 +26,11 @@ public class FocusViewTests
     }
 
     private static string Ms(System.TimeSpan time) => time.TotalMilliseconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms";
+
+    /// <summary>The session at work or idle, as its turns make it (its setter is the conversation's own).</summary>
+    internal static void SetBusy(ChatConversation c, bool busy) =>
+        typeof(ChatConversation).GetProperty(nameof(ChatConversation.IsBusy))!.SetValue(c, busy);
+
     /// <summary>A round: a prompt, three calls (one failed), the answer and the footer.</summary>
     private static ChatConversation Round()
     {
@@ -106,7 +111,8 @@ public class FocusViewTests
         Assert.False(fold.IsExpanded);
         Assert.Empty(Calls(view));
 
-        // a call that comes runs under the fold's live label, its count after it in bold at half
+        // while the session works, a call that comes runs under the fold's live label, its count after it in bold at half
+        SetBusy(c, true);
         var running = new ToolCallItem { Name = "Grep", Status = ToolStatus.Running, ToolUseId = "t4" };
         c.Items.Insert(4, running);
         UiHelpers.Pump();
@@ -252,6 +258,110 @@ public class FocusViewTests
         // budgets for a busy machine; the numbers are in the output
         Assert.True(appended.TotalMilliseconds < 20_000, Ms(appended));
         Assert.True(inserted.TotalMilliseconds < 2_000, Ms(inserted));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Ctrl_alt_f_does_nothing_in_a_read_only_view()
+    {
+        var view = new ClaudeChatView { Conversation = Round(), IsReadOnly = true };
+        var window = UiHelpers.Show(view);
+        UiHelpers.Scroller(view).Focus();   // the keyboard in the list, which a read-only view keeps
+        UiHelpers.Press(window, Key.F, RawInputModifiers.Control | RawInputModifiers.Alt);
+        Assert.False(view.FocusView);
+        Assert.Equal(3, Calls(view).Count);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void With_the_focus_view_on_the_turns_are_counted_in_the_conversations_items()
+    {
+        var copied = new List<string>();
+        ChatClipboard.Override = text => { copied.Add(text); return System.Threading.Tasks.Task.CompletedTask; };
+        try
+        {
+            var c = new ChatConversation();
+            foreach (var turn in new[] { "first answer", "second answer" })
+            {
+                c.Items.Add(new UserMessageItem("q"));
+                c.Items.Add(new ToolCallItem { Name = "Read", Status = ToolStatus.Succeeded });
+                c.Items.Add(new AssistantTextItem { Text = turn, Uuid = "u-" + turn });
+                c.Items.Add(new ToolCallItem { Name = "Bash", Status = ToolStatus.Succeeded });
+                c.Items.Add(new TurnFooterItem(1000, null, null, null, false));
+            }
+            var view = new ClaudeChatView { Conversation = c, FocusView = true };
+            var window = UiHelpers.Show(view);
+            Assert.IsType<FocusProjection>(UiHelpers.ItemList(view).ItemsSource);
+
+            // /copy N counts the replies among the conversation's items, not the rows
+            c.Submit("/copy 2");
+            UiHelpers.Pump();
+            Assert.Equal(new[] { "first answer" }, copied);
+            c.Submit("/copy");
+            UiHelpers.Pump();
+            Assert.Equal("second answer", copied.Last());
+
+            // the row under each turn finds the turn's reply, though a fold stands between them
+            var actions = view.GetVisualDescendants().OfType<ResponseActions>().ToList();
+            Assert.Equal(2, actions.Count);
+            Assert.All(actions, a => Assert.True(a.IsVisible));
+            window.Close();
+        }
+        finally { ChatClipboard.Override = null; }
+    }
+
+    [AvaloniaFact]
+    public void A_history_read_back_without_results_does_not_blink()
+    {
+        var c = new ChatConversation();
+        c.LoadTranscript(new[]
+        {
+            "{\"type\":\"user\",\"uuid\":\"u1\",\"parentUuid\":null,\"isSidechain\":false,\"timestamp\":\"2026-10-23T10:00:00.000Z\"," +
+            "\"sessionId\":\"s1\",\"message\":{\"role\":\"user\",\"content\":\"List the files.\"}}",
+            "{\"type\":\"assistant\",\"uuid\":\"u2\",\"parentUuid\":\"u1\",\"isSidechain\":false,\"timestamp\":\"2026-10-23T10:00:02.000Z\"," +
+            "\"sessionId\":\"s1\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\"," +
+            "\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"Bash\",\"input\":{\"command\":\"ls\"}}]}}",
+        });
+        Assert.False(c.IsBusy);
+        Assert.Equal(ToolStatus.Running, Assert.Single(c.Items.OfType<ToolCallItem>()).Status);   // no result came
+
+        var view = new ClaudeChatView { Conversation = c, FocusView = true };
+        var window = UiHelpers.Show(view);
+        var head = Head(view);
+        Assert.Contains("1 tool call · 1 failed", UiHelpers.Texts(head));
+        Assert.DoesNotContain(UiHelpers.Texts(view), t => t.StartsWith("Running", System.StringComparison.Ordinal));
+        var row = view.GetVisualDescendants().OfType<ChatTimelineRow>().First(r => r.DataContext is FocusFoldItem);
+        Assert.DoesNotContain("running", row.Classes);
+        Assert.Same(Resource(view, "ClaudeChat.DotFailed"), row.GetVisualDescendants().OfType<Ellipse>().Single(e => e.Name == "PART_Dot").Fill);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_live_agents_show_under_their_fold_open_or_closed_and_their_time_runs()
+    {
+        var c = new ChatConversation();
+        SetBusy(c, true);
+        var now = new System.DateTimeOffset(2026, 10, 28, 9, 0, 0, System.TimeSpan.Zero);
+        c.Clock = () => now;
+        var call = new ToolCallItem { Name = "Agent", Status = ToolStatus.Running, ToolUseId = "toolu_a" };
+        call.Agent = new AgentInfo("toolu_a") { Description = "Look around", Status = AgentStatus.Running, Activity = "Reading a.txt",
+            Tokens = 1200, ToolUses = 3, StartedAt = now.AddSeconds(-5) };
+        c.Items.Add(new UserMessageItem("go"));
+        c.Items.Add(call);
+        var view = new ClaudeChatView { Conversation = c, FocusView = true };
+        var window = UiHelpers.Show(view);
+
+        Assert.Contains("Look around: Reading a.txt", UiHelpers.Texts(view));
+        var stats = view.GetVisualDescendants().OfType<FocusAgentStats>().Single(s => s.IsEffectivelyVisible);
+        Assert.Equal("1.2k tokens · 3 tools · 5s", stats.Text);
+        now = now.AddSeconds(1);
+        stats.Tick();   // the timer's tick, every second
+        Assert.Equal("1.2k tokens · 3 tools · 6s", stats.Text);
+
+        // open, the row stays, over the steps
+        UiHelpers.Click(window, Head(view));
+        Assert.Contains("Look around: Reading a.txt", UiHelpers.Texts(view));
+        Assert.Single(Calls(view));
         window.Close();
     }
 }

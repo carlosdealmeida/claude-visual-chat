@@ -1591,7 +1591,8 @@ public class DetachTests
         const System.Reflection.BindingFlags field = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         int Count(object target, Type owner, string name) =>
             ((Delegate?)owner.GetField(name, field)!.GetValue(target))?.GetInvocationList().Length ?? 0;
-        var count = Count(c.Items, typeof(System.Collections.ObjectModel.ObservableCollection<ChatItem>), "CollectionChanged")
+        var count = Count(c, typeof(ChatObservableObject), "PropertyChanged")
+                    + Count(c.Items, typeof(System.Collections.ObjectModel.ObservableCollection<ChatItem>), "CollectionChanged")
                     + Count(c.PendingPermissions, typeof(System.Collections.ObjectModel.ObservableCollection<PendingPermission>), "CollectionChanged");
         foreach (var item in c.Items) count += Count(item, typeof(ChatObservableObject), "PropertyChanged");
         foreach (var agent in c.Agents) count += Count(agent, typeof(ChatObservableObject), "PropertyChanged");
@@ -1602,6 +1603,7 @@ public class DetachTests
     public void The_focus_projection_lets_go_of_the_items_while_the_view_is_away()
     {
         var c = Conversation();
+        FocusViewTests.SetBusy(c, true); // a turn under way
         c.Items.Add(new UserMessageItem("go"));
         c.Items.Add(new ThinkingItem { DurationMs = 2000 });
         var bash = new ToolCallItem { Name = "Bash", Status = ToolStatus.Running, ToolUseId = "t1" };
@@ -1631,7 +1633,7 @@ public class DetachTests
         Assert.True(projection.IsStarted);
         Assert.Same(projection, list.ItemsSource);
         Assert.Equal(3, projection.Count);
-        Assert.Contains("3 hidden steps", UiHelpers.Texts(m.View));
+        Assert.Contains("2 tool calls", UiHelpers.Texts(m.View)); // the calls only, the thought among them
         Assert.DoesNotContain("Running Bash…", UiHelpers.Texts(m.View));
         Assert.Contains("Done.", UiHelpers.MarkdownText(m.View));
 
@@ -1642,6 +1644,38 @@ public class DetachTests
         m.In();
         Assert.Same(c.Items, list.ItemsSource);
         Assert.Equal(2, m.View.GetVisualDescendants().OfType<ToolCallView>().Count(t => t.IsEffectivelyVisible));
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_clock_of_a_focus_folds_live_agents_ticks_only_while_the_view_is_in()
+    {
+        var c = Conversation();
+        FocusViewTests.SetBusy(c, true);
+        var now = new DateTimeOffset(2026, 10, 28, 9, 0, 0, TimeSpan.Zero);
+        c.Clock = () => now;
+        var call = new ToolCallItem { Name = "Agent", Status = ToolStatus.Running, ToolUseId = "toolu_a" };
+        call.Agent = new AgentInfo("toolu_a") { Description = "Look around", Status = AgentStatus.Running, StartedAt = now };
+        c.Items.Add(new UserMessageItem("go"));
+        c.Items.Add(call);
+        var m = new Mounted(c);
+        m.View.FocusView = true;
+        UiHelpers.Pump();
+        FocusAgentStats Stats() => m.View.GetVisualDescendants().OfType<FocusAgentStats>().Single(s => s.IsEffectivelyVisible);
+        var stats = Stats();
+        Assert.True(stats.IsTicking);
+
+        m.Out();
+        Assert.False(stats.IsTicking); // out of the window, the clock stops
+        now = now.AddSeconds(42);
+        m.In();
+        Assert.True(Stats().IsTicking);
+        Assert.Equal("42s", Stats().Text); // and coming back shows the time as it is now
+
+        // the agent done: no row, no clock
+        call.Agent.Status = AgentStatus.Completed;
+        UiHelpers.Pump();
+        Assert.DoesNotContain(m.View.GetVisualDescendants().OfType<FocusAgentStats>(), s => s.IsTicking);
         m.Window.Close();
     }
 }

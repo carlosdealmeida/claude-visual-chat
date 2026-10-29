@@ -40,10 +40,6 @@ internal static class ChatConverters
     public static readonly IMultiValueConverter FocusMoreAgents =
         new StringsConverter<int>((count, strings) => strings.FormatFocusMoreAgents(count));
 
-    /// <summary>(<see cref="FocusAgentRow"/>, <see cref="ChatStrings"/>) → "1.2k tokens · 3 tools · 1m 5s".</summary>
-    public static readonly IMultiValueConverter FocusAgentStats =
-        new StringsConverter<FocusAgentRow>((row, strings) => strings.FormatFocusAgentStats(row));
-
     public static readonly IValueConverter IsTurnFailed = new FuncValueConverter<NoticeKind, bool>(kind => kind == NoticeKind.TurnFailed);
 
     /// <summary>

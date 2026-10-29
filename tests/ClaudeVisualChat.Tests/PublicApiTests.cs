@@ -338,7 +338,7 @@ public class PublicApiTests
                  {
                      "PaletteFocusView", "PaletteFocusViewTip", "FocusToolCalls", "FocusToolCallsOne", "FocusFailed", "FocusHiddenSteps",
                      "FocusHiddenStepsOne", "FocusThinkingNow", "FocusRunning", "FocusWaitingForPermission", "FocusWaitingForAnswer",
-                     "FocusCollapse", "FocusMoreAgents", "FocusAgentTools", "FocusAgentToolsOne",
+                     "FocusCollapse", "FocusMoreAgents", "FocusAgentTools", "FocusAgentToolsOne", "FocusAgentsCombined",
                  })
         {
             var strings = typeof(ChatStrings).GetProperty(text);
