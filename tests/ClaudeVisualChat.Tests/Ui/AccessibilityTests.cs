@@ -320,4 +320,20 @@ public class AccessibilityTests
         Assert.Equal("Claude is requesting permission to use Edit.", said[^1]);
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void A_remote_control_error_is_announced_once_as_an_error()
+    {
+        var c = new ChatConversation();
+        var (_, window, announcer) = Open(c);
+
+        c.RemoteControlError = "Connection refused";
+        Assert.Equal(new[] { "Error: Connection refused" }, Drain(announcer));
+
+        c.RemoteControlError = "Connection refused";   // the same text again is no change
+        Assert.Equal(0, announcer.Pending);
+        c.RemoteControlError = null;                   // clearing it says nothing
+        Assert.Equal(0, announcer.Pending);
+        window.Close();
+    }
 }

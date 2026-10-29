@@ -944,4 +944,22 @@ public class PublicApiTests
             Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
         }
     }
+
+    [Fact]
+    public void The_error_messages_of_notices_and_turns_are_public_init_only_strings()
+    {
+        // the claude's own words for a failed turn or a retry, which screen readers hear (0.6.0)
+        foreach (var (type, name) in new[]
+        {
+            (typeof(NoticeItem), "Message"),
+            (typeof(ClaudeVisualChat.Protocol.TurnCompleted), "ErrorMessage"),
+            (typeof(ClaudeVisualChat.Protocol.SystemNotice), "ErrorMessage"),
+        })
+        {
+            var property = type.GetProperty(name);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.True(property!.GetMethod!.IsPublic);
+            Assert.Contains(property.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+    }
 }

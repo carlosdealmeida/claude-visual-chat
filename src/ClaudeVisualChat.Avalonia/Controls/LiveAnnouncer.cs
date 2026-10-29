@@ -17,7 +17,7 @@ namespace ClaudeVisualChat.Controls;
 /// </summary>
 internal sealed class LiveAnnouncer : Control
 {
-    /// <summary>Most sentences waiting at once; a sentence that comes when this many wait is dropped.</summary>
+    /// <summary>Most sentences waiting at once; when a sentence comes while this many wait, the oldest is dropped.</summary>
     internal const int MaxQueued = 5;
 
     /// <summary>The time between two sentences.</summary>
