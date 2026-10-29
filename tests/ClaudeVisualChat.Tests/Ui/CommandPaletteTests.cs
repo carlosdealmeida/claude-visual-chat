@@ -106,7 +106,7 @@ public class CommandPaletteTests
         Assert.True(ui.Filter.IsFocused);
         // with no filter the button lists the actions only; the slash commands come once something is typed in the field
         Assert.DoesNotContain("Slash Commands", UiHelpers.Texts(ui.Menu));
-        Assert.Equal(new[] { "Attach file…", "Account & usage…", "Focus view" }, ui.Labels);
+        Assert.Equal(new[] { "Attach file…", "Bookmarks", "Account & usage…", "Focus view" }, ui.Labels);
         UiHelpers.Type(ui.Window, "hel");
         Assert.Contains("Slash Commands", UiHelpers.Texts(ui.Menu));
         Assert.Equal(new[] { "/hello", "/help" }, ui.Labels);
@@ -120,7 +120,7 @@ public class CommandPaletteTests
         Assert.True(ui.Input.IsFocused);
         // every group, unfiltered, as in the extension: the actions, and the slash commands in their place, in alphabetical order
         Assert.Equal(new[] { "Context", "Model", "Settings", "Slash Commands" }, Headers(ui));
-        Assert.Equal(new[] { "Attach file…", "Account & usage…", "Focus view" }, ui.Labels.Where(l => !l.StartsWith("/", StringComparison.Ordinal)));
+        Assert.Equal(new[] { "Attach file…", "Bookmarks", "Account & usage…", "Focus view" }, ui.Labels.Where(l => !l.StartsWith("/", StringComparison.Ordinal)));
         Assert.Equal(new[] { "/bashes", "/chrome", "/compact", "/context", "/copy", "/hello", "/help", "/rc", "/remote-control", "/tasks", "/usage" }, ui.Commands);
         Assert.Equal("View and manage everything running in the background", ToolTip.GetTip(Row(ui, "/tasks")));
         Assert.Equal("View and manage everything running in the background", ToolTip.GetTip(Row(ui, "/bashes")));
@@ -332,7 +332,7 @@ public class CommandPaletteTests
         UiHelpers.Pump();
         UiHelpers.Click(ui.Window, UiHelpers.ButtonWithText(ui.Composer, "Mostrar o menu de comandos (/)"));
         Assert.Equal("Filtrar comandos…", ui.Filter!.Watermark);
-        Assert.Equal(new[] { "Anexar arquivo…", "Conta e uso…", "Modo foco" }, ui.Labels);
+        Assert.Equal(new[] { "Anexar arquivo…", "Respostas marcadas", "Conta e uso…", "Modo foco" }, ui.Labels);
         Assert.Contains("Contexto", UiHelpers.Texts(ui.Menu));
         Assert.Contains("Modelo", UiHelpers.Texts(ui.Menu));
         UiHelpers.Type(ui.Window, "cont");
@@ -536,7 +536,7 @@ public class CommandPaletteTests
         // without models neither the model nor the effort has a row; what is left of the group stays
         var bare = Open();
         UiHelpers.Click(bare.Window, bare.SlashButton);
-        Assert.Equal(new[] { "Attach file…", "Account & usage…", "Focus view" }, bare.Labels);
+        Assert.Equal(new[] { "Attach file…", "Bookmarks", "Account & usage…", "Focus view" }, bare.Labels);
         Assert.Equal(new[] { "Context", "Model", "Settings" }, Headers(bare));
         Assert.Equal(2, Dividers(bare).Count);
         bare.Window.Close();

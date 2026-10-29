@@ -376,8 +376,8 @@ public class PublicApiTests
         Assert.Equal(typeof(bool?), typeof(FeedbackRequestedEventArgs).GetProperty("Positive")?.PropertyType);
         Assert.Equal(typeof(string), typeof(FeedbackRequestedEventArgs).GetProperty("Details")?.PropertyType);
         Assert.NotNull(typeof(FeedbackRequestedEventArgs).GetConstructor(new[] { typeof(AssistantTextItem), typeof(bool?), typeof(string) }));
-        // what the conversation does with them stays internal (the bookmarks list is the bookmarks panel's, later)
-        foreach (var member in new[] { "Bookmarks", "ToggleBookmark", "RequestLink", "CanOpenLinks", "CanSendFeedback", "RateAnswer" })
+        // what the conversation does with them stays internal (the bookmarks list is public, for the bookmarks panel: its own test)
+        foreach (var member in new[] { "ToggleBookmark", "RequestLink", "CanOpenLinks", "CanSendFeedback", "RateAnswer" })
             Assert.Empty(conversation.GetMember(member));
         var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
         Assert.DoesNotContain("ClaudeVisualChat.Controls.ResponseActions", names);
@@ -870,6 +870,29 @@ public class PublicApiTests
             "AccountAuthMethod", "AccountEmail", "AccountOrganization", "AccountPlan", "UsageBarSession", "UsageBarWeekly",
             "UsageBarWeeklySonnet", "UsageBarWeeklyModel", "UsageResetsIn", "UsageResetsSoon", "UsageTotalCost", "UsageTotalApiDuration",
             "UsageNoPlanLimits", "UsageTotalWallDuration", "AuthClaudeAi", "AuthApiKey", "AuthBedrock", "AuthVertex", "AuthFoundry", "UsageManage", "UsageLoading", "UsageFailed", "UsageRetry",
+        })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+
+        // the bookmarks panel (0.6.0): the conversation's list and the view's two methods; the panel itself stays internal
+        var bookmarks = typeof(ChatConversation).GetProperty("Bookmarks");
+        Assert.True(typeof(System.Collections.Generic.IReadOnlyList<AssistantTextItem>).IsAssignableFrom(bookmarks?.PropertyType));
+        Assert.True(typeof(System.Collections.Specialized.INotifyCollectionChanged).IsAssignableFrom(bookmarks!.PropertyType));
+        Assert.Null(bookmarks.SetMethod?.IsPublic == true ? bookmarks.SetMethod : null); // read only
+        foreach (var method in new[] { "ShowBookmarks", "HideBookmarks" })
+        {
+            var info = typeof(ClaudeVisualChat.Controls.ClaudeChatView).GetMethod(method, System.Type.EmptyTypes);
+            Assert.Equal(typeof(void), info?.ReturnType);
+        }
+        Assert.False(Library.GetType("ClaudeVisualChat.Controls.BookmarksPanel")!.IsPublic);
+        Assert.Empty(typeof(ChatConversation).GetMember("ToggleBookmark", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance));
+        foreach (var text in new[]
+        {
+            "PaletteBookmarks", "PaletteBookmarksTip", "BookmarksTitle", "BookmarksEmpty", "BookmarksSelectHint", "BookmarkShowInConversation",
+            "BookmarkNotShown", "BookmarkResize", "AgoJustNow", "AgoMinutes", "AgoHours", "AgoDays",
         })
         {
             var property = typeof(ChatStrings).GetProperty(text);

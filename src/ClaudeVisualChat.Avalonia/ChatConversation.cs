@@ -225,8 +225,11 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>Whether the host takes feedback (it listens to <see cref="FeedbackRequested"/>).</summary>
     internal bool CanSendFeedback => _feedbackRequested != null;
 
-    /// <summary>The bookmarked replies, in the order they were marked (<see cref="ToggleBookmark"/>); emptied with the items.</summary>
-    internal ReadOnlyObservableCollection<AssistantTextItem> Bookmarks { get; }
+    /// <summary>
+    /// The bookmarked replies, in the order they were marked (the bookmark button under a reply marks it); observable, and emptied with
+    /// the items (<see cref="Clear"/>, <see cref="LoadTranscript"/>). The bookmarks panel shows it.
+    /// </summary>
+    public ReadOnlyObservableCollection<AssistantTextItem> Bookmarks { get; }
 
     /// <summary>Marks <paramref name="item"/> as bookmarked, at the end of <see cref="Bookmarks"/>, or takes its bookmark away.</summary>
     internal void ToggleBookmark(AssistantTextItem item)

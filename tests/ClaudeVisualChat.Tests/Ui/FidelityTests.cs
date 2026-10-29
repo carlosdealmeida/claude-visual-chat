@@ -172,6 +172,7 @@ public class FidelityTests
         ("ClaudeChat.Accent", "#48A0C7", "#4DAAFC"),              // textLink.foreground
         ("ClaudeChat.AccentFill", "#297AA0", "#0078D4"),          // button.background
         ("ClaudeChat.FocusBorder", "#B33994BC", "#0078D4"),       // focusBorder
+        ("ClaudeChat.SashHoverBorder", "#B33994BC", "#0078D4"),   // sash.hoverBorder
         ("ClaudeChat.Error", "#F48771", "#F85149"),               // errorForeground
         ("ClaudeChat.InputBackground", "#191A1B", "#313131"),     // input.background
         ("ClaudeChat.InputBorder", "#2A2B2C", "#33CCCCCC"),       // inlineChatInput.border = editorWidget.border

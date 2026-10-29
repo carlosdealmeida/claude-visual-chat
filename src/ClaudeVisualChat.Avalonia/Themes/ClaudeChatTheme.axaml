@@ -38,6 +38,7 @@
     <SolidColorBrush x:Key="ClaudeChat.AccentFill" Color="#297AA0" />           <!-- button.background -->
     <SolidColorBrush x:Key="ClaudeChat.AccentForeground" Color="#FFFFFF" />     <!-- button.foreground -->
     <SolidColorBrush x:Key="ClaudeChat.FocusBorder" Color="#B33994BC" />        <!-- focusBorder -->
+    <SolidColorBrush x:Key="ClaudeChat.SashHoverBorder" Color="#B33994BC" />    <!-- sash.hoverBorder: the bookmarks panel's resize bar -->
     <SolidColorBrush x:Key="ClaudeChat.Warning" Color="#CCA700" />
     <SolidColorBrush x:Key="ClaudeChat.Error" Color="#F48771" />                <!-- errorForeground -->
     <SolidColorBrush x:Key="ClaudeChat.Success" Color="#73C991" />              <!-- gitDecoration.addedResourceForeground -->
@@ -3484,5 +3485,98 @@
   <Style Selector="Button.ClaudeChatPlanCommentCancel:focus-visible /template/ Border#PART_ChatButton, Button.ClaudeChatPlanCommentAdd:focus-visible /template/ Border#PART_ChatButton, Button.ClaudeChatPlanAddComment:focus-visible /template/ Border#PART_ChatButton">
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+
+  <!-- ===== the bookmarks panel: a side panel in the side bar's color behind a 1 px line (the border is set by the code, on the
+         edge the conversation is on); its resize bar is 6 px on the inner edge, clear until the pointer or the keyboard is on it ===== -->
+  <Style Selector="Border.ClaudeChatBookmarks">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarks TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarksHandle">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarksHandle > Border.ClaudeChatBookmarksHandleLine">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarksHandle.stacked > Border.ClaudeChatBookmarksHandleLine">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarksHandle:not(.stacked) > Border.ClaudeChatBookmarksHandleLine">
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarksHandle:pointerover > Border.ClaudeChatBookmarksHandleLine, Border.ClaudeChatBookmarksHandle:focus > Border.ClaudeChatBookmarksHandleLine">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.SashHoverBorder}" />
+  </Style>
+  <Style Selector="DockPanel.ClaudeChatBookmarksHeader">
+    <Setter Property="Margin" Value="12,8,8,4" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarks TextBlock.ClaudeChatBookmarksTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarks TextBlock.ClaudeChatBookmarksNote">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="12,8" />
+  </Style>
+  <!-- a row: the reply's first line at 13 px over how long ago at 11 px -->
+  <Style Selector="Button.ClaudeChatBookmarkRow">
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Button.ClaudeChatBookmarkRow:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ListHoverBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatBookmarkRow.selected /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ListActiveBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatBookmarkRow:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarks TextBlock.ClaudeChatBookmarkFirstLine">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="TextWrapping" Value="NoWrap" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarks TextBlock.ClaudeChatBookmarkAge">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  </Style>
+  <!-- the reply picked: a box with the link and the button over the whole reply -->
+  <Style Selector="Border.ClaudeChatBookmarkSelection">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Margin" Value="8" />
+    <Setter Property="Padding" Value="8" />
+  </Style>
+  <Style Selector="DockPanel.ClaudeChatBookmarkActions">
+    <Setter Property="Margin" Value="0,0,0,6" />
+  </Style>
+  <Style Selector="Button.ClaudeChatBookmarkLink">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Accent}" />
+    <Setter Property="Padding" Value="4,2" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Button.ClaudeChatBookmarkRemove">
+    <Setter Property="Padding" Value="8,2" />
+  </Style>
+  <Style Selector="Button.ClaudeChatBookmarkRemove:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.HoverBackground}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatBookmarks TextBlock.ClaudeChatBookmarkNotShown">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
 </Styles>

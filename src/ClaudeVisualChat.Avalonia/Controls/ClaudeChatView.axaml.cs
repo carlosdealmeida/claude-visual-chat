@@ -304,6 +304,10 @@ public partial class ClaudeChatView : UserControl
             _keyboardOwed = false;
             if (_attached && ((owed && Prompt.Request != null) || !Feedback.GaveFocusBack)) GiveBackKeyboard();
         };
+        // the bookmarks panel: a side panel, under every layer; it finds its replies in the list the view shows
+        Bookmarks.IsInConversation = IsInList;
+        Bookmarks.ShowInConversation = ShowInConversation;
+        Bookmarks.FocusReleased += (_, _) => GiveBackKeyboard();
         ContextPanel.FocusReleased += (_, _) => GiveBackKeyboard();
         UsagePanel.FocusReleased += (_, _) => GiveBackKeyboard();
         AgentMap.FocusReleased += (_, _) => GiveBackKeyboard();
@@ -477,7 +481,7 @@ public partial class ClaudeChatView : UserControl
     /// of the touch layout, the usage sheet before the others, and an inner page of it going back to the first before the sheet
     /// closes; the box where the user writes a comment on the plan; an agent's card in the Agent map, which goes back to the map; the
     /// panel that is open (the Agent map, or the desktop's <c>/context</c> and <c>/usage</c>); the document of a plan over the list;
-    /// the field where the user writes why a request is refused. A permission request is
+    /// the bookmarks panel beside or below the conversation; the field where the user writes why a request is refused. A permission request is
     /// no layer: it has to be answered. The keyboard goes back as it does when the user closes the layer.
     /// </remarks>
     public bool CloseTopLayer()
@@ -517,6 +521,12 @@ public partial class ClaudeChatView : UserControl
             PlanDocument.Hide();
             return true;
         }
+        // the bookmarks panel is no layer but a side panel: under all of them
+        if (Bookmarks.IsOpen)
+        {
+            Bookmarks.Close();
+            return true;
+        }
         return Prompt.CloseDenyFieldIfOpen();
     }
 
@@ -538,6 +548,7 @@ public partial class ClaudeChatView : UserControl
             ContextPanel.Conversation = Conversation;
             UsagePanel.Conversation = Conversation;
             AgentMap.Conversation = Conversation;
+            Bookmarks.Conversation = Conversation; // and its list is the other conversation's
             PlanDocument.Conversation = Conversation; // another conversation closes the plan of this one
             PlanComment.Conversation = Conversation;  // and the comment box on it
             ModelSheet.Conversation = Conversation; // another conversation closes the sheets
@@ -615,12 +626,14 @@ public partial class ClaudeChatView : UserControl
                 SetValue(IsTinyProperty, width <= TinyWidth);
             }
             Sticky.CapHeight = Math.Max(0, StickyCap * Bounds.Height);
+            PlaceBookmarks();
         }
         else if (change.Property == LayoutProperty)
         {
             PseudoClasses.Set(":touch", Layout == ChatLayout.Touch);
             WorkingRow.Classes.Set("touch", Layout == ChatLayout.Touch); // it hangs from the list, outside the item templates
             UpdateTouchSizes();
+            PlaceBookmarks(); // the touch layout always has the panel below the chat
             ShowTouchAgents(Layout == ChatLayout.Touch);
             CloseBlockedPanel(); // a panel open on the desktop, beside a request, is a sheet now
         }
@@ -959,12 +972,15 @@ public partial class ClaudeChatView : UserControl
         // Esc with a panel open closes it, before the reply box would stop Claude with it; the menus of the reply box
         // and the request take theirs first (an Esc the request leaves closes the panel on the way back up)
         else if (IsPanelEsc(e) && !Composer.HasOpenPopup && !Prompt.IsKeyboardFocusWithin) ClosePanel(e);
+        // Esc with the keyboard in the bookmarks panel closes it, when no layer is over it (the ones above took theirs)
+        else if (IsBookmarksEsc(e) && Bookmarks.IsKeyboardFocusWithin) CloseBookmarks(e);
     }
 
     /// <summary>An Esc nothing under the view took: an open panel closes.</summary>
     private void OnKeyDownNotTaken(object? sender, KeyEventArgs e)
     {
         if (IsPanelEsc(e)) ClosePanel(e);
+        else if (IsBookmarksEsc(e)) CloseBookmarks(e);
         else if (Prompt.IsFolded && Prompt.IsKeyboardFocusWithin) ScrollConversation(e);
     }
 
@@ -991,6 +1007,20 @@ public partial class ClaudeChatView : UserControl
     private bool IsPanelEsc(KeyEventArgs e) =>
         !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && !Preview.IsVisible
         && Conversation is { ShownPanel: not ChatPanel.None };
+
+    /// <summary>An Esc that closes the bookmarks panel: it is open and nothing is over it (a layer, a menu, a sheet, the plan's document).</summary>
+    private bool IsBookmarksEsc(KeyEventArgs e) =>
+        !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && Bookmarks.IsOpen
+        && !Preview.IsVisible && !DiffViewer.IsOpen && !Feedback.IsOpen && !Composer.HasOpenPopup && !IsSheetOpen
+        && !PlanComment.IsOpen && !PlanDocument.IsOpen && Conversation is not { ShownPanel: not ChatPanel.None };
+
+    /// <summary>Esc on the bookmarks panel closes it; held, it goes no further (a card under it would take it for its "No").</summary>
+    private void CloseBookmarks(KeyEventArgs e)
+    {
+        e.Handled = true;
+        Prompt.Hold(e.Key);
+        Bookmarks.Close();
+    }
 
     private bool IsPlanEsc(KeyEventArgs e) =>
         !e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && PlanDocument.IsOpen
@@ -1088,6 +1118,52 @@ public partial class ClaudeChatView : UserControl
         var conversation = Conversation;
         if (item == null || conversation == null || !conversation.CanSendFeedback || IsReadOnly) return false;
         Feedback.Show(conversation, item);
+        return true;
+    }
+
+    /// <summary>
+    /// Opens the bookmarks panel beside the conversation (below it in a narrow view or the touch layout), with the keyboard on its ×.
+    /// It lists <see cref="ChatConversation.Bookmarks"/>; open already, it only takes the keyboard. Also in a read-only view.
+    /// </summary>
+    public void ShowBookmarks()
+    {
+        PlaceBookmarks();
+        Bookmarks.Open();
+    }
+
+    /// <summary>Closes the bookmarks panel; the keyboard goes back to what had it. Nothing when it is not open.</summary>
+    public void HideBookmarks() => Bookmarks.Close();
+
+    /// <summary>
+    /// The panel sits beside the chat, or below it when the view is <see cref="NarrowWidth"/> px wide or less and always in the touch
+    /// layout; its size is a share of the view's width (beside) or height (below).
+    /// </summary>
+    private void PlaceBookmarks()
+    {
+        var width = Bounds.Width;
+        if (width <= 0) return; // before the first layout
+        var stacked = Layout == ChatLayout.Touch || width <= NarrowWidth;
+        Grid.SetRow(Bookmarks, stacked ? 1 : 0);
+        Grid.SetColumn(Bookmarks, stacked ? 0 : 1);
+        Bookmarks.Stacked = stacked;
+        Bookmarks.ViewExtent = stacked ? Bounds.Height : width;
+    }
+
+    /// <summary>Whether the reply is a row of the list the view shows now (the Focus view's list, when it is on).</summary>
+    private bool IsInList(AssistantTextItem item) => ItemList.ItemsSource is IList items && items.IndexOf(item) >= 0;
+
+    /// <summary>
+    /// "Show in conversation": the list goes to the reply, which comes to its top, and stops following the end. False, and the list does
+    /// not move, when the reply is not a row of the list. (The Focus view never folds a reply away: its folds hold the tool calls and
+    /// thoughts only, and the text between them stays in sight.)
+    /// </summary>
+    internal bool ShowInConversation(AssistantTextItem item)
+    {
+        var items = ItemList.ItemsSource as IList;
+        if (!_attached || items == null) return false;
+        var index = items.IndexOf(item);
+        if (index < 0) return false;
+        ScrollRowToTop(index);
         return true;
     }
 
@@ -1361,6 +1437,12 @@ public partial class ClaudeChatView : UserControl
             ? _promptIndex
             : items.IndexOf(prompt);
         if (index < 0) return;
+        ScrollRowToTop(index);
+    }
+
+    /// <summary>The row at <paramref name="index"/> comes to the top of the list (as far as the end allows), which stops following the end.</summary>
+    private void ScrollRowToTop(int index)
+    {
         ItemList.ScrollIntoView(index);
         Scroller.UpdateLayout();
         var row = ItemList.ContainerFromIndex(index);

@@ -251,6 +251,18 @@ public sealed record ChatStrings
         PaletteHelpDocs = "Ver a documentação de ajuda",
         PaletteFocusView = "Modo foco",
         PaletteFocusViewTip = "Mostrar só os seus prompts e as respostas do Claude",
+        PaletteBookmarks = "Respostas marcadas",
+        PaletteBookmarksTip = "Mostrar as respostas que você marcou ao lado da conversa",
+        BookmarksTitle = "Respostas marcadas",
+        BookmarksEmpty = "Marque uma resposta com o botão de marcar sob ela para guardá-la aqui.",
+        BookmarksSelectHint = "Clique numa resposta marcada para mostrá-la aqui.",
+        BookmarkShowInConversation = "Mostrar na conversa",
+        BookmarkNotShown = "Não aparece mais na conversa",
+        BookmarkResize = "Redimensionar as respostas marcadas",
+        AgoJustNow = "agora",
+        AgoMinutes = "há {0} min",
+        AgoHours = "há {0} h",
+        AgoDays = "há {0} d",
         FocusToolCalls = "{0} chamadas de ferramenta",
         FocusToolCallsOne = "1 chamada de ferramenta",
         FocusFailed = " · {0} com falha",
@@ -1138,6 +1150,42 @@ public sealed record ChatStrings
     /// <summary>The tooltip of that switch.</summary>
     public string PaletteFocusViewTip { get; init; } = "Show only your prompts and Claude's responses";
 
+    /// <summary>The command menu's row that opens the bookmarks panel, and the panel's title.</summary>
+    public string PaletteBookmarks { get; init; } = "Bookmarks";
+
+    /// <summary>The tooltip of that row.</summary>
+    public string PaletteBookmarksTip { get; init; } = "Show your bookmarked responses beside the conversation";
+
+    /// <summary>The bookmarks panel's title.</summary>
+    public string BookmarksTitle { get; init; } = "Bookmarks";
+
+    /// <summary>What the bookmarks panel says while no reply is bookmarked.</summary>
+    public string BookmarksEmpty { get; init; } = "Bookmark a response with the bookmark button under it to keep it here.";
+
+    /// <summary>What the bookmarks panel says while no bookmark is picked.</summary>
+    public string BookmarksSelectHint { get; init; } = "Click a bookmark to show it here.";
+
+    /// <summary>The link of a picked bookmark that brings its reply into view in the conversation.</summary>
+    public string BookmarkShowInConversation { get; init; } = "Show in conversation";
+
+    /// <summary>What replaces that link when the reply is not in the conversation's list now.</summary>
+    public string BookmarkNotShown { get; init; } = "No longer shown in the conversation";
+
+    /// <summary>The name of the bar that resizes the bookmarks panel, for a screen reader.</summary>
+    public string BookmarkResize { get; init; } = "Resize bookmarks";
+
+    /// <summary>How long ago a bookmarked reply was written, under a minute.</summary>
+    public string AgoJustNow { get; init; } = "just now";
+
+    /// <summary>The same in minutes: <c>{0}</c> is how many.</summary>
+    public string AgoMinutes { get; init; } = "{0}m ago";
+
+    /// <summary>The same in hours: <c>{0}</c> is how many.</summary>
+    public string AgoHours { get; init; } = "{0}h ago";
+
+    /// <summary>The same in days: <c>{0}</c> is how many.</summary>
+    public string AgoDays { get; init; } = "{0}d ago";
+
     /// <summary>A fold of the Focus view that stands for tool calls only: <c>{0}</c> is how many (2 or more).</summary>
     public string FocusToolCalls { get; init; } = "{0} tool calls";
 
@@ -1825,6 +1873,15 @@ public sealed record ChatStrings
     {
         var percent = double.IsNaN(progress) ? 0 : Math.Max(0, Math.Min(100, Math.Round(progress * 100, MidpointRounding.AwayFromZero)));
         return FileUploading.Replace("{0}", ((int)percent).ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>How long ago a reply was written, in whole units of the largest that fits: "just now", "5m ago", "2h ago", "3d ago".</summary>
+    internal string FormatAgo(TimeSpan age)
+    {
+        if (age < TimeSpan.FromMinutes(1)) return AgoJustNow; // also a time a little in the future (the clocks differ)
+        if (age < TimeSpan.FromHours(1)) return AgoMinutes.Replace("{0}", FormatNumber((long)age.TotalMinutes));
+        if (age < TimeSpan.FromDays(1)) return AgoHours.Replace("{0}", FormatNumber((long)age.TotalHours));
+        return AgoDays.Replace("{0}", FormatNumber((long)age.TotalDays));
     }
 
     /// <summary>A time in local time, with <see cref="TimeFormat"/>; a format .NET refuses gives "HH:mm".</summary>

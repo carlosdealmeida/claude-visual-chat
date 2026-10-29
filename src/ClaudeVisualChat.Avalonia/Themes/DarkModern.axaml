@@ -26,6 +26,7 @@
   <SolidColorBrush x:Key="ClaudeChat.AccentFill" Color="#0078D4" />           <!-- button.background -->
   <SolidColorBrush x:Key="ClaudeChat.AccentForeground" Color="#FFFFFF" />     <!-- button.foreground -->
   <SolidColorBrush x:Key="ClaudeChat.FocusBorder" Color="#0078D4" />          <!-- focusBorder -->
+  <SolidColorBrush x:Key="ClaudeChat.SashHoverBorder" Color="#0078D4" />      <!-- sash.hoverBorder -->
   <SolidColorBrush x:Key="ClaudeChat.Warning" Color="#CCA700" />
   <SolidColorBrush x:Key="ClaudeChat.Error" Color="#F85149" />                <!-- errorForeground -->
   <SolidColorBrush x:Key="ClaudeChat.Success" Color="#73C991" />

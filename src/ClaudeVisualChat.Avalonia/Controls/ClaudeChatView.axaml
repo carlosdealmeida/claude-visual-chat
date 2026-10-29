@@ -9,7 +9,10 @@
   </UserControl.Styles>
 
   <Border Name="Root" Background="{DynamicResource ClaudeChat.Background}" DragDrop.AllowDrop="True">
-    <Grid RowDefinitions="*,Auto,Auto">
+    <!-- the chat, and the bookmarks panel beside it (the next column) or below it (the next row; the code moves it), which is
+         not a layer: it takes its room from the chat -->
+    <Grid Name="Split" ColumnDefinitions="*,Auto" RowDefinitions="*,Auto">
+    <Grid Name="ChatArea" RowDefinitions="*,Auto,Auto">
       <ScrollViewer Name="Scroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <!-- as wide as the view, like the extension's; the list's padding is ClaudeChat.ListPadding -->
         <controls:ChatItemList Name="ItemList" Classes="ClaudeChatItems">
@@ -85,6 +88,8 @@
           <TextBlock Name="DropLabel" />
         </Border>
       </Grid>
+    </Grid>
+    <controls:BookmarksPanel Name="Bookmarks" Grid.Column="1" />
     </Grid>
   </Border>
 </UserControl>

@@ -186,6 +186,12 @@ internal sealed class CommandPalette : ChatMenuPopup
         {
             Text = strings => strings.PaletteAttachFile,
         },
+        // the bookmarks panel beside the conversation (below it where the view is narrow)
+        new PaletteAction(PaletteSection.Context, "Bookmarks", view => view.ShowBookmarks())
+        {
+            Text = strings => strings.PaletteBookmarks,
+            Tip = strings => strings.PaletteBookmarksTip,
+        },
         new PaletteAction(PaletteSection.Model, "Switch model…", view => view.ReplyBox.OpenModelPicker())
         {
             Text = strings => strings.PaletteSwitchModel,
