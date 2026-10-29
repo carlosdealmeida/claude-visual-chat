@@ -522,4 +522,75 @@ public class MarkdownBlockTests
         Assert.Equal(((ISolidColorBrush)paragraph.Foreground!).Color, ((ISolidColorBrush)code.Foreground!).Color);
         window.Close();
     }
+
+    // ---- the Insight block ----
+
+    private const string InsightHeader = "★ Insight ─────────────────────────────────────";
+    private static readonly string InsightRule = new string('─', 40);
+
+    private static IEnumerable<(CTextBlock Owner, CCode Code)> InlineCodes(Visual root) =>
+        root.GetVisualDescendants().OfType<CTextBlock>().SelectMany(t => t.Content.OfType<CCode>().Select(code => (Owner: t, Code: code)));
+
+    [AvaloniaFact]
+    public void Insight_header_and_footer_spans_get_their_own_lines_and_no_background()
+    {
+        var (view, window, _) = OpenAnswer("Before.\n\n`" + InsightHeader + "`\nThe point is **this**.\nAnd that.\n`" + InsightRule + "`\n\nAfter `code` here.");
+        view.TryFindResource("ClaudeChat.Foreground", out var text);
+        view.TryFindResource("ClaudeChat.CodeBackground", out var chip);
+
+        var codes = InlineCodes(view).ToList();
+        var header = codes.Single(c => c.Code.AsString().Contains("Insight"));
+        var footer = codes.Single(c => c.Code.AsString().StartsWith("─", StringComparison.Ordinal));
+        var plain = codes.Single(c => c.Code.AsString() == "code");
+
+        Assert.Same(text, header.Code.Foreground);
+        Assert.Same(text, footer.Code.Foreground);
+        Assert.Equal(Colors.Transparent, ((ISolidColorBrush)header.Code.Background!).Color);
+        Assert.Equal(Colors.Transparent, ((ISolidColorBrush)footer.Code.Background!).Color);
+        Assert.Same(chip, plain.Code.Background);                    // any other span keeps the chip
+
+        Assert.Single(header.Owner.Content);                          // the span is the whole line
+        Assert.Single(footer.Owner.Content);
+        Assert.Equal(new Thickness(0, 12, 0, 4), header.Owner.Margin);
+        Assert.Equal(new Thickness(0, 4, 0, 12), footer.Owner.Margin);
+        Assert.NotSame(header.Owner, footer.Owner);
+        var order = view.GetVisualDescendants().OfType<CTextBlock>().ToList();
+        Assert.True(order.IndexOf(header.Owner) < order.IndexOf(footer.Owner));
+        Assert.Contains("The point is this.", UiHelpers.MarkdownText(view));
+        Assert.Contains("And that.", UiHelpers.MarkdownText(view));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_footer_of_nineteen_dashes_is_not_a_footer()
+    {
+        var (view, window, _) = OpenAnswer("Text `" + new string('─', 19) + "` more.");
+        view.TryFindResource("ClaudeChat.CodeBackground", out var chip);
+
+        var (owner, code) = Assert.Single(InlineCodes(view));
+        Assert.Same(chip, code.Background);
+        Assert.True(owner.Content.Count > 1);
+        Assert.True(owner.Margin.Top < 4 && owner.Margin.Bottom < 4, owner.Margin.ToString()); // the paragraph's own spacing
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_insight_header_needs_both_the_star_and_the_word()
+    {
+        var (view, window, _) = OpenAnswer("See `★ Star` and `Insight only` here.");
+        view.TryFindResource("ClaudeChat.CodeBackground", out var chip);
+
+        Assert.All(InlineCodes(view), c => Assert.Same(chip, c.Code.Background));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_insight_span_copies_as_its_text()
+    {
+        var (view, window, _) = OpenAnswer("`" + InsightHeader + "`\nBody.\n`" + InsightRule + "`");
+
+        var header = InlineCodes(view).Single(c => c.Code.AsString().Contains("Insight")).Owner;
+        Assert.Equal(InsightHeader, header.Text);
+        window.Close();
+    }
 }

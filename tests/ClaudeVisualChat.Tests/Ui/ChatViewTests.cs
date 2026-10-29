@@ -3994,4 +3994,167 @@ public class ChatViewTests
         Assert.Contains("run the tests\nplease", UiHelpers.Texts(card));
         window.Close();
     }
+
+    // ---- the rare rows: Artifact and the notebook edit ----
+
+    private static ToolCallItem ArtifactCall(string result, ToolStatus status = ToolStatus.Succeeded) => new ToolCallItem
+    {
+        Name = "Artifact", Summary = "out/report.html", Status = status, ResultText = result,
+        Input = J("{\"file_path\":\"out/report.html\",\"title\":\"Report\"}"),
+    };
+
+    [AvaloniaFact]
+    public void An_artifact_row_reads_created_and_opens_the_link_through_the_host()
+    {
+        var c = new ChatConversation();
+        var links = new List<string>();
+        c.LinkRequested += (_, e) => links.Add(e.Url);
+        c.Items.Add(ArtifactCall("Created a new Artifact at https://claude.ai/artifact/abc"));
+        var (view, window) = Open(c);
+
+        var texts = UiHelpers.Texts(view);
+        Assert.Contains("Artifact", texts);
+        Assert.Contains("out/report.html", texts);
+        Assert.Contains(texts, t => t.StartsWith("Created", StringComparison.Ordinal));
+        Assert.DoesNotContain("IN", texts);
+        Assert.DoesNotContain("OUT", texts);
+        var title = view.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Artifact");
+        Assert.Equal(FontWeight.Bold, title.FontWeight);
+        var path = view.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "out/report.html");
+        Assert.Equal(Resource(view, "ClaudeChat.MonoFontFamily"), path.FontFamily);
+
+        var link = UiHelpers.ButtonWithText(view, "Open artifact ↗");
+        UiHelpers.Click(window, link);
+        Assert.Equal(new[] { "https://claude.ai/artifact/abc" }, links);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Opened the Artifact at https://claude.ai/artifact/abc", "Opened")]
+    [InlineData("Published https://x.example at https://claude.ai/artifact/abc", "Published")]
+    public void An_artifact_row_reads_opened_or_published_by_how_the_result_starts(string result, string word)
+    {
+        var c = new ChatConversation();
+        c.LinkRequested += (_, _) => { };
+        c.Items.Add(ArtifactCall(result));
+        var (view, window) = Open(c);
+
+        Assert.Contains(UiHelpers.Texts(view), t => t.StartsWith(word, StringComparison.Ordinal));
+        Assert.DoesNotContain(UiHelpers.Texts(view), t => t.StartsWith("Created", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Without_a_link_subscriber_the_artifact_has_no_open_link()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(ArtifactCall("Created a new Artifact at https://claude.ai/artifact/abc"));
+        var (view, window) = Open(c);
+
+        var texts = UiHelpers.Texts(view);
+        Assert.Contains(texts, t => t.StartsWith("Created", StringComparison.Ordinal));
+        Assert.DoesNotContain(texts, t => t.Contains("Open artifact"));
+        Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), b => b.Classes.Contains("ClaudeChatArtifactLink"));
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Created a new Artifact at https://a.example/1 and again at https://b.example/2", ToolStatus.Succeeded)]
+    [InlineData("Created a new Artifact at https://a.example/1", ToolStatus.Failed)]
+    [InlineData("Something else entirely", ToolStatus.Succeeded)]
+    public void An_artifact_without_one_link_in_a_good_result_shows_the_generic_out_row(string result, ToolStatus status)
+    {
+        var c = new ChatConversation();
+        c.LinkRequested += (_, _) => { };
+        c.Items.Add(ArtifactCall(result, status));
+        var (view, window) = Open(c);
+
+        var texts = UiHelpers.Texts(view);
+        Assert.Contains("OUT", texts);
+        Assert.Contains(result, texts);
+        Assert.DoesNotContain(texts, t => t.Contains("Open artifact"));
+        window.Close();
+    }
+
+    private static ToolCallItem NotebookCall(string json, ToolStatus status, string? result = null) => new ToolCallItem
+    {
+        Name = "NotebookEdit", Summary = "n.ipynb", Status = status, ResultText = result, Input = J(json),
+    };
+
+    [AvaloniaFact]
+    public void A_notebook_edit_reads_edit_notebook_cell_with_the_file_and_cell()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(NotebookCall("{\"notebook_path\":\"C:\\\\demo\\\\work\\\\n.ipynb\",\"cell_id\":\"c7\",\"new_source\":\"x = 1\\nprint(x)\"}",
+            ToolStatus.Succeeded, "Updated cell c7"));
+        var (view, window) = Open(c);
+
+        var blocks = view.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).ToList();
+        var title = blocks.Single(t => t.Text == "Edit Notebook Cell");
+        Assert.Equal(FontWeight.Bold, title.FontWeight);
+        var file = blocks.Single(t => t.Text == "n.ipynb:c7");
+        Assert.Same(Resource(view, "ClaudeChat.Accent"), file.Foreground);
+        Assert.Equal(Resource(view, "ClaudeChat.MonoFontFamily"), file.FontFamily);
+        Assert.Contains(blocks, t => t.Text == "Success");
+        Assert.Contains(blocks, t => t.Text == "x = 1\nprint(x)");   // the whole source, in the box
+        var texts = UiHelpers.Texts(view);
+        Assert.DoesNotContain("IN", texts);
+        Assert.DoesNotContain("OUT", texts);
+        Assert.DoesNotContain("Updated cell c7", texts);              // no generic OUT row
+        var box = view.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatNotebookBox"));
+        Assert.Equal(new Thickness(0.5), box.BorderThickness);
+        Assert.Same(Resource(view, "ClaudeChat.InputBorder"), box.BorderBrush);
+        Assert.Same(Resource(view, "ClaudeChat.ToolBackground"), box.Background);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(ToolStatus.Running, "Pending")]
+    [InlineData(ToolStatus.Failed, "Failed")]
+    public void A_notebook_edit_reads_pending_or_failed(ToolStatus status, string word)
+    {
+        var c = new ChatConversation();
+        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/n.ipynb\",\"cell_id\":\"c1\",\"new_source\":\"y\"}", status, status == ToolStatus.Failed ? "boom" : null));
+        var (view, window) = Open(c);
+
+        Assert.Contains(UiHelpers.Texts(view), t => t == word);
+        Assert.Contains(UiHelpers.Texts(view), t => t == "y");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_notebook_edit_with_an_empty_source_reads_no_content()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/n.ipynb\",\"new_source\":\"\"}", ToolStatus.Succeeded, "ok"));
+        var (view, window) = Open(c);
+
+        var texts = UiHelpers.Texts(view);
+        Assert.Contains("[No content]", texts);
+        Assert.Contains("n.ipynb", texts);                            // no cell id: no colon
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_rare_rows_speak_portuguese_and_keep_the_touch_link_a_finger_tall()
+    {
+        var c = new ChatConversation();
+        c.LinkRequested += (_, _) => { };
+        c.Items.Add(new UserMessageItem("q"));
+        c.Items.Add(ArtifactCall("Created a new Artifact at https://claude.ai/artifact/abc"));
+        c.Items.Add(NotebookCall("{\"notebook_path\":\"/a/n.ipynb\",\"cell_id\":\"c1\",\"new_source\":\"\"}", ToolStatus.Succeeded, "ok"));
+        c.Items.Add(new TurnFooterItem(null, null, null, null, false));
+        var view = UiHelpers.TouchView(c);
+        UiHelpers.ShowPhone(view);
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+
+        var texts = UiHelpers.Texts(view);
+        Assert.Contains("Editar célula do notebook", texts);
+        Assert.Contains("[Sem conteúdo]", texts);
+        Assert.Contains("Sucesso", texts);
+        Assert.Contains(texts, t => t.StartsWith("Criado", StringComparison.Ordinal));
+        var link = UiHelpers.ButtonWithText(view, "Abrir artefato ↗");
+        Assert.True(link.Bounds.Height >= 44, link.Bounds.ToString());
+    }
 }

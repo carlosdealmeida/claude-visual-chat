@@ -1246,6 +1246,44 @@
     <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
 
+  <!-- the line under an Artifact call: "Created —" and the link at half strength; the link in textLink's color, underlined under the
+       pointer or the keyboard -->
+  <Style Selector="StackPanel.ClaudeChatArtifactLine">
+    <Setter Property="Opacity" Value="0.5" />
+    <Setter Property="Margin" Value="0,3,0,2" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatArtifactText">
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,0,4,0" />
+  </Style>
+  <Style Selector="Button.ClaudeChatArtifactLink">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Accent}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatArtifactLink:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatArtifactLinkText">
+    <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatArtifactLink:pointerover TextBlock.ClaudeChatArtifactLinkText, Button.ClaudeChatArtifactLink:focus-visible TextBlock.ClaudeChatArtifactLinkText">
+    <Setter Property="TextDecorations" Value="Underline" />
+  </Style>
+  <!-- the box of a notebook edit: a 0.5 px frame in the input's border, 5 px corners, the editor's background; the source whole -->
+  <Style Selector="Border.ClaudeChatNotebookBox">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+    <Setter Property="BorderThickness" Value="0.5" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ToolBackground}" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="Margin" Value="0,8" />
+  </Style>
+
   <!-- the box under a tool -->
   <Style Selector="Border.ClaudeChatToolBody">
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
@@ -3180,6 +3218,11 @@
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.CodeFontSize}" />
     <Setter Property="Padding" Value="4,4,4,0" /> <!-- 2 px by 4 px in the CSS; the text sits 2 px higher here -->
     <Setter Property="CornerRadius" Value="3" />
+  </Style>
+  <!-- the header and the footer of an Insight block: the same font, but in the text color on no background -->
+  <Style Selector="controls|MarkdownBlock ctb|CCode.ClaudeChatInsight">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
   </Style>
   <!-- a code block: 8 px inside, 4 px corners, 8 px over and under -->
   <Style Selector="controls|MarkdownBlock Border.CodeBlock">

@@ -93,6 +93,12 @@ internal partial class ToolCallView : UserControl
     /// <summary>Decoded once per screenshot, off the UI thread.</summary>
     private static readonly ThumbnailCache Screenshots = ThumbnailCache.Cover(ScreenshotMaxWidth, ScreenshotHeight);
 
+    /// <summary>The Artifact tool: its row reads "Artifact" and the file, then how it went and a link the host opens.</summary>
+    private const string ArtifactTool = "Artifact";
+
+    /// <summary>The notebook edit: "Edit Notebook Cell", the notebook and the cell, its state, and a box with the new source.</summary>
+    private const string NotebookTool = "NotebookEdit";
+
     /// <summary>The Skill tool, whose row reads the skill's name in bold and this word after it, in the editor's font.</summary>
     private const string SkillTool = "Skill";
     private const string SkillWord = "skill";
@@ -327,6 +333,17 @@ internal partial class ToolCallView : UserControl
         {
             ToolName.Text = name == "WebFetch" ? Strings.WebFetchToolTitle : Strings.WebSearchToolTitle;
         }
+        else if (name == ArtifactTool)
+        {
+            ToolName.Text = Strings.ArtifactToolTitle; // the file as the claude gave it, in the editor's font
+        }
+        else if (name == NotebookTool)
+        {
+            // "Edit Notebook Cell", then the file's name and ":cell" as a link; a call without a path reads only the name
+            ToolName.Text = Strings.NotebookEditTitle;
+            detail = item != null && ToolPresentation.NotebookTarget(item.Input) is { } target ? target.File + target.Cell : "";
+            kind = "file";
+        }
         else if (IsFileTool(name))
         {
             kind = "file";
@@ -445,6 +462,14 @@ internal partial class ToolCallView : UserControl
             var opensOutput = CountsOutput(name) && subtitle != null && !string.IsNullOrEmpty(result);
             if (subtitle != null)
                 Body.Children.Add(opensOutput ? OutputLine(item, subtitle, strings) : Line(subtitle, "ClaudeChatSecondary"));
+            // an artifact that worked reads how, with its link; any other result of it (an error, two links, an unknown start) is the generic OUT row
+            var artifact = name == ArtifactTool && item.Status == ToolStatus.Succeeded ? ToolPresentation.ArtifactResult(result) : null;
+            if (artifact is { } made) Body.Children.Add(ArtifactLine(made, strings));
+            if (name == NotebookTool)
+            {
+                Body.Children.Add(Line(NotebookState(item.Status, strings), "ClaudeChatSecondary"));
+                Body.Children.Add(NotebookBox(Str(item.Input, "new_source"), strings));
+            }
             if (chromeDone && chrome == "computer" && item.ResultImages is { Count: > 0 } screens && Screenshot(screens[0], strings) is { } screenshot)
                 Body.Children.Add(screenshot);
             // the output of a Glob or a Grep, opened from its line
@@ -461,7 +486,8 @@ internal partial class ToolCallView : UserControl
             // a plan has no box: its line tells how it ended, and its document holds its text; a subagent's call shows only its
             // prompt, whatever came back
             // a skill's row has no body at all: neither its arguments nor what it answered
-            var showOutput = name != PlanTool && name != SkillTool && !IsAgentTool(name) && !chromeDone
+            // an artifact's line and a notebook's box say it all, with no IN or OUT
+            var showOutput = name != PlanTool && name != SkillTool && !IsAgentTool(name) && !chromeDone && artifact == null && name != NotebookTool
                 && (failed || (!hasDiff && !hasTodos && !quiet && !(refused && TellsReason(name))));
             var output = showOutput && !string.IsNullOrEmpty(result);
 
@@ -565,6 +591,73 @@ internal partial class ToolCallView : UserControl
         button.GotFocus += (_, e) => _focusMethod = e.NavigationMethod;
         button.Click += (_, _) => this.FindAncestorOfType<ClaudeChatView>()?.ShowPreview(image, name);
         return button;
+    }
+
+    // ---- the Artifact line and the notebook edit's box ----
+
+    private const string ArtifactKey = "artifact";
+
+    /// <summary>
+    /// "Created —", "Opened" or "Published" at half strength; with a host that opens links, after the dash a link "Open artifact ↗"
+    /// (a finger's height in the touch layout) that asks the host to open the artifact's url. Without one, only the word.
+    /// </summary>
+    private Control ArtifactLine(ArtifactLink made, ChatStrings strings)
+    {
+        var conversation = this.FindAncestorOfType<ClaudeChatView>()?.Conversation;
+        var link = conversation?.CanOpenLinks == true;
+        var word = made.Outcome switch
+        {
+            ArtifactOutcome.Created => strings.ArtifactCreated,
+            ArtifactOutcome.Opened => strings.ArtifactOpened,
+            _ => strings.ArtifactPublished,
+        };
+        var line = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal };
+        line.Classes.Add("ClaudeChatArtifactLine");
+        var text = Line(link ? word + " —" : word, "ClaudeChatArtifactText");
+        line.Children.Add(text);
+        if (link)
+        {
+            var label = Line(strings.ArtifactOpenLink, "ClaudeChatArtifactLinkText");
+            var button = new Button { Content = label, Tag = ArtifactKey };
+            button.Classes.Add("ClaudeChatButton");
+            button.Classes.Add("ClaudeChatArtifactLink");
+            AutomationProperties.SetName(button, strings.ArtifactOpenLink);
+            button.GotFocus += (_, e) => _focusMethod = e.NavigationMethod;
+            var url = made.Url;
+            button.Click += (_, _) => conversation!.RequestLink(url);
+            line.Children.Add(button);
+        }
+        AutomationProperties.SetName(line, word);
+        return line;
+    }
+
+    /// <summary>"Pending" without a result yet, "Success" once it worked, "Failed" for an error or a refusal.</summary>
+    private static string NotebookState(ToolStatus status, ChatStrings strings) => status switch
+    {
+        ToolStatus.Succeeded => strings.NotebookSuccess,
+        ToolStatus.Failed or ToolStatus.Rejected => strings.NotebookFailed,
+        _ => strings.NotebookPending,
+    };
+
+    /// <summary>The cell's new source whole (up to <see cref="MaxExpandedChars"/>), in a thin frame; "[No content]" for an empty one.</summary>
+    private static Border NotebookBox(string? source, ChatStrings strings)
+    {
+        var block = new SelectableTextBlock
+        {
+            Text = string.IsNullOrEmpty(source) ? strings.NotebookNoContent : Shown(source!, whole: true),
+            TextWrapping = TextWrapping.NoWrap,
+        };
+        block.Classes.Add("ClaudeChatToolText");
+        block.Classes.Add("ClaudeChatNotebookText");
+        var scroller = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = block,
+        };
+        var box = new Border { Child = scroller };
+        box.Classes.Add("ClaudeChatNotebookBox");
+        return box;
     }
 
     // ---- the line under a background agent's row ----

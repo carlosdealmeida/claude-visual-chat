@@ -2,13 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Templates;
+using Avalonia.Layout;
 using Avalonia.Threading;
+using ColorTextBlock.Avalonia;
 using Markdown.Avalonia;
 using Markdown.Avalonia.Controls;
 using Markdown.Avalonia.Utils;
@@ -177,6 +180,7 @@ public class MarkdownBlock : ContentControl
         {
             var control = Engine.Transform(text);
             tables = SettleTables(control);
+            SettleInsights(control);
             return control;
         }
         catch (Exception)
@@ -210,6 +214,140 @@ public class MarkdownBlock : ContentControl
                 break;
         }
         return found;
+    }
+
+    /// <summary>The class of an Insight header or footer span, which the theme paints on the text color with no background.</summary>
+    internal const string InsightClass = "ClaudeChatInsight";
+
+    /// <summary>Fewest rule characters of an Insight footer.</summary>
+    private const int InsightRuleLength = 20;
+
+    private enum InsightPart { None, Header, Footer }
+
+    /// <summary>
+    /// An Insight block, as the extension finds it, from the inline code spans only: a span with a star and "Insight" is its header, a
+    /// span of 20 or more box-drawing dashes its footer. Each gets the text color on a transparent background (the theme's class) and a
+    /// line of its own, with 12 px over and 4 under the header, 4 over and 12 under the footer: the paragraph holding it is cut in pieces
+    /// (the text before, the span, the text after), which a vertical stack can hold. In any other parent the span keeps its place in the line.
+    /// </summary>
+    private static void SettleInsights(Control control)
+    {
+        switch (control)
+        {
+            case CTextBlock block:
+                SplitInsights(block);
+                break;
+            case Panel panel:
+                foreach (var child in panel.Children.ToArray()) SettleInsights(child); // splitting adds to the panel
+                break;
+            case Decorator decorator when decorator.Child != null:
+                SettleInsights(decorator.Child);
+                break;
+            case ContentControl content when content.Content is Control inner:
+                SettleInsights(inner);
+                break;
+        }
+    }
+
+    private static InsightPart InsightOf(CInline inline)
+    {
+        if (inline is not CCode code) return InsightPart.None;
+        var text = code.AsString().Trim();
+        if (text.Contains("★") && text.Contains("Insight")) return InsightPart.Header;
+        if (text.Length < InsightRuleLength) return InsightPart.None;
+        foreach (var c in text)
+        {
+            if (c != '─') return InsightPart.None;
+        }
+        return InsightPart.Footer;
+    }
+
+    private static void SplitInsights(CTextBlock block)
+    {
+        var any = false;
+        foreach (var inline in block.Content)
+        {
+            if (InsightOf(inline) == InsightPart.None) continue;
+            inline.Classes.Add(InsightClass);
+            any = true;
+        }
+        if (!any || block.Parent is not StackPanel { Orientation: Orientation.Vertical } stack) return;
+
+        // pieces: the text before each span, the span, the text after
+        var pieces = new List<(List<CInline> Inlines, InsightPart Part)>();
+        var current = new List<CInline>();
+        foreach (var inline in block.Content.ToArray())
+        {
+            var part = InsightOf(inline);
+            if (part == InsightPart.None)
+            {
+                current.Add(inline);
+                continue;
+            }
+            pieces.Add((current, InsightPart.None));
+            pieces.Add((new List<CInline> { inline }, part));
+            current = new List<CInline>();
+        }
+        pieces.Add((current, InsightPart.None));
+        foreach (var piece in pieces)
+        {
+            if (piece.Part == InsightPart.None) TrimEdges(piece.Inlines);
+        }
+        pieces.RemoveAll(piece => piece.Inlines.Count == 0);
+
+        // the copies are made before any margin is set, so each takes the paragraph's own values
+        var targets = new List<CTextBlock> { block };
+        for (var i = 1; i < pieces.Count; i++) targets.Add(CopyOf(block));
+        block.Content.Clear();
+        var index = stack.Children.IndexOf(block);
+        for (var i = 0; i < pieces.Count; i++)
+        {
+            var piece = pieces[i];
+            var target = targets[i];
+            if (i > 0) stack.Children.Insert(index + i, target);
+            target.Content.AddRange(piece.Inlines);
+            if (piece.Part == InsightPart.Header) target.Margin = new Thickness(0, 12, 0, 4);
+            else if (piece.Part == InsightPart.Footer) target.Margin = new Thickness(0, 4, 0, 12);
+        }
+    }
+
+    /// <summary>The text before or after a span loses the spaces that were its line breaks; a piece with only those is empty.</summary>
+    private static void TrimEdges(List<CInline> inlines)
+    {
+        while (inlines.Count > 0 && inlines[0].GetType() == typeof(CRun))
+        {
+            var run = (CRun)inlines[0];
+            run.Text = run.Text.TrimStart();
+            if (run.Text.Length > 0) break;
+            inlines.RemoveAt(0);
+        }
+        while (inlines.Count > 0 && inlines[inlines.Count - 1].GetType() == typeof(CRun))
+        {
+            var run = (CRun)inlines[inlines.Count - 1];
+            run.Text = run.Text.TrimEnd();
+            if (run.Text.Length > 0) break;
+            inlines.RemoveAt(inlines.Count - 1);
+        }
+    }
+
+    private static readonly AvaloniaProperty[] ParagraphProperties =
+    {
+        CTextBlock.LineHeightProperty, CTextBlock.LineSpacingProperty, CTextBlock.BackgroundProperty, CTextBlock.ForegroundProperty,
+        CTextBlock.FontFamilyProperty, CTextBlock.FontWeightProperty, CTextBlock.FontSizeProperty, CTextBlock.FontStyleProperty,
+        CTextBlock.TextVerticalAlignmentProperty, CTextBlock.TextWrappingProperty, CTextBlock.TextAlignmentProperty,
+        Layoutable.MarginProperty, Layoutable.HorizontalAlignmentProperty, Layoutable.VerticalAlignmentProperty,
+    };
+
+    /// <summary>An empty paragraph like <paramref name="block"/>: its classes (which the theme styles by) and the values it was given.</summary>
+    private static CTextBlock CopyOf(CTextBlock block)
+    {
+        var copy = new CTextBlock();
+        copy.Classes.AddRange(block.Classes);
+        foreach (var property in ParagraphProperties)
+        {
+            if (block.IsSet(property)) copy.SetValue(property, block.GetValue(property));
+        }
+        return copy;
     }
 
     /// <summary>The markdown engine of this thread, set up so it never touches the network, the disk or processes.</summary>

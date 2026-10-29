@@ -94,6 +94,16 @@ public sealed record ChatStrings
         AgentToolTitle = "Agent:",
         WebFetchToolTitle = "Web Fetch",
         WebSearchToolTitle = "Web Search",
+        ArtifactToolTitle = "Artifact",
+        ArtifactCreated = "Criado",
+        ArtifactOpened = "Aberto",
+        ArtifactPublished = "Publicado",
+        ArtifactOpenLink = "Abrir artefato ↗",
+        NotebookEditTitle = "Editar célula do notebook",
+        NotebookPending = "Pendente",
+        NotebookSuccess = "Sucesso",
+        NotebookFailed = "Falhou",
+        NotebookNoContent = "[Sem conteúdo]",
         ChromeToolTitle = "Claude in Chrome",
         GlobNone = "Nenhum arquivo encontrado",
         GlobOne = "1 arquivo encontrado",
@@ -747,6 +757,36 @@ public sealed record ChatStrings
 
     /// <summary>The name of the Web Search tool, the same in every language.</summary>
     public string WebSearchToolTitle { get; init; } = "Web Search";
+
+    /// <summary>The name of the Artifact tool, the same in every language.</summary>
+    public string ArtifactToolTitle { get; init; } = "Artifact";
+
+    /// <summary>The start of the line under an Artifact call whose result says it created the artifact.</summary>
+    public string ArtifactCreated { get; init; } = "Created";
+
+    /// <summary>The line under an Artifact call whose result says it opened an artifact again.</summary>
+    public string ArtifactOpened { get; init; } = "Opened";
+
+    /// <summary>The line under an Artifact call that published (any result that is neither created nor opened).</summary>
+    public string ArtifactPublished { get; init; } = "Published";
+
+    /// <summary>The link to the artifact in the line under an Artifact call; it goes through the host, which opens it.</summary>
+    public string ArtifactOpenLink { get; init; } = "Open artifact ↗";
+
+    /// <summary>The name of a notebook edit (the NotebookEdit tool) in bold.</summary>
+    public string NotebookEditTitle { get; init; } = "Edit Notebook Cell";
+
+    /// <summary>A notebook edit that has no result yet.</summary>
+    public string NotebookPending { get; init; } = "Pending";
+
+    /// <summary>A notebook edit that worked.</summary>
+    public string NotebookSuccess { get; init; } = "Success";
+
+    /// <summary>A notebook edit that failed or was refused.</summary>
+    public string NotebookFailed { get; init; } = "Failed";
+
+    /// <summary>What the box of a notebook edit says when the new source is empty.</summary>
+    public string NotebookNoContent { get; init; } = "[No content]";
 
     /// <summary>The name of the Claude in Chrome tools, a product's name, the same in every language.</summary>
     public string ChromeToolTitle { get; init; } = "Claude in Chrome";

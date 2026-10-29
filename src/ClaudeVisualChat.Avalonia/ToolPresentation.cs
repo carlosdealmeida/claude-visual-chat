@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ClaudeVisualChat.Controls;
 
 namespace ClaudeVisualChat;
@@ -25,6 +26,12 @@ public readonly record struct LineChange(int Added, int Removed);
 
 /// <summary>The lines a Read asked for: from <see cref="From"/> to <see cref="To"/> (null: to the end), from 1.</summary>
 public readonly record struct LineRange(int From, int? To);
+
+/// <summary>How an Artifact call's result starts: a new artifact, one opened again, or one published.</summary>
+internal enum ArtifactOutcome { Created, Opened, Published }
+
+/// <summary>What a worked Artifact call says: how it went and the one link it carries.</summary>
+internal readonly record struct ArtifactLink(ArtifactOutcome Outcome, string Url);
 
 /// <summary>Pure helpers that turn a tool call's input into what the chat shows. Never throws on odd input.</summary>
 public static class ToolPresentation
@@ -60,6 +67,7 @@ public static class ToolPresentation
                     return RelativePath(Str(input, "file_path"), workingDirectory);
                 case "NotebookEdit":
                     return RelativePath(Str(input, "notebook_path"), workingDirectory);
+                case "Artifact": return Str(input, "file_path"); // as given, like the extension: the row shows the claude's own path
                 case "Bash":
                 case "PowerShell":
                     return FirstLine(Str(input, "command"));
@@ -316,6 +324,52 @@ public static class ToolPresentation
         if (!TryStr(input, "planFilePath", out var path)) return null;
         var name = path.Substring(Math.Max(path.LastIndexOf('\\'), path.LastIndexOf('/')) + 1);
         return name.Length == 0 ? null : name;
+    }
+
+    /// <summary>Where the result of a worked Artifact call starts, for the ones the row knows.</summary>
+    private static readonly string[] ArtifactStarts =
+    {
+        "Published ",
+        "Created a new Artifact at http",
+        "An earlier attempt of this call already created the Artifact at http",
+        OpenedStart,
+    };
+
+    private const string OpenedStart = "Opened the Artifact at http";
+
+    private static readonly Regex ArtifactLinkPattern = new Regex(@"\bat (https?://\S+)", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// What the row of an Artifact call that did not fail says: "Opened" when the result starts "Opened the Artifact at http", "Created" when
+    /// it starts "Created ", else "Published", with the link. Null (the generic OUT row) when the result starts some other way, or
+    /// does not carry exactly one "at http(s)://…". The caller keeps an error result away from here.
+    /// </summary>
+    internal static ArtifactLink? ArtifactResult(string? result)
+    {
+        if (string.IsNullOrEmpty(result)) return null;
+        var known = false;
+        foreach (var start in ArtifactStarts) known |= result!.StartsWith(start, StringComparison.Ordinal);
+        if (!known) return null;
+        var links = ArtifactLinkPattern.Matches(result!);
+        if (links.Count != 1) return null;
+        var url = links[0].Groups[1].Value;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)) return null;
+        var outcome = result!.StartsWith(OpenedStart, StringComparison.Ordinal) ? ArtifactOutcome.Opened
+            : result.StartsWith("Created ", StringComparison.Ordinal) ? ArtifactOutcome.Created
+            : ArtifactOutcome.Published;
+        return new ArtifactLink(outcome, url);
+    }
+
+    /// <summary>
+    /// What a notebook edit works on: the notebook's file name (after the last slash of either kind) and ":cell_id", or "" without a cell.
+    /// Null when the input has no notebook path.
+    /// </summary>
+    internal static (string File, string Cell)? NotebookTarget(JsonElement input)
+    {
+        if (!TryStr(input, "notebook_path", out var path)) return null;
+        var file = path.Substring(Math.Max(path.LastIndexOf('\\'),path.LastIndexOf('/')) + 1);
+        if (file.Length == 0) return null;
+        return (file, Str(input, "cell_id") is { Length: > 0 } cell ? ":" + cell : "");
     }
 
     public static (string Server, string Tool)? McpName(string toolName)

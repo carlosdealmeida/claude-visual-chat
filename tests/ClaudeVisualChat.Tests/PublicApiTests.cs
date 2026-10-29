@@ -230,6 +230,9 @@ public class PublicApiTests
         // the names of the tools the rows write (0.6.0): the same in every language
         foreach (var text in new[] { "AgentToolTitle", "WebFetchToolTitle", "WebSearchToolTitle", "ChromeToolTitle" })
             Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
+        // the Artifact line and the notebook edit of 2.1.310 (0.6.0)
+        foreach (var text in new[] { "ArtifactToolTitle", "ArtifactCreated", "ArtifactOpened", "ArtifactPublished", "ArtifactOpenLink", "NotebookEditTitle", "NotebookPending", "NotebookSuccess", "NotebookFailed", "NotebookNoContent" })
+            Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
         // MCP and Claude in Chrome rows of 2.1.310 (0.6.0): the images a result carried, and the lines the Chrome actions leave
         var images = typeof(ToolCallItem).GetProperty("ResultImages");
         Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<ChatImage>), images?.PropertyType);

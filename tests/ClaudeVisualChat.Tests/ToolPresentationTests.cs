@@ -445,4 +445,47 @@ public class ToolPresentationTests
             Assert.Null(ToolPresentation.ReadRange(tool, input));
         }
     }
+
+    // ---- the Artifact and the notebook edit ----
+
+    [Fact]
+    public void An_artifact_summary_is_the_file_path_as_given() =>
+        Assert.Equal("out/report.html", ToolPresentation.Summary("Artifact", J("{\"file_path\":\"out/report.html\",\"title\":\"x\"}"), Wd));
+
+    [Theory]
+    [InlineData("Created a new Artifact at https://claude.ai/a/1", "Created", "https://claude.ai/a/1")]
+    [InlineData("Opened the Artifact at https://claude.ai/a/2\nmore", "Opened", "https://claude.ai/a/2")]
+    [InlineData("Published https://x.example (updated) at https://claude.ai/a/3", "Published", "https://claude.ai/a/3")]
+    [InlineData("An earlier attempt of this call already created the Artifact at https://claude.ai/a/4", "Published", "https://claude.ai/a/4")]
+    public void An_artifact_result_reads_by_how_it_starts_and_gives_its_one_link(string result, string outcome, string url)
+    {
+        var read = ToolPresentation.ArtifactResult(result);
+        Assert.NotNull(read);
+        Assert.Equal(outcome, read!.Value.Outcome.ToString());
+        Assert.Equal(url, read.Value.Url);
+    }
+
+    [Theory]
+    [InlineData("Created a new Artifact at https://a.example/1 and also at https://b.example/2")] // two links
+    [InlineData("Created a new Artifact")]                                                          // none
+    [InlineData("Created a new Artifact at ftp://a.example/1")]                                     // not http
+    [InlineData("Something else at https://a.example/1")]                                           // a prefix nobody knows
+    [InlineData("")]
+    [InlineData(null)]
+    public void An_artifact_result_without_exactly_one_link_or_a_known_start_has_no_link(string? result) =>
+        Assert.Null(ToolPresentation.ArtifactResult(result));
+
+    [Theory]
+    [InlineData("{\"notebook_path\":\"C:\\\\demo\\\\n.ipynb\",\"cell_id\":\"c1\"}", "n.ipynb", ":c1")]
+    [InlineData("{\"notebook_path\":\"/home/me/work/n.ipynb\",\"cell_id\":\"c1\"}", "n.ipynb", ":c1")]
+    [InlineData("{\"notebook_path\":\"/home/me/n.ipynb\"}", "n.ipynb", "")]
+    public void A_notebook_target_is_the_file_name_then_the_cell(string input, string file, string cell)
+    {
+        var target = ToolPresentation.NotebookTarget(J(input));
+        Assert.Equal((file, cell), target);
+    }
+
+    [Fact]
+    public void A_notebook_target_needs_a_path() =>
+        Assert.Null(ToolPresentation.NotebookTarget(J("{\"cell_id\":\"c1\"}")));
 }
