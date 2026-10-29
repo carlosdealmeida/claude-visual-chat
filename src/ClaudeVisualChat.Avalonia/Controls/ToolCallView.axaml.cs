@@ -940,7 +940,7 @@ internal partial class ToolCallView : UserControl
     /// </summary>
     private DiffView ListDiff(ToolCallItem item, ChatStrings strings)
     {
-        var diff = new DiffView(item.Diff!, strings);
+        var diff = new DiffView(item.Diff!, strings, touch: GetValue(LayoutProperty) == ChatLayout.Touch);
         diff.ExpandRequested += (_, _) => this.FindAncestorOfType<ClaudeChatView>()?.ShowDiff(item);
         var layer = diff.ExpandControl!;
         layer.Tag = DiffKey;

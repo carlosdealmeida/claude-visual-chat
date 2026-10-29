@@ -158,6 +158,7 @@ public sealed record ChatStrings
         WriteFailed = "A gravação falhou",
         WriteSucceeded = "A gravação deu certo",
         ClickToExpand = "Clique para ampliar",
+        TapToExpand = "Toque para expandir",
         DiffViewTitle = "Comparação",
         OneLine = "1 linha",
         Lines = "{0} linhas",
@@ -759,6 +760,9 @@ public sealed record ChatStrings
 
     /// <summary>The pill over a diff in the list, under the pointer, and what a screen reader tells on it: a click opens the Diff View.</summary>
     public string ClickToExpand { get; init; } = "Click to expand";
+
+    /// <summary>The same pill in the touch layout, where there is nothing to click.</summary>
+    public string TapToExpand { get; init; } = "Tap to expand";
 
     /// <summary>The title of the Diff View when the call names no file.</summary>
     public string DiffViewTitle { get; init; } = "Diff View";

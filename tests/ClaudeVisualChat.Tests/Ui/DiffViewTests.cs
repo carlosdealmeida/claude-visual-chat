@@ -304,6 +304,7 @@ public class DiffViewTests
         Assert.Contains("after", UiHelpers.Texts(panel));
         Assert.NotEqual(ChatStrings.English.DiffViewTitle, ChatStrings.PortugueseBrazil.DiffViewTitle);
         Assert.NotEqual(ChatStrings.English.ClickToExpand, ChatStrings.PortugueseBrazil.ClickToExpand);
+        Assert.NotEqual(ChatStrings.English.TapToExpand, ChatStrings.PortugueseBrazil.TapToExpand);
         window.Close();
     }
 
@@ -359,7 +360,9 @@ public class DiffViewTests
         var diff = DiffOf(view, edit);
         Assert.True(Pill(diff).IsEffectivelyVisible);                          // no pointer to hover with
         Assert.True(diff.Bounds.Height >= 44, "the diff is " + diff.Bounds.Height);
-        Assert.Contains(view.Strings.ClickToExpand, UiHelpers.Texts(Pill(diff)));
+        Assert.Contains(view.Strings.TapToExpand, UiHelpers.Texts(Pill(diff)));           // "Tap", not "Click"
+        Assert.DoesNotContain(view.Strings.ClickToExpand, UiHelpers.Texts(Pill(diff)));
+        Assert.Equal(view.Strings.TapToExpand, AutomationProperties.GetName(Overlay(diff)));
 
         Tap(window, Overlay(diff));                                // a tap opens it
         var panel = Panel(view);

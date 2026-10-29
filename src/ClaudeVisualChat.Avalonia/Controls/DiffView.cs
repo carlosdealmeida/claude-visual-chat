@@ -61,6 +61,7 @@ internal sealed class DiffView : Panel
     private readonly ChatStrings _strings;
     private readonly bool _whole;
     private readonly bool _alwaysSideBySide;
+    private readonly bool _touch;
     private readonly Rectangle _fade = new Rectangle { IsHitTestVisible = false, Height = 30, VerticalAlignment = VerticalAlignment.Bottom };
     private readonly Border? _expand;
     private Control? _content;
@@ -71,8 +72,10 @@ internal sealed class DiffView : Panel
     /// <param name="strings">The texts ("+N lines", "Click to expand").</param>
     /// <param name="whole">Every line, never cut at <see cref="MostHeight"/> and with no layer (for a place that scrolls).</param>
     /// <param name="alwaysSideBySide">Side by side at any width (the Diff View's).</param>
-    public DiffView(IReadOnlyList<DiffLine> diff, ChatStrings strings, bool whole = false, bool alwaysSideBySide = false)
+    /// <param name="touch">The touch layout: the pill says "Tap to expand".</param>
+    public DiffView(IReadOnlyList<DiffLine> diff, ChatStrings strings, bool whole = false, bool alwaysSideBySide = false, bool touch = false)
     {
+        _touch = touch;
         _diff = diff ?? throw new ArgumentNullException(nameof(diff));
         _strings = strings ?? ChatStrings.English;
         _whole = whole;
@@ -104,15 +107,17 @@ internal sealed class DiffView : Panel
     /// The layer over the whole diff: it takes the pointer, Enter and Space, and holds the pill "Click to expand" at its bottom right,
     /// which the theme shows while the pointer or the keyboard is on the layer (and always in the touch layout).
     /// </summary>
+    private string ExpandText => _touch ? _strings.TapToExpand : _strings.ClickToExpand;
+
     private Border ExpandLayer()
     {
-        var text = new TextBlock { Text = _strings.ClickToExpand };
+        var text = new TextBlock { Text = ExpandText };
         text.Classes.Add("ClaudeChatDiffExpandText");
         var pill = new Border { Child = text };
         pill.Classes.Add("ClaudeChatDiffExpandPill");
         var layer = new Border { Child = pill, Focusable = true, Cursor = new Cursor(StandardCursorType.Hand) };
         layer.Classes.Add("ClaudeChatDiffExpand");
-        AutomationProperties.SetName(layer, _strings.ClickToExpand);
+        AutomationProperties.SetName(layer, ExpandText);
         layer.Tapped += (_, e) =>
         {
             e.Handled = true;
