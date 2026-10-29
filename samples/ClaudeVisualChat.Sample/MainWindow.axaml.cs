@@ -136,6 +136,8 @@ public partial class MainWindow : Window
         var playing = _playing = new CancellationTokenSource();
         var scenario = (string?)ScenarioPicker.SelectedItem ?? Recordings.Scenarios[0];
         var conversation = Start();
+        // the "Switched to" band gives way to the browser's banner (one at a time), so the tour sessions have the browser off
+        if (TourSession.Is(scenario)) conversation.BrowserStatus = ChatBrowserStatus.Off;
         _player = null;
         _finished = false;
         PlayButton.IsEnabled = true;
@@ -147,6 +149,7 @@ public partial class MainWindow : Window
             conversation.WorkingDirectory = Recordings.WorkingDirectory;
             conversation.LoadTranscript(Recordings.Transcript(scenario));
             if (scenario == DemoSession.Scenario) AttachDemoFile(conversation);
+            if (scenario == TourSession.Tour) BookmarkTourReply(conversation);
             UpdateStatus();
             return;
         }
@@ -168,6 +171,7 @@ public partial class MainWindow : Window
             _finished = true;
             if (!_answerYes) endedAt = DateTimeOffset.Now;
             if (scenario == DemoSession.Scenario) AttachDemoFile(conversation);
+            if (scenario == TourSession.Tour) BookmarkTourReply(conversation);
         }
         catch (OperationCanceledException) when (playing.IsCancellationRequested)
         {
@@ -197,6 +201,9 @@ public partial class MainWindow : Window
             old.CommandInvoked -= OnCommandInvoked;
             old.BrowserDisconnectRequested -= OnBrowserDisconnectRequested;
             old.RemoteControlLinkRequested -= OnRemoteControlLinkRequested;
+            old.SubmitUndone -= OnSubmitUndone;
+            old.LinkRequested -= OnLinkRequested;
+            old.FeedbackRequested -= OnFeedbackRequested;
             old.StopRequested -= OnStopRequested;
             old.PropertyChanged -= OnConversationChanged;
         }
@@ -218,6 +225,10 @@ public partial class MainWindow : Window
         conversation.CommandInvoked += OnCommandInvoked;
         conversation.BrowserDisconnectRequested += OnBrowserDisconnectRequested;
         conversation.RemoteControlLinkRequested += OnRemoteControlLinkRequested;
+        // the host listens to these, so the view shows the links and the thumbs that need it
+        conversation.SubmitUndone += OnSubmitUndone;
+        conversation.LinkRequested += OnLinkRequested;
+        conversation.FeedbackRequested += OnFeedbackRequested;
         conversation.StopRequested += OnStopRequested;
         conversation.PropertyChanged += OnConversationChanged;
         _conversation = conversation;
@@ -278,6 +289,15 @@ public partial class MainWindow : Window
     private static void AttachDemoFile(ChatConversation conversation)
     {
         if (conversation.Files.Count == 0) conversation.AddFile(DemoSession.FileName, DemoSession.FileContent);
+    }
+
+    /// <summary>The tour's last reply is bookmarked, as the user would with the button under it, so the bookmark shows.</summary>
+    private static void BookmarkTourReply(ChatConversation conversation)
+    {
+        foreach (var item in conversation.Items.OfType<AssistantTextItem>())
+        {
+            if (item.Uuid == TourSession.BookmarkedReply) item.IsBookmarked = true;
+        }
     }
 
     private void OnPermissionAnswered(object? sender, PermissionAnsweredEventArgs e) =>
@@ -354,6 +374,17 @@ public partial class MainWindow : Window
 
     private void OnRemoteControlLinkRequested(object? sender, RemoteControlLinkRequestedEventArgs e) =>
         Add("RemoteControlLinkRequested: " + e.Url, "(no stdin line: the host opens the link, the sample does not)");
+
+    private void OnSubmitUndone(object? sender, MessageSubmittedEventArgs e) =>
+        Add("SubmitUndone: \"" + e.Text + "\"", "(no stdin line: the host takes the message back if the claude has not started on it)");
+
+    private void OnLinkRequested(object? sender, LinkRequestedEventArgs e) =>
+        Add("LinkRequested: " + e.Url, "(no stdin line: the host opens the link, the sample does not)");
+
+    private void OnFeedbackRequested(object? sender, FeedbackRequestedEventArgs e) =>
+        Add("FeedbackRequested: " + (e.Positive switch { true => "thumbs up", false => "thumbs down", _ => "rating taken back" })
+            + (string.IsNullOrEmpty(e.Details) ? "" : " · \"" + e.Details + "\"") + " · " + e.Item.Uuid,
+            "(no stdin line: the host sends the rating to Anthropic, the sample sends nothing)");
 
     private void OnStopRequested(object? sender, EventArgs e)
     {

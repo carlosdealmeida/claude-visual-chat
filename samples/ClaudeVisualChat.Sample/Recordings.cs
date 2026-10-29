@@ -17,17 +17,21 @@ internal static class Recordings
     {
         "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model",
         "image", "commands", "effort", "plan", "plan-auto", "plan-feedback", "queued", "hook-blocked",
-        DemoSession.Scenario,
+        DemoSession.Scenario, TourSession.Tour, TourSession.AutoMode,
     };
 
     /// <summary>The folder the recordings were made in, after the recorder replaced the real one.</summary>
     public const string WorkingDirectory = @"C:\demo\app";
 
     public static IReadOnlyList<string> Stream(string scenario) =>
-        scenario == DemoSession.Scenario ? DemoSession.Stream() : Read(scenario + ".stream.ndjson");
+        scenario == DemoSession.Scenario ? DemoSession.Stream()
+        : TourSession.Is(scenario) ? TourSession.Stream(scenario)
+        : Read(scenario + ".stream.ndjson");
 
     public static IReadOnlyList<string> Transcript(string scenario) =>
-        scenario == DemoSession.Scenario ? DemoSession.Transcript() : Read(scenario + ".transcript.jsonl");
+        scenario == DemoSession.Scenario ? DemoSession.Transcript()
+        : TourSession.Is(scenario) ? TourSession.Transcript(scenario)
+        : Read(scenario + ".transcript.jsonl");
 
     /// <summary>
     /// What the user typed in the recording, which the claude's output does not repeat: the user's messages of the
