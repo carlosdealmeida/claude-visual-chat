@@ -575,6 +575,29 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_title_tasks_and_the_chip_and_main_card_texts_of_0_6_0_exist()
+    {
+        var title = typeof(ChatConversation).GetProperty("Title");
+        Assert.Equal(typeof(string), title?.PropertyType);
+        Assert.NotNull(title!.SetMethod);
+        Assert.True(title.SetMethod!.IsPublic); // the host sets it
+        Assert.Contains("tasks", ChatConversation.LocalCommands);
+        Assert.Contains("bashes", ChatConversation.LocalCommands);
+        foreach (var name in new[]
+        {
+            "CommandTasksDescription", "AgentsChipWaitingTip", "AgentsChipRunningTip", "AgentsChipFailedTip", "AgentsChipIdleTip",
+            "AgentThisSession", "AgentMainWorking", "AgentMainIdle", "AgentCountWaiting", "AgentCountRunning", "AgentCountFinished",
+            "AgentCountFailed", "AgentCountStopped",
+        })
+        {
+            var property = typeof(ChatStrings).GetProperty(name);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+        Assert.NotNull(typeof(ChatStrings).GetProperty("AgentMain")); // it stays: the API only grows
+    }
+
+    [Fact]
     public void The_queue_of_messages_sent_while_claude_works_exists()
     {
         // the messages held until the claude takes them (0.6.0): a list the host can read and follow, not replace

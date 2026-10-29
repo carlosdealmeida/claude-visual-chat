@@ -573,6 +573,23 @@ public class ChatStringsTests
     public void Agent_time_is_whole_seconds(long ms, string expected) => Assert.Equal(expected, ChatStrings.FormatAgentTime(ms));
 
     [Fact]
+    public void The_chip_and_main_card_texts_of_0_6_0_in_both_languages()
+    {
+        Assert.Equal("View and manage everything running in the background", En.CommandTasksDescription);
+        Assert.Equal("Ver e gerenciar tudo que está rodando em segundo plano", Pt.CommandTasksDescription);
+        Assert.Equal("An agent is waiting for your permission · Click to open the agent map", En.AgentsChipWaitingTip);
+        Assert.Equal("Agents are working · Click to open the agent map", En.AgentsChipRunningTip);
+        Assert.Equal("An agent failed · Click to open the agent map", En.AgentsChipFailedTip);
+        Assert.Equal("Click to open the agent map", En.AgentsChipIdleTip);
+        Assert.Equal(("This session", "Esta sessão"), (En.AgentThisSession, Pt.AgentThisSession));
+        Assert.Equal(("Working", "Trabalhando"), (En.AgentMainWorking, Pt.AgentMainWorking));
+        Assert.Equal(("Idle", "Ocioso"), (En.AgentMainIdle, Pt.AgentMainIdle));
+        Assert.Equal("1 waiting for your permission", En.FormatAgentCount(En.AgentCountWaiting, 1));
+        Assert.Equal("2 failed", En.FormatAgentCount(En.AgentCountFailed, 2));
+        Assert.Equal("Falharam: 2", Pt.FormatAgentCount(Pt.AgentCountFailed, 2));
+    }
+
+    [Fact]
     public void Agent_map_texts_in_both_languages()
     {
         Assert.Equal("0 agents", En.FormatAgentsChip(0));

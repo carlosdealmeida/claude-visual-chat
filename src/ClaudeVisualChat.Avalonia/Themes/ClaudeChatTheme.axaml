@@ -2760,6 +2760,16 @@
     <Setter Property="Fill" Value="{DynamicResource ClaudeChat.AgentRunning}" />
     <Setter Property="Opacity" Value="1" />
   </Style>
+  <!-- by priority: waiting (blue), at work (green), failed while nothing works (the error color), idle; the code sets one
+       class of the three, or "waiting" along with "running", and the rule below the others wins -->
+  <Style Selector="Button.ClaudeChatAgentsChip.failed Ellipse.ClaudeChatAgentsChipDot">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.Error}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentsChip.waiting Ellipse.ClaudeChatAgentsChipDot">
+    <Setter Property="Fill" Value="{DynamicResource ClaudeChat.AgentWaiting}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
 
   <!-- the context ring: a bar button around the extension's 20 px pie -->
   <Style Selector="Button.ClaudeChatContextRing">
@@ -2894,6 +2904,14 @@
   </Style>
   <Style Selector="Border.ClaudeChatAgentRow.main">
     <Setter Property="Width" Value="320" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Focusable" Value="True" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentRow.main:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ListHoverBackground}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatAgentRow.main:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
   </Style>
   <Style Selector="Button.ClaudeChatAgentRow:pointerover /template/ Border#PART_ChatButton">
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.ListHoverBackground}" />

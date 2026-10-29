@@ -31,6 +31,9 @@ internal sealed class AgentsChip : Button
     private ChatConversation? _tracked;
     private bool _attached;
 
+    /// <summary>The agents whose changes it hears while it is in a window.</summary>
+    private readonly System.Collections.Generic.List<AgentInfo> _watched = new System.Collections.Generic.List<AgentInfo>();
+
     public AgentsChip()
     {
         Classes.Add("ClaudeChatButton");
@@ -83,6 +86,7 @@ internal sealed class AgentsChip : Button
     {
         if (!ReferenceEquals(conversation, _tracked))
         {
+            Unwatch();
             if (_tracked != null)
             {
                 _tracked.PropertyChanged -= OnConversationChanged;
@@ -93,6 +97,7 @@ internal sealed class AgentsChip : Button
             {
                 _tracked.PropertyChanged += OnConversationChanged;
                 _tracked.Agents.CollectionChanged += OnAgentsChanged;
+                Watch();
             }
         }
         // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
@@ -104,18 +109,72 @@ internal sealed class AgentsChip : Button
         if (e.PropertyName == nameof(ChatConversation.RunningAgents)) Update();
     }
 
-    private void OnAgentsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Update();
+    private void OnAgentsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        Unwatch();
+        Watch();
+        Update();
+    }
+
+    /// <summary>The dot follows each agent's state: one that starts to wait or fails changes it, whatever the count of those at work.</summary>
+    private void OnAgentChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AgentInfo.Status) || e.PropertyName == nameof(AgentInfo.IsWaitingForPermission)) Update();
+    }
+
+    private void Watch()
+    {
+        if (_tracked == null) return;
+        foreach (var agent in _tracked.Agents)
+        {
+            agent.PropertyChanged += OnAgentChanged;
+            _watched.Add(agent);
+        }
+    }
+
+    private void Unwatch()
+    {
+        foreach (var agent in _watched) agent.PropertyChanged -= OnAgentChanged;
+        _watched.Clear();
+    }
 
     private void Update()
     {
         var strings = Strings;
-        var running = _tracked?.RunningAgents ?? 0;
+        var running = 0;
+        var waiting = false;
+        var failed = false;
+        if (_tracked != null)
+        {
+            foreach (var agent in _tracked.Agents)
+            {
+                if (agent.Status == AgentStatus.Running)
+                {
+                    running++;
+                    waiting |= agent.IsWaitingForPermission;
+                }
+                else if (agent.Status == AgentStatus.Failed)
+                {
+                    failed = true; // stopped and killed agents do not count
+                }
+            }
+        }
         IsVisible = _tracked != null && _tracked.Agents.Count > 0;
         _label.Text = GetValue(LayoutProperty) == ChatLayout.Touch
             ? strings.FormatAgentsChipTouch(running, _tracked?.Agents.Count ?? 0)
             : strings.FormatAgentsChip(running);
-        Classes.Set("running", running > 0);
-        ToolTip.SetTip(this, strings.AgentMapTitle);
-        AutomationProperties.SetName(this, _label.Text + " · " + strings.AgentMapTitle);
+        // the dot: waiting, then at work, then failed (only while nothing works: red does not stick), then idle
+        var isWaiting = waiting;
+        var isRunning = !waiting && running > 0;
+        var isFailed = !waiting && running == 0 && failed;
+        Classes.Set("waiting", isWaiting);
+        Classes.Set("running", isRunning || isWaiting); // a waiting agent is at work; the dot's color is the blue
+        Classes.Set("failed", isFailed);
+        var tip = isWaiting ? strings.AgentsChipWaitingTip
+            : isRunning ? strings.AgentsChipRunningTip
+            : isFailed ? strings.AgentsChipFailedTip
+            : strings.AgentsChipIdleTip;
+        ToolTip.SetTip(this, tip);
+        AutomationProperties.SetName(this, _label.Text + " · " + tip);
     }
 }

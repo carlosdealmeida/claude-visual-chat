@@ -121,7 +121,9 @@ public class CommandPaletteTests
         // every group, unfiltered, as in the extension: the actions, and the slash commands in their place, in alphabetical order
         Assert.Equal(new[] { "Context", "Model", "Settings", "Slash Commands" }, Headers(ui));
         Assert.Equal(new[] { "Attach file…", "Account & usage…", "Focus view" }, ui.Labels.Where(l => !l.StartsWith("/", StringComparison.Ordinal)));
-        Assert.Equal(new[] { "/chrome", "/compact", "/context", "/copy", "/hello", "/help", "/rc", "/remote-control", "/usage" }, ui.Commands);
+        Assert.Equal(new[] { "/bashes", "/chrome", "/compact", "/context", "/copy", "/hello", "/help", "/rc", "/remote-control", "/tasks", "/usage" }, ui.Commands);
+        Assert.Equal("View and manage everything running in the background", ToolTip.GetTip(Row(ui, "/tasks")));
+        Assert.Equal("View and manage everything running in the background", ToolTip.GetTip(Row(ui, "/bashes")));
         Assert.Equal("Show context usage", ToolTip.GetTip(Row(ui, "/context")));
         Assert.Equal("Say hello", ToolTip.GetTip(Row(ui, "/hello")));
         Assert.Equal("Copy Claude's last response to clipboard (or /copy N for the Nth-latest)", ToolTip.GetTip(Row(ui, "/copy")));
@@ -200,10 +202,10 @@ public class CommandPaletteTests
 
         // the arrows move the mark, round the ends; Enter with no row marked sends what was typed
         ui.Slash("he");
-        Assert.Equal(new[] { "/hello", "/help", "/chrome", "/compact", "/copy" }, ui.Commands); // "the" in their descriptions, in alphabetical order
+        Assert.Equal(new[] { "/hello", "/help", "/bashes", "/chrome", "/compact", "/copy", "/tasks" }, ui.Commands); // "the" in their descriptions, in alphabetical order
         Assert.Equal("/hello", ui.Active);
         ui.Press(Key.Up);
-        Assert.Equal("/copy", ui.Active);
+        Assert.Equal("/tasks", ui.Active);
         ui.Press(Key.Down);
         Assert.Equal("/hello", ui.Active);
         ui.Press(Key.Down);
@@ -768,7 +770,7 @@ public class CommandPaletteTests
             new ChatCommand("zeta", "Last", ""), new ChatCommand("Alpha", "First", ""), new ChatCommand("beta", "Second", "")));
         ui.Type("/");
         // no culture of the machine decides: the names, ignoring the case, then as written
-        Assert.Equal(new[] { "/Alpha", "/beta", "/chrome", "/context", "/copy", "/rc", "/remote-control", "/usage", "/zeta" }, ui.Commands);
+        Assert.Equal(new[] { "/Alpha", "/bashes", "/beta", "/chrome", "/context", "/copy", "/rc", "/remote-control", "/tasks", "/usage", "/zeta" }, ui.Commands);
         UiHelpers.Type(ui.Window, "eta");   // both have it inside the name: the filter keeps the alphabetical order inside the group
         Assert.Equal(new[] { "/beta", "/zeta" }, ui.Commands);
         ui.Window.Close();

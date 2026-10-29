@@ -349,7 +349,10 @@ list); an agent with no end there shows as stopped, and a later live line of it 
 brings it back to running. The time of a running agent counts from `Clock`. The chip shows as soon as `Agents` has
 one, live or from a session file.
 
-The main card says "Main agent": the component has no title for the conversation yet. The extension's card also has
+The main card says `ChatConversation.Title`, which the host sets, or "This session" without one; a click opens it, for
+"Working" or "Idle", the agents and how many are in each state. `/tasks` (and `/bashes`) opens the map. The chip's dot is
+blue while an agent waits for a permission, green while agents work, red when nothing works and one failed, else grey.
+The extension's card also has
 the agent's prompt, its tool calls, "Open transcript" and "Stop agent", which need the agent's own transcript and a way
 to stop it; they are not here.
 

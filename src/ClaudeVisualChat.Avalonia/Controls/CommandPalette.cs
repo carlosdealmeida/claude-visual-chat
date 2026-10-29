@@ -639,6 +639,7 @@ internal sealed class CommandPalette : ChatMenuPopup
             "remote-control" or "rc" => strings.CommandRemoteControlDescription,
             "chrome" => strings.CommandChromeDescription,
             "copy" => strings.CommandCopyDescription,
+            "tasks" or "bashes" => strings.CommandTasksDescription,
             _ => "",
         };
     }

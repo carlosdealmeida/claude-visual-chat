@@ -74,7 +74,13 @@ internal sealed class AgentMapPanel : Border
     private readonly TextBlock _mainMeta = new TextBlock();
     private readonly Border _mainStub = new Border();
     private readonly Border _mainRow;
+
+    /// <summary>The main card's lines when it is open: how many agents, and how many in each state.</summary>
+    private readonly StackPanel _mainDetails = new StackPanel();
     private readonly StackPanel _agents = new StackPanel();
+
+    /// <summary>True while the main card is open; closed each time the map opens.</summary>
+    private bool _mainOpen;
 
     /// <summary>The line from the bottom of the main card to the agents, while the tree goes down.</summary>
     private readonly Border _mainDown = Line(vertical: true);
@@ -140,9 +146,25 @@ internal sealed class AgentMapPanel : Border
         _mainDot.Classes.Add("ClaudeChatAgentDot");
         _mainTitle.Classes.Add("ClaudeChatAgentRowTitle");
         _mainMeta.Classes.Add("ClaudeChatAgentRowMeta");
-        _mainRow = new Border { Child = RowBody(_mainDot, _mainTitle, _mainMeta) };
+        var mainBody = RowBody(_mainDot, _mainTitle, _mainMeta);
+        _mainDetails.Classes.Add("ClaudeChatAgentRowBody");
+        mainBody.Children.Add(_mainDetails);
+        _mainRow = new Border { Child = mainBody };
         _mainRow.Classes.Add("ClaudeChatAgentRow");
         _mainRow.Classes.Add("main");
+        // a click (or Enter, or Space) opens the card and closes it again; closed it reads like an agent's row
+        _mainRow.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(_mainRow).Properties.IsLeftButtonPressed) return;
+            e.Handled = true;
+            ToggleMain();
+        };
+        _mainRow.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter && e.Key != Key.Space) return;
+            e.Handled = true;
+            ToggleMain();
+        };
         _mainStub.Classes.Add("ClaudeChatAgentLine");
         _mainStub.Classes.Add("stub");
         _mainStub.Classes.Add("main");
@@ -400,7 +422,14 @@ internal sealed class AgentMapPanel : Border
                 Update();
                 break;
             case nameof(ChatConversation.IsBusy):
-                if (IsVisible) _mainDot.Classes.Set("running", _tracked!.IsBusy);
+                if (IsVisible)
+                {
+                    _mainDot.Classes.Set("running", _tracked!.IsBusy);
+                    if (_mainOpen) QueueBuild(); // "Working" or "Idle"
+                }
+                break;
+            case nameof(ChatConversation.Title):
+                if (IsVisible) QueueBuild();
                 break;
             case nameof(ChatConversation.Model):
             case nameof(ChatConversation.CurrentModel):
@@ -461,7 +490,11 @@ internal sealed class AgentMapPanel : Border
         var opening = shown && !IsVisible;
         if (shown)
         {
-            if (opening) _cardId = null;
+            if (opening)
+            {
+                _cardId = null;
+                _mainOpen = false;
+            }
             Watch(conversation);
             IsVisible = true;
             Build(conversation!);
@@ -494,10 +527,7 @@ internal sealed class AgentMapPanel : Border
         Label(_close, strings.Close);
         Label(_back, strings.Back);
 
-        _mainTitle.Text = strings.AgentMain;
-        _mainDot.Classes.Set("running", conversation.IsBusy);
-        SetLine(_mainMeta, Join(ModelChip.NameOf(conversation),
-            conversation.ContextUsage is { } usage ? strings.FormatAgentContextTokens(usage.TotalTokens) : null));
+        BuildMain(conversation, strings);
         var tree = new Tree(conversation.Agents);
         _wideWidth = WideWidth(tree);
         SetNarrow(ShouldBeNarrow());
@@ -522,6 +552,57 @@ internal sealed class AgentMapPanel : Border
             BuildCard(card, tree, conversation, strings, now);
         }
         UpdateTimer();
+    }
+
+    /// <summary>
+    /// The main card: the conversation's title (or "This session"); closed, "model · 12.3k tokens in context"; open, "Working" or
+    /// "Idle" in front of those, then how many agents, and a line for each state that has any.
+    /// </summary>
+    private void BuildMain(ChatConversation conversation, ChatStrings strings)
+    {
+        _mainTitle.Text = string.IsNullOrWhiteSpace(conversation.Title) ? strings.AgentThisSession : conversation.Title!.Trim();
+        AutomationProperties.SetName(_mainRow, _mainTitle.Text);
+        _mainDot.Classes.Set("running", conversation.IsBusy);
+        SetLine(_mainMeta, Join(
+            _mainOpen ? (conversation.IsBusy ? strings.AgentMainWorking : strings.AgentMainIdle) : null,
+            ModelChip.NameOf(conversation),
+            conversation.ContextUsage is { } usage ? strings.FormatAgentContextTokens(usage.TotalTokens) : null));
+        _mainDetails.Children.Clear();
+        _mainDetails.IsVisible = _mainOpen;
+        if (!_mainOpen) return;
+        int waiting = 0, running = 0, finished = 0, failed = 0, stopped = 0;
+        foreach (var agent in conversation.Agents)
+        {
+            switch (agent.Status)
+            {
+                case AgentStatus.Running:
+                    if (agent.IsWaitingForPermission) waiting++;
+                    else running++;
+                    break;
+                case AgentStatus.Completed: finished++; break;
+                case AgentStatus.Failed: failed++; break;
+                case AgentStatus.Stopped: stopped++; break;
+            }
+        }
+        AddMainLine(strings.FormatAgentsChip(conversation.Agents.Count));
+        if (waiting > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountWaiting, waiting));
+        if (running > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountRunning, running));
+        if (finished > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountFinished, finished));
+        if (failed > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountFailed, failed));
+        if (stopped > 0) AddMainLine(strings.FormatAgentCount(strings.AgentCountStopped, stopped));
+    }
+
+    private void AddMainLine(string text)
+    {
+        var line = new TextBlock { Text = text };
+        line.Classes.Add("ClaudeChatAgentRowMeta");
+        _mainDetails.Children.Add(line);
+    }
+
+    private void ToggleMain()
+    {
+        _mainOpen = !_mainOpen;
+        if (_tracked != null && IsVisible) Build(_tracked);
     }
 
     /// <summary>The timer runs while the map shows in a window with a running agent's time to redo.</summary>
@@ -702,7 +783,7 @@ internal sealed class AgentMapPanel : Border
     }
 
     /// <summary>A row's inside: the dot and the title on one line (6 px apart), the meta line under them, 14 px in.</summary>
-    private static Control RowBody(Ellipse dot, TextBlock title, TextBlock meta)
+    private static StackPanel RowBody(Ellipse dot, TextBlock title, TextBlock meta)
     {
         DockPanel.SetDock(dot, Dock.Left);
         var head = new DockPanel { Children = { dot, title } };

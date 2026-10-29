@@ -28,7 +28,7 @@ public sealed class ChatConversation : ChatObservableObject
     private const string ExitPlanModeTool = "ExitPlanMode";
     private const string AutoMode = "auto";
     private const string AcceptEditsMode = "acceptEdits";
-    private static readonly string[] LocalCommandNames = { "context", "usage", "remote-control", "rc", "chrome", "copy" };
+    private static readonly string[] LocalCommandNames = { "context", "usage", "remote-control", "rc", "chrome", "copy", "tasks", "bashes" };
     private static readonly IReadOnlyList<string> LocalCommandList = new System.Collections.ObjectModel.ReadOnlyCollection<string>(LocalCommandNames);
 
     /// <summary>How many of the latest finished replies <c>/copy N</c> counts.</summary>
@@ -94,6 +94,7 @@ public sealed class ChatConversation : ChatObservableObject
     private string? _browserError;
     private ChatRemoteControlStatus _remoteControlStatus;
     private string? _remoteControlUrl;
+    private string? _title;
     private string? _remoteControlError;
 
     private readonly ObservableCollection<AssistantTextItem> _bookmarks = new ObservableCollection<AssistantTextItem>();
@@ -368,6 +369,17 @@ public sealed class ChatConversation : ChatObservableObject
     {
         get => _sessionId;
         set => SetField(ref _sessionId, value);
+    }
+
+    /// <summary>
+    /// The conversation's title, which the host sets (the first prompt, or the title the claude generated): the Agent map's main
+    /// card says it. Null or blank, the card says "This session". The conversation does not change it, and
+    /// <see cref="Clear"/> keeps it.
+    /// </summary>
+    public string? Title
+    {
+        get => _title;
+        set => SetField(ref _title, value);
     }
 
     /// <summary>The model the claude reports; <see cref="SetModel"/> only asks for a change.</summary>
@@ -1138,8 +1150,8 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
-    /// Runs a local command: raises <see cref="CommandInvoked"/>, and <c>context</c> and <c>usage</c> also show their
-    /// panel. Nothing goes to the claude and no item is added.
+    /// Runs a local command: raises <see cref="CommandInvoked"/>, and <c>context</c>, <c>usage</c> and <c>tasks</c> (with its
+    /// alias <c>bashes</c>, which opens the Agent map) also show their panel. Nothing goes to the claude and no item is added.
     /// </summary>
     public void InvokeCommand(string name, string arguments)
     {
@@ -1148,6 +1160,7 @@ public sealed class ChatConversation : ChatObservableObject
         if (name == "context") ShownPanel = ChatPanel.Context;
         else if (name == "usage") ShownPanel = ChatPanel.Usage;
         else if (name == "copy") Copy(arguments);
+        else if (name == "tasks" || name == "bashes") ShowAgents();
         CommandInvoked?.Invoke(this, new CommandInvokedEventArgs(name, arguments));
     }
 

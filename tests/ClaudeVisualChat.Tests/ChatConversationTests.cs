@@ -1642,11 +1642,58 @@ public class ChatConversationTests
     }
 
     [Fact]
-    public void Local_commands_are_context_usage_remote_control_rc_chrome_and_copy()
+    public void Local_commands_are_context_usage_remote_control_rc_chrome_copy_tasks_and_bashes()
     {
-        Assert.Equal(new[] { "context", "usage", "remote-control", "rc", "chrome", "copy" }, ChatConversation.LocalCommands);
+        Assert.Equal(new[] { "context", "usage", "remote-control", "rc", "chrome", "copy", "tasks", "bashes" }, ChatConversation.LocalCommands);
         Assert.IsNotType<string[]>(ChatConversation.LocalCommands);
         Assert.Throws<NotSupportedException>(() => ((System.Collections.Generic.IList<string>)ChatConversation.LocalCommands)[0] = "x");
+    }
+
+    [Fact]
+    public void Local_commands_include_tasks_and_bashes()
+    {
+        Assert.Contains("tasks", ChatConversation.LocalCommands);
+        Assert.Contains("bashes", ChatConversation.LocalCommands);
+        var names = new ChatConversation().PaletteCommands.Select(x => x.Name).ToList();
+        Assert.Contains("tasks", names);
+        Assert.Contains("bashes", names);
+    }
+
+    [Fact]
+    public void Tasks_opens_the_agent_map()
+    {
+        foreach (var name in new[] { "tasks", "bashes" })
+        {
+            var c = new ChatConversation();
+            var invoked = new List<string>();
+            c.CommandInvoked += (_, e) => invoked.Add(e.Name);
+            c.InvokeCommand(name, "");
+            Assert.Equal(ChatPanel.Agents, c.ShownPanel);
+            Assert.Equal(new[] { name }, invoked);
+            Assert.Empty(c.Items); // nothing is said, nothing goes to the claude
+        }
+
+        // typed in the box: the same, and the text is not sent
+        var typed = new ChatConversation();
+        var sent = 0;
+        typed.MessageSubmitted += (_, _) => sent++;
+        typed.Submit("/tasks");
+        Assert.Equal(ChatPanel.Agents, typed.ShownPanel);
+        Assert.Equal(0, sent);
+    }
+
+    [Fact]
+    public void The_title_is_the_hosts_and_observable()
+    {
+        var c = new ChatConversation();
+        Assert.Null(c.Title);
+        var changes = new List<string?>();
+        c.PropertyChanged += (_, e) => changes.Add(e.PropertyName);
+        c.Title = "Fix the build";
+        c.Title = "Fix the build";
+        Assert.Equal(new[] { nameof(ChatConversation.Title) }, changes);
+        c.Clear();
+        Assert.Equal("Fix the build", c.Title);
     }
 
     // ---- /copy ----

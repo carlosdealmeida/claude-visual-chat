@@ -98,7 +98,7 @@ public class AgentMapUiTests
         var texts = UiHelpers.Texts(o.Map);
         Assert.Contains("Agent map", texts);
         Assert.Contains("0 agents · click an agent for details", texts);
-        Assert.Contains("Main agent", texts);
+        Assert.Contains("This session", texts); // no title: the extension's words, not "Main agent"
         Assert.Contains("opus", texts); // the model, as the model chip names it
         Assert.Empty(o.Rows);
         c.ClosePanel();
@@ -124,6 +124,151 @@ public class AgentMapUiTests
         c.Clear();
         UiHelpers.Pump();
         Assert.False(o.Chip.IsVisible);
+        o.Window.Close();
+    }
+
+    // ---- 0.6.0: the dot's states, /tasks and the main card ----
+
+    private static string Call(string id, string description) =>
+        "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_" + id + "\",\"type\":\"message\",\"role\":\"assistant\"," +
+        "\"content\":[{\"type\":\"tool_use\",\"id\":\"" + id + "\",\"name\":\"Agent\",\"input\":{\"description\":\"" + description + "\"," +
+        "\"subagent_type\":\"general-purpose\"}}]},\"parent_tool_use_id\":null,\"session_id\":\"s1\"}";
+
+    private static string Ends(string id, string status) =>
+        "{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"t_" + id + "\",\"tool_use_id\":\"" + id + "\"," +
+        "\"status\":\"" + status + "\",\"summary\":\"x\",\"usage\":{\"total_tokens\":10,\"tool_uses\":1,\"duration_ms\":20}}";
+
+    private static Color DotColor(AgentsChip chip) =>
+        Assert.IsAssignableFrom<ISolidColorBrush>(chip.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single().Fill).Color;
+
+    private static string? Tip(AgentsChip chip) => ToolTip.GetTip(chip) as string;
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void A_waiting_agent_turns_the_chip_dot_blue_with_its_tooltip(ChatLayout layout)
+    {
+        var c = Play(new[] { Call("toolu_a", "Look around"), Call("toolu_b", "Write tests") });
+        var view = new ClaudeChatView { Conversation = c, Layout = layout };
+        var window = UiHelpers.Show(view, UiHelpers.Width);
+        var chip = view.GetVisualDescendants().OfType<AgentsChip>().Single(x => x.IsEffectivelyVisible);
+        Assert.Equal(Color.Parse("#89D185"), DotColor(chip)); // at work
+        Assert.Equal("Agents are working · Click to open the agent map", Tip(chip));
+
+        c.Agents.Single(a => a.Id == "toolu_b").IsWaitingForPermission = true; // one of them asks, and the other works on
+        UiHelpers.Pump();
+        Assert.Equal(Color.Parse("#3B82F6"), DotColor(chip));
+        Assert.Equal("An agent is waiting for your permission · Click to open the agent map", Tip(chip));
+        Assert.Contains("2 ", chip.GetVisualDescendants().OfType<TextBlock>().Single().Text); // both count, in either layout
+
+        c.Agents.Single(a => a.Id == "toolu_b").IsWaitingForPermission = false;
+        UiHelpers.Pump();
+        Assert.Equal(Color.Parse("#89D185"), DotColor(chip));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_failed_agent_turns_the_dot_red_only_while_nothing_works()
+    {
+        var c = Play(new[] { Call("toolu_a", "Look around"), Call("toolu_b", "Write tests"), Ends("toolu_a", "failed") });
+        var o = new Opened(c);
+        var error = Assert.IsAssignableFrom<ISolidColorBrush>(o.View.FindResource("ClaudeChat.Error")).Color;
+        Assert.Equal(AgentStatus.Failed, c.Agents.Single(a => a.Id == "toolu_a").Status);
+
+        // one still works: the green
+        Assert.Equal(Color.Parse("#89D185"), DotColor(o.Chip));
+        Assert.Equal("Agents are working · Click to open the agent map", Tip(o.Chip));
+
+        // it ends: nothing works and one failed, so the red
+        c.AppendLine(Ends("toolu_b", "completed"));
+        UiHelpers.Pump();
+        Assert.Equal(0, c.RunningAgents);
+        Assert.Equal(error, DotColor(o.Chip));
+        Assert.Equal("An agent failed · Click to open the agent map", Tip(o.Chip));
+
+        // another starts to work: the red goes, and does not stick
+        c.AppendLine(Call("toolu_c", "Read one file"));
+        UiHelpers.Pump();
+        Assert.Equal(Color.Parse("#89D185"), DotColor(o.Chip));
+        c.AppendLine(Ends("toolu_c", "completed"));
+        UiHelpers.Pump();
+        Assert.Equal(error, DotColor(o.Chip));
+        o.Window.Close();
+
+        // stopped agents do not count as failed: the idle dot
+        var stopped = Play(new[] { Call("toolu_a", "Look around"), Ends("toolu_a", "stopped") });
+        var idle = new Opened(stopped);
+        Assert.Equal(AgentStatus.Stopped, stopped.Agents.Single().Status);
+        Assert.NotEqual(error, DotColor(idle.Chip));
+        Assert.Equal(0.4, idle.Chip.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single().Opacity);
+        Assert.Equal("Click to open the agent map", Tip(idle.Chip));
+        idle.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_main_card_reads_this_session_without_a_title_and_the_title_when_set()
+    {
+        var c = Play(new[] { Call("toolu_a", "Look around") });
+        var o = new Opened(c);
+        c.ShowAgents();
+        UiHelpers.Pump();
+        Assert.Contains("This session", UiHelpers.Texts(o.Map));
+        Assert.DoesNotContain("Main agent", UiHelpers.Texts(o.Map));
+
+        c.Title = "Fix the build";
+        UiHelpers.Pump();
+        Assert.Contains("Fix the build", UiHelpers.Texts(o.Map));
+        Assert.DoesNotContain("This session", UiHelpers.Texts(o.Map));
+
+        c.Title = "  ";
+        UiHelpers.Pump();
+        Assert.Contains("This session", UiHelpers.Texts(o.Map));
+        o.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_open_main_card_lists_waiting_and_failed_counts()
+    {
+        var c = Play(new[] { Call("toolu_a", "Look around"), Call("toolu_b", "Write tests"), Ends("toolu_a", "failed") });
+        c.Apply(new SessionStarted("s1", "opus", null, "default", "2.1.306"));
+        var o = new Opened(c);
+        c.Agents.Single(a => a.Id == "toolu_b").IsWaitingForPermission = true;
+        c.ShowAgents();
+        UiHelpers.Pump();
+        var main = o.Map.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatAgentRow") && b.Classes.Contains("main"));
+
+        // closed: the model and nothing else
+        Assert.Contains("opus", UiHelpers.Texts(main));
+        Assert.DoesNotContain("Working · opus", UiHelpers.Texts(main));
+        Assert.DoesNotContain("2 agents", UiHelpers.Texts(main));
+        var closed = main.Bounds.Height;
+
+        // a click opens it: Working (the calls have no result yet), the model, the agents, a line for each state that has any
+        UiHelpers.Click(o.Window, main);
+        UiHelpers.Pump();
+        var texts = UiHelpers.Texts(main);
+        Assert.Contains("Working · opus", texts);
+        Assert.Contains("2 agents", texts);
+        Assert.Contains("1 waiting for your permission", texts);
+        Assert.Contains("1 failed", texts);
+        Assert.DoesNotContain("0 running", texts);
+        Assert.DoesNotContain(texts, t => t.StartsWith("0 ", System.StringComparison.Ordinal));
+        Assert.True(main.Bounds.Height > closed);
+
+        // another click closes it
+        UiHelpers.Click(o.Window, main);
+        UiHelpers.Pump();
+        Assert.DoesNotContain("2 agents", UiHelpers.Texts(main));
+        Assert.Equal(closed, main.Bounds.Height, 1);
+
+        // opened again, and the map closed and opened: closed again
+        UiHelpers.Click(o.Window, main);
+        UiHelpers.Pump();
+        c.ClosePanel();
+        UiHelpers.Pump();
+        c.ShowAgents();
+        UiHelpers.Pump();
+        Assert.DoesNotContain("2 agents", UiHelpers.Texts(main));
         o.Window.Close();
     }
 

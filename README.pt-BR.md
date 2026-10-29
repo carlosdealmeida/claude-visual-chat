@@ -353,7 +353,10 @@ dele que chegue depois, ao vivo (as linhas de tarefa dele, ou uma linha do próp
 tempo de um agente rodando conta pelo `Clock`. O chip aparece assim que o `Agents` tem um, ao vivo ou vindo de um
 arquivo de sessão.
 
-O cartão principal diz "Agente principal": o componente ainda não tem um título para a conversa. A ficha da extensão
+O cartão principal diz o `ChatConversation.Title`, que o host define, ou "Esta sessão" sem ele; um clique o abre, com
+"Trabalhando" ou "Ocioso", os agentes e quantos estão em cada estado. O `/tasks` (e o `/bashes`) abre o mapa. A bolinha
+do chip fica azul enquanto um agente espera uma permissão, verde enquanto os agentes trabalham, vermelha quando nada
+trabalha e um falhou, e cinza no resto. A ficha da extensão
 também traz o prompt do agente, as chamadas de ferramenta dele, "Open transcript" e "Stop agent", que precisam da
 transcrição do próprio agente e de um jeito de pará-lo; eles não estão aqui.
 

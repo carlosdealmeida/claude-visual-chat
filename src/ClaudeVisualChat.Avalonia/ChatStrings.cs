@@ -270,6 +270,19 @@ public sealed record ChatStrings
         CommandRemoteControlDescription = "Ligar ou desligar o Remote Control",
         CommandChromeDescription = "Conectar ou desconectar o navegador",
         CommandCopyDescription = "Copiar a última resposta do Claude (ou /copy N para a N-ésima mais recente)",
+        CommandTasksDescription = "Ver e gerenciar tudo que está rodando em segundo plano",
+        AgentsChipWaitingTip = "Um agente está aguardando sua permissão · Clique para abrir o mapa de agentes",
+        AgentsChipRunningTip = "Os agentes estão trabalhando · Clique para abrir o mapa de agentes",
+        AgentsChipFailedTip = "Um agente falhou · Clique para abrir o mapa de agentes",
+        AgentsChipIdleTip = "Clique para abrir o mapa de agentes",
+        AgentThisSession = "Esta sessão",
+        AgentMainWorking = "Trabalhando",
+        AgentMainIdle = "Ocioso",
+        AgentCountWaiting = "Aguardando sua permissão: {0}",
+        AgentCountRunning = "Rodando: {0}",
+        AgentCountFinished = "Terminados: {0}",
+        AgentCountFailed = "Falharam: {0}",
+        AgentCountStopped = "Parados: {0}",
         CopyDone = "Copiado para a área de transferência ({0} caracteres, {1})",
         CopyNothing = "Nenhuma resposta do assistente para copiar",
         CopyOnly = "Só há {0} respostas do assistente para copiar",
@@ -1150,6 +1163,45 @@ public sealed record ChatStrings
     /// <summary>What the copy command does, in the menu.</summary>
     public string CommandCopyDescription { get; init; } = "Copy Claude's last response to clipboard (or /copy N for the Nth-latest)";
 
+    /// <summary>What the tasks command (and its alias, <c>/bashes</c>) does, in the menu.</summary>
+    public string CommandTasksDescription { get; init; } = "View and manage everything running in the background";
+
+    /// <summary>The "N agents" chip's tooltip while an agent at work waits for a permission.</summary>
+    public string AgentsChipWaitingTip { get; init; } = "An agent is waiting for your permission · Click to open the agent map";
+
+    /// <summary>The chip's tooltip while agents work.</summary>
+    public string AgentsChipRunningTip { get; init; } = "Agents are working · Click to open the agent map";
+
+    /// <summary>The chip's tooltip when nothing works and an agent failed.</summary>
+    public string AgentsChipFailedTip { get; init; } = "An agent failed · Click to open the agent map";
+
+    /// <summary>The chip's tooltip otherwise.</summary>
+    public string AgentsChipIdleTip { get; init; } = "Click to open the agent map";
+
+    /// <summary>The Agent map's main card when the conversation has no <see cref="ChatConversation.Title"/>.</summary>
+    public string AgentThisSession { get; init; } = "This session";
+
+    /// <summary>The main card, open: the conversation is at work.</summary>
+    public string AgentMainWorking { get; init; } = "Working";
+
+    /// <summary>The main card, open: the conversation is not at work.</summary>
+    public string AgentMainIdle { get; init; } = "Idle";
+
+    /// <summary>The main card, open: <c>{0}</c> agents wait for a permission.</summary>
+    public string AgentCountWaiting { get; init; } = "{0} waiting for your permission";
+
+    /// <summary>The main card, open: <c>{0}</c> agents work, none of them waiting.</summary>
+    public string AgentCountRunning { get; init; } = "{0} running";
+
+    /// <summary>The main card, open: <c>{0}</c> agents finished.</summary>
+    public string AgentCountFinished { get; init; } = "{0} finished";
+
+    /// <summary>The main card, open: <c>{0}</c> agents failed.</summary>
+    public string AgentCountFailed { get; init; } = "{0} failed";
+
+    /// <summary>The main card, open: <c>{0}</c> agents were stopped.</summary>
+    public string AgentCountStopped { get; init; } = "{0} stopped";
+
     /// <summary>The line after <c>/copy</c> worked; <c>{0}</c> is the count of characters and <c>{1}</c> the lines, <see cref="OneLine"/> or <see cref="Lines"/>.</summary>
     public string CopyDone { get; init; } = "Copied to clipboard ({0} characters, {1})";
 
@@ -1409,7 +1461,7 @@ public sealed record ChatStrings
     /// <summary>The line under the Agent map's title in the touch layout, with one agent.</summary>
     public string AgentMapSubtitleTouchOne { get; init; } = "1 agent · tap an agent for details";
 
-    /// <summary>The main agent's card in the Agent map.</summary>
+    /// <summary>The main agent's card in the Agent map (0.6.0: the card says the conversation's title, or <see cref="AgentThisSession"/>; this stays for hosts that read it).</summary>
     public string AgentMain { get; init; } = "Main agent";
 
     /// <summary>An agent's details: the main agent called it.</summary>
@@ -1983,6 +2035,9 @@ public sealed record ChatStrings
     /// <summary>The ring's tooltip for a percentage used (0 to 100): the free share, then the hint.</summary>
     internal string FormatContextRingTip(double percentUsed) =>
         ContextRingTip.Replace("{0}", Plain((int)Math.Round(100 - percentUsed))) + "\n" + ContextRingHint;
+
+    /// <summary>One of the main card's count lines (<see cref="AgentCountWaiting"/> and the like) with its number.</summary>
+    internal string FormatAgentCount(string template, int count) => template.Replace("{0}", FormatNumber(count));
 
     /// <summary><see cref="AgentsChip"/>: "0 agents", "1 agent", "3 agents".</summary>
     internal string FormatAgentsChip(int count) =>
