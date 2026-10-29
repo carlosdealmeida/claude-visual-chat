@@ -126,6 +126,11 @@
     <SolidColorBrush x:Key="ClaudeChat.ContextColor4" Color="#86CF86" />        <!-- charts.green -->
     <SolidColorBrush x:Key="ClaudeChat.ContextColor5" Color="#E0B97F" />        <!-- charts.yellow -->
     <SolidColorBrush x:Key="ClaudeChat.ContextColor6" Color="#EF8773" />        <!-- charts.red -->
+    <SolidColorBrush x:Key="ClaudeChat.ContextColor7" Color="#4EC9B0" />        <!-- terminal.ansiCyan -->
+    <SolidColorBrush x:Key="ClaudeChat.ContextColor8" Color="#BFBFBF" />        <!-- charts.foreground -->
+    <!-- the usage modal's bars: the progress bar's color, and the clay's from 80 % -->
+    <SolidColorBrush x:Key="ClaudeChat.ProgressBackground" Color="#0E70C0" />   <!-- progressBar.background -->
+    <SolidColorBrush x:Key="ClaudeChat.UsageClay" Color="#D97757" />
     <!-- the thumb of the effort slider -->
     <BoxShadows x:Key="ClaudeChat.EffortThumbShadow">0 1 2 0 #33000000</BoxShadows>
     <!-- the reply box's shadow, and its ring with the focus: the mode's color at 12 % -->
@@ -2438,30 +2443,38 @@
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
   </Style>
 
-  <!-- ===== the /context and /usage panels: the menus' frame over the end of the list, centered, 16 px from the
-       sides, 8 px over what is under the list; a title and a ×, then the body, 12 px from the sides ===== -->
+  <!-- ===== the "Context usage" and "Account & Usage" modals (/context and /usage): the backdrop over the whole view like the Agent
+       map's; the dialog in the side bar's color with a 1 px border, 8 px corners and 16 px inside and around, 440 px (400) at most;
+       the title at 16 px, semibold, and a ×; the body 12 px apart. The swatches, the bar and the colors are also the touch
+       layout's usage sheet's ===== -->
 
-  <Style Selector=":is(Border).ClaudeChatPanelPlace">
-    <Setter Property="VerticalAlignment" Value="Bottom" />
-    <Setter Property="Margin" Value="16,16,16,8" />
+  <Style Selector="Border.ClaudeChatModal">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ModalOverlay}" />
   </Style>
-  <Style Selector=":is(Border).ClaudeChatPanel">
-    <Setter Property="Background" Value="{DynamicResource ClaudeChat.MenuBackground}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+  <Style Selector="Border.ClaudeChatInfoModal">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.Background}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.TimelineLine}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="8" />
-    <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.PanelShadow}" />
-    <Setter Property="Padding" Value="0,0,0,8" />
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="Margin" Value="16" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
-  <Style Selector=":is(Border).ClaudeChatPanel TextBlock">
-    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.MenuForeground}" />
+  <!-- with the keyboard in it, the border takes the input's active border at 65 %, as the extension's dialogs -->
+  <Style Selector="Border.ClaudeChatInfoModal:focus-within">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.PermissionActiveBorder}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
-  <Style Selector="DockPanel.ClaudeChatPanelHeader">
-    <Setter Property="Margin" Value="12,4,4,4" />
+  <Style Selector="DockPanel.ClaudeChatModalHeader">
+    <Setter Property="Margin" Value="0,0,0,8" />
   </Style>
-  <Style Selector="TextBlock.ClaudeChatPanelTitle">
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalTitle">
+    <Setter Property="FontSize" Value="16" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
   </Style>
@@ -2469,7 +2482,7 @@
   <Style Selector="Button.ClaudeChatPanelClose">
     <Setter Property="Padding" Value="4" />
     <Setter Property="CornerRadius" Value="4" />
-    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.MenuForeground}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
   </Style>
   <Style Selector="Button.ClaudeChatPanelClose:pointerover /template/ Border#PART_ChatButton">
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.HoverBackground}" />
@@ -2478,25 +2491,22 @@
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
   </Style>
-  <Style Selector="Border.ClaudeChatPanelBody">
-    <Setter Property="Padding" Value="12,0" />
+  <Style Selector="StackPanel.ClaudeChatModalStack">
+    <Setter Property="Spacing" Value="12" />
   </Style>
-  <Style Selector=":is(Border).ClaudeChatPanel TextBlock.ClaudeChatPanelLoading">
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatPanelLoading">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
-  <!-- a row: a 10 px color square, the name, the value at the right -->
-  <Style Selector="Border.ClaudeChatPanelRow">
-    <Setter Property="Padding" Value="0,2" />
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalModel">
+    <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
-  <Style Selector="TextBlock.ClaudeChatPanelName">
-    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-  </Style>
-  <Style Selector="TextBlock.ClaudeChatPanelValue">
-    <Setter Property="Margin" Value="12,0,0,0" />
-    <Setter Property="HorizontalAlignment" Value="Right" />
-  </Style>
-  <Style Selector=":is(Border).ClaudeChatPanel Border.ClaudeChatPanelRow.muted TextBlock">
-    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+  <!-- the bar: 8 px high, round, a pill's hover color as the track -->
+  <Style Selector="Border.ClaudeChatContextBar">
+    <Setter Property="Height" Value="8" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.PillHoverBackground}" />
   </Style>
   <Style Selector="Border.ClaudeChatContextSwatch">
     <Setter Property="Width" Value="10" />
@@ -2505,24 +2515,13 @@
     <Setter Property="Margin" Value="0,0,8,0" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
-  <!-- the bars: 8 px high, round, a pill's hover color as the track -->
-  <Style Selector="Border.ClaudeChatContextBar, Border.ClaudeChatUsageBar">
-    <Setter Property="Height" Value="8" />
-    <Setter Property="CornerRadius" Value="4" />
-    <Setter Property="ClipToBounds" Value="True" />
-    <Setter Property="Background" Value="{DynamicResource ClaudeChat.PillHoverBackground}" />
-  </Style>
-  <Style Selector="Border.ClaudeChatContextBar">
-    <Setter Property="Margin" Value="0,0,0,8" />
-  </Style>
-  <Style Selector="Border.ClaudeChatUsageBar">
-    <Setter Property="Margin" Value="0,4" />
-  </Style>
-  <Style Selector=":is(Border).ClaudeChatPanel TextBlock.ClaudeChatContextTotal">
-    <Setter Property="Margin" Value="0,0,0,8" />
-  </Style>
   <Style Selector="Border.ClaudeChatContextSwatch.free">
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.PillHoverBackground}" />
+  </Style>
+  <!-- the free space's swatch: empty, with an outline -->
+  <Style Selector="Border.ClaudeChatContextSwatch.empty">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="BorderThickness" Value="1" />
   </Style>
   <Style Selector="Border.ClaudeChatContextSegment.color1, Border.ClaudeChatContextSwatch.color1">
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.ContextColor1}" />
@@ -2542,16 +2541,109 @@
   <Style Selector="Border.ClaudeChatContextSegment.color6, Border.ClaudeChatContextSwatch.color6">
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.ContextColor6}" />
   </Style>
-  <!-- /usage: a block per window, 12 px apart; the fill in the accent; when it renews, .85em in the secondary color -->
-  <Style Selector="StackPanel.ClaudeChatUsageWindows">
-    <Setter Property="Spacing" Value="12" />
+  <Style Selector="Border.ClaudeChatContextSegment.color7, Border.ClaudeChatContextSwatch.color7">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ContextColor7}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatContextSegment.color8, Border.ClaudeChatContextSwatch.color8">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ContextColor8}" />
+  </Style>
+  <!-- the table: the header at 11 px in capitals, 50 %; a row's name at 13 px, its tokens at 70 %, its share at 12 px, 50 % -->
+  <Style Selector="Grid.ClaudeChatModalTableRow">
+    <Setter Property="Margin" Value="0,2" />
+  </Style>
+  <Style Selector="Grid.ClaudeChatModalTableHeader">
+    <Setter Property="Margin" Value="0,0,0,2" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalHeaderCell">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Opacity" Value="0.5" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalName">
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalTokens">
+    <Setter Property="Opacity" Value="0.7" />
+    <Setter Property="HorizontalAlignment" Value="Right" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalShare">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Opacity" Value="0.5" />
+    <Setter Property="HorizontalAlignment" Value="Right" />
+  </Style>
+  <!-- the lists under the table: a title at 11 px in capitals, 50 %; rows at 12 px -->
+  <Style Selector="StackPanel.ClaudeChatModalList">
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalListTitle">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Opacity" Value="0.5" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalListName">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalListTokens">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Opacity" Value="0.7" />
+    <Setter Property="Margin" Value="12,0,0,0" />
+  </Style>
+  <!-- the usage modal: a section title at 12 px in capitals, 70 %; a label and its value; a bar of 6 px, round, with the progress
+       bar's fill, or the clay's from 80 %; when it renews at 11 px, 50 % -->
+  <Style Selector="StackPanel.ClaudeChatModalSection">
+    <Setter Property="Spacing" Value="8" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalSectionTitle">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Opacity" Value="0.7" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalFigureValue">
+    <Setter Property="Margin" Value="12,0,0,0" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="StackPanel.ClaudeChatModalWindow">
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+  <Style Selector="Border.ClaudeChatUsageMeter">
+    <Setter Property="Height" Value="6" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.PillHoverBackground}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatUsageMeterFill">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ProgressBackground}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatUsageMeterFill.clay">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.UsageClay}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalResets">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Opacity" Value="0.5" />
   </Style>
   <Style Selector="Border.ClaudeChatUsageFill">
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.AccentFill}" />
   </Style>
-  <Style Selector=":is(Border).ClaudeChatPanel TextBlock.ClaudeChatUsageResets">
+  <!-- "Retry" and the link: plain buttons; the link in the description's color, underlined under the pointer -->
+  <Style Selector="Button.ClaudeChatModalRetry">
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="Margin" Value="0,8,0,0" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.TimelineLine}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatModalLink">
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="Padding" Value="0,4" />
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
-    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.SmallFontSize}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatModalLink:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatInfoModal TextBlock.ClaudeChatModalLinkText">
+    <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatModalLink:pointerover TextBlock.ClaudeChatModalLinkText, Button.ClaudeChatModalLink:focus-visible TextBlock.ClaudeChatModalLinkText">
+    <Setter Property="TextDecorations" Value="Underline" />
   </Style>
 
   <!-- ===== images attached to the reply box: a strip of pills above the text ===== -->

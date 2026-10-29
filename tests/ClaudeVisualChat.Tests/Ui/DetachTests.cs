@@ -1678,4 +1678,46 @@ public class DetachTests
         Assert.DoesNotContain(m.View.GetVisualDescendants().OfType<FocusAgentStats>(), s => s.IsTicking);
         m.Window.Close();
     }
+
+    [AvaloniaFact]
+    public void The_context_and_account_modals_let_go_of_the_conversation_while_out_and_come_back_as_they_were()
+    {
+        var m = new Mounted(Conversation());
+        var c = m.Conversation;
+        c.Apply(new ContextUsageReported(new ContextUsage(30, 100, 30, new[] { new ContextCategory("Messages", 30, "used") })));
+        c.Apply(new ClaudeVisualChat.Protocol.AccountReported(new AccountInfo("Claude AI", "a@b.co", null, "Max")));
+        c.Apply(new ClaudeVisualChat.Protocol.UsageLimitsReported(new UsageLimits(new[] { new UsageWindow("five_hour", 0.5, null) })));
+
+        foreach (var command in new[] { "context", "usage" })
+        {
+            c.InvokeCommand(command, "");
+            UiHelpers.Pump();
+            ChatInfoPanel Modal() => command == "context"
+                ? m.View.GetVisualDescendants().OfType<ContextPanel>().Single()
+                : m.View.GetVisualDescendants().OfType<UsagePanel>().Single();
+            var panel = Modal();
+            var before = UiHelpers.Texts(panel);
+            Assert.True(panel.IsEffectivelyVisible);
+            Handlers(c, out var shown);
+
+            m.Out();                                              // out of the window: the events go, nothing throws
+            Handlers(c, out var left);
+            Assert.True(left < shown);
+            c.Apply(new ClaudeVisualChat.Protocol.AccountReported(new AccountInfo("API Key", null, null, null)));
+            c.ClosePanel();                                       // the panel closes while the view is out
+            c.InvokeCommand(command, "");
+
+            m.In();                                               // and back: it is drawn as the conversation is now
+            Handlers(c, out var back);
+            Assert.Equal(shown, back);
+            Assert.True(Modal().IsEffectivelyVisible);
+            if (command == "usage") Assert.Contains("API Key", UiHelpers.Texts(Modal()));
+            else Assert.Equal(before, UiHelpers.Texts(Modal()));
+            c.Apply(new ClaudeVisualChat.Protocol.AccountReported(new AccountInfo("Claude AI", "a@b.co", null, "Max")));
+            c.ClosePanel();
+            UiHelpers.Pump();
+            Assert.False(Modal().IsVisible);
+        }
+        m.Window.Close();
+    }
 }

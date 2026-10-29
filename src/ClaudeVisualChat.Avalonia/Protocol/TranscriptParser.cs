@@ -259,11 +259,50 @@ namespace ClaudeVisualChat.Protocol
                 }
                 var percentage = JsonHelpers.Double(body, "percentage") ?? 0;
                 events.Add(new ContextUsageReported(new ContextUsage(
-                    total, JsonHelpers.Long(body, "maxTokens") ?? 0, (int)Math.Round(percentage), list)));
+                    total, JsonHelpers.Long(body, "maxTokens") ?? 0, (int)Math.Round(percentage), list)
+                {
+                    Model = JsonHelpers.Str(body, "model"),
+                    MemoryFiles = ReadContextFiles(JsonHelpers.Arr(body, "memoryFiles")),
+                    Agents = ReadContextAgents(JsonHelpers.Arr(body, "agents")),
+                }));
+            }
+
+            if (JsonHelpers.Obj(body, "account") is { } account)
+            {
+                var read = new AccountInfo(
+                    JsonHelpers.Str(account, "authMethod") ?? JsonHelpers.Str(account, "tokenSource") ?? JsonHelpers.Str(account, "apiKeySource"),
+                    JsonHelpers.Str(account, "email"),
+                    JsonHelpers.Str(account, "organization"),
+                    JsonHelpers.Str(account, "plan") ?? JsonHelpers.Str(account, "subscriptionType"));
+                if (read.AuthMethod != null || read.Email != null || read.Organization != null || read.Plan != null)
+                    events.Add(new AccountReported(read));
             }
 
             if (JsonHelpers.Str(body, "session_url") is { } url)
                 events.Add(new RemoteControlChanged(null, url, null));
+        }
+
+        private static IReadOnlyList<ContextFile> ReadContextFiles(JsonElement? array)
+        {
+            var list = new List<ContextFile>();
+            if (array == null) return list;
+            foreach (var f in array.Value.EnumerateArray())
+            {
+                if (JsonHelpers.Str(f, "path") is { Length: > 0 } path) list.Add(new ContextFile(path, JsonHelpers.Long(f, "tokens") ?? 0));
+            }
+            return list;
+        }
+
+        private static IReadOnlyList<ContextAgent> ReadContextAgents(JsonElement? array)
+        {
+            var list = new List<ContextAgent>();
+            if (array == null) return list;
+            foreach (var a in array.Value.EnumerateArray())
+            {
+                if ((JsonHelpers.Str(a, "agentType") ?? JsonHelpers.Str(a, "name")) is { Length: > 0 } name)
+                    list.Add(new ContextAgent(name, JsonHelpers.Long(a, "tokens") ?? 0));
+            }
+            return list;
         }
 
         private static IReadOnlyList<ChatCommand> ReadCommands(JsonElement array)
@@ -300,17 +339,37 @@ namespace ClaudeVisualChat.Protocol
         {
             var info = JsonHelpers.Obj(root, "rate_limit_info");
             var windows = info == null ? null : JsonHelpers.Obj(info.Value, "unifiedWindows");
-            if (windows == null) return None;
+            var scoped = info == null ? null : JsonHelpers.Arr(info.Value, "model_scoped");
+            if (windows == null && scoped == null) return None;
             var list = new List<UsageWindow>();
-            foreach (var window in windows.Value.EnumerateObject())
+            if (windows != null)
             {
-                var utilization = JsonHelpers.Double(window.Value, "utilization");
-                if (utilization == null) continue;
-                var resets = JsonHelpers.Long(window.Value, "resetsAt");
-                list.Add(new UsageWindow(
-                    window.Name, utilization.Value, resets == null ? (DateTimeOffset?)null : DateTimeOffset.FromUnixTimeSeconds(resets.Value)));
+                foreach (var window in windows.Value.EnumerateObject())
+                {
+                    if (ReadWindow(window.Name, window.Value, null) is { } read) list.Add(read);
+                }
+            }
+            if (scoped != null)
+            {
+                // one entry per model: the weekly limit of that model
+                foreach (var entry in scoped.Value.EnumerateArray())
+                {
+                    var model = JsonHelpers.Str(entry, "model") ?? JsonHelpers.Str(entry, "name");
+                    if (model != null && ReadWindow("model_scoped", entry, model) is { } read) list.Add(read);
+                }
             }
             return list.Count == 0 ? None : new ClaudeEvent[] { new UsageLimitsReported(new UsageLimits(list)) };
+        }
+
+        private static UsageWindow? ReadWindow(string name, JsonElement window, string? model)
+        {
+            var utilization = JsonHelpers.Double(window, "utilization");
+            if (utilization == null) return null;
+            var resets = JsonHelpers.Long(window, "resetsAt");
+            return new UsageWindow(name, utilization.Value, resets == null ? (DateTimeOffset?)null : DateTimeOffset.FromUnixTimeSeconds(resets.Value))
+            {
+                Model = model,
+            };
         }
 
         /// <summary>The <c>non_execution_kind</c> of the <c>tool_result_meta</c> entry for that tool call.</summary>

@@ -206,7 +206,7 @@ namespace ClaudeVisualChat.Protocol
             var body = JsonHelpers.CloneNonNull(r, "response");
             var events = new List<ClaudeEvent>
             {
-                new ControlAcknowledged(requestId, JsonHelpers.Str(r, "subtype") == "error", body),
+                new ControlAcknowledged(requestId, JsonHelpers.Str(r, "subtype") == "error", body) { Error = JsonHelpers.Str(r, "error") },
             };
             if (body != null) EventReader.ReadControlBody(body.Value, events);
             return events;

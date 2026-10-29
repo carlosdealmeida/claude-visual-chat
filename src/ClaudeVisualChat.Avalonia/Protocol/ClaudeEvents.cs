@@ -125,7 +125,11 @@ namespace ClaudeVisualChat.Protocol
 
     public sealed record PermissionCancelled(string RequestId) : ClaudeEvent;
 
-    public sealed record ControlAcknowledged(string RequestId, bool IsError, JsonElement? Response) : ClaudeEvent;
+    public sealed record ControlAcknowledged(string RequestId, bool IsError, JsonElement? Response) : ClaudeEvent
+    {
+        /// <summary>The text of an error reply (<c>error</c>); null for a success, or when the reply has none.</summary>
+        public string? Error { get; init; }
+    }
 
     /// <summary><paramref name="InputTokens"/> adds the cache creation and cache read tokens.</summary>
     public sealed record TurnCompleted(
@@ -166,6 +170,9 @@ namespace ClaudeVisualChat.Protocol
     public sealed record ContextUsageReported(ContextUsage Usage) : ClaudeEvent;
 
     public sealed record UsageLimitsReported(UsageLimits Limits) : ClaudeEvent;
+
+    /// <summary>The login, from the <c>account</c> of the <c>initialize</c> reply.</summary>
+    public sealed record AccountReported(AccountInfo Account) : ClaudeEvent;
 
     /// <summary>Remote Control moved (<c>bridge_state</c>) or started (<c>session_url</c>).</summary>
     public sealed record RemoteControlChanged(string? State, string? Url, string? Detail) : ClaudeEvent;

@@ -916,7 +916,7 @@ public partial class ClaudeChatView : UserControl
             _keyboardOwed = Prompt.Request != null && (hadFocus || Composer.HasNothingToSend);
             return;
         }
-        if (Preview.IsVisible || AgentMap.IsVisible) return;
+        if (Preview.IsVisible || AgentMap.IsVisible || ContextPanel.IsVisible || UsagePanel.IsVisible) return;
         if (Prompt.Request != null)
         {
             if (hadFocus || (Composer.HasNothingToSend && FocusIsHereOrNowhere())) Prompt.FocusFirstOption();

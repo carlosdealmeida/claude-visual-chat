@@ -350,7 +350,7 @@ public class ChatStringsTests
         nameof(ChatStrings.UsageResetsDay), nameof(ChatStrings.PanelLoading),
         nameof(ChatStrings.AgentTokens), nameof(ChatStrings.ThinkingTokensEstimate),
         nameof(ChatStrings.AgentToolTitle), nameof(ChatStrings.WebFetchToolTitle), nameof(ChatStrings.WebSearchToolTitle),
-        nameof(ChatStrings.ChromeToolTitle), nameof(ChatStrings.TaggedTokens),
+        nameof(ChatStrings.ChromeToolTitle), nameof(ChatStrings.TaggedTokens), nameof(ChatStrings.ContextColumnTokens),
     };
 
     [Fact]

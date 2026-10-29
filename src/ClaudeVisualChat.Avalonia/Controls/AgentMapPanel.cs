@@ -32,7 +32,8 @@ namespace ClaudeVisualChat.Controls;
 /// timer redoes the running agents' time every second from the conversation's <see cref="ChatConversation.Clock"/>;
 /// out of the window it only lets go of the conversation and stops the timer. A view narrower than the tree scrolls it
 /// sideways, and the card is never wider than the view less 32 px. It takes the keyboard when it opens and, when it closes with
-/// the keyboard in it, <see cref="FocusReleased"/> lets the view put the keyboard back.
+/// the keyboard in it, gives it back to what had it (<see cref="FocusReturn"/>); when that is gone, or in the touch layout,
+/// <see cref="FocusReleased"/> lets the view put the keyboard back.
 /// <para>
 /// In the touch layout the subtitle speaks of a tap and wraps, and a tree that does not fit the map's width goes down instead
 /// (<see cref="IsNarrow"/>): the main agent's card on top, as wide as the map, and the agents under it, as wide as the map too,
@@ -97,6 +98,9 @@ internal sealed class AgentMapPanel : Border
     private readonly TextBlock _activity = new TextBlock();
     private readonly TextBlock _noResult = new TextBlock();
     private readonly SelectableTextBlock _result = new SelectableTextBlock();
+
+    /// <summary>What had the keyboard when the map opened, which gets it back when the map closes with it.</summary>
+    private readonly FocusReturn _return = new FocusReturn();
 
     private readonly DispatcherTimer _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
 
@@ -499,7 +503,11 @@ internal sealed class AgentMapPanel : Border
             Watch(conversation);
             IsVisible = true;
             Build(conversation!);
-            if (opening) _close.Focus();
+            if (opening)
+            {
+                _return.Remember(this);
+                _close.Focus();
+            }
         }
         else
         {
@@ -513,9 +521,15 @@ internal sealed class AgentMapPanel : Border
             _clocks.Clear();
             _result.Text = null;
             IsVisible = false;
-            if (hadFocus) FocusReleased?.Invoke(this, EventArgs.Empty);
+            // the keyboard goes back to what had it; the view's rule (a waiting request, the reply box) when that is gone, or in
+            // the touch layout, where the reply box with the keyboard is the soft keyboard coming up
+            if (!hadFocus) _return.Forget();
+            else if (!(CanRestoreFocus() && _return.Restore())) FocusReleased?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>True when the keyboard may go back to where it was: not in the touch layout, and not over a request that waits for it.</summary>
+    private bool CanRestoreFocus() => GetValue(LayoutProperty) != ChatLayout.Touch && _tracked?.CurrentPermission == null;
 
     private void Build(ChatConversation conversation)
     {

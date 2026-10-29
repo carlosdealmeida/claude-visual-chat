@@ -819,4 +819,67 @@ public class PublicApiTests
         Assert.Single(typeof(ChatConversation).GetMethods(), m => m.Name == "Submit");
         Assert.Null(typeof(ChatConversation).GetMethod("SubmitWithPastes"));
     }
+
+    [Fact]
+    public void The_context_and_account_api_of_the_modals_exists()
+    {
+        // "Context usage" and "Account & Usage" (0.6.0): the new figures are init-only properties, not new positional parameters
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        foreach (var type in new[] { "ClaudeVisualChat.ContextFile", "ClaudeVisualChat.ContextAgent", "ClaudeVisualChat.AccountInfo" })
+            Assert.Contains(type, names);
+        foreach (var (owner, member, kind) in new[]
+        {
+            (typeof(ContextUsage), "Model", typeof(string)),
+            (typeof(ContextUsage), "MemoryFiles", typeof(System.Collections.Generic.IReadOnlyList<ContextFile>)),
+            (typeof(ContextUsage), "Agents", typeof(System.Collections.Generic.IReadOnlyList<ContextAgent>)),
+            (typeof(UsageWindow), "Model", typeof(string)),
+        })
+        {
+            var property = owner.GetProperty(member);
+            Assert.Equal(kind, property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+        Assert.Equal(4, typeof(ContextUsage).GetConstructors().Max(c => c.GetParameters().Length)); // no new positional parameter
+        Assert.Equal(3, typeof(UsageWindow).GetConstructors().Max(c => c.GetParameters().Length));
+        Assert.Equal(new[] { "Path", "Tokens" }, typeof(ContextFile).GetConstructors().Single().GetParameters().Select(p => p.Name).ToArray());
+        Assert.Equal(new[] { "Name", "Tokens" }, typeof(ContextAgent).GetConstructors().Single().GetParameters().Select(p => p.Name).ToArray());
+        Assert.Equal(
+            new[] { "AuthMethod", "Email", "Organization", "Plan" },
+            typeof(AccountInfo).GetConstructors().Single().GetParameters().Select(p => p.Name).ToArray());
+
+        // the conversation's: read only from outside
+        foreach (var (member, kind) in new[] { ("Account", typeof(AccountInfo)), ("SessionCostUsd", typeof(double)), ("SessionDurationMs", typeof(long)) })
+        {
+            var property = typeof(ChatConversation).GetProperty(member);
+            Assert.Equal(kind, property?.PropertyType);
+            Assert.True(property!.GetMethod!.IsPublic, member);
+            Assert.True(property.SetMethod == null || !property.SetMethod.IsPublic, member);
+        }
+
+        // the controls, the failure lines and the figures behind the modals stay internal
+        Assert.False(Library.GetType("ClaudeVisualChat.Controls.FocusReturn")!.IsPublic);
+        Assert.False(Library.GetType("ClaudeVisualChat.Controls.ContextPanel")!.IsPublic);
+        Assert.False(Library.GetType("ClaudeVisualChat.Controls.UsagePanel")!.IsPublic);
+        Assert.False(typeof(ChatConversation).GetProperty("ContextError", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetMethod!.IsPublic);
+
+        // the texts, init only
+        foreach (var text in new[]
+        {
+            "ContextHeader", "ContextColumnCategory", "ContextColumnTokens", "ContextColumnUsage", "ContextShareTiny", "ContextMemoryFiles",
+            "ContextCustomAgents", "ContextLoading", "ContextFailed", "AccountUsageTitle", "AccountSection", "AccountUsageSection",
+            "AccountAuthMethod", "AccountEmail", "AccountOrganization", "AccountPlan", "UsageBarSession", "UsageBarWeekly",
+            "UsageBarWeeklySonnet", "UsageBarWeeklyModel", "UsageResetsIn", "UsageResetsSoon", "UsageTotalCost", "UsageTotalApiDuration",
+            "UsageNoPlanLimits", "UsageManage", "UsageLoading", "UsageFailed", "UsageRetry",
+        })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+
+        // the events of the protocol
+        Assert.Contains("ClaudeVisualChat.Protocol.AccountReported", names);
+        Assert.NotNull(typeof(ClaudeVisualChat.Protocol.ControlAcknowledged).GetProperty("Error"));
+        Assert.Equal(3, typeof(ClaudeVisualChat.Protocol.ControlAcknowledged).GetConstructors().Max(c => c.GetParameters().Length));
+    }
 }

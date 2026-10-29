@@ -340,6 +340,35 @@ public sealed record ChatStrings
         UsageTitle = "Uso",
         UsageUnavailable = "Ainda sem dados de uso",
         ContextUnavailable = "Ainda sem dados de contexto",
+        ContextHeader = "{0} / {1} tokens ({2} %)",
+        ContextColumnCategory = "Categoria",
+        ContextColumnTokens = "Tokens",
+        ContextColumnUsage = "Uso",
+        ContextShareTiny = "<0,1 %",
+        ContextMemoryFiles = "Arquivos de memória",
+        ContextCustomAgents = "Agentes personalizados",
+        ContextLoading = "Carregando o uso do contexto…",
+        ContextFailed = "Falha ao carregar o uso do contexto: {0}",
+        AccountUsageTitle = "Conta e uso",
+        AccountSection = "Conta",
+        AccountUsageSection = "Uso",
+        AccountAuthMethod = "Método de autenticação",
+        AccountEmail = "E-mail",
+        AccountOrganization = "Organização",
+        AccountPlan = "Plano",
+        UsageBarSession = "Sessão (5h)",
+        UsageBarWeekly = "Semanal (7 dias)",
+        UsageBarWeeklySonnet = "Semanal Sonnet",
+        UsageBarWeeklyModel = "Semanal {0}",
+        UsageResetsIn = "Renova em {0}",
+        UsageResetsSoon = "Renova em breve",
+        UsageTotalCost = "Custo total",
+        UsageTotalApiDuration = "Duração total (API)",
+        UsageNoPlanLimits = "Os limites do plano não estão disponíveis para este tipo de login.",
+        UsageManage = "Gerenciar o uso em claude.ai",
+        UsageLoading = "Carregando os dados de uso…",
+        UsageFailed = "Falha ao carregar os dados de uso",
+        UsageRetry = "Tentar de novo",
         UsageResets = "Renova {0}",
         ContextTotal = "{0} / {1} ({2} %)",
         ContextSection = "Contexto",
@@ -1428,6 +1457,93 @@ public sealed record ChatStrings
     /// <summary>A panel whose data the claude has not sent yet, while the conversation is busy.</summary>
     public string PanelLoading { get; init; } = "…";
 
+    /// <summary>The header of the "Context usage" modal: <c>{0}</c> tokens used, <c>{1}</c> the window, <c>{2}</c> the percentage.</summary>
+    public string ContextHeader { get; init; } = "{0} / {1} tokens ({2}%)";
+
+    /// <summary>The first column of the "Context usage" table.</summary>
+    public string ContextColumnCategory { get; init; } = "Category";
+
+    /// <summary>The second column of the "Context usage" table.</summary>
+    public string ContextColumnTokens { get; init; } = "Tokens";
+
+    /// <summary>The third column of the "Context usage" table: the share of the window.</summary>
+    public string ContextColumnUsage { get; init; } = "Usage";
+
+    /// <summary>The share of the window of a category that uses less than a tenth of a percent.</summary>
+    public string ContextShareTiny { get; init; } = "<0.1%";
+
+    /// <summary>The title of the list of memory files in the "Context usage" modal.</summary>
+    public string ContextMemoryFiles { get; init; } = "Memory files";
+
+    /// <summary>The title of the list of custom agents in the "Context usage" modal.</summary>
+    public string ContextCustomAgents { get; init; } = "Custom agents";
+
+    /// <summary>The "Context usage" modal while the data is on its way.</summary>
+    public string ContextLoading { get; init; } = "Loading context usage…";
+
+    /// <summary>The "Context usage" modal when the data failed; <c>{0}</c> is the reason.</summary>
+    public string ContextFailed { get; init; } = "Failed to load context usage: {0}";
+
+    /// <summary>The title of the "Account &amp; Usage" modal.</summary>
+    public string AccountUsageTitle { get; init; } = "Account & Usage";
+
+    /// <summary>The title of the account section of the "Account &amp; Usage" modal.</summary>
+    public string AccountSection { get; init; } = "Account";
+
+    /// <summary>The title of the usage section of the "Account &amp; Usage" modal.</summary>
+    public string AccountUsageSection { get; init; } = "Usage";
+
+    /// <summary>The row of how the user logged in.</summary>
+    public string AccountAuthMethod { get; init; } = "Auth method";
+
+    /// <summary>The row of the account's e-mail.</summary>
+    public string AccountEmail { get; init; } = "Email";
+
+    /// <summary>The row of the account's organization.</summary>
+    public string AccountOrganization { get; init; } = "Organization";
+
+    /// <summary>The row of the account's plan.</summary>
+    public string AccountPlan { get; init; } = "Plan";
+
+    /// <summary>The five hour limit's bar in the "Account &amp; Usage" modal.</summary>
+    public string UsageBarSession { get; init; } = "Session (5hr)";
+
+    /// <summary>The seven day limit's bar in the "Account &amp; Usage" modal.</summary>
+    public string UsageBarWeekly { get; init; } = "Weekly (7 day)";
+
+    /// <summary>The weekly limit of the Sonnet models.</summary>
+    public string UsageBarWeeklySonnet { get; init; } = "Weekly Sonnet";
+
+    /// <summary>The weekly limit of one model; <c>{0}</c> is the model.</summary>
+    public string UsageBarWeeklyModel { get; init; } = "Weekly {0}";
+
+    /// <summary>When a limit renews, as a time left; <c>{0}</c> is "45m", "3h" or "2d".</summary>
+    public string UsageResetsIn { get; init; } = "Resets in {0}";
+
+    /// <summary>A limit that renews in less than a minute.</summary>
+    public string UsageResetsSoon { get; init; } = "Resets soon";
+
+    /// <summary>The session's cost, for a login without a plan.</summary>
+    public string UsageTotalCost { get; init; } = "Total cost";
+
+    /// <summary>The time the session spent on the API, for a login without a plan.</summary>
+    public string UsageTotalApiDuration { get; init; } = "Total duration (API)";
+
+    /// <summary>The usage section of a login that has no limits and no figures to show.</summary>
+    public string UsageNoPlanLimits { get; init; } = "Plan limits aren't available for this login method.";
+
+    /// <summary>The link to the usage page; it shows only when the host opens links.</summary>
+    public string UsageManage { get; init; } = "Manage usage on claude.ai";
+
+    /// <summary>The "Account &amp; Usage" modal while the data is on its way.</summary>
+    public string UsageLoading { get; init; } = "Loading usage data…";
+
+    /// <summary>The "Account &amp; Usage" modal when the data failed.</summary>
+    public string UsageFailed { get; init; } = "Failed to load usage data";
+
+    /// <summary>The button that asks for the usage data again.</summary>
+    public string UsageRetry { get; init; } = "Retry";
+
     /// <summary>The chip of the reply box's bar: <c>{0}</c> is how many agents are at work.</summary>
     public string AgentsChip { get; init; } = "{0} agents";
 
@@ -2163,6 +2279,46 @@ public sealed record ChatStrings
     {
         var trimmed = LineBreaks.Replace((text ?? "").Trim(), " ");
         return trimmed.Length > MaxAgentLineChars ? Controls.ChatText.Clip(trimmed, MaxAgentLineChars - 1) : trimmed;
+    }
+
+    /// <summary><see cref="ContextHeader"/>: "36,174 / 200,000 tokens (18%)".</summary>
+    internal string FormatContextHeader(ContextUsage usage) => ContextHeader
+        .Replace("{0}", FormatNumber(usage.TotalTokens))
+        .Replace("{1}", FormatNumber(usage.MaxTokens))
+        .Replace("{2}", Plain(usage.Percentage));
+
+    /// <summary>The share of the window of a category, from 0 to 1: one decimal, or <see cref="ContextShareTiny"/> below a tenth of a percent.</summary>
+    internal string FormatContextShare(double share) =>
+        share > 0 && share < 0.001 ? ContextShareTiny : FormatSharePercent(share);
+
+    /// <summary><see cref="UsagePercent"/> of a use from 0 to 1, rounded down: 0.129 → "12%".</summary>
+    internal string FormatUsageFloor(double utilization) =>
+        UsagePercent.Replace("{0}", Plain((long)Math.Floor(Math.Max(0, utilization) * 100 + 1e-9)));
+
+    /// <summary>
+    /// When a limit renews as the time left: "Resets in 45m", "Resets in 3h", "Resets in 2d" (cut down), "Resets soon" under a minute.
+    /// </summary>
+    internal string FormatUsageResetsIn(DateTimeOffset at, DateTimeOffset now)
+    {
+        var left = at - now;
+        if (left < TimeSpan.FromMinutes(1)) return UsageResetsSoon;
+        var time = left < TimeSpan.FromHours(1) ? Plain((long)left.TotalMinutes) + "m"
+            : left < TimeSpan.FromDays(1) ? Plain((long)left.TotalHours) + "h"
+            : Plain((long)left.TotalDays) + "d";
+        return UsageResetsIn.Replace("{0}", time);
+    }
+
+    /// <summary>The bar's label of a limit window: its own for the two windows and the Sonnet one, "Weekly {model}" for a model's.</summary>
+    internal string UsageBarLabel(UsageWindow window)
+    {
+        if (window.Model != null) return UsageBarWeeklyModel.Replace("{0}", window.Model);
+        return window.Name switch
+        {
+            "five_hour" => UsageBarSession,
+            "seven_day" => UsageBarWeekly,
+            "seven_day_sonnet" => UsageBarWeeklySonnet,
+            _ => window.Name ?? "",
+        };
     }
 
     /// <summary>The label of a usage limit; one without a label keeps its name.</summary>

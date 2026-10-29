@@ -1,23 +1,26 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
+using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.VisualTree;
 
 namespace ClaudeVisualChat.Controls;
 
 /// <summary>
-/// A panel of information over the end of the list, which <c>/context</c> and <c>/usage</c> open
-/// (<see cref="ChatConversation.ShownPanel"/>). The extension shows these in VS Code dialogs, so the panel takes the
-/// frame of its menus instead: the menu's colors, the input's border, 8 px corners, a shadow; a title and a ×
-/// (<see cref="ChatConversation.ClosePanel"/>) over the body, which scrolls when it is taller than the list. "…" while the conversation is busy and until
-/// the claude sends the data. It never takes the keyboard by itself; when it closes with the keyboard in it,
-/// <see cref="FocusReleased"/> lets the view put the keyboard back. Read-only information: it shows in a read-only
-/// view too. In the touch layout it never shows: the usage sheet (<see cref="UsageSheet"/>) shows the same panels there.
+/// The extension's modals that <c>/context</c> ("Context usage") and <c>/usage</c> ("Account &amp; Usage") open
+/// (<see cref="ChatConversation.ShownPanel"/>): a dialog in the side bar's color over a dark backdrop that covers the whole view,
+/// like the Agent map, with a title and a × (<see cref="ChatConversation.ClosePanel"/>) over a body that scrolls when it is taller
+/// than the view. "Loading …" while the conversation is busy and until the claude sends the data, and a failure's line when the
+/// host's request failed. Esc (the view's), the × and a click on the backdrop close it. It takes the keyboard when it opens and
+/// gives it back to what had it (<see cref="FocusReturn"/>), or, when that is gone, lets the view put the keyboard back
+/// (<see cref="FocusReleased"/>). Read-only information: it shows in a read-only view too. In the touch layout it never shows: the
+/// usage sheet (<see cref="UsageSheet"/>) shows the same information there.
 /// </summary>
 internal abstract class ChatInfoPanel : Border
 {
@@ -27,17 +30,21 @@ internal abstract class ChatInfoPanel : Border
     private static readonly StyledProperty<ChatLayout> LayoutProperty =
         ClaudeChatView.LayoutProperty.AddOwner<ChatInfoPanel>();
 
+    private readonly Border _dialog = new Border();
     private readonly TextBlock _title = new TextBlock();
     private readonly Button _close;
     private readonly Border _body = new Border();
+    private readonly FocusReturn _return = new FocusReturn();
     private ChatConversation? _conversation;
     private ChatConversation? _tracked;
     private bool _attached;
 
     protected ChatInfoPanel()
     {
-        Classes.Add("ClaudeChatPanel");
-        _title.Classes.Add("ClaudeChatPanelTitle");
+        Classes.Add("ClaudeChatModal");
+        _dialog.Classes.Add("ClaudeChatInfoModal");
+        _dialog.MaxWidth = DialogMaxWidth;
+        _title.Classes.Add("ClaudeChatModalTitle");
         var icon = new Path();
         icon.Classes.Add("ClaudeChatRemoveIcon");
         var iconBox = new Viewbox { Child = icon };
@@ -48,20 +55,22 @@ internal abstract class ChatInfoPanel : Border
         _close.Click += (_, _) => _tracked?.ClosePanel();
         DockPanel.SetDock(_close, Dock.Right);
         var header = new DockPanel { Children = { _close, _title } };
-        header.Classes.Add("ClaudeChatPanelHeader");
+        header.Classes.Add("ClaudeChatModalHeader");
         DockPanel.SetDock(header, Dock.Top);
-        _body.Classes.Add("ClaudeChatPanelBody");
+        _body.Classes.Add("ClaudeChatModalBody");
         var scroller = new ScrollViewer
         {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
             Content = _body,
         };
-        Child = new DockPanel { Children = { header, scroller } };
+        _dialog.Child = new DockPanel { Children = { header, scroller } };
+        KeyboardNavigation.SetTabNavigation(_dialog, KeyboardNavigationMode.Cycle);
+        Child = _dialog;
         IsVisible = false;
     }
 
-    /// <summary>The panel closed while the keyboard was in it.</summary>
+    /// <summary>The panel closed while the keyboard was in it, and there was nothing to give it back to.</summary>
     internal event EventHandler? FocusReleased;
 
     /// <summary>The conversation whose panel it shows.</summary>
@@ -75,20 +84,35 @@ internal abstract class ChatInfoPanel : Border
         }
     }
 
+    /// <summary>The dialog over the backdrop.</summary>
+    internal Border Dialog => _dialog;
+
     /// <summary>The panel this control draws.</summary>
     protected abstract ChatPanel Kind { get; }
+
+    /// <summary>How wide the dialog is at most.</summary>
+    protected abstract double DialogMaxWidth { get; }
 
     protected abstract string Title(ChatStrings strings);
 
     /// <summary>The body for the conversation's data; null while there is none yet.</summary>
     protected abstract Control? Build(ChatConversation conversation, ChatStrings strings);
 
+    /// <summary>The body when the host's request for the data failed; null when it did not.</summary>
+    protected abstract Control? Failure(ChatConversation conversation, ChatStrings strings);
+
     /// <summary>True when the conversation's property is one the body shows.</summary>
     protected abstract bool Shows(string? propertyName);
 
+    /// <summary>The line shown while the data is on its way (the conversation is busy).</summary>
+    protected abstract string Loading(ChatStrings strings);
+
+    /// <summary>The line shown when there is no data and the conversation is idle.</summary>
+    protected abstract string Unavailable(ChatStrings strings);
+
     protected ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
 
-    /// <summary>Styled as a Border: the theme's <c>Border.ClaudeChatPanel</c>.</summary>
+    /// <summary>Styled as a Border: the theme's <c>Border.ClaudeChatModal</c>.</summary>
     protected override Type StyleKeyOverride => typeof(Border);
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -111,16 +135,34 @@ internal abstract class ChatInfoPanel : Border
         if (change.Property == StringsProperty || change.Property == LayoutProperty) Update();
     }
 
+    /// <summary>A click on the backdrop, not on the dialog, closes the panel.</summary>
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (!ReferenceEquals(e.Source, this)) return;
+        e.Handled = true;
+        _tracked?.ClosePanel();
+    }
+
     private void Track(ChatConversation? conversation)
     {
         if (!ReferenceEquals(conversation, _tracked))
         {
-            if (_tracked != null) _tracked.PropertyChanged -= OnConversationChanged;
+            if (_tracked != null)
+            {
+                _tracked.PropertyChanged -= OnConversationChanged;
+                _tracked.HostHandlersChanged -= OnHostHandlersChanged;
+            }
             _tracked = conversation;
-            if (_tracked != null) _tracked.PropertyChanged += OnConversationChanged;
+            if (_tracked != null)
+            {
+                _tracked.PropertyChanged += OnConversationChanged;
+                _tracked.HostHandlersChanged += OnHostHandlersChanged;
+            }
         }
         // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
         if (_attached) Update();
+        else _return.Forget();
     }
 
     private void OnConversationChanged(object? sender, PropertyChangedEventArgs e)
@@ -128,29 +170,40 @@ internal abstract class ChatInfoPanel : Border
         if (e.PropertyName == nameof(ChatConversation.ShownPanel) || e.PropertyName == nameof(ChatConversation.IsBusy) || (IsVisible && Shows(e.PropertyName))) Update();
     }
 
+    private void OnHostHandlersChanged(object? sender, EventArgs e)
+    {
+        if (IsVisible) Update(); // a link that needs the host's handler
+    }
+
     private void Update()
     {
         var conversation = _tracked;
         var shown = conversation != null && conversation.ShownPanel == Kind && GetValue(LayoutProperty) != ChatLayout.Touch;
         var hadFocus = IsKeyboardFocusWithin;
+        var opening = shown && !IsVisible;
         if (shown)
         {
             var strings = Strings;
             _title.Text = Title(strings);
             AutomationProperties.SetName(_close, strings.Close);
             ToolTip.SetTip(_close, strings.Close);
-            _body.Child = Build(conversation!, strings) ?? Empty(conversation!.IsBusy ? strings.PanelLoading : Unavailable(strings));
+            _body.Child = Build(conversation!, strings) ?? Failure(conversation!, strings)
+                ?? Empty(conversation!.IsBusy ? Loading(strings) : Unavailable(strings));
+            if (opening) _return.Remember(this);
+            IsVisible = true;
+            if (opening) _close.Focus();
+            return;
         }
-        else
-        {
-            _body.Child = null;
-        }
-        IsVisible = shown;
-        if (!shown && hadFocus) FocusReleased?.Invoke(this, EventArgs.Empty);
+        _body.Child = null;
+        var wasShown = IsVisible;
+        IsVisible = false;
+        if (!wasShown) return;
+        // the keyboard goes back to what had it; to the view's rule (a request that waits, the reply box) when that is gone, or in
+        // the touch layout, where the reply box with the keyboard is the soft keyboard coming up
+        if (!hadFocus) _return.Forget();
+        else if (!(GetValue(LayoutProperty) != ChatLayout.Touch && conversation?.CurrentPermission == null && _return.Restore()))
+            FocusReleased?.Invoke(this, EventArgs.Empty);
     }
-
-    /// <summary>The line shown when there is no data and the conversation is idle.</summary>
-    protected abstract string Unavailable(ChatStrings strings);
 
     private static Control Empty(string line)
     {
@@ -160,24 +213,6 @@ internal abstract class ChatInfoPanel : Border
     }
 
     // ---- pieces of the bodies ----
-
-    /// <summary>A row: a color square (none when <paramref name="swatch"/> is null), the name, and a value at the right.</summary>
-    protected static Border Row(string name, string value, string? swatch, bool muted)
-    {
-        var square = new Border();
-        square.Classes.Add("ClaudeChatContextSwatch");
-        if (swatch != null) square.Classes.Add(swatch);
-        var label = new TextBlock { Text = name };
-        label.Classes.Add("ClaudeChatPanelName");
-        Grid.SetColumn(label, 1);
-        var amount = new TextBlock { Text = value };
-        amount.Classes.Add("ClaudeChatPanelValue");
-        Grid.SetColumn(amount, 2);
-        var row = new Border { Child = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Children = { square, label, amount } } };
-        row.Classes.Add("ClaudeChatPanelRow");
-        row.Classes.Set("muted", muted);
-        return row;
-    }
 
     /// <summary>A bar split in pieces as long as their weights; a piece without a class is the bare track.</summary>
     internal static Border Bar(string barClass, IEnumerable<(double Weight, string? PieceClass, string? Color)> pieces)
@@ -205,35 +240,65 @@ internal abstract class ChatInfoPanel : Border
         block.Classes.Add(textClass);
         return block;
     }
+
+    /// <summary>The title of a section or a list: small, in capitals.</summary>
+    protected static TextBlock SectionTitle(string text, string sectionClass) =>
+        Text(text.ToUpperInvariant(), sectionClass);
+
+    /// <summary>A line of two texts: the first takes the room, the second sits at the right.</summary>
+    protected static Grid TwoColumns(Control left, Control right)
+    {
+        Grid.SetColumn(right, 1);
+        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        line.Children.Add(left);
+        line.Children.Add(right);
+        return line;
+    }
 }
 
 /// <summary>
-/// <c>/context</c>: "36,174 / 200,000 (18%)", a bar split by the used categories in their order (the colors
-/// <c>ClaudeChat.ContextColor1</c> to <c>6</c>, round again after the sixth), the free space as the bare track; then a
-/// row per category: the used ones with their color, the free space with the track's, the deferred ones (loaded only
-/// when needed: not in the bar) in the secondary color, without a color.
+/// "Context usage": the model and "36,174 / 200,000 tokens (18%)", a bar with a piece per category that is neither deferred nor the
+/// free space (the colors <c>ClaudeChat.ContextColor1</c> to <c>8</c>, round again after the eighth), a table of Category · Tokens ·
+/// Usage with a row per such category and, last, the free space with an empty swatch, then the first five memory files (with
+/// "~" for the home folder) and custom agents, each list only when the claude sent any.
 /// </summary>
 internal sealed class ContextPanel : ChatInfoPanel
 {
+    /// <summary>The colors of the touch layout's usage sheet, round again after the sixth.</summary>
     internal const int Colors = 6;
+
+    /// <summary>The colors of the modal's bar, round again after the eighth.</summary>
+    internal const int ModalColors = 8;
+
+    /// <summary>How many memory files and custom agents the lists show.</summary>
+    internal const int ListLength = 5;
 
     protected override ChatPanel Kind => ChatPanel.Context;
 
+    protected override double DialogMaxWidth => 440;
+
     protected override string Title(ChatStrings strings) => strings.ContextTitle;
+
+    protected override string Loading(ChatStrings strings) => strings.ContextLoading;
 
     protected override string Unavailable(ChatStrings strings) => strings.ContextUnavailable;
 
-    protected override bool Shows(string? propertyName) => propertyName == nameof(ChatConversation.ContextUsage);
+    protected override bool Shows(string? propertyName) =>
+        propertyName == nameof(ChatConversation.ContextUsage) || propertyName == nameof(ChatConversation.ContextError)
+        || propertyName == nameof(ChatConversation.AvailableModels);
 
     /// <summary>
     /// The style class (<c>color1</c> to <c>color6</c>, round again after the sixth) of the used category that comes
-    /// <paramref name="index"/>th among the used ones: the color of its piece in the bar and of its dot.
+    /// <paramref name="index"/>th among the used ones: the color of its piece in the bar and of its dot, in the touch layout.
     /// </summary>
     internal static string ColorOf(int index) => "color" + (index % Colors + 1);
 
+    /// <summary>The same for the modal, which has eight colors.</summary>
+    internal static string ModalColorOf(int index) => "color" + (index % ModalColors + 1);
+
     /// <summary>
-    /// The pieces of the bar of <see cref="ChatInfoPanel.Bar"/>: one per used category, in order, as long as its tokens and in its
-    /// color, then the rest of the window, the bare track. The deferred and the free categories are not in the bar.
+    /// The pieces of the bar of <see cref="ChatInfoPanel.Bar"/> in the touch layout: one per used category, in order, as long as its
+    /// tokens and in its color, then the rest of the window, the bare track. The deferred and the free categories are not in the bar.
     /// </summary>
     internal static List<(double, string?, string?)> BarPieces(ContextUsage usage)
     {
@@ -250,92 +315,261 @@ internal sealed class ContextPanel : ChatInfoPanel
         return pieces;
     }
 
+    /// <summary>The categories the modal draws in its bar and its table: not the free space, not the deferred ones.</summary>
+    private static IEnumerable<ContextCategory> InWindow(ContextUsage usage) =>
+        usage.Categories.Where(c => c.Kind != "free" && c.Kind != "deferred");
+
+    /// <summary>
+    /// The pieces of the modal's bar: one per category in the window, in order, as long as its tokens and in its color, then the rest
+    /// of the window, the bare track.
+    /// </summary>
+    internal static List<(double, string?, string?)> ModalBarPieces(ContextUsage usage)
+    {
+        var pieces = new List<(double, string?, string?)>();
+        long usedTokens = 0;
+        foreach (var category in InWindow(usage))
+        {
+            var tokens = Math.Max(0, category.Tokens);
+            pieces.Add((tokens, "ClaudeChatContextSegment", ModalColorOf(pieces.Count)));
+            usedTokens += tokens;
+        }
+        pieces.Add((Math.Max(0, usage.MaxTokens - usedTokens), null, null));
+        return pieces;
+    }
+
+    protected override Control? Failure(ChatConversation conversation, ChatStrings strings)
+    {
+        if (conversation.ContextError == null) return null;
+        var text = strings.ContextFailed.Replace("{0}", conversation.ContextError).TrimEnd(' ', ':');
+        return Text(text, "ClaudeChatPanelLoading");
+    }
+
     protected override Control? Build(ChatConversation conversation, ChatStrings strings)
     {
         var usage = conversation.ContextUsage;
         if (usage == null) return null;
-        var used = new List<Control>();
-        var free = new List<Control>();
-        var muted = new List<Control>();
-        foreach (var category in usage.Categories)
+        var body = new StackPanel();
+        body.Classes.Add("ClaudeChatModalStack");
+        if (usage.Model is { Length: > 0 } model) body.Children.Add(Text(ModelName(conversation, model), "ClaudeChatModalModel"));
+        body.Children.Add(Text(strings.FormatContextHeader(usage), "ClaudeChatContextTotal"));
+        body.Children.Add(Bar("ClaudeChatContextBar", ModalBarPieces(usage)));
+
+        var table = new StackPanel();
+        table.Classes.Add("ClaudeChatModalTable");
+        table.Children.Add(TableRow(null, strings.ContextColumnCategory, strings.ContextColumnTokens, strings.ContextColumnUsage, header: true));
+        var index = 0;
+        foreach (var category in InWindow(usage))
+            table.Children.Add(TableRow(ModalColorOf(index++), category.Name, strings.FormatNumber(category.Tokens), Share(usage, category, strings), header: false));
+        foreach (var category in usage.Categories.Where(c => c.Kind == "free"))
+            table.Children.Add(TableRow("empty", category.Name, strings.FormatNumber(category.Tokens), Share(usage, category, strings), header: false));
+        body.Children.Add(table);
+
+        if (usage.MemoryFiles.Count > 0)
+            body.Children.Add(List(strings.ContextMemoryFiles, usage.MemoryFiles.Take(ListLength).Select(f => (Tilde(f.Path), strings.FormatShortTokens(f.Tokens)))));
+        if (usage.Agents.Count > 0)
+            body.Children.Add(List(strings.ContextCustomAgents, usage.Agents.Take(ListLength).Select(a => (a.Name, strings.FormatShortTokens(a.Tokens)))));
+        return body;
+    }
+
+    /// <summary>The model's display name when the session offers it, else the name the claude gave.</summary>
+    private static string ModelName(ChatConversation conversation, string model)
+    {
+        foreach (var offered in conversation.AvailableModels ?? Array.Empty<ChatModel>())
         {
-            var tokens = strings.FormatNumber(category.Tokens);
-            switch (category.Kind)
-            {
-                case "used":
-                    used.Add(Row(category.Name, tokens, ColorOf(used.Count), muted: false));
-                    break;
-                case "free":
-                    free.Add(Row(category.Name, tokens, "free", muted: false));
-                    break;
-                default: // deferred, or a kind it does not know: listed, not in the bar
-                    muted.Add(Row(category.Name, tokens, null, muted: true));
-                    break;
-            }
+            if (string.Equals(offered.Value, model, StringComparison.Ordinal) || string.Equals(offered.ResolvedModel, model, StringComparison.Ordinal))
+                return offered.DisplayName;
         }
-        var rows = new StackPanel();
-        rows.Classes.Add("ClaudeChatPanelRows");
-        rows.Children.AddRange(used);
-        rows.Children.AddRange(free);
-        rows.Children.AddRange(muted);
-        return new StackPanel
+        return model;
+    }
+
+    private static string Share(ContextUsage usage, ContextCategory category, ChatStrings strings) =>
+        usage.MaxTokens > 0 ? strings.FormatContextShare((double)category.Tokens / usage.MaxTokens) : "";
+
+    /// <summary>A row of the table: the swatch (none in the header; "empty" is the free space's, with no fill), the name, the tokens, the share.</summary>
+    private static Control TableRow(string? swatch, string name, string tokens, string share, bool header)
+    {
+        var first = new StackPanel { Orientation = Orientation.Horizontal };
+        if (!header)
         {
-            Children =
-            {
-                Text(strings.FormatContextTotal(usage), "ClaudeChatContextTotal"),
-                Bar("ClaudeChatContextBar", BarPieces(usage)),
-                rows,
-            },
-        };
+            var square = new Border();
+            square.Classes.Add("ClaudeChatContextSwatch");
+            square.Classes.Add(swatch!);
+            first.Children.Add(square);
+        }
+        first.Children.Add(Text(header ? name.ToUpperInvariant() : name, header ? "ClaudeChatModalHeaderCell" : "ClaudeChatModalName"));
+        var amount = Text(header ? tokens.ToUpperInvariant() : tokens, header ? "ClaudeChatModalHeaderCell" : "ClaudeChatModalTokens");
+        var percent = Text(header ? share.ToUpperInvariant() : share, header ? "ClaudeChatModalHeaderCell" : "ClaudeChatModalShare");
+        Grid.SetColumn(amount, 1);
+        Grid.SetColumn(percent, 2);
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,80,64"), Children = { first, amount, percent } };
+        row.Classes.Add(header ? "ClaudeChatModalTableHeader" : "ClaudeChatModalTableRow");
+        return row;
+    }
+
+    /// <summary>A list under a small title: a line per item with its tokens at the right.</summary>
+    private static Control List(string title, IEnumerable<(string Name, string Tokens)> items)
+    {
+        var list = new StackPanel();
+        list.Classes.Add("ClaudeChatModalList");
+        list.Children.Add(SectionTitle(title, "ClaudeChatModalListTitle"));
+        foreach (var (name, tokens) in items)
+        {
+            var line = TwoColumns(Text(name, "ClaudeChatModalListName"), Text(tokens, "ClaudeChatModalListTokens"));
+            line.Classes.Add("ClaudeChatModalListRow");
+            list.Children.Add(line);
+        }
+        return list;
+    }
+
+    /// <summary>A path with the home folder written "~".</summary>
+    internal static string Tilde(string path)
+    {
+        string home;
+        try
+        {
+            home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+        catch (Exception)
+        {
+            return path;
+        }
+        if (string.IsNullOrEmpty(home) || path.Length <= home.Length || !path.StartsWith(home, StringComparison.OrdinalIgnoreCase)) return path;
+        var next = path[home.Length];
+        return next == '/' || next == '\\' ? "~" + path.Substring(home.Length) : path;
     }
 }
 
 /// <summary>
-/// <c>/usage</c>: a block per rate limit window the claude reported: its name ("Current session (5h)", "Weekly
-/// (7 days)", else the raw key) with the percentage used at the right, a bar filled up to it, and when it renews, in
-/// local time ("Resets 3:30 PM", "Resets Sat 8:05 AM" on another day than the conversation's
-/// <see cref="ChatConversation.Clock"/>).
+/// "Account &amp; Usage": the account section (auth method, e-mail, organization, plan) when the claude reported an account; then
+/// the usage section: a bar per limit window the claude reported ("Session (5hr)", "Weekly (7 day)", "Weekly Sonnet" and a "Weekly
+/// {model}" for each model's), each with the share used rounded down, filled in the progress bar's color and in the clay's from 80 %,
+/// and when it renews as the time left ("Resets in 45m"); with no limits, the session's cost and time, or the line that says the
+/// plan's limits are not available. Under them "Manage usage on claude.ai", only while the host opens links.
 /// </summary>
 internal sealed class UsagePanel : ChatInfoPanel
 {
+    /// <summary>The page the link opens.</summary>
+    internal const string ManageUrl = "https://claude.ai/settings/usage";
+
+    /// <summary>From this share used (a whole percentage) the bar turns clay.</summary>
+    internal const int ClayFrom = 80;
+
     protected override ChatPanel Kind => ChatPanel.Usage;
 
-    protected override string Title(ChatStrings strings) => strings.UsageTitle;
+    protected override double DialogMaxWidth => 400;
+
+    protected override string Title(ChatStrings strings) => strings.AccountUsageTitle;
+
+    protected override string Loading(ChatStrings strings) => strings.UsageLoading;
 
     protected override string Unavailable(ChatStrings strings) => strings.UsageUnavailable;
 
-    protected override bool Shows(string? propertyName) => propertyName == nameof(ChatConversation.UsageLimits);
+    protected override bool Shows(string? propertyName) =>
+        propertyName == nameof(ChatConversation.UsageLimits) || propertyName == nameof(ChatConversation.Account)
+        || propertyName == nameof(ChatConversation.SessionCostUsd) || propertyName == nameof(ChatConversation.SessionDurationMs)
+        || propertyName == nameof(ChatConversation.UsageError);
+
+    protected override Control? Failure(ChatConversation conversation, ChatStrings strings)
+    {
+        if (conversation.UsageError == null) return null;
+        var retry = new Button { Content = strings.UsageRetry };
+        retry.Classes.Add("ClaudeChatButton");
+        retry.Classes.Add("ClaudeChatModalRetry");
+        retry.Click += (_, _) => conversation.InvokeCommand("usage", "");
+        return new StackPanel { Children = { Text(strings.UsageFailed, "ClaudeChatPanelLoading"), retry } };
+    }
 
     protected override Control? Build(ChatConversation conversation, ChatStrings strings)
     {
-        var limits = conversation.UsageLimits;
-        if (limits == null || limits.Windows.Count == 0) return null;
-        var now = conversation.Clock();
-        var windows = new StackPanel();
-        windows.Classes.Add("ClaudeChatUsageWindows");
-        foreach (var window in limits.Windows)
+        var account = conversation.Account;
+        var windows = conversation.UsageLimits?.Windows ?? Array.Empty<UsageWindow>();
+        var hasTotals = conversation.SessionCostUsd > 0 || conversation.SessionDurationMs > 0;
+        if (account == null && windows.Count == 0 && !hasTotals) return null;
+
+        var body = new StackPanel();
+        body.Classes.Add("ClaudeChatModalStack");
+        if (account != null) body.Children.Add(AccountSection(account, strings));
+
+        var usage = new StackPanel();
+        usage.Classes.Add("ClaudeChatModalSection");
+        usage.Children.Add(SectionTitle(strings.AccountUsageSection, "ClaudeChatModalSectionTitle"));
+        if (windows.Count > 0)
         {
-            var share = Math.Max(0, Math.Min(1, window.Utilization));
-            var head = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-                Children = { Text(strings.UsageWindowLabel(window.Name), "ClaudeChatPanelName") },
-            };
-            var percent = Text(strings.FormatUsagePercent(window.Utilization), "ClaudeChatPanelValue");
-            Grid.SetColumn(percent, 1);
-            head.Children.Add(percent);
-            var block = new StackPanel
-            {
-                Children =
-                {
-                    head,
-                    Bar("ClaudeChatUsageBar", new (double, string?, string?)[] { (share, "ClaudeChatUsageFill", null), (1 - share, null, null) }),
-                },
-            };
-            block.Classes.Add("ClaudeChatUsageWindow");
-            if (window.ResetsAt is DateTimeOffset at) block.Children.Add(Text(strings.FormatUsageResets(at, now), "ClaudeChatUsageResets"));
-            windows.Children.Add(block);
+            var now = conversation.Clock();
+            foreach (var window in Ordered(windows)) usage.Children.Add(WindowBar(window, now, strings));
         }
-        return windows;
+        else if (hasTotals)
+        {
+            if (conversation.SessionCostUsd > 0) usage.Children.Add(Figure(strings.UsageTotalCost, "$" + strings.FormatMoney(conversation.SessionCostUsd)));
+            if (conversation.SessionDurationMs > 0) usage.Children.Add(Figure(strings.UsageTotalApiDuration, strings.FormatDuration(conversation.SessionDurationMs)));
+        }
+        else
+        {
+            usage.Children.Add(Text(strings.UsageNoPlanLimits, "ClaudeChatPanelLoading"));
+        }
+        body.Children.Add(usage);
+
+        if (conversation.CanOpenLinks)
+        {
+            var text = Text(strings.UsageManage, "ClaudeChatModalLinkText");
+            var link = new Button { Content = text };
+            link.Classes.Add("ClaudeChatButton");
+            link.Classes.Add("ClaudeChatModalLink");
+            link.Click += (_, _) => conversation.RequestLink(ManageUrl);
+            body.Children.Add(link);
+        }
+        return body;
+    }
+
+    /// <summary>The session, the week, the week's Sonnet, the models' weeks, then any other window by its name.</summary>
+    private static IEnumerable<UsageWindow> Ordered(IReadOnlyList<UsageWindow> windows)
+    {
+        var order = new[] { "five_hour", "seven_day", "seven_day_sonnet" };
+        foreach (var name in order)
+        {
+            foreach (var window in windows.Where(w => w.Model == null && w.Name == name)) yield return window;
+        }
+        foreach (var window in windows.Where(w => w.Model != null)) yield return window;
+        foreach (var window in windows.Where(w => w.Model == null && Array.IndexOf(order, w.Name) < 0)) yield return window;
+    }
+
+    private static Control AccountSection(AccountInfo account, ChatStrings strings)
+    {
+        var section = new StackPanel();
+        section.Classes.Add("ClaudeChatModalSection");
+        section.Children.Add(SectionTitle(strings.AccountSection, "ClaudeChatModalSectionTitle"));
+        foreach (var (label, value) in new[]
+        {
+            (strings.AccountAuthMethod, account.AuthMethod), (strings.AccountEmail, account.Email),
+            (strings.AccountOrganization, account.Organization), (strings.AccountPlan, account.Plan),
+        })
+        {
+            if (!string.IsNullOrEmpty(value)) section.Children.Add(Figure(label, value!));
+        }
+        return section;
+    }
+
+    /// <summary>A label with its value at the right.</summary>
+    private static Control Figure(string label, string value)
+    {
+        var line = TwoColumns(Text(label, "ClaudeChatModalFigureName"), Text(value, "ClaudeChatModalFigureValue"));
+        line.Classes.Add("ClaudeChatModalFigure");
+        return line;
+    }
+
+    /// <summary>A limit window: its name and the share used (rounded down), a 6 px bar, and when it renews.</summary>
+    private static Control WindowBar(UsageWindow window, DateTimeOffset now, ChatStrings strings)
+    {
+        var share = Math.Max(0, Math.Min(1, window.Utilization));
+        var whole = (int)Math.Floor(share * 100 + 1e-9);
+        var head = TwoColumns(Text(strings.UsageBarLabel(window), "ClaudeChatModalFigureName"), Text(strings.FormatUsageFloor(window.Utilization), "ClaudeChatModalFigureValue"));
+        var bar = Bar("ClaudeChatUsageMeter", new (double, string?, string?)[]
+        {
+            (share, "ClaudeChatUsageMeterFill", whole >= ClayFrom ? "clay" : null), (1 - share, null, null),
+        });
+        var block = new StackPanel { Children = { head, bar } };
+        block.Classes.Add("ClaudeChatModalWindow");
+        if (window.ResetsAt is DateTimeOffset at) block.Children.Add(Text(strings.FormatUsageResetsIn(at, now), "ClaudeChatModalResets"));
+        return block;
     }
 }

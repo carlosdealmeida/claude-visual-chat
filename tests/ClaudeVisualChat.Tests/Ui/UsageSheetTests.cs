@@ -242,7 +242,7 @@ public class UsageSheetTests
         c.InvokeCommand("context", "");
         UiHelpers.Pump();
         Assert.True(context.IsEffectivelyVisible);
-        Assert.Contains("150,600 / 1,000,000 (15%)", UiHelpers.Texts(context));
+        Assert.Contains("150,600 / 1,000,000 tokens (15%)", UiHelpers.Texts(context));
         Assert.False(sheet.IsOpen);
         Assert.False(sheet.IsEffectivelyVisible);
 

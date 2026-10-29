@@ -199,6 +199,9 @@ public class CommandPaletteTests
         Assert.Equal(ChatPanel.Context, ui.Conversation.ShownPanel);
         Assert.Equal(2, ui.Sent.Count);
         Assert.Equal("", ui.Input.Text ?? "");
+        ui.Conversation.ClosePanel(); // the modal took the keyboard; closing it gives it back to the box
+        UiHelpers.Pump();
+        Assert.True(ui.Input.IsFocused);
 
         // the arrows move the mark, round the ends; Enter with no row marked sends what was typed
         ui.Slash("he");

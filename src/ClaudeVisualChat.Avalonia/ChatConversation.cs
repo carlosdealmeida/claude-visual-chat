@@ -81,6 +81,12 @@ public sealed class ChatConversation : ChatObservableObject
     private ChatPanel _shownPanel;
     private ContextUsage? _contextUsage;
     private UsageLimits? _usageLimits;
+    private AccountInfo? _account;
+    private double _sessionCostUsd;
+    private double _lastResultCostUsd;
+    private long _sessionDurationMs;
+    private string? _contextError;
+    private string? _usageError;
     private string _permissionMode = "default";
     private bool _interruptedThisTurn;
     private bool _sawThinkingTokens;
@@ -527,6 +533,44 @@ public sealed class ChatConversation : ChatObservableObject
         private set => SetField(ref _usageLimits, value);
     }
 
+    /// <summary>The login the claude reported in the answer to <c>initialize</c>; null until it does (and always, where the host strips it).</summary>
+    public AccountInfo? Account
+    {
+        get => _account;
+        private set => SetField(ref _account, value);
+    }
+
+    /// <summary>
+    /// What the session cost so far, in US dollars, from the turns' <c>result</c> lines. The claude counts the cost of its process
+    /// from the start, so the figure only grows within one; a figure lower than the one before is a new process, and adds.
+    /// </summary>
+    public double SessionCostUsd
+    {
+        get => _sessionCostUsd;
+        private set => SetField(ref _sessionCostUsd, value);
+    }
+
+    /// <summary>The time the turns took, in milliseconds, added up from the <c>result</c> lines.</summary>
+    public long SessionDurationMs
+    {
+        get => _sessionDurationMs;
+        private set => SetField(ref _sessionDurationMs, value);
+    }
+
+    /// <summary>Why <c>/context</c> got no data (the error of the host's last answer, while the panel is open); null when it did not fail.</summary>
+    internal string? ContextError
+    {
+        get => _contextError;
+        private set => SetField(ref _contextError, value);
+    }
+
+    /// <summary>Why <c>/usage</c> got no data; "" when the answer said nothing more than that it failed; null when it did not fail.</summary>
+    internal string? UsageError
+    {
+        get => _usageError;
+        private set => SetField(ref _usageError, value);
+    }
+
     /// <summary>
     /// The model asked for with <see cref="SetModel"/> and not yet confirmed; null when nothing waits. The claude
     /// reports the model in use at the start of every turn (<c>system/init</c>), which clears it.
@@ -670,10 +714,15 @@ public sealed class ChatConversation : ChatObservableObject
                 }
                 break;
             case ContextUsageReported context:
+                ContextError = null;
                 ContextUsage = context.Usage;
                 break;
             case UsageLimitsReported limits:
+                UsageError = null;
                 UsageLimits = limits.Limits;
+                break;
+            case AccountReported account:
+                Account = account.Account;
                 break;
             case CommandEcho echo:
                 OnCommandEcho(echo);
@@ -1157,8 +1206,16 @@ public sealed class ChatConversation : ChatObservableObject
     {
         if (name == null) throw new ArgumentNullException(nameof(name));
         arguments ??= "";
-        if (name == "context") ShownPanel = ChatPanel.Context;
-        else if (name == "usage") ShownPanel = ChatPanel.Usage;
+        if (name == "context")
+        {
+            ContextError = null; // asked again
+            ShownPanel = ChatPanel.Context;
+        }
+        else if (name == "usage")
+        {
+            UsageError = null;
+            ShownPanel = ChatPanel.Usage;
+        }
         else if (name == "copy") Copy(arguments);
         else if (name == "tasks" || name == "bashes") ShowAgents();
         CommandInvoked?.Invoke(this, new CommandInvokedEventArgs(name, arguments));
@@ -2240,8 +2297,14 @@ public sealed class ChatConversation : ChatObservableObject
     {
         if (e.IsError)
         {
+            // the host asked for the data of the panel that is open, and the claude refused
+            if (!_autoModeAsked)
+            {
+                if (ShownPanel == ChatPanel.Context && ContextUsage == null) ContextError = e.Error ?? "";
+                else if (ShownPanel == ChatPanel.Usage) UsageError = e.Error ?? "";
+                return;
+            }
             // the auto mode a plan was approved with was refused: the next best, which needs no gate
-            if (!_autoModeAsked) return;
             _autoModeAsked = false;
             SetPermissionMode(AcceptEditsMode);
             return;
@@ -2279,6 +2342,7 @@ public sealed class ChatConversation : ChatObservableObject
         }
         if (e.IsError && !_interruptedThisTurn) Items.Add(new NoticeItem(NoticeKind.TurnFailed));
         Items.Add(new TurnFooterItem(e.DurationMs, e.InputTokens, e.OutputTokens, e.CostUsd, e.IsError));
+        AddToSession(e);
         _turnTools.Clear();
         _interruptedThisTurn = false;
         _autoModeAsked = false; // the claude answers a mode request at once: an error after the turn is about something else
@@ -2289,6 +2353,16 @@ public sealed class ChatConversation : ChatObservableObject
         if (pendingCopy is int copy) CopyReply(copy);
         // what is still held came after the turn's last request to the API: the claude has it, for its next turn
         ReleaseHeld(_held.Count);
+    }
+
+    /// <summary>The turn's time and cost go into the session's totals.</summary>
+    private void AddToSession(TurnCompleted e)
+    {
+        if (e.DurationMs is long duration && duration > 0) SessionDurationMs += duration;
+        if (e.CostUsd is not double cost || cost <= 0) return;
+        // the cost is the process's running total: the part since the last result is new; lower than the last, a new process began
+        SessionCostUsd += cost >= _lastResultCostUsd ? cost - _lastResultCostUsd : cost;
+        _lastResultCostUsd = cost;
     }
 
     /// <summary>

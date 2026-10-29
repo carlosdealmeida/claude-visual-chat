@@ -41,12 +41,6 @@
            the /context and /usage panels, the Agent map, the comment box, the sheets and the preview, in the order the host's back
            button closes them -->
       <controls:PlanDocumentPanel Name="PlanDocument" />
-      <!-- /context and /usage: over the end of the list, as wide as the reply box at most; also while read-only. Not in the
-           touch layout, where the usage sheet shows them -->
-      <controls:ContextPanel Name="ContextPanel" Classes="ClaudeChatPanelPlace"
-                             MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
-      <controls:UsagePanel Name="UsagePanel" Classes="ClaudeChatPanelPlace"
-                           MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
       <!-- under the list, centered, 680 px at most: the request Claude waits on, the banners, then the reply box; all
            go away while the view is read-only (each shows and hides itself, so the code hides their parent: a binding to the
            view would log a warning whenever the host takes the view's data context away) -->
@@ -61,6 +55,10 @@
         <controls:ChatComposer Name="Composer" Margin="16,0,16,16"
                                MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
       </StackPanel>
+      <!-- "Context usage" and "Account &amp; Usage" (/context and /usage): modals over the whole view like the Agent map, one at a
+           time; also while read-only. Not in the touch layout, where the usage sheet shows them -->
+      <controls:ContextPanel Name="ContextPanel" Grid.RowSpan="3" />
+      <controls:UsagePanel Name="UsagePanel" Grid.RowSpan="3" />
       <!-- the Agent map, over the whole view; also while read-only -->
       <controls:AgentMapPanel Name="AgentMap" Grid.RowSpan="3" />
       <!-- the box where the user writes a comment on a passage of the plan: over the list, under the passage; over the panels and the
