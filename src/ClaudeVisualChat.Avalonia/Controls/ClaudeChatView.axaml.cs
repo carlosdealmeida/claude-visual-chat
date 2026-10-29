@@ -824,6 +824,7 @@ public partial class ClaudeChatView : UserControl
             ItemList.ItemsSource = conversation?.Items;
         }
         TrackListSource();
+        Bookmarks.RefreshShown(); // the other list may not hold the reply picked
     }
 
     /// <summary>
@@ -980,7 +981,6 @@ public partial class ClaudeChatView : UserControl
     private void OnKeyDownNotTaken(object? sender, KeyEventArgs e)
     {
         if (IsPanelEsc(e)) ClosePanel(e);
-        else if (IsBookmarksEsc(e)) CloseBookmarks(e);
         else if (Prompt.IsFolded && Prompt.IsKeyboardFocusWithin) ScrollConversation(e);
     }
 
@@ -1410,6 +1410,7 @@ public partial class ClaudeChatView : UserControl
     /// <summary>Rows added after everything the search knows leave it right; any other change of the list makes it start over.</summary>
     private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        Bookmarks.RefreshShown(); // a bookmarked reply that left the list, or came back, is shown so in the open box
         if (e.Action == NotifyCollectionChangedAction.Add
             && e.NewStartingIndex > Math.Max(_promptIndex, Math.Max(_clearThrough, _emptyThrough)))
             return;

@@ -243,13 +243,14 @@ public class ModelSheetTests
         Assert.Empty(ui.Sheet.GetVisualDescendants());                   // nothing of it in the tree until it opens
         Assert.Null(ui.Sheet.Child);
         Assert.False(ui.Sheet.IsVisible);
-        Assert.Equal(3, Grid.GetRowSpan(ui.Sheet));
+        Assert.Equal(2, Grid.GetRowSpan(ui.Sheet));                       // both rows and both columns of the split: over the bookmarks panel too
 
         var layers = ((Grid)ui.Sheet.Parent!).Children;
         var at = layers.IndexOf(ui.Sheet);
         Assert.IsType<PlanCommentBox>(layers[at - 1]);                   // over the plan's comment box (0.6.0)…
         Assert.IsType<AgentMapPanel>(layers[at - 2]);                    // …and the Agent map under it…
-        Assert.True(layers.IndexOf(layers.OfType<PlanDocumentPanel>().Single()) < layers.IndexOf(layers.OfType<ContextPanel>().Single())); // the plan's document under all of them
+        Assert.Same(layers[0], layers.OfType<Grid>().First(g => g.Name == "ChatArea"));
+        Assert.Contains(((Visual)ui.Sheet.Parent!).GetVisualDescendants().OfType<PlanDocumentPanel>(), p => ReferenceEquals(p.Parent, layers[0])); // the plan's document is in the chat area, the split's first child: under all of them
         var preview = layers.IndexOf(layers.OfType<ImagePreview>().Single());
         Assert.All(layers.OfType<ChatSheet>(), sheet => Assert.True(layers.IndexOf(sheet) < preview));   // …and, like every sheet, under the preview of an image
 

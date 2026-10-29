@@ -58,38 +58,41 @@
         <controls:ChatComposer Name="Composer" Margin="16,0,16,16"
                                MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
       </StackPanel>
-      <!-- "Context usage" and "Account &amp; Usage" (/context and /usage): modals over the whole view like the Agent map, one at a
-           time; also while read-only. Not in the touch layout, where the usage sheet shows them -->
-      <controls:ContextPanel Name="ContextPanel" Grid.RowSpan="3" />
-      <controls:UsagePanel Name="UsagePanel" Grid.RowSpan="3" />
-      <!-- the Agent map, over the whole view; also while read-only -->
-      <controls:AgentMapPanel Name="AgentMap" Grid.RowSpan="3" />
-      <!-- the box where the user writes a comment on a passage of the plan: over the list, under the passage; over the panels and the
-           Agent map, under the sheets and the preview -->
-      <controls:PlanCommentBox Name="PlanComment" />
-      <!-- the touch layout's sheets, which rise from the bottom over the whole view and the Agent map; closed, each one is an
-           empty hidden layer that draws nothing and takes no input, which is all the desktop layout has of them. The usage
-           sheet is the last: it opens by itself when
-           the conversation's panel does, so it is the one that may come up with another sheet open -->
-      <controls:ModelSheet Name="ModelSheet" Grid.RowSpan="3" />
-      <controls:AddSheet Name="AddSheet" Grid.RowSpan="3" />
-      <controls:UsageSheet Name="UsageSheet" Grid.RowSpan="3" />
-      <!-- "What went wrong?", which the thumb down under a reply opens: over the whole view, under the Diff View and the preview -->
-      <controls:FeedbackDialog Name="Feedback" Grid.RowSpan="3" />
-      <!-- the Diff View: a diff of the list, whole, over everything but the image preview; also while read-only -->
-      <controls:DiffViewPanel Name="DiffViewer" Grid.RowSpan="3" />
-      <!-- an attached image, over the whole view -->
-      <controls:ImagePreview Name="Preview" Grid.RowSpan="3" />
-      <!-- while files are dragged over the view: 15 % of the extension's orange over all of it, a dashed line round it and the label in
-           a pill in the middle. Over everything, and it takes no input: the drop is the view's, not its own -->
-      <Grid Name="DropOverlay" Classes="ClaudeChatDropOverlay" Grid.RowSpan="3" IsVisible="False" IsHitTestVisible="False">
-        <Rectangle Classes="ClaudeChatDropFrame" />
-        <Border Classes="ClaudeChatDropLabel">
-          <TextBlock Name="DropLabel" />
-        </Border>
-      </Grid>
     </Grid>
     <controls:BookmarksPanel Name="Bookmarks" Grid.Column="1" />
+    <!-- the layers, over the chat and the bookmarks panel alike (the panel is a side panel, under every modal): each spans both cells
+         of the split. In the order they were over the chat before: the panels and the Agent map, the comment box, the touch layout's
+         sheets, "What went wrong?", the Diff View, the image preview, the drop overlay -->
+    <!-- "Context usage" and "Account &amp; Usage" (/context and /usage): modals over the whole view like the Agent map, one at a
+         time; also while read-only. Not in the touch layout, where the usage sheet shows them -->
+    <controls:ContextPanel Name="ContextPanel" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <controls:UsagePanel Name="UsagePanel" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <!-- the Agent map, over the whole view; also while read-only -->
+    <controls:AgentMapPanel Name="AgentMap" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <!-- the box where the user writes a comment on a passage of the plan: over the list, under the passage; over the panels and the
+         Agent map, under the sheets and the preview -->
+    <controls:PlanCommentBox Name="PlanComment" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <!-- the touch layout's sheets, which rise from the bottom over the whole view and the Agent map; closed, each one is an
+         empty hidden layer that draws nothing and takes no input, which is all the desktop layout has of them. The usage
+         sheet is the last: it opens by itself when
+         the conversation's panel does, so it is the one that may come up with another sheet open -->
+    <controls:ModelSheet Name="ModelSheet" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <controls:AddSheet Name="AddSheet" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <controls:UsageSheet Name="UsageSheet" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <!-- "What went wrong?", which the thumb down under a reply opens: over the whole view, under the Diff View and the preview -->
+    <controls:FeedbackDialog Name="Feedback" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <!-- the Diff View: a diff of the list, whole, over everything but the image preview; also while read-only -->
+    <controls:DiffViewPanel Name="DiffViewer" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <!-- an attached image, over the whole view -->
+    <controls:ImagePreview Name="Preview" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+    <!-- while files are dragged over the view: 15 % of the extension's orange over all of it, a dashed line round it and the label in
+         a pill in the middle. Over everything, and it takes no input: the drop is the view's, not its own -->
+    <Grid Name="DropOverlay" Classes="ClaudeChatDropOverlay" Grid.RowSpan="2" Grid.ColumnSpan="2" IsVisible="False" IsHitTestVisible="False">
+      <Rectangle Classes="ClaudeChatDropFrame" />
+      <Border Classes="ClaudeChatDropLabel">
+        <TextBlock Name="DropLabel" />
+      </Border>
+    </Grid>
     </Grid>
   </Border>
 </UserControl>

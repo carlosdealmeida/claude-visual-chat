@@ -210,7 +210,13 @@ public class BookmarksTests
         UiHelpers.Pump();
         Assert.Equal(700, panel.Bounds.Width, 1);                            // 750 asked, 70 % kept
 
-        panel.ResetSize();                                                   // what the bar's double click does (the headless mouse has no click count)
+        // a real double click on the bar (two quick presses: the headless mouse counts them) brings the size back
+        var bar = panel.Handle.TranslatePoint(new Point(3, 100), window)!.Value;
+        for (var click = 0; click < 2; click++)
+        {
+            window.MouseDown(bar, MouseButton.Left, RawInputModifiers.None);
+            window.MouseUp(bar, MouseButton.Left, RawInputModifiers.None);
+        }
         UiHelpers.Pump();
         Assert.Equal(300, panel.Bounds.Width, 1);                            // back to the size it opens at
         Assert.Equal("Resize bookmarks", Avalonia.Automation.AutomationProperties.GetName(panel.Handle));
@@ -553,6 +559,155 @@ public class BookmarksTests
         Assert.True(view.TryFindResource("ClaudeChat.SashHoverBorder", out var sash));
         Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(sash);
         Assert.Equal(((Avalonia.Media.ISolidColorBrush)view.FindResource("ClaudeChat.Background")!).Color, ((Avalonia.Media.ISolidColorBrush)panel.Background!).Color);
+        window.Close();
+    }
+
+    // ---- fix round 1 ----
+
+    [AvaloniaFact]
+    public void A_modal_covers_the_panel_and_a_click_on_the_panel_area_hits_its_backdrop()
+    {
+        var (c, replies) = Talk(3);
+        Mark(c, replies[0]);
+        var (view, window) = Open(c);
+        var panel = Panel(view);
+        view.ShowBookmarks();
+        UiHelpers.Pump();
+        c.ShowAgents();
+        UiHelpers.Pump();
+        var map = view.GetVisualDescendants().OfType<AgentMapPanel>().Single();
+        Assert.True(map.IsVisible);
+        Assert.Equal(view.Bounds.Width, map.Bounds.Width, 1);                // the modal spans the view, the panel's cell too
+        Assert.Equal(view.Bounds.Height, map.Bounds.Height, 1);
+        var inPanel = panel.TranslatePoint(new Point(panel.Bounds.Width / 2, 60), window)!.Value;
+        var hit = UiHelpers.HitTest(window, inPanel) as Visual;
+        Assert.NotNull(hit);
+        Assert.True(ReferenceEquals(hit, map) || map.IsVisualAncestorOf(hit!));
+        Assert.False(panel.IsVisualAncestorOf(hit!));
+        window.Close();
+
+        // below the chat too (a narrow view), and the image preview likewise
+        var (c2, r2) = Talk(2);
+        Mark(c2, r2[0]);
+        var (narrow, w2) = Open(c2, 480, 700);
+        narrow.ShowBookmarks();
+        narrow.ShowPreview(ChatImage.FromBytes(UiHelpers.Png(30, 20), "image/png"), "i.png");
+        UiHelpers.Pump();
+        var preview = narrow.GetVisualDescendants().OfType<ImagePreview>().Single();
+        Assert.Equal(narrow.Bounds.Height, preview.Bounds.Height, 1);
+        var below = Panel(narrow).TranslatePoint(new Point(100, 100), w2)!.Value;
+        var under = UiHelpers.HitTest(w2, below) as Visual;
+        Assert.False(Panel(narrow).IsVisualAncestorOf(under!));
+        w2.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_ages_tick_every_minute_while_the_panel_shows_and_stop_when_it_closes()
+    {
+        var (c, replies) = Talk(1);
+        replies[0].Timestamp = Now - TimeSpan.FromMinutes(5);
+        Mark(c, replies[0]);
+        var (view, window) = Open(c);
+        var panel = Panel(view);
+        Assert.False(panel.AgesTicking);                                     // closed: no timer
+        view.ShowBookmarks();
+        UiHelpers.Pump();
+        Assert.True(panel.AgesTicking);
+        Assert.Equal(TimeSpan.FromMinutes(1), panel.AgeInterval);
+        string Age() => Rows(panel)[0].GetVisualDescendants().OfType<TextBlock>().Skip(1).First().Text!;
+        Assert.Equal("5m ago", Age());
+        var row = Rows(panel)[0];
+        c.Clock = () => Now + TimeSpan.FromMinutes(7);
+        panel.TickAges();                                                    // what the timer's tick does
+        Assert.Equal("12m ago", Age());
+        Assert.Same(row, Rows(panel)[0]);                                    // the rows stay, so the keyboard stays
+        view.HideBookmarks();
+        Assert.False(panel.AgesTicking);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Esc_with_the_keyboard_elsewhere_does_not_close_the_panel()
+    {
+        var (c, replies) = Talk(2);
+        Mark(c, replies[0]);
+        var (view, window) = Open(c);
+        var unhandled = UiHelpers.UnhandledKeys(window);
+        view.ShowBookmarks();
+        UiHelpers.Pump();
+        UiHelpers.Input(view).Focus();                                       // the keyboard goes to the reply box
+        UiHelpers.Press(window, Key.Escape);
+        Assert.True(Panel(view).IsOpen);
+        Assert.Contains(Key.Escape, unhandled);                              // and nobody took the key: the app's own shortcuts keep it
+        Panel(view).CloseButton.Focus();
+        UiHelpers.Press(window, Key.Escape);
+        Assert.False(Panel(view).IsOpen);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_link_follows_the_reply_leaving_and_coming_back_while_the_box_is_open()
+    {
+        var (c, replies) = Talk(4);
+        Mark(c, replies[1]);
+        var (view, window) = Open(c);
+        view.ShowBookmarks();
+        UiHelpers.Pump();
+        var panel = Panel(view);
+        UiHelpers.Click(window, Rows(panel)[0]);
+        Assert.Contains("Show in conversation", UiHelpers.Texts(panel));
+        var at = c.Items.IndexOf(replies[1]);
+        c.Items.Remove(replies[1]);                                          // the reply leaves the list under the open box
+        UiHelpers.Pump();
+        Assert.Contains("No longer shown in the conversation", UiHelpers.Texts(panel));
+        Assert.DoesNotContain("Show in conversation", UiHelpers.Texts(panel));
+        c.Items.Insert(at, replies[1]);                                      // and comes back
+        UiHelpers.Pump();
+        Assert.Contains("Show in conversation", UiHelpers.Texts(panel));
+        Assert.DoesNotContain("No longer shown in the conversation", UiHelpers.Texts(panel));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void After_remove_bookmark_the_keyboard_goes_to_the_next_row_or_the_close_button()
+    {
+        var (c, replies) = Talk(3);
+        Mark(c, replies[0], replies[1], replies[2]);
+        var (view, window) = Open(c);
+        view.ShowBookmarks();
+        UiHelpers.Pump();
+        var panel = Panel(view);
+        UiHelpers.Click(window, Rows(panel)[0]);
+        UiHelpers.Click(window, Named(panel, "ClaudeChatBookmarkRemove"));
+        Assert.True(Rows(panel)[0].IsFocused);                               // the row that took its place
+        UiHelpers.Click(window, Rows(panel)[1]);
+        UiHelpers.Click(window, Named(panel, "ClaudeChatBookmarkRemove"));
+        Assert.True(Rows(panel)[0].IsFocused);                               // the last one goes: the one before it
+        UiHelpers.Click(window, Rows(panel)[0]);
+        UiHelpers.Click(window, Named(panel, "ClaudeChatBookmarkRemove"));
+        Assert.Empty(Rows(panel));
+        Assert.True(panel.CloseButton.IsFocused);                            // none left: the x
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void In_a_read_only_view_the_panel_opens_and_remove_works_like_the_bookmark_button()
+    {
+        var (c, replies) = Talk(2);
+        Mark(c, replies[0], replies[1]);
+        var view = new ClaudeChatView { Conversation = c, IsReadOnly = true };
+        var window = UiHelpers.Show(view);
+        view.ShowBookmarks();
+        UiHelpers.Pump();
+        var panel = Panel(view);
+        Assert.True(panel.IsOpen);
+        Assert.Equal(2, Rows(panel).Count);
+        UiHelpers.Click(window, Rows(panel)[0]);
+        UiHelpers.Click(window, Named(panel, "ClaudeChatBookmarkRemove"));
+        Assert.False(replies[0].IsBookmarked);
+        Assert.Single(Rows(panel));
+        UiHelpers.Press(window, Key.Escape);
+        Assert.False(panel.IsOpen);
         window.Close();
     }
 }

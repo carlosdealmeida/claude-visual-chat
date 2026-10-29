@@ -8,6 +8,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 namespace ClaudeVisualChat.Controls;
@@ -61,7 +62,23 @@ internal sealed class BookmarksPanel : Border
     private readonly TextBlock _notShown = new TextBlock();
     private readonly Button _remove;
     private readonly MarkdownBlock _reply = new MarkdownBlock();
-    private readonly List<(Button Row, AssistantTextItem Item)> _built = new List<(Button, AssistantTextItem)>();
+    private readonly List<Built> _built = new List<Built>();
+    private readonly DispatcherTimer _ages = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+
+    /// <summary>A row drawn: the button, its reply, and the text that says how long ago (null when the reply has no time).</summary>
+    private sealed class Built
+    {
+        internal Built(Button row, AssistantTextItem item, TextBlock? age)
+        {
+            Row = row;
+            Item = item;
+            Age = age;
+        }
+
+        internal Button Row { get; }
+        internal AssistantTextItem Item { get; }
+        internal TextBlock? Age { get; }
+    }
     private readonly FocusReturn _return = new FocusReturn();
 
     private ChatConversation? _conversation;
@@ -91,6 +108,7 @@ internal sealed class BookmarksPanel : Border
         _close.Classes.Add("ClaudeChatPanelClose");
         _close.Classes.Add("ClaudeChatBookmarksClose");
         _close.Click += (_, _) => Close();
+        _ages.Tick += (_, _) => TickAges();
         DockPanel.SetDock(_close, Dock.Right);
         var header = new DockPanel { Children = { _close, _title } };
         header.Classes.Add("ClaudeChatBookmarksHeader");
@@ -248,6 +266,37 @@ internal sealed class BookmarksPanel : Border
         ApplySize();
     }
 
+    /// <summary>True while the timer that moves the ages on runs: only with the panel on screen and in the window.</summary>
+    internal bool AgesTicking => _ages.IsEnabled;
+
+    /// <summary>How often the ages move on (the extension's panel does it every minute).</summary>
+    internal TimeSpan AgeInterval => _ages.Interval;
+
+    /// <summary>The timer's tick: the ages are written again from the clock, the rows stay where they are.</summary>
+    internal void TickAges()
+    {
+        if (!_attached || !IsVisible) return;
+        var strings = Strings;
+        var now = _tracked?.Clock();
+        foreach (var built in _built)
+        {
+            if (built.Age == null || built.Item.Timestamp is not DateTimeOffset written || now is not DateTimeOffset current) continue;
+            built.Age.Text = strings.FormatAgo(current - written);
+        }
+    }
+
+    /// <summary>The picked reply may have left the list or come back to it (a row removed, the Focus view turned on): the box says so.</summary>
+    internal void RefreshShown()
+    {
+        if (_attached && IsVisible && _selected != null) UpdateSelection();
+    }
+
+    private void SyncTimer()
+    {
+        if (_attached && IsVisible) _ages.Start();
+        else _ages.Stop();
+    }
+
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
 
     /// <summary>Styled as a Border: the theme's <c>Border.ClaudeChatBookmarks</c>.</summary>
@@ -274,6 +323,7 @@ internal sealed class BookmarksPanel : Border
         var hadFocus = IsKeyboardFocusWithin;
         IsVisible = false;
         _dragging = false;
+        _ages.Stop();
         if (!hadFocus) _return.Forget();
         else if (!(GetValue(LayoutProperty) != ChatLayout.Touch && _tracked?.CurrentPermission == null && _return.Restore()))
             FocusReleased?.Invoke(this, EventArgs.Empty);
@@ -294,6 +344,7 @@ internal sealed class BookmarksPanel : Border
         base.OnDetachedFromVisualTree(e);
         _attached = false;
         _dragging = false;
+        _ages.Stop();
         Track(null); // the conversation outlives the view: let go of its events
     }
 
@@ -326,6 +377,7 @@ internal sealed class BookmarksPanel : Border
     private void Update()
     {
         if (!_attached || !IsVisible) return;
+        SyncTimer();
         var strings = Strings;
         _title.Text = strings.BookmarksTitle;
         _empty.Text = strings.BookmarksEmpty;
@@ -346,9 +398,9 @@ internal sealed class BookmarksPanel : Border
         {
             foreach (var item in bookmarks)
             {
-                var row = Row(item, strings, now);
-                _built.Add((row, item));
-                _rows.Children.Add(row);
+                var built = Row(item, strings, now);
+                _built.Add(built);
+                _rows.Children.Add(built.Row);
             }
         }
         var any = _built.Count > 0;
@@ -358,18 +410,19 @@ internal sealed class BookmarksPanel : Border
         UpdateSelection();
     }
 
-    private Button Row(AssistantTextItem item, ChatStrings strings, DateTimeOffset? now)
+    private Built Row(AssistantTextItem item, ChatStrings strings, DateTimeOffset? now)
     {
         var first = new TextBlock { Text = FirstLine(item.Text) };
         first.Classes.Add("ClaudeChatBookmarkFirstLine");
         var stack = new StackPanel { Children = { first } };
         string? age = null;
+        TextBlock? ageLine = null;
         if (item.Timestamp is DateTimeOffset written && now is DateTimeOffset current)
         {
             age = strings.FormatAgo(current - written);
-            var line = new TextBlock { Text = age };
-            line.Classes.Add("ClaudeChatBookmarkAge");
-            stack.Children.Add(line);
+            ageLine = new TextBlock { Text = age };
+            ageLine.Classes.Add("ClaudeChatBookmarkAge");
+            stack.Children.Add(ageLine);
         }
         var row = new Button { Content = stack };
         row.Classes.Add("ClaudeChatButton");
@@ -380,7 +433,7 @@ internal sealed class BookmarksPanel : Border
             _selected = item;
             UpdateSelection();
         };
-        return row;
+        return new Built(row, item, ageLine);
     }
 
     /// <summary>The first line of the reply that has a text, trimmed.</summary>
@@ -398,7 +451,7 @@ internal sealed class BookmarksPanel : Border
     /// <summary>The rows say which one is picked, and the box under the list shows it, or tells to pick one.</summary>
     private void UpdateSelection()
     {
-        foreach (var (row, item) in _built) row.Classes.Set("selected", ReferenceEquals(item, _selected));
+        foreach (var built in _built) built.Row.Classes.Set("selected", ReferenceEquals(built.Item, _selected));
         var any = _built.Count > 0;
         var picked = _selected;
         _hint.IsVisible = any && picked == null;
@@ -432,7 +485,13 @@ internal sealed class BookmarksPanel : Border
     {
         var picked = _selected;
         if (picked == null || _tracked == null) return;
+        var hadFocus = IsKeyboardFocusWithin;
+        var at = _built.FindIndex(b => ReferenceEquals(b.Item, picked));
         _tracked.ToggleBookmark(picked); // the list tells: the row goes and the box with it
+        // the button that had the keyboard is gone: it goes to the row that took the place, the one before it, or the x
+        if (!hadFocus) return;
+        Control target = _built.Count == 0 ? _close : _built[Math.Min(Math.Max(at, 0), _built.Count - 1)].Row;
+        target.Focus();
     }
 
     // ---- size and place ----
@@ -489,6 +548,13 @@ internal sealed class BookmarksPanel : Border
     {
         if (!e.GetCurrentPoint(_handle).Properties.IsLeftButtonPressed) return;
         _handle.Focus();
+        if (e.ClickCount >= 2)
+        {
+            // the press of a double click: the press is handled below, which keeps the gesture from raising DoubleTapped, so it acts here
+            ResetSize();
+            e.Handled = true;
+            return;
+        }
         _dragging = true;
         _dragFrom = Along(e);
         _dragSize = Size;

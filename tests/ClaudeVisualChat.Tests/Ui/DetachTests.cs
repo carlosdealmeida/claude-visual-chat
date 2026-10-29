@@ -1736,21 +1736,23 @@ public class DetachTests
         int Rows() => Panel().GetVisualDescendants().OfType<Button>().Count(b => b.Classes.Contains("ClaudeChatBookmarkRow"));
         m.View.ShowBookmarks();
         UiHelpers.Pump();
-        var own = BookmarkHandlers(c);
         Assert.Equal(1, Rows());
+        Assert.True(Panel().AgesTicking);
         var panel = Panel();
         UiHelpers.Click(m.Window, panel.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("ClaudeChatBookmarkRow")));
         Assert.Same(first, panel.Selected);
 
         m.Out();
-        Assert.True(BookmarkHandlers(c) < own);                              // out: it lets go of the conversation's list
-        c.ToggleBookmark(second);                                            // marked while out: nothing is drawn, nothing throws
+        Assert.False(Panel().AgesTicking);                                   // out: the timer stops
+        c.ToggleBookmark(second);                                            // marked while out: it hears nothing, draws nothing, throws nothing
+        Assert.Equal(1, Rows());
         c.ToggleBookmark(first);
+        Assert.Equal(1, Rows());
         m.View.HideBookmarks();                                              // and closed while out
         m.View.ShowBookmarks();                                              // and opened again
         m.In();
-        Assert.Equal(own, BookmarkHandlers(c));
         Assert.True(Panel().IsOpen);
+        Assert.True(Panel().AgesTicking);                                    // and the timer runs again
         Assert.Equal(1, Rows());                                             // drawn as the list is now
         Assert.Contains("Also this.", UiHelpers.Texts(Panel()));
         Assert.Null(Panel().Selected);                                       // the picked reply went with its bookmark
@@ -1762,17 +1764,5 @@ public class DetachTests
         Assert.Same(second, Panel().Selected);                               // a pick that was not touched while out is still there
         Assert.Contains("Show in conversation", UiHelpers.Texts(Panel()));
         m.Window.Close();
-    }
-
-    /// <summary>How many listen to the conversation's bookmarks list.</summary>
-    private static int BookmarkHandlers(ChatConversation conversation)
-    {
-        var list = conversation.Bookmarks;
-        var field = typeof(System.Collections.ObjectModel.ReadOnlyObservableCollection<AssistantTextItem>)
-            .GetField("CollectionChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        if (field != null) return ((Delegate?)field.GetValue(list))?.GetInvocationList().Length ?? 0;
-        var inner = typeof(System.Collections.ObjectModel.ReadOnlyObservableCollection<AssistantTextItem>)
-            .GetField("CollectionChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-        throw new InvalidOperationException("no CollectionChanged field" + (inner == null ? "" : "?"));
     }
 }

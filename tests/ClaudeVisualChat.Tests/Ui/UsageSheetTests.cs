@@ -714,7 +714,7 @@ public class UsageSheetTests
         Assert.Empty(ui.Sheet.GetVisualDescendants());
         Assert.Null(ui.Sheet.Child);
         Assert.False(ui.Sheet.IsVisible);
-        Assert.Equal(3, Grid.GetRowSpan(ui.Sheet));
+        Assert.Equal(2, Grid.GetRowSpan(ui.Sheet));                       // both rows and both columns of the split: over the bookmarks panel too
 
         var layers = ((Grid)ui.Sheet.Parent!).Children;
         var at = layers.IndexOf(ui.Sheet);
