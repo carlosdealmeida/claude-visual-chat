@@ -162,8 +162,9 @@ internal partial class ToolCallView : UserControl
     /// </summary>
     private void OnHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        _pathPressed = false; // a press that began elsewhere (and a release lost to a scroll) never pairs with a later one
         if (!_pathLink) return;
-        if (e.Source is Visual source && IsInDetail(source))
+        if (e.Source is Visual source && IsPathTarget(source))
         {
             _pathPressed = e.GetCurrentPoint(Header).Properties.IsLeftButtonPressed;
             e.Handled = true;
@@ -179,7 +180,7 @@ internal partial class ToolCallView : UserControl
         if (!_pathLink) return;
         var pressed = _pathPressed;
         _pathPressed = false;
-        if (pressed && e.Source is Visual source && IsInDetail(source) && _item != null && PathOf(_item) is { } path)
+        if (pressed && e.Source is Visual source && IsPathTarget(source) && ReleasedOnTarget(e) && _item != null && PathOf(_item) is { } path)
         {
             e.Handled = true;
             _host?.ActivatePath(path, null);
@@ -188,6 +189,21 @@ internal partial class ToolCallView : UserControl
         {
             e.Handled = true;
         }
+    }
+
+    /// <summary>
+    /// What takes the click for the path: its text, and in the touch layout (where the header is a finger tall and a tap is not
+    /// aimed at the text) the whole header while it has no other action; a header that opens something keeps that for the rest of it.
+    /// </summary>
+    private bool IsPathTarget(Visual source) =>
+        IsInDetail(source) || (GetValue(LayoutProperty) == ChatLayout.Touch && !OpensSomething());
+
+    /// <summary>The pointer is still over the path (or the header, where that takes the tap) when it is let go: dragging off cancels, as for a button.</summary>
+    private bool ReleasedOnTarget(PointerReleasedEventArgs e)
+    {
+        var target = GetValue(LayoutProperty) == ChatLayout.Touch && !OpensSomething() ? (Control)Header : DetailText;
+        var point = e.GetPosition(target);
+        return point.X >= 0 && point.Y >= 0 && point.X <= target.Bounds.Width && point.Y <= target.Bounds.Height;
     }
 
     private bool IsInDetail(Visual source) => ReferenceEquals(source, DetailText) || DetailText.IsVisualAncestorOf(source);

@@ -266,4 +266,117 @@ public class PathActivationTests
         Assert.DoesNotContain("pathlink", detail.Classes);
         window.Close();
     }
+
+    // ---- fix round 1 ----
+
+    [AvaloniaFact]
+    public void A_listening_host_gets_one_drawing_on_first_show()
+    {
+        var ui = new Opened("`src/app/main.css:42` is long", listen: true);
+        UiHelpers.DrawFrames();
+        Assert.Equal(1, ui.Block.RenderCount);
+        Assert.Single(ui.Paragraph.Content.OfType<CHyperlink>());
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_code_span_path_is_underlined_only_under_the_pointer()
+    {
+        var ui = new Opened("`src/app/main.css:42` is long");
+        var link = Assert.Single(ui.Paragraph.Content.OfType<CHyperlink>());
+        Assert.False(link.IsUnderline);
+        var p = ui.Paragraph;
+        var point = p.TranslatePoint(new Point(8, Math.Min(p.Bounds.Height / 2, 10)), ui.Window)!.Value;
+        ui.Window.MouseMove(point, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.True(link.IsUnderline);
+        ui.Window.MouseMove(new Point(point.X + 600, point.Y + 200), RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.False(link.IsUnderline);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_code_span_as_the_text_of_a_link_acts_as_a_code_span()
+    {
+        // the engine drops the link around a code span (no CHyperlink of its own is left), so the span's own path is what is clicked
+        var ui = new Opened("[`src/a.cs`](src/b.cs#L42) here");
+        Assert.Single(ui.Paragraph.Content.OfType<CHyperlink>());
+        ui.ClickStartOfText();
+        Assert.Equal(new[] { ("src/a.cs", (int?)null) }, ui.Paths);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_notebook_header_raises_the_notebook_path()
+    {
+        var item = Call("NotebookEdit", "{\"notebook_path\":\"/work/a.ipynb\",\"cell_id\":\"c1\"}");
+        var (view, window, paths) = OpenCall(item);
+        var detail = DetailOf(view, item);
+        Assert.Contains("pathlink", detail.Classes);
+        UiHelpers.DrawFrames();
+        UiHelpers.Click(window, detail);
+        Assert.Equal(new[] { ("/work/a.ipynb", (int?)null) }, paths);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void In_the_touch_layout_the_whole_header_row_takes_the_tap()
+    {
+        var item = Call("Read", "{\"file_path\":\"src/main.css\"}");
+        var (view, window, paths) = OpenCall(item, layout: ChatLayout.Touch);
+        var header = view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(b => b.Classes.Contains("ClaudeChatDisclosure"));
+        var detail = DetailOf(view, item);
+        UiHelpers.DrawFrames();
+        // well right of the file name, and above it: still the header row
+        var right = header.TranslatePoint(new Point(header.Bounds.Width - 20, header.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(right, RawInputModifiers.None);
+        window.MouseDown(right, MouseButton.Left, RawInputModifiers.None);
+        window.MouseUp(right, MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.Equal(new[] { ("src/main.css", (int?)null) }, paths);
+        Assert.False(item.IsExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void On_the_desktop_only_the_path_takes_the_click()
+    {
+        var item = Call("Read", "{\"file_path\":\"src/main.css\"}");
+        var (view, window, paths) = OpenCall(item);
+        var header = view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(b => b.Classes.Contains("ClaudeChatDisclosure"));
+        UiHelpers.DrawFrames();
+        var right = header.TranslatePoint(new Point(header.Bounds.Width - 20, header.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(right, RawInputModifiers.None);
+        window.MouseDown(right, MouseButton.Left, RawInputModifiers.None);
+        window.MouseUp(right, MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.Empty(paths);
+        Assert.False(item.IsExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_press_on_the_path_that_never_ends_there_does_not_pair_with_a_later_release()
+    {
+        var item = Call("Read", "{\"file_path\":\"src/main.css\"}");
+        var (view, window, paths) = OpenCall(item);
+        var detail = DetailOf(view, item);
+        var name = view.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatToolName"));
+        UiHelpers.DrawFrames();
+        Point Center(Control c) => c.TranslatePoint(new Point(c.Bounds.Width / 2, c.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(Center(detail), RawInputModifiers.None);
+        window.MouseDown(Center(detail), MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(new Point(900, 600), RawInputModifiers.None);
+        window.MouseUp(new Point(900, 600), MouseButton.Left, RawInputModifiers.None); // released far away: the header never sees it
+        UiHelpers.Pump();
+        Assert.Empty(paths);
+        window.MouseMove(Center(name), RawInputModifiers.None);
+        window.MouseDown(Center(name), MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(Center(detail), RawInputModifiers.None);
+        window.MouseUp(Center(detail), MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.Empty(paths);
+        window.Close();
+    }
 }

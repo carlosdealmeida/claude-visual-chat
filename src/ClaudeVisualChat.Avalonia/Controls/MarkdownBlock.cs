@@ -107,6 +107,8 @@ public class MarkdownBlock : ContentControl
     {
         base.OnAttachedToVisualTree(e);
         AttachHost(this.FindAncestorOfType<ClaudeChatView>()?.Conversation);
+        // the text that came before the block was in the window waited for its host: the first drawing is this one
+        if (!_hasRendered && Markdown != null) Render();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -138,6 +140,9 @@ public class MarkdownBlock : ContentControl
     private void OnMarkdownChanged()
     {
         var text = Markdown;
+        // not in a window yet (a binding sets the text first): the host is not known, so the drawing waits for the attach, and the
+        // block is drawn once, with the paths already live when the host listens
+        if (!_hasRendered && VisualRoot == null) return;
         if (_hasRendered && text == _rendered) return;
         if (_pending != null && Grows(text)) return; // the scheduled drawing will take the newest text
 
@@ -304,7 +309,7 @@ public class MarkdownBlock : ContentControl
                 case CHyperlink link:
                     if (link.CommandParameter != null && PathReference.TryFromLink(link.CommandParameter, out var target, out var targetLine))
                         link.Command = _ => activate(target, targetLine);
-                    SettlePaths(link.Content, activate);
+                    // what is inside a link is the link's own text: a code span there goes where the link goes
                     break;
                 case CSpan span:
                     SettlePaths(span.Content, activate);

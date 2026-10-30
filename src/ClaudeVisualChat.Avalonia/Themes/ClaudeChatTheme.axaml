@@ -3374,6 +3374,13 @@
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Accent}" />
     <Setter Property="IsUnderline" Value="True" />
   </Style>
+  <!-- the path in a code span, which the host opens: underlined only under the pointer -->
+  <Style Selector="controls|MarkdownBlock ctb|CHyperlink.ClaudeChatPathCode">
+    <Setter Property="IsUnderline" Value="False" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock ctb|CHyperlink.ClaudeChatPathCode:pointerover">
+    <Setter Property="IsUnderline" Value="True" />
+  </Style>
   <!-- inline code: .9em in the editor's font, 2 px by 4 px inside, 3 px corners -->
   <Style Selector="controls|MarkdownBlock ctb|CCode">
     <Setter Property="MonospaceFontFamily" Value="{DynamicResource ClaudeChat.MonoFontFamily}" />
