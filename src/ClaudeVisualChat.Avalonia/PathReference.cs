@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace ClaudeVisualChat;
@@ -14,6 +15,16 @@ internal static class PathReference
     private const int MaxExtensionLength = 10;
 
     private static readonly char[] Separators = { '/', '\\' };
+
+    /// <summary>The extensions that make a name with no folder a file ("main.css"; "console.log" is a call, though "log" is one too).</summary>
+    private static readonly HashSet<string> KnownExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "cs", "csx", "csproj", "sln", "axaml", "xaml", "razor", "cshtml", "fs", "vb", "js", "mjs", "cjs", "jsx", "ts", "tsx", "json",
+        "jsonl", "ndjson", "css", "scss", "less", "html", "htm", "xml", "svg", "md", "mdx", "txt", "csv", "tsv", "yml", "yaml", "toml",
+        "ini", "cfg", "conf", "env", "py", "ipynb", "rb", "php", "go", "rs", "java", "kt", "kts", "gradle", "swift", "c", "h", "cpp",
+        "hpp", "cc", "sh", "bash", "ps1", "psm1", "bat", "cmd", "sql", "proto", "lock", "vue", "svelte", "dart", "lua", "r", "pdf",
+        "png", "jpg", "jpeg", "gif", "webp",
+    };
 
     private static readonly Regex LineSuffix = new Regex(@":(\d+)(?::\d+)?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
@@ -47,7 +58,9 @@ internal static class PathReference
             body = trimmed.Substring(0, suffix.Index);
             found = ParseLine(suffix.Groups[1].Value);
         }
-        if (body.IndexOfAny(Separators) < 0 || !HasFileName(body) || HasHostPrefix(body)) return false;
+        if (!HasFileName(body) || HasHostPrefix(body)) return false;
+        // a bare name ("arquivo-15.txt:1") has no folder to tell it from a member ("e.Path"): only an extension of a file people open
+        if (body.IndexOfAny(Separators) < 0 && !KnownExtensions.Contains(body.Substring(body.LastIndexOf('.') + 1))) return false;
         path = body;
         line = found;
         return true;

@@ -17,6 +17,10 @@ public class PathReferenceTests
     [InlineData("/etc/nginx/nginx.conf", "/etc/nginx/nginx.conf", null)]
     [InlineData("  src/a.cs  ", "src/a.cs", null)]
     [InlineData("pages/[id].tsx", "pages/[id].tsx", null)]
+    [InlineData("arquivo-15.txt:1", "arquivo-15.txt", 1)]   // a bare file name of a known extension
+    [InlineData("aaa-primeiro.css", "aaa-primeiro.css", null)]
+    [InlineData("README.md:42", "README.md", 42)]
+    [InlineData("Program.CS", "Program.CS", null)]
     public void Inline_code_that_looks_like_a_path_is_one(string text, string path, int? line)
     {
         Assert.True(PathReference.TryFromCode(text, out var found, out var foundLine));
@@ -26,7 +30,9 @@ public class PathReferenceTests
 
     [Theory]
     [InlineData("")]
-    [InlineData("main.css")]                    // no separator
+    [InlineData("name.foo")]                    // no separator, an extension nobody opens
+    [InlineData("e.Path")]                      // a member
+    [InlineData("console.log")]
     [InlineData("src/app")]                     // no extension
     [InlineData("src/app/")]                    // a folder
     [InlineData("a / b.c")]                     // spaces

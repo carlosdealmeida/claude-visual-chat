@@ -3381,6 +3381,10 @@
   <Style Selector="controls|MarkdownBlock ctb|CHyperlink.ClaudeChatPathCode:pointerover">
     <Setter Property="IsUnderline" Value="True" />
   </Style>
+  <!-- a touch screen has no pointer to hover with: the path of a code span is underlined at rest, like a link -->
+  <Style Selector="controls|ClaudeChatView:touch controls|MarkdownBlock ctb|CHyperlink.ClaudeChatPathCode">
+    <Setter Property="IsUnderline" Value="True" />
+  </Style>
   <!-- inline code: .9em in the editor's font, 2 px by 4 px inside, 3 px corners -->
   <Style Selector="controls|MarkdownBlock ctb|CCode">
     <Setter Property="MonospaceFontFamily" Value="{DynamicResource ClaudeChat.MonoFontFamily}" />

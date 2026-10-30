@@ -82,7 +82,7 @@ public class PathActivationTests
 
     [AvaloniaTheory]
     [InlineData("`dotnet test` runs them")]
-    [InlineData("`main.css` has no folder")]
+    [InlineData("`console.log` is a call")]
     [InlineData("`https://example.com/a.html` is a page")]
     [InlineData("plain text with src/app/main.css:42 in it")]
     public void Other_text_stays_plain_and_does_not_raise(string markdown)
@@ -378,5 +378,70 @@ public class PathActivationTests
         UiHelpers.Pump();
         Assert.Empty(paths);
         window.Close();
+    }
+
+    // ---- fix round 2: a reply shaped like the real ones ----
+
+    private const string Bullets =
+        "Created:\n\n- `aaa-primeiro.css` the style\n- `arquivo-15.txt:1` the list\n- `body { color: #fff; }` the rule\n";
+
+    [AvaloniaFact]
+    public void A_bare_file_name_in_a_bullet_is_clickable_by_a_press_and_release_alone()
+    {
+        var ui = new Opened(Bullets);
+        UiHelpers.DrawFrames();
+        var links = ui.Block.GetVisualDescendants().OfType<CTextBlock>().SelectMany(t => t.Content.OfType<CHyperlink>()).ToList();
+        Assert.Equal(2, links.Count); // the two files; the rule is plain code
+        var second = ui.Block.GetVisualDescendants().OfType<CTextBlock>().First(t => t.Content.OfType<CHyperlink>().Any(l => l.CommandParameter == "arquivo-15.txt"));
+        // no pointer move before: as with a finger, where there is no hover
+        var point = second.TranslatePoint(new Point(8, Math.Min(second.Bounds.Height / 2, 10)), ui.Window)!.Value;
+        ui.Window.MouseDown(point, MouseButton.Left, RawInputModifiers.None);
+        ui.Window.MouseUp(point, MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+        Assert.Equal(new[] { ("arquivo-15.txt", (int?)1) }, ui.Paths);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_streamed_reply_ends_with_the_same_clickable_spans()
+    {
+        var c = new ChatConversation();
+        var paths = new List<string>();
+        c.PathActivated += (_, e) => paths.Add(e.Path);
+        var item = new AssistantTextItem { Text = "Created:\n\n- `aaa-pri" };
+        c.Items.Add(item);
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        item.Text = Bullets;
+        UiHelpers.DrawFrames();
+        var block = view.GetVisualDescendants().OfType<MarkdownBlock>().First();
+        List<CHyperlink> Links() => block.GetVisualDescendants().OfType<CTextBlock>().SelectMany(t => t.Content.OfType<CHyperlink>()).ToList();
+        UiHelpers.PumpUntil(() => Links().Count == 2); // the redraw of a growing text waits for its interval
+        var links = Links();
+        links[1].Command!(links[1].CommandParameter!);
+        Assert.Equal(new[] { "arquivo-15.txt" }, paths);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_code_span_path_and_a_link_end_in_the_same_activation()
+    {
+        var ui = new Opened("`src/a.cs:7` and [b](src/b.cs#L9)");
+        var inlines = ui.Paragraph.Content.OfType<CHyperlink>().ToList();
+        Assert.Equal(2, inlines.Count);
+        Assert.All(inlines, l => Assert.NotNull(l.Command));
+        inlines[0].Command!(inlines[0].CommandParameter!);
+        inlines[1].Command!(inlines[1].CommandParameter!);
+        Assert.Equal(new[] { ("src/a.cs", (int?)7), ("src/b.cs", (int?)9) }, ui.Paths);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void In_the_touch_layout_a_code_span_path_is_underlined_at_rest()
+    {
+        var ui = new Opened("`src/a.cs:7` here", layout: ChatLayout.Touch);
+        UiHelpers.DrawFrames();
+        Assert.True(Assert.Single(ui.Paragraph.Content.OfType<CHyperlink>()).IsUnderline);
+        ui.Window.Close();
     }
 }
