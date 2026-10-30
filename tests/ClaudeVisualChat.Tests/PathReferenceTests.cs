@@ -30,6 +30,27 @@ public class PathReferenceTests
     [InlineData("app.min.js", "app.min.js", null)]
     [InlineData("webpack.config.js", "webpack.config.js", null)]
     [InlineData("src/System.Text.Json", "src/System.Text.Json", null)] // with a folder it is as written: a path
+    [InlineData("Default.aspx", "Default.aspx", null)]      // classic web sites
+    [InlineData("global.asa", "global.asa", null)]
+    [InlineData("web.config:12", "web.config", 12)]
+    [InlineData("menu.asp", "menu.asp", null)]
+    [InlineData("topo.inc", "topo.inc", null)]
+    [InlineData("Login.ascx", "Login.ascx", null)]
+    [InlineData("pom.xml", "pom.xml", null)]                // short stems with a file-only extension
+    [InlineData("lib.rs", "lib.rs", null)]
+    [InlineData("log.txt", "log.txt", null)]
+    [InlineData("bad.py", "bad.py", null)]
+    [InlineData("MainWindow.axaml.cs", "MainWindow.axaml.cs", null)]
+    [InlineData("App.xaml.cs", "App.xaml.cs", null)]
+    [InlineData("Index.razor.cs", "Index.razor.cs", null)]
+    [InlineData("docker-compose.override.yml", "docker-compose.override.yml", null)]
+    [InlineData("tsconfig.app.json", "tsconfig.app.json", null)]
+    [InlineData(".gitignore", ".gitignore", null)]          // dot files
+    [InlineData(".env", ".env", null)]
+    [InlineData(".env.local", ".env.local", null)]
+    [InlineData(".eslintrc.json", ".eslintrc.json", null)]
+    [InlineData("yarn.lock", "yarn.lock", null)]
+    [InlineData("Cargo.lock", "Cargo.lock", null)]
     public void Inline_code_that_looks_like_a_path_is_one(string text, string path, int? line)
     {
         Assert.True(PathReference.TryFromCode(text, out var found, out var foundLine));
@@ -51,6 +72,9 @@ public class PathReferenceTests
     [InlineData("obj.cs")]
     [InlineData("df.r")]
     [InlineData("foo.h")]
+    [InlineData("ptr.c")]                       // a short variable with a member-like extension
+    [InlineData(".then")]                       // a call, not a dot file
+    [InlineData(".NET")]
     [InlineData("name.foo")]                    // no separator, an extension nobody opens
     [InlineData("e.Path")]                      // a member
     [InlineData("console.log")]

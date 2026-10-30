@@ -11,8 +11,10 @@ All notable changes to this project are written here. The format follows
   the view, so the host can open the file. The paths that react are the one in the header of a Read, Edit, Write, MultiEdit or
   NotebookEdit call (the `file_path` of its input, as the call wrote it), a code span of a reply that looks like a path
   (a `/` or `\` and a file name with an extension, or a bare name such as `main.css:42` whose extension is a known file
-  type, with no dotted stem unless it is a known one such as `index.d.ts` or `app.min.js`, so `Node.js`, `res.json` and
-  `System.Text.Json` stay code; an optional `:line` or `:line:col` as in `src/app/main.css:42`), and a Markdown
+  type, with no dotted stem unless it is a known one such as `index.d.ts`, `app.min.js` or `MainWindow.axaml.cs`, so
+  `Node.js`, `res.json` and `System.Text.Json` stay code; the classic web files `Default.aspx`, `global.asa` and
+  `web.config`, dot files such as `.gitignore` and `.env.local`, and lock files such as `yarn.lock` count too; an optional
+  `:line` or `:line:col` as in `src/app/main.css:42`), and a Markdown
   link whose target is not a URL (`[main](src/app/main.css#L42)`; the line comes from `#L42`, `#L42-L51` or a `:42` suffix).
   `Path` is the text as written, without the line; `Line` is null when there is none, and the host resolves the path against
   its own folder. Links with a scheme (`https:`, `mailto:`) are not paths and keep opening nothing. A link whose whole text

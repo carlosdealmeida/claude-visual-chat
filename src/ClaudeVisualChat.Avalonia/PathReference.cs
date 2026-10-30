@@ -23,14 +23,37 @@ internal static class PathReference
         "jsonl", "ndjson", "css", "scss", "less", "html", "htm", "xml", "svg", "md", "mdx", "txt", "csv", "tsv", "yml", "yaml", "toml",
         "ini", "cfg", "conf", "env", "py", "ipynb", "rb", "php", "go", "rs", "java", "kt", "kts", "gradle", "swift", "c", "h", "cpp",
         "hpp", "cc", "sh", "bash", "ps1", "psm1", "bat", "cmd", "sql", "proto", "vue", "svelte", "dart", "lua", "pdf",
-        "png", "jpg", "jpeg", "gif", "webp",
+        "png", "jpg", "jpeg", "gif", "webp", "rs", "asp", "asa", "aspx", "ascx", "ashx", "asmx", "asax", "master", "inc", "config",
+        "resx", "props", "targets", "vbs",
+    };
+
+    /// <summary>
+    /// The extensions that are also the name of a member or a call ("res.json", "obj.cs", "foo.h"): with one of these a short
+    /// lowercase stem is a variable; with any other ("lib.rs", "web.config", "pom.xml", "log.txt") it is a file.
+    /// </summary>
+    private static readonly HashSet<string> MemberLikeExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "json", "js", "ts", "cs", "h", "c", "env", "css", "html", "md", "sh",
     };
 
     /// <summary>The last part before the extension of a name like "index.d.ts" or "appsettings.Development.json": a dotted name is a file only with one of these.</summary>
     private static readonly HashSet<string> MultiDotParts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "d", "test", "spec", "min", "config", "stories", "e2e", "module", "bundle", "local", "development", "production", "staging",
-        "dev", "prod", "designer", "generated", "g",
+        "dev", "prod", "designer", "generated", "g", "axaml", "xaml", "razor", "cshtml", "aspx", "ascx", "asax", "master",
+        "override", "app", "server", "client", "service", "controller", "component", "routes", "release", "debug", "tests",
+    };
+
+    /// <summary>The dot files people open (".gitignore", ".env.local", ".eslintrc.json"), by the name after the first dot.</summary>
+    private static readonly HashSet<string> DotFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "gitignore", "env", "npmrc", "nvmrc", "eslintrc", "prettierrc", "babelrc", "htaccess", "stylelintrc",
+    };
+
+    /// <summary>Whole names whose extension alone says nothing ("yarn.lock"; "mutex.lock" is a call).</summary>
+    private static readonly HashSet<string> KnownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "yarn.lock", "Cargo.lock", "poetry.lock", "composer.lock", "Gemfile.lock", "flake.lock",
     };
 
     /// <summary>Libraries and words that end like a file ("Node.js", "Avalonia.Xaml") and are not one.</summary>
@@ -40,7 +63,7 @@ internal static class PathReference
         "newtonsoft", "system", "microsoft", "process", "import", "window", "document", "console", "this", "self", "example",
     };
 
-    /// <summary>Short lowercase stems that are files ("app.json"); any other ("res.json", "obj.cs", "foo.h") is a variable.</summary>
+    /// <summary>Short lowercase stems that are files ("app.json") even with a member-like extension; any other ("res.json", "obj.cs", "foo.h") is a variable.</summary>
     private static readonly HashSet<string> ShortStems = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "app", "run", "api", "cli", "ci", "db", "ui", "vm",
@@ -144,16 +167,23 @@ internal static class PathReference
     /// </summary>
     private static bool IsBareFileName(string name)
     {
+        if (KnownNames.Contains(name)) return true;
+        if (name[0] == '.')
+        {
+            // a dot file goes by the name after its first dot: ".env.local", ".eslintrc.json"; ".then" or ".NET" is not one
+            var end = name.IndexOf('.', 1);
+            return DotFiles.Contains(end < 0 ? name.Substring(1) : name.Substring(1, end - 1));
+        }
         var dot = name.LastIndexOf('.');
-        if (!KnownExtensions.Contains(name.Substring(dot + 1))) return false;
+        var extension = name.Substring(dot + 1);
+        if (!KnownExtensions.Contains(extension)) return false;
         var stem = name.Substring(0, dot);
-        if (stem.Length == 0) return true; // ".env"
         var inner = stem.LastIndexOf('.');
         if (inner >= 0) return MultiDotParts.Contains(stem.Substring(inner + 1));
         if (ProseStems.Contains(stem)) return false;
         var shortLower = stem.Length <= 3;
         foreach (var c in stem) shortLower &= char.IsLower(c);
-        return !shortLower || ShortStems.Contains(stem);
+        return !shortLower || !MemberLikeExtensions.Contains(extension) || ShortStems.Contains(stem);
     }
 
     /// <summary>A colon before the last separator that is not a drive's ("user@host:/etc/x.conf"): a remote file, not one of this machine.</summary>
