@@ -1,0 +1,269 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.VisualTree;
+using ClaudeVisualChat.Controls;
+using ColorTextBlock.Avalonia;
+using Xunit;
+
+namespace ClaudeVisualChat.Tests.Ui;
+
+/// <summary>
+/// <see cref="ChatConversation.PathActivated"/>: a click on the path in a tool call's header, on a code span that looks like a path
+/// or on a Markdown link that is not a web address, in both layouts. Everything is off while the host does not listen.
+/// </summary>
+public class PathActivationTests
+{
+    private sealed class Opened
+    {
+        public Opened(string markdown, bool listen = true, ChatLayout layout = ChatLayout.Desktop)
+        {
+            Conversation = new ChatConversation();
+            if (listen) Conversation.PathActivated += (_, e) => Paths.Add((e.Path, e.Line));
+            Conversation.Items.Add(new AssistantTextItem { Text = markdown });
+            View = new ClaudeChatView { Conversation = Conversation, Layout = layout };
+            Window = layout == ChatLayout.Touch ? UiHelpers.ShowPhone(View) : UiHelpers.Show(View);
+        }
+
+        public ChatConversation Conversation { get; }
+
+        public ClaudeChatView View { get; }
+
+        public Window Window { get; }
+
+        public List<(string Path, int? Line)> Paths { get; } = new List<(string Path, int? Line)>();
+
+        public MarkdownBlock Block => View.GetVisualDescendants().OfType<MarkdownBlock>().First();
+
+        public CTextBlock Paragraph => Block.GetVisualDescendants().OfType<CTextBlock>().First();
+
+        /// <summary>A click near the start of the first paragraph, where its first words are.</summary>
+        public void ClickStartOfText()
+        {
+            var p = Paragraph;
+            var point = p.TranslatePoint(new Point(8, Math.Min(p.Bounds.Height / 2, 10)), Window)!.Value;
+            Window.MouseMove(point, RawInputModifiers.None);
+            Window.MouseDown(point, MouseButton.Left, RawInputModifiers.None);
+            Window.MouseUp(point, MouseButton.Left, RawInputModifiers.None);
+            UiHelpers.Pump();
+        }
+    }
+
+    // ---- code spans ----
+
+    [AvaloniaTheory]
+    [InlineData(ChatLayout.Desktop)]
+    [InlineData(ChatLayout.Touch)]
+    public void A_code_span_that_looks_like_a_path_raises_the_event_with_its_line(ChatLayout layout)
+    {
+        var ui = new Opened("`src/app/main.css:42` is long", layout: layout);
+        var link = Assert.Single(ui.Paragraph.Content.OfType<CHyperlink>());
+        Assert.IsType<CCode>(Assert.Single(link.Content));
+
+        ui.ClickStartOfText();
+        Assert.Equal(new[] { ("src/app/main.css", (int?)42) }, ui.Paths);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_code_span_without_a_line_gives_a_null_line()
+    {
+        var ui = new Opened("`src/app/main.css` is long");
+        ui.ClickStartOfText();
+        Assert.Equal(new[] { ("src/app/main.css", (int?)null) }, ui.Paths);
+        ui.Window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("`dotnet test` runs them")]
+    [InlineData("`main.css` has no folder")]
+    [InlineData("`https://example.com/a.html` is a page")]
+    [InlineData("plain text with src/app/main.css:42 in it")]
+    public void Other_text_stays_plain_and_does_not_raise(string markdown)
+    {
+        var ui = new Opened(markdown);
+        Assert.Empty(ui.Paragraph.Content.OfType<CHyperlink>());
+        ui.ClickStartOfText();
+        Assert.Empty(ui.Paths);
+        ui.Window.Close();
+    }
+
+    // ---- links ----
+
+    [AvaloniaTheory]
+    [InlineData("[main](src/app/main.css#L42) here", "src/app/main.css", 42)]
+    [InlineData("[main](src/app/main.css#L42-L51) here", "src/app/main.css", 42)]
+    [InlineData("[main](src/app/main.css:42) here", "src/app/main.css", 42)]
+    [InlineData("[main](src/app/main.css) here", "src/app/main.css", null)]
+    [InlineData("[main](./notes.md) here", "./notes.md", null)]
+    public void A_link_to_a_path_raises_the_event(string markdown, string path, int? line)
+    {
+        var ui = new Opened(markdown);
+        ui.ClickStartOfText();
+        Assert.Equal(new[] { (path, line) }, ui.Paths);
+        ui.Window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("[docs](https://example.com/a.html) here")]
+    [InlineData("[mail](mailto:a@b.example) here")]
+    [InlineData("[top](#top) here")]
+    public void A_link_to_a_url_or_an_anchor_raises_nothing(string markdown)
+    {
+        var ui = new Opened(markdown);
+        ui.ClickStartOfText();
+        Assert.Empty(ui.Paths);
+        ui.Window.Close();
+    }
+
+    // ---- while the host does not listen ----
+
+    [AvaloniaFact]
+    public void Without_a_listener_the_text_is_drawn_and_works_as_before()
+    {
+        var ui = new Opened("`src/app/main.css:42` and [main](src/app/main.css#L42)", listen: false);
+        Assert.Equal(1, ui.Block.RenderCount);
+        var inlines = ui.Paragraph.Content.ToList();
+        Assert.Single(inlines.OfType<CCode>());                 // not wrapped
+        var link = Assert.Single(inlines.OfType<CHyperlink>()); // only the Markdown link
+        ui.ClickStartOfText();
+        link.Command!("src/app/main.css#L42");                  // the engine's own command: nothing
+        Assert.Empty(ui.Paths);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_text_follows_whether_the_host_listens()
+    {
+        var ui = new Opened("`src/app/main.css:42` here", listen: false);
+        Assert.Empty(ui.Paragraph.Content.OfType<CHyperlink>());
+
+        var paths = new List<string>();
+        EventHandler<PathActivatedEventArgs> handler = (_, e) => paths.Add(e.Path);
+        ui.Conversation.PathActivated += handler;
+        UiHelpers.Pump();
+        Assert.Single(ui.Paragraph.Content.OfType<CHyperlink>());
+        ui.ClickStartOfText();
+        Assert.Equal(new[] { "src/app/main.css" }, paths);
+
+        ui.Conversation.PathActivated -= handler;
+        UiHelpers.Pump();
+        Assert.Empty(ui.Paragraph.Content.OfType<CHyperlink>());
+        ui.ClickStartOfText();
+        Assert.Single(paths);
+        ui.Window.Close();
+    }
+
+    // ---- the header of a tool call ----
+
+    private static ToolCallItem Call(string name, string json) => new ToolCallItem
+    {
+        Name = name, Summary = "main.css", Status = ToolStatus.Succeeded,
+        Input = JsonDocument.Parse(json).RootElement.Clone(),
+    };
+
+    private static TextBlock DetailOf(ClaudeChatView view, ToolCallItem item) =>
+        view.GetVisualDescendants().OfType<ToolCallView>().Single(v => ReferenceEquals(v.DataContext, item))
+            .GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatToolDetail"));
+
+    private static (ClaudeChatView View, Window Window, List<(string Path, int? Line)> Paths) OpenCall(
+        ToolCallItem item, bool listen = true, ChatLayout layout = ChatLayout.Desktop)
+    {
+        var c = new ChatConversation();
+        var paths = new List<(string Path, int? Line)>();
+        if (listen) c.PathActivated += (_, e) => paths.Add((e.Path, e.Line));
+        c.Items.Add(item);
+        var view = new ClaudeChatView { Conversation = c, Layout = layout };
+        return (view, layout == ChatLayout.Touch ? UiHelpers.ShowPhone(view) : UiHelpers.Show(view), paths);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Edit", ChatLayout.Desktop)]
+    [InlineData("Write", ChatLayout.Desktop)]
+    [InlineData("Read", ChatLayout.Desktop)]
+    [InlineData("MultiEdit", ChatLayout.Desktop)]
+    [InlineData("Read", ChatLayout.Touch)]
+    [InlineData("Edit", ChatLayout.Touch)]
+    public void Clicking_the_path_of_a_file_tool_raises_the_event_with_the_file_path(string tool, ChatLayout layout)
+    {
+        var item = Call(tool, "{\"file_path\":\"/work/app/src/main.css\"}");
+        var (view, window, paths) = OpenCall(item, layout: layout);
+
+        var detail = DetailOf(view, item);
+        Assert.Contains("pathlink", detail.Classes);
+        UiHelpers.DrawFrames();
+        UiHelpers.Click(window, detail);
+        Assert.Equal(new[] { ("/work/app/src/main.css", (int?)null) }, paths);
+        Assert.False(item.IsExpanded);                  // the click is not the row's toggle
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Clicking_elsewhere_in_the_header_raises_nothing_and_does_not_toggle()
+    {
+        var item = Call("Read", "{\"file_path\":\"src/main.css\"}");
+        var (view, window, paths) = OpenCall(item);
+        var name = view.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatToolName"));
+        UiHelpers.Click(window, name);
+        Assert.Empty(paths);
+        Assert.False(item.IsExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Without_a_listener_the_header_path_is_not_a_link()
+    {
+        var item = Call("Edit", "{\"file_path\":\"src/main.css\"}");
+        var (view, window, paths) = OpenCall(item, listen: false);
+        var detail = DetailOf(view, item);
+        Assert.DoesNotContain("pathlink", detail.Classes);
+        UiHelpers.DrawFrames();
+        UiHelpers.Click(window, detail);
+        Assert.Empty(paths);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Bash", "{\"command\":\"ls src/main.css\",\"description\":\"List src/main.css\"}")]
+    [InlineData("Read", "{}")]
+    public void Other_headers_are_not_links(string tool, string json)
+    {
+        var item = Call(tool, json);
+        var (view, window, paths) = OpenCall(item);
+        var detail = DetailOf(view, item);
+        Assert.DoesNotContain("pathlink", detail.Classes);
+        UiHelpers.DrawFrames();
+        UiHelpers.Click(window, detail);
+        Assert.Empty(paths);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_header_follows_whether_the_host_listens()
+    {
+        var item = Call("Write", "{\"file_path\":\"src/main.css\"}");
+        var (view, window, _) = OpenCall(item, listen: false);
+        var detail = DetailOf(view, item);
+        Assert.DoesNotContain("pathlink", detail.Classes);
+
+        var paths = new List<string>();
+        EventHandler<PathActivatedEventArgs> handler = (_, e) => paths.Add(e.Path);
+        view.Conversation!.PathActivated += handler;
+        UiHelpers.Pump();
+        Assert.Contains("pathlink", detail.Classes);
+        UiHelpers.DrawFrames();
+        UiHelpers.Click(window, detail);
+        Assert.Equal(new[] { "src/main.css" }, paths);
+
+        view.Conversation.PathActivated -= handler;
+        UiHelpers.Pump();
+        Assert.DoesNotContain("pathlink", detail.Classes);
+        window.Close();
+    }
+}

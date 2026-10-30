@@ -12,6 +12,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -136,6 +137,9 @@ internal partial class ToolCallView : UserControl
     {
         InitializeComponent();
         Header.Click += OnHeaderClick;
+        // tunnelling, so a click on the path never reaches the toggle that the header is
+        Header.AddHandler(PointerPressedEvent, OnHeaderPointerPressed, RoutingStrategies.Tunnel);
+        Header.AddHandler(PointerReleasedEvent, OnHeaderPointerReleased, RoutingStrategies.Tunnel);
         _copyTimer.Tick += (_, _) => EndCopied();
         Refresh();
     }
@@ -150,6 +154,53 @@ internal partial class ToolCallView : UserControl
         if (item == null || !IsPlanRow(item)) return;
         Header.IsChecked = false;
         this.FindAncestorOfType<ClaudeChatView>()?.ShowPlan(item);
+    }
+
+    /// <summary>
+    /// While the row's path is a link (see <see cref="UpdateInteraction"/>) a press on it is the start of a click, and a press on
+    /// the rest of the header, which is not a toggle then, does nothing.
+    /// </summary>
+    private void OnHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!_pathLink) return;
+        if (e.Source is Visual source && IsInDetail(source))
+        {
+            _pathPressed = e.GetCurrentPoint(Header).Properties.IsLeftButtonPressed;
+            e.Handled = true;
+        }
+        else if (!OpensSomething())
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void OnHeaderPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_pathLink) return;
+        var pressed = _pathPressed;
+        _pathPressed = false;
+        if (pressed && e.Source is Visual source && IsInDetail(source) && _item != null && PathOf(_item) is { } path)
+        {
+            e.Handled = true;
+            _host?.ActivatePath(path, null);
+        }
+        else if (pressed || !OpensSomething())
+        {
+            e.Handled = true;
+        }
+    }
+
+    private bool IsInDetail(Visual source) => ReferenceEquals(source, DetailText) || DetailText.IsVisualAncestorOf(source);
+
+    /// <summary>
+    /// The file a Read, Edit, Write or notebook call works on, as the call wrote it (the header shows it relative to the working
+    /// folder, but the host resolves it itself); null for any other call, or one without a path.
+    /// </summary>
+    private static string? PathOf(ToolCallItem item)
+    {
+        if (!IsFileTool(item.Name)) return null;
+        var path = Str(item.Input, item.Name == NotebookTool ? "notebook_path" : "file_path");
+        return string.IsNullOrEmpty(path) ? null : path;
     }
 
     /// <summary>An <c>ExitPlanMode</c> row with the plan's text, which its header opens.</summary>
@@ -227,22 +278,33 @@ internal partial class ToolCallView : UserControl
         if (_attached) Refresh();
     }
 
-    private ChatConversation? _host; // the conversation an Artifact row listens to, while the row is in the window
+    private ChatConversation? _host; // the conversation an Artifact or file row listens to, while the row is in the window
+    private bool _pathLink; // the header's path is a link: the host listens to PathActivated and the call names a file
+    private bool _pathPressed; // a press on the path is waiting for its release
+
+    private static readonly Cursor PlainCursor = new Cursor(StandardCursorType.Arrow);
 
     /// <summary>
-    /// An Artifact row shows its link only while the host listens to <see cref="ChatConversation.LinkRequested"/>, so it follows
-    /// the conversation's host handlers (as the rows under a reply do) while it is in the window; any other row listens to nothing.
+    /// An Artifact row shows its link only while the host listens to <see cref="ChatConversation.LinkRequested"/>, and the path of
+    /// a file row is a link only while it listens to <see cref="ChatConversation.PathActivated"/>, so those rows follow the
+    /// conversation's host handlers (as the rows under a reply do) while they are in the window; any other row listens to nothing.
     /// </summary>
     private void TrackHost()
     {
-        var wanted = _attached && _item?.Name == ArtifactTool ? this.FindAncestorOfType<ClaudeChatView>()?.Conversation : null;
+        var follows = _item != null && (_item.Name == ArtifactTool || IsFileTool(_item.Name));
+        var wanted = _attached && follows ? this.FindAncestorOfType<ClaudeChatView>()?.Conversation : null;
         if (ReferenceEquals(wanted, _host)) return;
         if (_host != null) _host.HostHandlersChanged -= OnHostHandlersChanged;
         _host = wanted;
         if (_host != null) _host.HostHandlersChanged += OnHostHandlersChanged;
+        UpdateInteraction();
     }
 
-    private void OnHostHandlersChanged(object? sender, EventArgs e) => UpdateBody();
+    private void OnHostHandlersChanged(object? sender, EventArgs e)
+    {
+        if (_item?.Name == ArtifactTool) UpdateBody();
+        UpdateInteraction();
+    }
 
     /// <summary>An Agent call's row follows its agent too: the prompt, whether it runs in the background, and its line's state.</summary>
     private void TrackAgent(AgentInfo? agent)
@@ -450,10 +512,19 @@ internal partial class ToolCallView : UserControl
     {
         var item = _item;
         var opens = item != null && (ShowsSteps(item) || IsPlanRow(item));
-        Header.IsHitTestVisible = opens;
+        // the path of a file call, when the host opens files: the header takes the click for it alone (the toggle stays off)
+        _pathLink = item != null && _host?.CanActivatePaths == true && PathOf(item) != null && DetailText.IsVisible;
+        _pathPressed &= _pathLink;
+        Header.IsHitTestVisible = opens || _pathLink;
         Header.Focusable = opens;
-        Header.Classes.Set("interactive", opens); // the touch layout gives it a finger's height
+        Header.Classes.Set("interactive", opens || _pathLink); // the touch layout gives it a finger's height
+        DetailText.Classes.Set("pathlink", _pathLink);
+        // the header's own hand would cover all of it; the pointer is a hand over the path only
+        if (_pathLink && !opens) Header.Cursor = PlainCursor;
+        else Header.ClearValue(CursorProperty);
     }
+
+    private bool OpensSomething() => _item != null && (ShowsSteps(_item) || IsPlanRow(_item));
 
     // ---- the body ----
 

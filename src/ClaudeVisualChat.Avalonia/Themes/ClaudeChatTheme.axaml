@@ -1230,6 +1230,14 @@
   <Style Selector="TextBlock.ClaudeChatToolDetail.file">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Accent}" />
   </Style>
+  <!-- the file of a call, when the host opens files: a hand, and underlined under the pointer -->
+  <Style Selector="TextBlock.ClaudeChatToolDetail.pathlink">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatToolDetail.pathlink:pointerover">
+    <Setter Property="TextDecorations" Value="Underline" />
+  </Style>
   <!-- a command's description, muted, in the interface's font -->
   <Style Selector="TextBlock.ClaudeChatToolDetail.plain">
     <Setter Property="FontFamily" Value="{DynamicResource ClaudeChat.FontFamily}" />

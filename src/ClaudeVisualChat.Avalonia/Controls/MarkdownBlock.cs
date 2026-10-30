@@ -11,6 +11,7 @@ using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ColorTextBlock.Avalonia;
 using Markdown.Avalonia;
 using Markdown.Avalonia.Controls;
@@ -97,6 +98,43 @@ public class MarkdownBlock : ContentControl
         else if (change.Property == LayoutProperty) PseudoClasses.Set(":touch", GetValue(LayoutProperty) == ChatLayout.Touch);
     }
 
+    private ChatConversation? _host; // the conversation whose PathActivated this block follows, while it is in the window
+
+    /// <summary>The paths of the drawn text were made clickable (the host listened when it was drawn).</summary>
+    private bool _pathsLive;
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        AttachHost(this.FindAncestorOfType<ClaudeChatView>()?.Conversation);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        // out of the window the tree is being taken apart: only the event goes, and coming back checks again
+        if (_host != null) _host.HostHandlersChanged -= OnHostHandlersChanged;
+        _host = null;
+    }
+
+    /// <summary>
+    /// The paths in the text (code spans, links to files) are clickable only while the host listens to
+    /// <see cref="ChatConversation.PathActivated"/>, so the block follows the conversation's host handlers while it is in the
+    /// window and draws again when that changes; a host that never listens keeps the single drawing it always had.
+    /// </summary>
+    private void AttachHost(ChatConversation? conversation)
+    {
+        if (_host != null) _host.HostHandlersChanged -= OnHostHandlersChanged;
+        _host = conversation;
+        if (_host != null) _host.HostHandlersChanged += OnHostHandlersChanged;
+        OnHostHandlersChanged(this, EventArgs.Empty);
+    }
+
+    private void OnHostHandlersChanged(object? sender, EventArgs e)
+    {
+        if (_hasRendered && (_host?.CanActivatePaths == true) != _pathsLive) Render();
+    }
+
     private void OnMarkdownChanged()
     {
         var text = Markdown;
@@ -162,7 +200,8 @@ public class MarkdownBlock : ContentControl
         _lastRender = Clock.Now;
         RenderCount++;
         var tables = false;
-        Content = string.IsNullOrEmpty(text) ? null : Transform(text!, out tables);
+        _pathsLive = _host?.CanActivatePaths == true;
+        Content = string.IsNullOrEmpty(text) ? null : Transform(text!, out tables, _pathsLive ? ActivatePath : (Action<string, int?>?)null);
 
         _tableWidth = null;
         if (tables != _hasTables)
@@ -173,7 +212,9 @@ public class MarkdownBlock : ContentControl
         }
     }
 
-    private static Control Transform(string text, out bool tables)
+    private void ActivatePath(string path, int? line) => _host?.ActivatePath(path, line);
+
+    private static Control Transform(string text, out bool tables, Action<string, int?>? activate)
     {
         tables = false;
         try
@@ -181,6 +222,7 @@ public class MarkdownBlock : ContentControl
             var control = Engine.Transform(text);
             tables = SettleTables(control);
             SettleInsights(control);
+            if (activate != null) SettlePaths(control, activate);
             return control;
         }
         catch (Exception)
@@ -214,6 +256,61 @@ public class MarkdownBlock : ContentControl
                 break;
         }
         return found;
+    }
+
+    /// <summary>The class of a code span that is a clickable path; the theme gives it the cursor and the link color.</summary>
+    internal const string PathClass = "ClaudeChatPathCode";
+
+    /// <summary>
+    /// Makes the paths of the text clickable: a code span that looks like a path is wrapped in a link, and a Markdown link whose
+    /// target is not a URL gets a command of its own that hands the path to <paramref name="activate"/>. The engine's links keep
+    /// opening nothing (<see cref="NoLinks"/>), and a link to a URL is left as it is.
+    /// </summary>
+    private static void SettlePaths(Control control, Action<string, int?> activate)
+    {
+        switch (control)
+        {
+            case CTextBlock block:
+                SettlePaths(block.Content, activate);
+                break;
+            case Panel panel:
+                foreach (var child in panel.Children) SettlePaths(child, activate);
+                break;
+            case Decorator decorator when decorator.Child != null:
+                SettlePaths(decorator.Child, activate);
+                break;
+            case ContentControl content when content.Content is Control inner:
+                SettlePaths(inner, activate);
+                break;
+        }
+    }
+
+    private static void SettlePaths(IEnumerable<CInline> inlines, Action<string, int?> activate)
+    {
+        if (inlines is not IList<CInline> list) return;
+        for (var i = 0; i < list.Count; i++)
+        {
+            switch (list[i])
+            {
+                case CCode code when InsightOf(code) == InsightPart.None && PathReference.TryFromCode(code.AsString(), out var path, out var line):
+                    var wrapper = new CHyperlink();
+                    list.RemoveAt(i); // a span has one parent
+                    ((IList<CInline>)wrapper.Content).Add(code);
+                    wrapper.Classes.Add(PathClass);
+                    wrapper.CommandParameter = path;
+                    wrapper.Command = _ => activate(path, line);
+                    list.Insert(i, wrapper);
+                    break;
+                case CHyperlink link:
+                    if (link.CommandParameter != null && PathReference.TryFromLink(link.CommandParameter, out var target, out var targetLine))
+                        link.Command = _ => activate(target, targetLine);
+                    SettlePaths(link.Content, activate);
+                    break;
+                case CSpan span:
+                    SettlePaths(span.Content, activate);
+                    break;
+            }
+        }
     }
 
     /// <summary>The class of an Insight header or footer span, which the theme paints on the text color with no background.</summary>
