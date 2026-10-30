@@ -481,6 +481,16 @@ may want to know:
   box-drawing dashes, in inline code) shows on its own lines in the text color, with no background. The Artifact tool reads
   "Created", "Opened" or "Published" with an "Open artifact" link, only where your app handles `LinkRequested`. The
   notebook cell edit reads "Edit Notebook Cell", its state ("Pending", "Success", "Failed") and the whole new source.
+- **File paths can open in your app.** Handle `ChatConversation.PathActivated` and the path in the header of a Read, Edit,
+  Write, MultiEdit or NotebookEdit call, a code span that looks like a path (`src/app/main.css:42`) and a Markdown link that
+  is not a URL (`[main](src/app/main.css#L42)`) become clickable, in both layouts. `PathActivatedEventArgs.Path` is the text
+  as written, without the line; `Line` comes from `:42`, `:42:7`, `#L42` or `#L42-L51`, and is null when there is none. Your
+  app resolves the path against its own folder and opens the file; the view never touches the disk. With no handler nothing
+  looks or acts any different, like `LinkRequested`:
+
+  ```csharp
+  conversation.PathActivated += (_, e) => OpenFile(Path.Combine(projectFolder, e.Path), e.Line);   // yours
+  ```
 - The names of the Agent, Web Fetch, Web Search and Claude in Chrome rows are `ChatStrings` texts
   (`AgentToolTitle`, `WebFetchToolTitle`, `WebSearchToolTitle`, `ChromeToolTitle`), the same in both languages.
 

@@ -489,6 +489,16 @@ Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt
   diz "Criado", "Aberto" ou "Publicado" com um link "Abrir artefato", só onde o seu app trata o `LinkRequested`. A edição
   de célula de notebook diz "Editar célula do notebook", o estado dela ("Pendente", "Sucesso", "Falhou") e o código novo
   inteiro.
+- **Caminhos de arquivo podem abrir no seu app.** Trate o `ChatConversation.PathActivated` e o caminho no cabeçalho de uma
+  chamada Read, Edit, Write, MultiEdit ou NotebookEdit, um trecho de código que parece caminho (`src/app/main.css:42`) e um
+  link Markdown que não é URL (`[main](src/app/main.css#L42)`) passam a ser clicáveis, nos dois layouts.
+  `PathActivatedEventArgs.Path` é o texto como foi escrito, sem a linha; `Line` vem de `:42`, `:42:7`, `#L42` ou
+  `#L42-L51`, e é nulo quando não há. O seu app resolve o caminho contra a pasta dele e abre o arquivo; a view nunca toca
+  no disco. Sem tratador nada muda no visual nem no comportamento, como no `LinkRequested`:
+
+  ```csharp
+  conversation.PathActivated += (_, e) => OpenFile(Path.Combine(projectFolder, e.Path), e.Line);   // seu
+  ```
 - Os nomes das linhas de Agent, Web Fetch, Web Search e Claude in Chrome são textos do `ChatStrings` (`AgentToolTitle`,
   `WebFetchToolTitle`, `WebSearchToolTitle`, `ChromeToolTitle`), iguais nas duas línguas.
 

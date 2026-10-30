@@ -3,6 +3,21 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - Unreleased
+
+### Added
+
+- `ChatConversation.PathActivated` (`PathActivatedEventArgs` with `Path` and `Line`): raised when the user clicks a file path in
+  the view, so the host can open the file. The paths that react are the one in the header of a Read, Edit, Write, MultiEdit or
+  NotebookEdit call (the `file_path` of its input, as the call wrote it), a code span of a reply that looks like a path
+  (a `/` or `\`, a file name with an extension, an optional `:line` or `:line:col` as in `src/app/main.css:42`), and a Markdown
+  link whose target is not a URL (`[main](src/app/main.css#L42)`; the line comes from `#L42`, `#L42-L51` or a `:42` suffix).
+  `Path` is the text as written, without the line; `Line` is null when there is none, and the host resolves the path against
+  its own folder. Links with a scheme (`https:`, `mailto:`) are not paths and keep opening nothing.
+- Like `LinkRequested`, the event is host-gated: the paths look clickable (a hand over the header's path and an underline
+  under it, a link underline on the code span) and react, in the desktop and the touch layout, only while the host listens to
+  it. With no handler the view is drawn and behaves exactly as in 0.6.0.
+
 ## [0.6.0] - 2026-10-29
 
 ### Added
