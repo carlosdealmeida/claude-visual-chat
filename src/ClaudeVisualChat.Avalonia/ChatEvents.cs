@@ -186,6 +186,25 @@ public sealed class LinkRequestedEventArgs : EventArgs
 }
 
 /// <summary>
+/// The user clicked a file path in the view: the path of a tool call's header (Read, Edit, Write), a code span that looks like a path
+/// in a reply, or a Markdown link that is not a web address. The host resolves it against its own folder and opens it.
+/// </summary>
+public sealed class PathActivatedEventArgs : EventArgs
+{
+    public PathActivatedEventArgs(string path, int? line)
+    {
+        Path = path ?? "";
+        Line = line;
+    }
+
+    /// <summary>The path as written (absolute or relative, without a <c>:line</c> suffix); the host resolves it.</summary>
+    public string Path { get; }
+
+    /// <summary>The line the text points to (<c>main.css:42</c>, <c>#L42</c>), or null when it names none.</summary>
+    public int? Line { get; }
+}
+
+/// <summary>
 /// The user rated a reply, or told what went wrong with it; the host sends it to Anthropic (the extension's <c>message_rated</c> and
 /// <c>submit_feedback</c>). A rating comes with <see cref="Details"/> null; what the user wrote after a bad rating comes as a second
 /// event, with <see cref="Positive"/> false and the text in <see cref="Details"/>.

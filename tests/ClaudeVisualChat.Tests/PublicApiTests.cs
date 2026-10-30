@@ -392,6 +392,11 @@ public class PublicApiTests
         var conversation = typeof(ChatConversation);
         Assert.Equal(typeof(System.EventHandler<LinkRequestedEventArgs>), conversation.GetEvent("LinkRequested")?.EventHandlerType);
         Assert.Equal(typeof(System.EventHandler<FeedbackRequestedEventArgs>), conversation.GetEvent("FeedbackRequested")?.EventHandlerType);
+        Assert.Equal(typeof(System.EventHandler<PathActivatedEventArgs>), conversation.GetEvent("PathActivated")?.EventHandlerType);
+        Assert.Equal(typeof(string), typeof(PathActivatedEventArgs).GetProperty("Path")?.PropertyType);
+        Assert.Equal(typeof(int?), typeof(PathActivatedEventArgs).GetProperty("Line")?.PropertyType);
+        Assert.NotNull(typeof(PathActivatedEventArgs).GetConstructor(new[] { typeof(string), typeof(int?) }));
+        Assert.True(typeof(PathActivatedEventArgs).IsSealed);
         Assert.Equal(typeof(string), typeof(LinkRequestedEventArgs).GetProperty("Url")?.PropertyType);
         Assert.NotNull(typeof(LinkRequestedEventArgs).GetConstructor(new[] { typeof(string) }));
         Assert.Equal(typeof(AssistantTextItem), typeof(FeedbackRequestedEventArgs).GetProperty("Item")?.PropertyType);
@@ -399,7 +404,7 @@ public class PublicApiTests
         Assert.Equal(typeof(string), typeof(FeedbackRequestedEventArgs).GetProperty("Details")?.PropertyType);
         Assert.NotNull(typeof(FeedbackRequestedEventArgs).GetConstructor(new[] { typeof(AssistantTextItem), typeof(bool?), typeof(string) }));
         // what the conversation does with them stays internal (the bookmarks list is public, for the bookmarks panel: its own test)
-        foreach (var member in new[] { "ToggleBookmark", "RequestLink", "CanOpenLinks", "CanSendFeedback", "RateAnswer" })
+        foreach (var member in new[] { "ToggleBookmark", "RequestLink", "CanOpenLinks", "CanActivatePaths", "ActivatePath", "CanSendFeedback", "RateAnswer" })
             Assert.Empty(conversation.GetMember(member));
         var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
         Assert.DoesNotContain("ClaudeVisualChat.Controls.ResponseActions", names);

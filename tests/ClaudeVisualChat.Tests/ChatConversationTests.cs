@@ -2224,6 +2224,32 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void Path_activation_goes_to_the_host_that_listens()
+    {
+        var c = new ChatConversation();
+        var changes = 0;
+        c.HostHandlersChanged += (_, _) => changes++;
+        var seen = new List<(string Path, int? Line)>();
+        EventHandler<PathActivatedEventArgs> onPath = (_, e) => seen.Add((e.Path, e.Line));
+
+        Assert.False(c.CanActivatePaths);
+        c.ActivatePath("src/app/main.css", 42); // nobody listens: nothing happens
+        Assert.Empty(seen);
+
+        c.PathActivated += onPath;
+        Assert.True(c.CanActivatePaths);
+        Assert.Equal(1, changes); // the view follows, as for LinkRequested
+        c.ActivatePath("src/app/main.css", 42);
+        c.ActivatePath("README.md", null);
+        c.ActivatePath("", 3);
+        Assert.Equal(new[] { ("src/app/main.css", (int?)42), ("README.md", (int?)null) }, seen);
+
+        c.PathActivated -= onPath;
+        Assert.False(c.CanActivatePaths);
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
     public void Remote_control_follows_the_bridge()
     {
         var c = new ChatConversation();

@@ -114,6 +114,7 @@ public sealed class ChatConversation : ChatObservableObject
     private int? _pendingCopy; // the N of a /copy typed while Claude works
     private EventHandler<LinkRequestedEventArgs>? _linkRequested;
     private EventHandler<FeedbackRequestedEventArgs>? _feedbackRequested;
+    private EventHandler<PathActivatedEventArgs>? _pathActivated;
 
     public ChatConversation()
     {
@@ -237,6 +238,26 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
+    /// Raised when the user clicks a file path in the view: the path in the header of a Read, Edit or Write call, a code span of a
+    /// reply that looks like a path (<c>src/app/main.css:42</c>), or a Markdown link whose target is not a web address (the line
+    /// comes from <c>#L42</c> or <c>:42</c>). The host opens the file; the component never does. The paths look clickable only
+    /// while the host listens to this event, so a host that does not is drawn exactly as before.
+    /// </summary>
+    public event EventHandler<PathActivatedEventArgs>? PathActivated
+    {
+        add
+        {
+            _pathActivated += value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+        remove
+        {
+            _pathActivated -= value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
     /// Raised when the user rates a reply with the thumbs under its turn, takes the rating back, or sends what went wrong after a bad
     /// one (see <see cref="FeedbackRequestedEventArgs"/>): the host sends it to Anthropic. The thumbs show only while the host listens
     /// to this event, only under a reply that has its line's <see cref="AssistantTextItem.Uuid"/> (what the rating names it by), and
@@ -256,7 +277,7 @@ public sealed class ChatConversation : ChatObservableObject
         }
     }
 
-    /// <summary>The host began or stopped listening to <see cref="LinkRequested"/> or <see cref="FeedbackRequested"/>.</summary>
+    /// <summary>The host began or stopped listening to <see cref="LinkRequested"/>, <see cref="FeedbackRequested"/> or <see cref="PathActivated"/>.</summary>
     internal event EventHandler? HostHandlersChanged;
 
     /// <summary>The longest text of "What went wrong?" that goes to the host.</summary>
@@ -264,6 +285,9 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>Whether the host opens links (it listens to <see cref="LinkRequested"/>).</summary>
     internal bool CanOpenLinks => _linkRequested != null;
+
+    /// <summary>Whether the host opens file paths (it listens to <see cref="PathActivated"/>).</summary>
+    internal bool CanActivatePaths => _pathActivated != null;
 
     /// <summary>Whether the host takes feedback (it listens to <see cref="FeedbackRequested"/>).</summary>
     internal bool CanSendFeedback => _feedbackRequested != null;
@@ -288,6 +312,13 @@ public sealed class ChatConversation : ChatObservableObject
             item.IsBookmarked = true;
             if (!_bookmarks.Contains(item)) _bookmarks.Add(item);
         }
+    }
+
+    /// <summary>Tells the host the user clicked <paramref name="path"/> (raises <see cref="PathActivated"/>); nothing for an empty one.</summary>
+    internal void ActivatePath(string path, int? line)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        _pathActivated?.Invoke(this, new PathActivatedEventArgs(path, line));
     }
 
     /// <summary>Asks the host to open <paramref name="url"/> (raises <see cref="LinkRequested"/>); nothing for an empty one.</summary>
