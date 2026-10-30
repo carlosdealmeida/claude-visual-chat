@@ -13,16 +13,14 @@ internal static class PathReference
     /// <summary>The longest extension of a file name.</summary>
     private const int MaxExtensionLength = 10;
 
-    private const char Backslash = (char)92;
-
-    private static readonly char[] Separators = { '/', Backslash };
+    private static readonly char[] Separators = { '/', '\\' };
 
     private static readonly Regex LineSuffix = new Regex(@":(\d+)(?::\d+)?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex LineFragment = new Regex(@"#L(\d+)(?:C\d+)?(?:-L?\d+(?:C\d+)?)?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>A scheme of two letters or more ("https:", "mailto:"); one letter is a drive ("C:\").</summary>
-    private static readonly Regex Scheme = new Regex(@"^[A-Za-z][A-Za-z0-9+.\-]+:", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex Scheme = new Regex(@"^[A-Za-z][A-Za-z0-9+.\-]+:(?!\d+(?::\d+)?$)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
     /// Whether the text of a code span is a path: it has a <c>/</c> or <c>\</c>, its last part is a file name with an extension, and
@@ -49,7 +47,7 @@ internal static class PathReference
             body = trimmed.Substring(0, suffix.Index);
             found = ParseLine(suffix.Groups[1].Value);
         }
-        if (body.IndexOfAny(Separators) < 0 || !HasFileName(body)) return false;
+        if (body.IndexOfAny(Separators) < 0 || !HasFileName(body) || HasHostPrefix(body)) return false;
         path = body;
         line = found;
         return true;
@@ -68,6 +66,8 @@ internal static class PathReference
         if (string.IsNullOrEmpty(text) || text![0] == '#' || text.StartsWith("//", StringComparison.Ordinal) || Scheme.IsMatch(text))
             return false;
 
+        var query = text.IndexOf('?');
+        if (query >= 0) text = text.Substring(0, query);
         int? found = null;
         var fragment = LineFragment.Match(text);
         if (fragment.Success)
@@ -84,6 +84,8 @@ internal static class PathReference
                 found = ParseLine(suffix.Groups[1].Value);
             }
         }
+        var anchor = text.IndexOf('#');
+        if (anchor >= 0) text = text.Substring(0, anchor); // any other fragment names a place the host cannot open
         if (text.Length == 0) return false;
         try
         {
@@ -101,7 +103,15 @@ internal static class PathReference
     private static int? ParseLine(string digits) => int.TryParse(digits, out var n) && n > 0 ? n : (int?)null;
 
     /// <summary>Letters, digits and the marks a path uses; no spaces, and none of the signs of code (<c>*</c>, <c>&lt;</c>, <c>=</c>, <c>(</c>...).</summary>
-    private static bool IsPathChar(char c) => char.IsLetterOrDigit(c) || c == Backslash || "_-./:~@+%#[]".IndexOf(c) >= 0;
+    private static bool IsPathChar(char c) => char.IsLetterOrDigit(c) || c == '\\' || "_-./:~@+%#[]".IndexOf(c) >= 0;
+
+    /// <summary>A colon before the last separator that is not a drive's ("user@host:/etc/x.conf"): a remote file, not one of this machine.</summary>
+    private static bool HasHostPrefix(string body)
+    {
+        var colon = body.IndexOf(':');
+        if (colon < 0) return false;
+        return !(colon == 1 && char.IsLetter(body[0]));
+    }
 
     /// <summary>The last part has a name, a dot and an extension of letters or digits with at least one letter ("a.cs", not "2.0").</summary>
     private static bool HasFileName(string body)
@@ -110,6 +120,7 @@ internal static class PathReference
         var dot = name.LastIndexOf('.');
         if (dot < 1 && !(dot == 0 && name.Length > 1) || dot == name.Length - 1) return false;
         var extension = name.Substring(dot + 1);
+        if (extension.Length == 0 || char.IsDigit(extension[0])) return false; // "2.0f" is arithmetic
         if (extension.Length > MaxExtensionLength) return false;
         var letter = false;
         foreach (var c in extension)

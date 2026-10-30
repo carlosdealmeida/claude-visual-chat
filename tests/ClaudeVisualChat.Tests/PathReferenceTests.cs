@@ -38,6 +38,8 @@ public class PathReferenceTests
     [InlineData("a/b.")]                        // an empty extension
     [InlineData("src/a.cs:")]
     [InlineData("List<int>/x.y")]
+    [InlineData("length/2.0f")]                 // arithmetic
+    [InlineData("user@host:/etc/x.conf")]       // scp syntax
     [InlineData("a/b.c = d")]
     public void Other_inline_code_is_not(string text)
     {
@@ -56,6 +58,11 @@ public class PathReferenceTests
     [InlineData("my%20notes/a.md#L3", "my notes/a.md", 3)]
     [InlineData(@"C:\work\a.cs:5", @"C:\work\a.cs", 5)]
     [InlineData("/abs/a.cs", "/abs/a.cs", null)]
+    [InlineData("README.md:42", "README.md", 42)]
+    [InlineData("main.css:42:7", "main.css", 42)]
+    [InlineData("src/a.cs#section", "src/a.cs", null)]
+    [InlineData("src/a.cs?x=1", "src/a.cs", null)]
+    [InlineData("src/a.cs#L42?x=1", "src/a.cs", 42)]
     public void A_link_target_that_is_not_a_url_is_a_path(string target, string path, int? line)
     {
         Assert.True(PathReference.TryFromLink(target, out var found, out var foundLine));

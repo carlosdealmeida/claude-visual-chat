@@ -238,7 +238,7 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
-    /// Raised when the user clicks a file path in the view: the path in the header of a Read, Edit or Write call, a code span of a
+    /// Raised when the user clicks a file path in the view: the path in the header of a Read, Edit, Write, MultiEdit or NotebookEdit call, a code span of a
     /// reply that looks like a path (<c>src/app/main.css:42</c>), or a Markdown link whose target is not a web address (the line
     /// comes from <c>#L42</c> or <c>:42</c>). The host opens the file; the component never does. The paths look clickable only
     /// while the host listens to this event, so a host that does not is drawn exactly as before.

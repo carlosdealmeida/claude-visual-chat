@@ -186,7 +186,7 @@ public sealed class LinkRequestedEventArgs : EventArgs
 }
 
 /// <summary>
-/// The user clicked a file path in the view: the path of a tool call's header (Read, Edit, Write), a code span that looks like a path
+/// The user clicked a file path in the view: the path of a tool call's header (Read, Edit, Write, MultiEdit, NotebookEdit), a code span that looks like a path
 /// in a reply, or a Markdown link that is not a web address. The host resolves it against its own folder and opens it.
 /// </summary>
 public sealed class PathActivatedEventArgs : EventArgs
