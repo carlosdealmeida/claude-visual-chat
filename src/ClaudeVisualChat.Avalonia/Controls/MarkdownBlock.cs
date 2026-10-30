@@ -129,12 +129,27 @@ public class MarkdownBlock : ContentControl
         if (_host != null) _host.HostHandlersChanged -= OnHostHandlersChanged;
         _host = conversation;
         if (_host != null) _host.HostHandlersChanged += OnHostHandlersChanged;
-        OnHostHandlersChanged(this, EventArgs.Empty);
+        RefreshPaths();
     }
 
-    private void OnHostHandlersChanged(object? sender, EventArgs e)
+    /// <summary>Checks now whether the paths must be redrawn (on attach, where the first drawing waits for it).</summary>
+    private void RefreshPaths()
     {
         if (_hasRendered && (_host?.CanActivatePaths == true) != _pathsLive) Render();
+    }
+
+    /// <summary>
+    /// The host began or stopped listening. The redraw is posted, not run in the call: a conversation that is closed or swapped
+    /// stops listening while its view still shows it, and the block would draw the whole reply again just to be taken apart; by the
+    /// time the post runs the block is gone or has another conversation, and does nothing.
+    /// </summary>
+    private void OnHostHandlersChanged(object? sender, EventArgs e)
+    {
+        var host = _host;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (VisualRoot != null && ReferenceEquals(host, _host)) RefreshPaths();
+        }, DispatcherPriority.Background);
     }
 
     private void OnMarkdownChanged()

@@ -445,4 +445,35 @@ public class PathActivationTests
         Assert.True(Assert.Single(ui.Paragraph.Content.OfType<CHyperlink>()).IsUnderline);
         ui.Window.Close();
     }
+
+    // ---- fix round 3 ----
+
+    [AvaloniaFact]
+    public void Unsubscribing_while_attached_redraws_later_not_in_the_call()
+    {
+        var ui = new Opened("`src/app/main.css:42` here", listen: false);
+        EventHandler<PathActivatedEventArgs> handler = (_, _) => { };
+        ui.Conversation.PathActivated += handler;
+        UiHelpers.Pump();
+        var drawn = ui.Block.RenderCount;
+        ui.Conversation.PathActivated -= handler;
+        Assert.Equal(drawn, ui.Block.RenderCount); // not synchronously: the view may be about to go
+        UiHelpers.Pump();
+        Assert.Equal(drawn + 1, ui.Block.RenderCount);
+        Assert.Empty(ui.Paragraph.Content.OfType<CHyperlink>());
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_redraw_waiting_for_the_dispatcher_is_dropped_when_the_block_left()
+    {
+        var ui = new Opened("`src/app/main.css:42` here", listen: false);
+        var block = ui.Block;
+        ui.Conversation.PathActivated += (_, _) => { };
+        ui.View.Conversation = new ChatConversation(); // the view shows another conversation; the old blocks are taken apart
+        var drawn = block.RenderCount;
+        UiHelpers.Pump();
+        Assert.Equal(drawn, block.RenderCount);
+        ui.Window.Close();
+    }
 }

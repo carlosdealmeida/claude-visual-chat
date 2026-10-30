@@ -143,6 +143,10 @@ internal sealed class PlanTextBlock : SelectableTextBlock
                 case CRun run:
                     if (!string.IsNullOrEmpty(run.Text)) Add(new Piece(run.Text, style), text);
                     break;
+                case CHyperlink { } path when path.Classes.Contains(MarkdownBlock.PathClass):
+                    // the path of a code span that the host opens: here, where a click selects text, it is only code
+                    Read(path.Content, style, text);
+                    break;
                 case CSpan span:
                     var inner = style;
                     if (span is CBold) inner.Bold = true;

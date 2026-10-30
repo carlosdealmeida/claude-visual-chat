@@ -696,4 +696,17 @@ public class PlanDocumentTests
         Assert.False(ui.Document.IsOpen);
         ui.Window.Close();
     }
+
+    [AvaloniaFact]
+    public void Paths_in_the_plan_document_are_plain_code_not_links()
+    {
+        var c = Planning(plan: "# Plan ##\n\nEdit `src/app/main.css:42` now.");
+        c.PathActivated += (_, _) => { };
+        var ui = new Opened(c);
+        var block = ui.Document.GetVisualDescendants().OfType<PlanTextBlock>().First(b => b.Words.Contains("main.css"));
+        var runs = block.Inlines!.OfType<Avalonia.Controls.Documents.Run>().ToList();
+        Assert.Contains(runs, r => r.Classes.Contains("ClaudeChatPlanCode") && (r.Text ?? "").Contains("main.css"));
+        Assert.DoesNotContain(runs, r => r.Classes.Contains("ClaudeChatPlanLink"));
+        ui.Window.Close();
+    }
 }
