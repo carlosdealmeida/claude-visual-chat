@@ -412,11 +412,12 @@ public class PathActivationTests
         c.Items.Add(item);
         var view = new ClaudeChatView { Conversation = c };
         var window = UiHelpers.Show(view);
+        System.Threading.Thread.Sleep(150); // past the block's render interval: the longer text draws at once
         item.Text = Bullets;
         UiHelpers.DrawFrames();
         var block = view.GetVisualDescendants().OfType<MarkdownBlock>().First();
         List<CHyperlink> Links() => block.GetVisualDescendants().OfType<CTextBlock>().SelectMany(t => t.Content.OfType<CHyperlink>()).ToList();
-        UiHelpers.PumpUntil(() => Links().Count == 2); // the redraw of a growing text waits for its interval
+        UiHelpers.PumpUntil(() => Links().Count == 2);
         var links = Links();
         links[1].Command!(links[1].CommandParameter!);
         Assert.Equal(new[] { "arquivo-15.txt" }, paths);
