@@ -21,6 +21,15 @@ public class PathReferenceTests
     [InlineData("aaa-primeiro.css", "aaa-primeiro.css", null)]
     [InlineData("README.md:42", "README.md", 42)]
     [InlineData("Program.CS", "Program.CS", null)]
+    [InlineData("EditorDaAba.cs", "EditorDaAba.cs", null)]
+    [InlineData("package.json", "package.json", null)]
+    [InlineData("index.d.ts", "index.d.ts", null)]
+    [InlineData("appsettings.Development.json", "appsettings.Development.json", null)]
+    [InlineData("button.test.ts:3", "button.test.ts", 3)]
+    [InlineData("a.spec.ts", "a.spec.ts", null)]
+    [InlineData("app.min.js", "app.min.js", null)]
+    [InlineData("webpack.config.js", "webpack.config.js", null)]
+    [InlineData("src/System.Text.Json", "src/System.Text.Json", null)] // with a folder it is as written: a path
     public void Inline_code_that_looks_like_a_path_is_one(string text, string path, int? line)
     {
         Assert.True(PathReference.TryFromCode(text, out var found, out var foundLine));
@@ -30,6 +39,18 @@ public class PathReferenceTests
 
     [Theory]
     [InlineData("")]
+    [InlineData("Node.js")]                     // prose words that end in a file extension
+    [InlineData("Vue.js")]
+    [InlineData("process.env")]
+    [InlineData("import.meta.env")]
+    [InlineData("System.Text.Json")]
+    [InlineData("Newtonsoft.Json")]
+    [InlineData("mutex.lock")]
+    [InlineData("Avalonia.Xaml")]
+    [InlineData("res.json")]
+    [InlineData("obj.cs")]
+    [InlineData("df.r")]
+    [InlineData("foo.h")]
     [InlineData("name.foo")]                    // no separator, an extension nobody opens
     [InlineData("e.Path")]                      // a member
     [InlineData("console.log")]
@@ -69,6 +90,8 @@ public class PathReferenceTests
     [InlineData("src/a.cs#section", "src/a.cs", null)]
     [InlineData("src/a.cs?x=1", "src/a.cs", null)]
     [InlineData("src/a.cs#L42?x=1", "src/a.cs", 42)]
+    [InlineData("src/a.cs?x=1#L3", "src/a.cs", 3)]
+    [InlineData("src/a.cs#L3:4", "src/a.cs", 3)]
     public void A_link_target_that_is_not_a_url_is_a_path(string target, string path, int? line)
     {
         Assert.True(PathReference.TryFromLink(target, out var found, out var foundLine));
