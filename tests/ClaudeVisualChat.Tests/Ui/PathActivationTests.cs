@@ -464,6 +464,90 @@ public class PathActivationTests
         ui.Window.Close();
     }
 
+    // ---- a touch that stops the list's fling ----
+
+    /// <summary>A step of the list's fling (the gesture recognizer sends one each frame), at <paramref name="ms"/> on the view's clock.</summary>
+    private static void FlingStep(Control inside, ref long clock, long ms)
+    {
+        clock = ms;
+        inside.RaiseEvent(new ScrollGestureEventArgs(ScrollGestureEventArgs.GetNextFreeId(), new Vector(0, 0)));
+    }
+
+    [AvaloniaFact]
+    public void A_press_that_stops_the_fling_does_not_open_the_path_in_a_header()
+    {
+        long clock = 1000;
+        ClaudeChatView.ClockOverride = () => clock;
+        try
+        {
+            var item = Call("Read", "{\"file_path\":\"src/main.css\"}");
+            var (view, window, paths) = OpenCall(item, layout: ChatLayout.Touch);
+            var detail = DetailOf(view, item);
+            UiHelpers.DrawFrames();
+
+            FlingStep(detail, ref clock, 1000);
+            clock = 1000 + ClaudeChatView.FlingStopMs; // the list still moves: the press stops it
+            UiHelpers.Click(window, detail);
+            Assert.Empty(paths);
+            Assert.False(item.IsExpanded);
+
+            clock += 1; // the list stood still since: a tap opens it
+            UiHelpers.Click(window, detail);
+            Assert.Equal(new[] { ("src/main.css", (int?)null) }, paths);
+            window.Close();
+        }
+        finally
+        {
+            ClaudeChatView.ClockOverride = null;
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_press_that_stops_the_fling_does_not_open_a_code_span_path()
+    {
+        long clock = 1000;
+        ClaudeChatView.ClockOverride = () => clock;
+        try
+        {
+            var ui = new Opened("`src/app/main.css:42` is long", layout: ChatLayout.Touch);
+            FlingStep(ui.Paragraph, ref clock, 1000);
+            clock = 1050;
+            ui.ClickStartOfText();
+            Assert.Empty(ui.Paths);
+
+            clock = 5000;
+            ui.ClickStartOfText();
+            Assert.Equal(new[] { ("src/app/main.css", (int?)42) }, ui.Paths);
+            ui.Window.Close();
+        }
+        finally
+        {
+            ClaudeChatView.ClockOverride = null;
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_press_outside_the_list_does_not_count_as_stopping_it()
+    {
+        long clock = 1000;
+        ClaudeChatView.ClockOverride = () => clock;
+        try
+        {
+            var ui = new Opened("`src/app/main.css:42` is long", layout: ChatLayout.Touch);
+            FlingStep(ui.Paragraph, ref clock, 1000);
+            clock = 1010;
+            ui.Conversation.PressStoppedFling = true; // left by an earlier press
+            ui.View.FindControl<Control>("Composer")!.RaiseEvent(new PointerPressedEventArgs(ui.View, new Pointer(Pointer.GetNextFreeId(), PointerType.Touch, true),
+                ui.Window, new Point(0, 0), 0, new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.LeftButtonPressed), KeyModifiers.None));
+            Assert.False(ui.Conversation.PressStoppedFling);
+            ui.Window.Close();
+        }
+        finally
+        {
+            ClaudeChatView.ClockOverride = null;
+        }
+    }
+
     [AvaloniaFact]
     public void A_redraw_waiting_for_the_dispatcher_is_dropped_when_the_block_left()
     {

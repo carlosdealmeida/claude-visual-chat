@@ -24,6 +24,12 @@ All notable changes to this project are written here. The format follows
   under it, a link underline on the code span) and react, in the desktop and the touch layout, only while the host listens to
   it. With no handler the view is drawn and behaves exactly as in 0.6.0.
 
+### Fixed
+
+- A touch that stops the list while it still moves after a fling only stops it, as in the phone's own lists: the file path
+  or link under the finger no longer opens (`PathActivated` and `LinkRequested` are not raised). A tap once the list stands
+  still opens it as before.
+
 ## [0.6.0] - 2026-10-29
 
 ### Added

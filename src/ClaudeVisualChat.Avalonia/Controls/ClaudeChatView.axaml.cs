@@ -265,6 +265,18 @@ public partial class ClaudeChatView : UserControl
     /// <summary>The touch sizes while they are among the view's merged resources.</summary>
     private ResourceInclude? _touchSizes;
 
+    /// <summary>How long after the list's last step a press still finds it moving: a fling sends a step each frame.</summary>
+    internal const long FlingStopMs = 100;
+
+    private static readonly System.Diagnostics.Stopwatch FlingClock = System.Diagnostics.Stopwatch.StartNew();
+
+    /// <summary>Test seam: the milliseconds the view's clock gives, in place of the real one.</summary>
+    internal static Func<long>? ClockOverride { get; set; }
+
+    private static long NowMs() => ClockOverride?.Invoke() ?? FlingClock.ElapsedMilliseconds;
+
+    private long? _lastScrollStepMs; // when a finger's gesture or its fling last moved the list
+
     public ClaudeChatView()
     {
         InitializeComponent();
@@ -347,7 +359,22 @@ public partial class ClaudeChatView : UserControl
         _announcements = new AnnouncementFeed(Announcer, () => Strings, () => IsReadOnly);
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnKeyDownNotTaken, RoutingStrategies.Bubble);
+        // a touch that stops the list while it moves after a fling only stops it, as in the phone's own lists: the path or link under
+        // the finger does not open (the press is seen on its way down, before the list takes it)
+        Scroller.AddHandler(Gestures.ScrollGestureEvent, (_, _) => _lastScrollStepMs = NowMs(), RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerPressedEvent, OnPreviewPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        AddHandler(PointerReleasedEvent, (_, _) =>
+        {
+            if (Conversation is { } conversation) conversation.PressStoppedFling = false;
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
         FocusViewToggleRequested += (_, _) => FocusView = !FocusView;
+    }
+
+    private void OnPreviewPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (Conversation is not { } conversation) return;
+        conversation.PressStoppedFling = _lastScrollStepMs is long last && NowMs() - last <= FlingStopMs
+            && e.Source is Visual source && Scroller.IsVisualAncestorOf(source);
     }
 
     /// <summary>The user pressed Ctrl+Alt+F: the Focus view turns on or off (the view's part in it is wired where the Focus view is).</summary>

@@ -314,17 +314,23 @@ public sealed class ChatConversation : ChatObservableObject
         }
     }
 
+    /// <summary>
+    /// The press of the click under way stopped the list while it moved by itself after a fling (the view tells): as in the phone's own
+    /// lists, that touch only stops it, so the click opens no path and no link.
+    /// </summary>
+    internal bool PressStoppedFling { get; set; }
+
     /// <summary>Tells the host the user clicked <paramref name="path"/> (raises <see cref="PathActivated"/>); nothing for an empty one.</summary>
     internal void ActivatePath(string path, int? line)
     {
-        if (string.IsNullOrEmpty(path)) return;
+        if (string.IsNullOrEmpty(path) || PressStoppedFling) return;
         _pathActivated?.Invoke(this, new PathActivatedEventArgs(path, line));
     }
 
     /// <summary>Asks the host to open <paramref name="url"/> (raises <see cref="LinkRequested"/>); nothing for an empty one.</summary>
     internal void RequestLink(string url)
     {
-        if (string.IsNullOrEmpty(url)) return;
+        if (string.IsNullOrEmpty(url) || PressStoppedFling) return;
         _linkRequested?.Invoke(this, new LinkRequestedEventArgs(url));
     }
 
