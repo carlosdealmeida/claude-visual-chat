@@ -265,17 +265,22 @@ public partial class ClaudeChatView : UserControl
     /// <summary>The touch sizes while they are among the view's merged resources.</summary>
     private ResourceInclude? _touchSizes;
 
-    /// <summary>How long after the list's last step a press still finds it moving: a fling sends a step each frame.</summary>
-    internal const long FlingStopMs = 100;
+    /// <summary>
+    /// A finger's scroll gesture that sent no step for this long is over even if its end never came. Its fling sends a step each
+    /// time the dispatcher is free, which a phone busy drawing the list can make far slower than a frame.
+    /// </summary>
+    internal const long StaleScrollGestureMs = 1000;
 
-    private static readonly System.Diagnostics.Stopwatch FlingClock = System.Diagnostics.Stopwatch.StartNew();
+    private static readonly System.Diagnostics.Stopwatch ScrollClock = System.Diagnostics.Stopwatch.StartNew();
 
     /// <summary>Test seam: the milliseconds the view's clock gives, in place of the real one.</summary>
     internal static Func<long>? ClockOverride { get; set; }
 
-    private static long NowMs() => ClockOverride?.Invoke() ?? FlingClock.ElapsedMilliseconds;
+    private static long NowMs() => ClockOverride?.Invoke() ?? ScrollClock.ElapsedMilliseconds;
 
-    private long? _lastScrollStepMs; // when a finger's gesture or its fling last moved the list
+    // the finger's scroll gestures in the list that have not ended (a drag, or the fling after it), and when one last moved it
+    private readonly HashSet<int> _liveScrollGestures = new HashSet<int>();
+    private long _lastScrollStepMs;
 
     public ClaudeChatView()
     {
@@ -360,8 +365,13 @@ public partial class ClaudeChatView : UserControl
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnKeyDownNotTaken, RoutingStrategies.Bubble);
         // a touch that stops the list while it moves after a fling only stops it, as in the phone's own lists: the path or link under
-        // the finger does not open (the press is seen on its way down, before the list takes it)
-        Scroller.AddHandler(Gestures.ScrollGestureEvent, (_, _) => _lastScrollStepMs = NowMs(), RoutingStrategies.Bubble, handledEventsToo: true);
+        // the finger does not open (the press is seen on its way down, before the list's gesture ends on it)
+        Scroller.AddHandler(Gestures.ScrollGestureEvent, (_, e) =>
+        {
+            _liveScrollGestures.Add(e.Id);
+            _lastScrollStepMs = NowMs();
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
+        Scroller.AddHandler(Gestures.ScrollGestureEndedEvent, (_, e) => _liveScrollGestures.Remove(e.Id), RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(PointerPressedEvent, OnPreviewPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerReleasedEvent, (_, _) =>
         {
@@ -372,10 +382,9 @@ public partial class ClaudeChatView : UserControl
 
     private void OnPreviewPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (_liveScrollGestures.Count > 0 && NowMs() - _lastScrollStepMs > StaleScrollGestureMs) _liveScrollGestures.Clear();
         if (Conversation is not { } conversation) return;
-        conversation.PressStoppedFling = _lastScrollStepMs is long last && NowMs() - last <= FlingStopMs
-            && e.Source is Visual source && Scroller.IsVisualAncestorOf(source);
-    }
+        conversation.PressStoppedFling = _liveScrollGestures.Count > 0 && e.Source is Visual source && Scroller.IsVisualAncestorOf(source);    }
 
     /// <summary>The user pressed Ctrl+Alt+F: the Focus view turns on or off (the view's part in it is wired where the Focus view is).</summary>
     internal event EventHandler? FocusViewToggleRequested;

@@ -466,12 +466,18 @@ public class PathActivationTests
 
     // ---- a touch that stops the list's fling ----
 
-    /// <summary>A step of the list's fling (the gesture recognizer sends one each frame), at <paramref name="ms"/> on the view's clock.</summary>
-    private static void FlingStep(Control inside, ref long clock, long ms)
+    /// <summary>
+    /// A step of a finger's scroll gesture <paramref name="id"/> in the list (a drag sends them, and so does the fling after it, each
+    /// time the dispatcher is free), at <paramref name="ms"/> on the view's clock.
+    /// </summary>
+    private static void ScrollStep(Control inside, int id, ref long clock, long ms)
     {
         clock = ms;
-        inside.RaiseEvent(new ScrollGestureEventArgs(ScrollGestureEventArgs.GetNextFreeId(), new Vector(0, 0)));
+        inside.RaiseEvent(new ScrollGestureEventArgs(id, new Vector(0, 0)));
     }
+
+    /// <summary>The gesture ends: its fling ran out, or a touch stopped it (the recognizer ends it on the press).</summary>
+    private static void ScrollEnd(Control inside, int id) => inside.RaiseEvent(new ScrollGestureEndedEventArgs(id));
 
     [AvaloniaFact]
     public void A_press_that_stops_the_fling_does_not_open_the_path_in_a_header()
@@ -485,13 +491,14 @@ public class PathActivationTests
             var detail = DetailOf(view, item);
             UiHelpers.DrawFrames();
 
-            FlingStep(detail, ref clock, 1000);
-            clock = 1000 + ClaudeChatView.FlingStopMs; // the list still moves: the press stops it
+            var id = ScrollGestureEventArgs.GetNextFreeId();
+            ScrollStep(detail, id, ref clock, 1000);
+            clock = 1400; // a step can come this late from a phone busy drawing: the list still moves, and the press stops it
             UiHelpers.Click(window, detail);
             Assert.Empty(paths);
             Assert.False(item.IsExpanded);
 
-            clock += 1; // the list stood still since: a tap opens it
+            ScrollEnd(detail, id); // the press ended the fling
             UiHelpers.Click(window, detail);
             Assert.Equal(new[] { ("src/main.css", (int?)null) }, paths);
             window.Close();
@@ -510,12 +517,55 @@ public class PathActivationTests
         try
         {
             var ui = new Opened("`src/app/main.css:42` is long", layout: ChatLayout.Touch);
-            FlingStep(ui.Paragraph, ref clock, 1000);
+            var id = ScrollGestureEventArgs.GetNextFreeId();
+            ScrollStep(ui.Paragraph, id, ref clock, 1000);
             clock = 1050;
             ui.ClickStartOfText();
             Assert.Empty(ui.Paths);
 
-            clock = 5000;
+            ScrollEnd(ui.Paragraph, id);
+            ui.ClickStartOfText();
+            Assert.Equal(new[] { ("src/app/main.css", (int?)42) }, ui.Paths);
+            ui.Window.Close();
+        }
+        finally
+        {
+            ClaudeChatView.ClockOverride = null;
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_gesture_whose_end_never_came_is_over_once_it_stood_still()
+    {
+        long clock = 1000;
+        ClaudeChatView.ClockOverride = () => clock;
+        try
+        {
+            var ui = new Opened("`src/app/main.css:42` is long", layout: ChatLayout.Touch);
+            ScrollStep(ui.Paragraph, ScrollGestureEventArgs.GetNextFreeId(), ref clock, 1000);
+            clock = 1000 + ClaudeChatView.StaleScrollGestureMs + 1;
+            ui.ClickStartOfText();
+            Assert.Equal(new[] { ("src/app/main.css", (int?)42) }, ui.Paths);
+            ui.Window.Close();
+        }
+        finally
+        {
+            ClaudeChatView.ClockOverride = null;
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_tap_right_after_a_drag_that_ended_opens_the_path()
+    {
+        long clock = 1000;
+        ClaudeChatView.ClockOverride = () => clock;
+        try
+        {
+            var ui = new Opened("`src/app/main.css:42` is long", layout: ChatLayout.Touch);
+            var id = ScrollGestureEventArgs.GetNextFreeId();
+            ScrollStep(ui.Paragraph, id, ref clock, 1000);
+            ScrollEnd(ui.Paragraph, id); // a slow drag: no fling after it
+            clock = 1010;
             ui.ClickStartOfText();
             Assert.Equal(new[] { ("src/app/main.css", (int?)42) }, ui.Paths);
             ui.Window.Close();
@@ -534,7 +584,7 @@ public class PathActivationTests
         try
         {
             var ui = new Opened("`src/app/main.css:42` is long", layout: ChatLayout.Touch);
-            FlingStep(ui.Paragraph, ref clock, 1000);
+            ScrollStep(ui.Paragraph, ScrollGestureEventArgs.GetNextFreeId(), ref clock, 1000);
             clock = 1010;
             ui.Conversation.PressStoppedFling = true; // left by an earlier press
             ui.View.FindControl<Control>("Composer")!.RaiseEvent(new PointerPressedEventArgs(ui.View, new Pointer(Pointer.GetNextFreeId(), PointerType.Touch, true),
