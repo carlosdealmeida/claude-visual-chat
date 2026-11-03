@@ -3,6 +3,14 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- In the touch layout the message list keeps the row of an item that scrolls away and shows the next item of the same kind in it,
+  instead of building a row each time. On a phone this makes scrolling a long conversation allocate about a third of what it did.
+  The desktop layout builds its rows as before.
+
 ## [0.7.0] - 2026-10-31
 
 ### Added

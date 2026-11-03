@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 
 namespace ClaudeVisualChat.Controls;
 
@@ -30,6 +31,9 @@ internal sealed class ChatItemList : ItemsControl
     public static readonly AttachedProperty<int> IndexProperty =
         AvaloniaProperty.RegisterAttached<ChatItemList, Control, int>("Index", -1, inherits: true);
 
+    private static readonly StyledProperty<ChatLayout> LayoutProperty =
+        ClaudeChatView.LayoutProperty.AddOwner<ChatItemList>();
+
     /// <summary>What shows under the items, shown by the template's <c>PART_Footer</c>.</summary>
     public object? Footer
     {
@@ -48,9 +52,25 @@ internal sealed class ChatItemList : ItemsControl
         if (change.Property == BoundsProperty) SetValue(ListWidthProperty, Bounds.Width);
     }
 
+    /// <summary>
+    /// In the touch layout a row that leaves the list keeps its control and waits for an item of its kind, so scrolling does not build
+    /// rows again and again, which on a phone is what stops the list. The panel's pool has one stack per recycle key: one key per kind
+    /// of item is what gives a row back the same kind. The desktop builds a row for each item, as it always did.
+    /// </summary>
+    private bool ReusesRows => GetValue(LayoutProperty) == ChatLayout.Touch;
+
+    protected override bool NeedsContainerOverride(object? item, int index, out object? recycleKey)
+    {
+        var needs = base.NeedsContainerOverride(item, index, out recycleKey);
+        if (needs && item != null && ReusesRows) recycleKey = item.GetType();
+        return needs;
+    }
+
     protected override void PrepareContainerForItemOverride(Control container, object? item, int index)
     {
         container.SetValue(IndexProperty, index); // before the base hands the item to the row: the row reads its new place with it
+        // a kept row still has its old item, which the base would leave in place; the template gets the row to reuse from the presenter
+        if (ReusesRows && container is ContentPresenter presenter) presenter.SetCurrentValue(ContentPresenter.ContentProperty, item);
         base.PrepareContainerForItemOverride(container, item, index);
     }
 
@@ -62,7 +82,8 @@ internal sealed class ChatItemList : ItemsControl
 
     protected override void ClearContainerForItemOverride(Control container)
     {
-        base.ClearContainerForItemOverride(container);
+        // the base empties the presenter, and that throws the row away: a kept row stays as it is, hidden, until its next item
+        if (!ReusesRows || container is not ContentPresenter) base.ClearContainerForItemOverride(container);
         container.ClearValue(IndexProperty);
     }
 }
