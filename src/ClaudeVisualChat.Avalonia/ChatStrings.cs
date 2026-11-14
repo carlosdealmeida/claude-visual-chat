@@ -87,6 +87,11 @@ public sealed record ChatStrings
         InvisibleReviewCtrl = "{0} · revise e pressione Ctrl/Cmd+Enter para enviar",
         InvisibleEmpty = "{0} · nada restou para enviar",
         InvisiblePasted = "{0} do texto colado",
+        InvisibleTooLong = "{0} do seu prompt · ainda acima do limite de {1} caracteres · encurte para enviar",
+        PromptOverLimitOne = "Seu prompt passa 1 caractere do limite de {1} · encurte para enviar",
+        PromptOverLimit = "Seu prompt passa {0} caracteres do limite de {1} · encurte para enviar",
+        PasteOverLimitOne = "Essa colagem passa 1 caractere do limite de {1} · nada foi adicionado, cole menos",
+        PasteOverLimit = "Essa colagem passa {0} caracteres do limite de {1} · nada foi adicionado, cole menos",
         DismissNotice = "Dispensar aviso",
         ThoughtFor = "Pensou por {0} s",
         RunInBackground = "Rodando em segundo plano",
@@ -715,6 +720,24 @@ public sealed record ChatStrings
 
     /// <summary>The notice when they were found in a pasted text.</summary>
     public string InvisiblePasted { get; init; } = "{0} from the pasted text";
+
+    /// <summary>
+    /// The notice when they were found as the message was sent and what is left is still over the limit. <c>{0}</c> is
+    /// <see cref="InvisibleRemovedOne"/> or <see cref="InvisibleRemoved"/>; <c>{1}</c> is the limit (50000).
+    /// </summary>
+    public string InvisibleTooLong { get; init; } = "{0} from your prompt · still over the limit of {1} characters · shorten it to send";
+
+    /// <summary>The notice when the message is one character over the limit and stays in the box; <c>{1}</c> is the limit (50000).</summary>
+    public string PromptOverLimitOne { get; init; } = "Your prompt is 1 character over the limit of {1} · shorten it to send";
+
+    /// <summary>The same for several; <c>{0}</c> is how many over (written with separators from 100,000), <c>{1}</c> the limit.</summary>
+    public string PromptOverLimit { get; init; } = "Your prompt is {0} characters over the limit of {1} · shorten it to send";
+
+    /// <summary>The notice when a pasted text is one character over the limit and nothing of it was added; <c>{1}</c> is the limit (50000).</summary>
+    public string PasteOverLimitOne { get; init; } = "That paste is 1 character over the limit of {1} · nothing was added, paste less of it";
+
+    /// <summary>The same for several; <c>{0}</c> is how many over (written with separators from 100,000), <c>{1}</c> the limit.</summary>
+    public string PasteOverLimit { get; init; } = "That paste is {0} characters over the limit of {1} · nothing was added, paste less of it";
 
     /// <summary>The name of the button that closes that notice.</summary>
     public string DismissNotice { get; init; } = "Dismiss notice";
@@ -2047,14 +2070,26 @@ public sealed record ChatStrings
     /// </summary>
     internal string FormatInvisibleNotice(int removed, InvisibleNoticeKind kind, bool ctrlEnter)
     {
+        var limit = InvisibleCharacters.PasteLimit.ToString(CultureInfo.InvariantCulture);
+        if (kind is InvisibleNoticeKind.PromptOverLimit or InvisibleNoticeKind.PasteOverLimit)
+        {
+            // the number of characters over the limit: plain digits, with separators from 100,000
+            var over = removed < 100_000 ? removed.ToString(CultureInfo.InvariantCulture) : FormatNumber(removed);
+            var line = kind == InvisibleNoticeKind.PromptOverLimit
+                ? removed == 1 ? PromptOverLimitOne : PromptOverLimit
+                : removed == 1 ? PasteOverLimitOne : PasteOverLimit;
+            return line.Replace("{0}", over).Replace("{1}", limit);
+        }
         var count = removed == 1 ? InvisibleRemovedOne : InvisibleRemoved.Replace("{0}", FormatNumber(removed));
         var template = kind switch
         {
             InvisibleNoticeKind.Review => ctrlEnter ? InvisibleReviewCtrl : InvisibleReview,
             InvisibleNoticeKind.Empty => InvisibleEmpty,
+            InvisibleNoticeKind.TooLong => InvisibleTooLong,
+            InvisibleNoticeKind.Pasted => InvisiblePasted,
             _ => InvisiblePasted,
         };
-        return template.Replace("{0}", count);
+        return template.Replace("{0}", count).Replace("{1}", limit);
     }
 
     internal string FormatTooManyFiles(int maxFiles) => TooManyFiles.Replace("{0}", FormatNumber(maxFiles));

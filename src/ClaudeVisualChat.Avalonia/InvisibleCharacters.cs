@@ -15,6 +15,15 @@ internal enum InvisibleNoticeKind
 
     /// <summary>They were found in the text that was pasted.</summary>
     Pasted,
+
+    /// <summary>They were found when the message was sent, and what is left of it is still over the limit: nothing was sent.</summary>
+    TooLong,
+
+    /// <summary>No invisible characters, but the message is over the limit: it stays in the box as it is and nothing was sent.</summary>
+    PromptOverLimit,
+
+    /// <summary>The text that was pasted is over the limit: nothing of it went into the box.</summary>
+    PasteOverLimit,
 }
 
 /// <summary>
@@ -37,7 +46,7 @@ internal enum InvisibleNoticeKind
 /// </remarks>
 internal static class InvisibleCharacters
 {
-    /// <summary>How much of a pasted text is looked through, and how long a message may be (the rest is cut off when it is sent).</summary>
+    /// <summary>How much of a pasted text is looked through, and how long a message may be (one over it is not sent, and a paste over it is refused).</summary>
     internal const int PasteLimit = 50000;
 
     /// <summary>The text with the invisible characters out and its line breaks as line feeds, and how many characters went.</summary>

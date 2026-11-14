@@ -752,4 +752,20 @@ public class ChatStringsTests
         Assert.Equal("Message input", En.MessageInput);
         Assert.Equal("Campo de mensagem", Pt.MessageInput);
     }
+
+    [Fact]
+    public void The_limit_notices_in_both_languages()
+    {
+        Assert.Equal("Removed 2 invisible characters from your prompt · still over the limit of 50000 characters · shorten it to send", En.FormatInvisibleNotice(2, InvisibleNoticeKind.TooLong, false));
+        Assert.Equal("Your prompt is 1 character over the limit of 50000 · shorten it to send", En.FormatInvisibleNotice(1, InvisibleNoticeKind.PromptOverLimit, false));
+        Assert.Equal("Your prompt is 3 characters over the limit of 50000 · shorten it to send", En.FormatInvisibleNotice(3, InvisibleNoticeKind.PromptOverLimit, false));
+        Assert.Equal("That paste is 1 character over the limit of 50000 · nothing was added, paste less of it", En.FormatInvisibleNotice(1, InvisibleNoticeKind.PasteOverLimit, false));
+        Assert.Equal("That paste is 10 characters over the limit of 50000 · nothing was added, paste less of it", En.FormatInvisibleNotice(10, InvisibleNoticeKind.PasteOverLimit, false));
+        Assert.Equal("Removidos 2 caracteres invisíveis do seu prompt · ainda acima do limite de 50000 caracteres · encurte para enviar", Pt.FormatInvisibleNotice(2, InvisibleNoticeKind.TooLong, false));
+        Assert.Equal("Seu prompt passa 1 caractere do limite de 50000 · encurte para enviar", Pt.FormatInvisibleNotice(1, InvisibleNoticeKind.PromptOverLimit, false));
+        Assert.Equal("Seu prompt passa 3 caracteres do limite de 50000 · encurte para enviar", Pt.FormatInvisibleNotice(3, InvisibleNoticeKind.PromptOverLimit, false));
+        Assert.Equal("Essa colagem passa 1 caractere do limite de 50000 · nada foi adicionado, cole menos", Pt.FormatInvisibleNotice(1, InvisibleNoticeKind.PasteOverLimit, false));
+        Assert.Equal("Essa colagem passa 10 caracteres do limite de 50000 · nada foi adicionado, cole menos", Pt.FormatInvisibleNotice(10, InvisibleNoticeKind.PasteOverLimit, false));
+        Assert.Equal("Your prompt is 100,000 characters over the limit of 50000 · shorten it to send", En.FormatInvisibleNotice(100_000, InvisibleNoticeKind.PromptOverLimit, false));
+    }
 }

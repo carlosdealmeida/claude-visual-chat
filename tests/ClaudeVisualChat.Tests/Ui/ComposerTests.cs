@@ -1434,16 +1434,102 @@ public class ComposerTests
     }
 
     [AvaloniaFact]
-    public void A_text_over_fifty_thousand_characters_is_cut_and_says_so()
+    public void A_text_over_fifty_thousand_characters_stays_in_the_box_with_a_notice()
     {
         var ui = Open();
-        ui.Input.Text = new string('a', 50000) + "tail that goes";
+        ui.Input.Text = new string('a', 50_003);
         ui.Input.Focus();
 
         UiHelpers.Press(ui.Window, Key.Enter);
 
-        var text = Assert.Single(ui.Sent);
-        Assert.Equal(new string('a', 50000) + "\n\n[Message truncated - exceeded 50,000 character limit]", text);
+        Assert.Empty(ui.Sent);
+        Assert.Equal(50_003, ui.Input.Text!.Length);
+        Assert.Equal("Your prompt is 3 characters over the limit of 50000 · shorten it to send", NoticeText(ui));
+
+        ui.Input.Text = new string('a', 50_000);
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal(50_000, Assert.Single(ui.Sent).Length);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void One_character_over_the_limit_is_said_in_the_singular()
+    {
+        var ui = Open();
+        ui.Input.Text = new string('a', 50_001);
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Empty(ui.Sent);
+        Assert.Equal("Your prompt is 1 character over the limit of 50000 · shorten it to send", NoticeText(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_hundred_thousand_over_is_written_with_separators()
+    {
+        var ui = Open();
+        ui.Input.Text = new string('a', 150_000);
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Empty(ui.Sent);
+        Assert.Equal("Your prompt is 100,000 characters over the limit of 50000 · shorten it to send", NoticeText(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_paste_over_the_limit_is_refused_and_nothing_is_added()
+    {
+        var ui = Open();
+        using var paste = new Pasting(ui);
+        ui.Input.Text = "abc";
+        ui.Input.Focus();
+        ui.Window.Clipboard!.SetTextAsync(new string('b', 50_010)).Wait();
+        UiHelpers.Press(ui.Window, Key.V, RawInputModifiers.Control);
+        UiHelpers.PumpUntil(() => Notice(ui).IsVisible);
+
+        Assert.Equal("abc", ui.Input.Text);
+        Assert.Equal("That paste is 10 characters over the limit of 50000 · nothing was added, paste less of it", NoticeText(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_paste_is_measured_trimmed_and_with_plain_line_breaks()
+    {
+        var ui = Open();
+        using var paste = new Pasting(ui);
+        // 49,999 once its line breaks are plain and its ends are trimmed: it goes in
+        paste.Paste(new string('x', 25_000) + "\r\n" + new string('x', 24_998) + "  \r\n");
+
+        Assert.StartsWith(new string('x', 25_000), ui.Input.Text);
+        Assert.True(ui.Input.Text!.Length >= 49_999);
+        Assert.False(Notice(ui).IsVisible);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Cleaning_that_leaves_the_text_over_the_limit_says_both()
+    {
+        var ui = Open();
+        ui.Input.Text = Zwsp + new string('a', 50_002);
+        ui.Input.Focus();
+
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        Assert.Empty(ui.Sent);
+        Assert.Equal(50_002, ui.Input.Text!.Length);
+        Assert.Equal("Removed 1 invisible character from your prompt · still over the limit of 50000 characters · shorten it to send", NoticeText(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_limit_notices_follow_the_language()
+    {
+        var ui = Open();
+        ui.View.Strings = ChatStrings.PortugueseBrazil;
+        ui.Input.Text = new string('a', 50_003);
+        ui.Input.Focus();
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.Equal("Seu prompt passa 3 caracteres do limite de 50000 · encurte para enviar", NoticeText(ui));
         ui.Window.Close();
     }
 

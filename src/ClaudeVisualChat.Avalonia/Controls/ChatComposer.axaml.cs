@@ -132,7 +132,7 @@ internal partial class ChatComposer : UserControl
     private readonly ConditionalWeakTable<ChatConversation, LongPastes> _pastes = new ConditionalWeakTable<ChatConversation, LongPastes>();
 
     /// <summary>The notice of the invisible characters taken out: how many and what follows; null when there is none.</summary>
-    private (int Removed, InvisibleNoticeKind Kind)? _notice;
+    private (int Count, InvisibleNoticeKind Kind)? _notice;
 
     /// <summary>The text of the box when the notice came: a different text ends the notice.</summary>
     private string _noticeText = "";
@@ -787,24 +787,32 @@ internal partial class ChatComposer : UserControl
             // the person sees what would go, and sends it with the next Enter (or has nothing left to send)
             Input.Text = text;
             Input.CaretIndex = text.Length;
-            ShowNotice(removed, HasSomethingToSend ? InvisibleNoticeKind.Review : InvisibleNoticeKind.Empty);
+            var kind = !HasSomethingToSend ? InvisibleNoticeKind.Empty
+                : LongPastes.OverLimit(text) > 0 ? InvisibleNoticeKind.TooLong
+                : InvisibleNoticeKind.Review;
+            ShowNotice(removed, kind);
+            return;
+        }
+        var over = LongPastes.OverLimit(text);
+        if (over > 0)
+        {
+            // too long to send: it stays in the box as it is, for the person to shorten
+            ShowNotice(over, InvisibleNoticeKind.PromptOverLimit);
             return;
         }
         var pastes = _pastes.GetOrCreateValue(conversation).In(text, InvisibleCharacters.PasteLimit);
-        var message = LongPastes.Truncate(text, InvisibleCharacters.PasteLimit);
-        if (message.Length < text.Length) message += LongPastes.TruncationNotice;
         // cleared first: a host that refuses the message at once (UndoSubmit inside MessageSubmitted) gets it back here
         Input.Clear();
         ClearNotice();
         ShowRejected(null);
-        conversation.SubmitWithPastes(message, pastes);
+        conversation.SubmitWithPastes(text, pastes);
     }
 
     // ---- the notice of the invisible characters ----
 
-    private void ShowNotice(int removed, InvisibleNoticeKind kind)
+    private void ShowNotice(int count, InvisibleNoticeKind kind)
     {
-        _notice = (removed, kind);
+        _notice = (count, kind);
         _noticeText = Input.Text ?? "";
         UpdateNotice();
     }
@@ -822,7 +830,7 @@ internal partial class ChatComposer : UserControl
     {
         var show = _notice is { } && _tracked?.CurrentPermission == null;
         Notice.IsVisible = show;
-        NoticeText.Text = show && _notice is { } notice ? Strings.FormatInvisibleNotice(notice.Removed, notice.Kind, CtrlEnterSends) : null;
+        NoticeText.Text = show && _notice is { } notice ? Strings.FormatInvisibleNotice(notice.Count, notice.Kind, CtrlEnterSends) : null;
     }
 
     // ---- images and files ----
@@ -887,7 +895,8 @@ internal partial class ChatComposer : UserControl
     /// <summary>
     /// A text from the clipboard goes in at the caret (over the selection) as the text box would put it, but clean: the invisible
     /// characters of its first 50,000 are out, and when some were, the notice says so. A long paste is remembered for the message
-    /// it ends up in. Dropped when the conversation changed while the clipboard was read, or the box is locked (listening).
+    /// it ends up in. One over the limit (measured with plain line breaks and trimmed) is refused: nothing goes in, and the notice says
+    /// by how much. Dropped when the conversation changed while the clipboard was read, or the box is locked (listening).
     /// </summary>
     private async Task PasteTextAsync(ChatConversation? conversation)
     {
@@ -902,9 +911,16 @@ internal partial class ChatComposer : UserControl
             return;
         }
         if (string.IsNullOrEmpty(pasted) || !ReferenceEquals(conversation, _tracked) || Input.IsReadOnly || !IsEffectivelyVisible) return;
-        var head = LongPastes.Truncate(pasted!, InvisibleCharacters.PasteLimit);
+        var over = LongPastes.OverLimit(pasted!.Replace("\r\n", "\n").Replace('\r', '\n').Trim());
+        if (over > 0)
+        {
+            // too long for a message: none of it goes in, and it is not remembered
+            ShowNotice(over, InvisibleNoticeKind.PasteOverLimit);
+            return;
+        }
+        var head = LongPastes.Truncate(pasted, InvisibleCharacters.PasteLimit);
         var (clean, removed) = InvisibleCharacters.Clean(head);
-        Input.SelectedText = clean + pasted!.Substring(head.Length);
+        Input.SelectedText = clean + pasted.Substring(head.Length);
         if (conversation != null) _pastes.GetOrCreateValue(conversation).Remember(clean);
         if (removed > 0) ShowNotice(removed, InvisibleNoticeKind.Pasted);
     }

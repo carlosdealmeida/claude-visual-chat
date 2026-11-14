@@ -235,6 +235,19 @@ public class InvisibleCharactersTests
         Assert.Same(text, InvisibleCharacters.Clean(text).Text);
     }
 
+    [Fact]
+    public void Over_limit_counts_what_passes_fifty_thousand()
+    {
+        Assert.Equal(1, LongPastes.OverLimit(new string('a', 50_001)));
+        Assert.Equal(0, LongPastes.OverLimit(new string('a', 50_000)));
+    }
+
+    [Fact]
+    public void Over_limit_does_not_count_the_old_truncation_notice()
+    {
+        Assert.Equal(0, LongPastes.OverLimit(new string('a', 50_000) + LongPastes.TruncationNotice));
+    }
+
     // ---- the long pastes ----
 
     [Fact]

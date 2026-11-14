@@ -224,7 +224,7 @@ As teclas da caixa, como na extensão 2.1.310:
   marca de direção numa linha com letras da direita para a esquerda). Um aviso sobre a caixa diz quantos saíram; no
   envio ele preenche a caixa com o texto limpo, pede que se confira e não envia nada, e o envio seguinte vai. Quando
   nada sobra da mensagem, o aviso diz isso e a caixa fica vazia. O aviso termina com o ×, com uma edição do texto ou com
-  outra conversa, e um pedido de permissão o esconde. Uma mensagem com mais de 50.000 caracteres é cortada ali.
+  outra conversa, e um pedido de permissão o esconde. Uma mensagem com mais de 50.000 caracteres não é enviada nem cortada: fica na caixa e o aviso diz quanto passou. Uma colagem que passe desse limite é recusada, nada dela entra, e o aviso diz isso.
 - **Colagens longas.** A caixa lembra os textos longos colados nela (mais de 800 caracteres ou mais de duas quebras de
   linha) e o `MessageSubmittedEventArgs.InlinePastes` lista os que ainda estão na mensagem. O
   `StdinMessages.UserMessage(e)` os escreve como `inline_pastes`, só quando há algum.

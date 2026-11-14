@@ -94,6 +94,8 @@ public class PublicApiTests
         {
             "MessageInput", "InvisibleRemovedOne", "InvisibleRemoved", "InvisibleReview", "InvisibleReviewCtrl", "InvisibleEmpty",
             "InvisiblePasted", "DismissNotice",
+            // the 50,000-character limit of the reply box (0.8.0)
+            "InvisibleTooLong", "PromptOverLimitOne", "PromptOverLimit", "PasteOverLimitOne", "PasteOverLimit",
             // the command palette's groups and rows (Task 32)
             "PaletteContext", "PaletteCustomize", "PaletteSettings", "PaletteSupport", "PaletteAttachFile", "PaletteSwitchModel",
             "PaletteAccountUsage", "PaletteHelpDocs",

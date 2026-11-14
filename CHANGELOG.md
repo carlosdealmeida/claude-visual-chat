@@ -3,6 +3,19 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - Unreleased
+
+### Changed
+
+- A message over 50,000 characters is no longer cut with a "[Message truncated ...]" line at the end: it stays in the reply box,
+  nothing is sent, and a notice says by how many characters it is over the limit (`Your prompt is 3 characters over the limit of
+  50000 · shorten it to send`). When removing the invisible characters leaves the text still over the limit, the notice says both.
+  An old prompt recalled with that line at its end is measured without it. A message of exactly 50,000 characters is sent whole.
+- A paste that is over the limit (measured with plain line breaks and without the spaces at its ends) is refused: nothing of it
+  goes into the box, it is not remembered as a long paste, and a notice says by how many characters it is over.
+- New `ChatStrings` for these notices: `InvisibleTooLong`, `PromptOverLimitOne`, `PromptOverLimit`, `PasteOverLimitOne` and
+  `PasteOverLimit` (English, with the Brazilian Portuguese texts in `ChatStrings.PortugueseBrazil`).
+
 ## [0.7.1] - 2026-11-03
 
 ### Changed

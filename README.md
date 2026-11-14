@@ -219,7 +219,7 @@ The keys of the box, as in the extension 2.1.310:
   a line with right-to-left letters). A notice over the box says how many went; on send it fills the box with the clean
   text, asks to look at it and sends nothing, and the next send goes. When nothing is left of the message the notice
   says so and the box stays empty. The notice ends with its ×, with an edit of the text or with another conversation,
-  and a permission request hides it. A message over 50,000 characters is cut there.
+  and a permission request hides it. A message over 50,000 characters is not sent and not cut: it stays in the box and the notice says by how much it is over. A paste that would take the text over that is refused, nothing of it goes in, and the notice says so.
 - **Long pastes.** The box remembers the long texts pasted into it (more than 800 characters or more than two line
   breaks) and `MessageSubmittedEventArgs.InlinePastes` lists those still in the message. `StdinMessages.UserMessage(e)`
   writes them as `inline_pastes`, only when there are some.

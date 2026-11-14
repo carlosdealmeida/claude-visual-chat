@@ -67,6 +67,17 @@ internal sealed class LongPastes
         return found;
     }
 
+    /// <summary>
+    /// How many characters the text has over <see cref="InvisibleCharacters.PasteLimit"/>; 0 when it is within. A text that ends with
+    /// <see cref="TruncationNotice"/> (an old prompt recalled) is measured without it.
+    /// </summary>
+    internal static int OverLimit(string text)
+    {
+        var length = text.Length;
+        if (text.EndsWith(TruncationNotice, StringComparison.Ordinal)) length -= TruncationNotice.Length;
+        return Math.Max(0, length - InvisibleCharacters.PasteLimit);
+    }
+
     /// <summary>The first <paramref name="length"/> characters of the text, without cutting a surrogate pair in two.</summary>
     internal static string Truncate(string text, int length)
     {
