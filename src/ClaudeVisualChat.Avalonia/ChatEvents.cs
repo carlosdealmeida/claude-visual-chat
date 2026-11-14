@@ -231,6 +231,32 @@ public sealed class FeedbackRequestedEventArgs : EventArgs
     public string? Details { get; }
 }
 
+/// <summary>
+/// The conversation wants what a running Bash or PowerShell command has printed so far (<see cref="ChatConversation.TaskOutputRequested"/>):
+/// the host makes a new request id, puts it in <see cref="RequestId"/> inside the handler and sends
+/// <see cref="Protocol.StdinMessages.GetTaskOutput"/> with it and <see cref="TaskId"/>.
+/// </summary>
+public sealed class TaskOutputRequestedEventArgs : EventArgs
+{
+    public TaskOutputRequestedEventArgs(string taskId, string toolUseId)
+    {
+        TaskId = taskId ?? "";
+        ToolUseId = toolUseId ?? "";
+    }
+
+    /// <summary>The claude's task that runs the command (the <c>task_id</c> of its <c>system/task_started</c>).</summary>
+    public string TaskId { get; }
+
+    /// <summary>The tool call of the command (<see cref="ToolCallItem.ToolUseId"/>).</summary>
+    public string ToolUseId { get; }
+
+    /// <summary>
+    /// The id of the request the host sent; the answer, which names only it, is matched to the command by it. Left null or empty, the
+    /// host sent nothing, and the conversation does not ask again for that command.
+    /// </summary>
+    public string? RequestId { get; set; }
+}
+
 /// <summary>The user asked to open the Remote Control link; the host opens it.</summary>
 public sealed class RemoteControlLinkRequestedEventArgs : EventArgs
 {

@@ -99,11 +99,19 @@ conversation.PermissionModeRequested += (_, e) => Send(StdinMessages.SetPermissi
 conversation.ModelRequested += (_, e) => Send(StdinMessages.SetModel("req_" + ++ids, e.Model));
 conversation.EffortRequested += (_, e) => Send(StdinMessages.ApplyEffort("req_" + ++ids, e.Effort));
 conversation.StopRequested += (_, _) => Send(StdinMessages.Interrupt("req_" + ++ids));
+// what a running command has printed so far: the claude's answer names only the request id you set here
+conversation.TaskOutputRequested += (_, e) =>
+    Send(StdinMessages.GetTaskOutput(e.RequestId = "req_" + ++ids, e.TaskId));
 ```
 
 `StdinMessages.UserMessage(e)` writes the text, the images, a marker line for each file that landed and the message's
 `uuid`, by which the claude tells when it takes a message sent while it works
 (see [Replies and the timeline](#replies-and-the-timeline)). Use it for every message.
+
+`TaskOutputRequested` is raised while a Bash or PowerShell command runs, at most once a second for each command. Set
+`e.RequestId` to the id you send, inside the handler: the answer comes back through `AppendLine`, is matched to the
+command by that id, and becomes the call's `ToolCallItem.LiveOutput`. A `claude` that does not know the request answers
+with an error, and that command is not asked about again. Without a handler nothing is asked.
 
 On Windows, a `claude` installed with npm is `claude.cmd`: start it with `cmd /c claude ...`, or give its full path.
 

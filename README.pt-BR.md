@@ -99,11 +99,19 @@ conversation.PermissionModeRequested += (_, e) => Send(StdinMessages.SetPermissi
 conversation.ModelRequested += (_, e) => Send(StdinMessages.SetModel("req_" + ++ids, e.Model));
 conversation.EffortRequested += (_, e) => Send(StdinMessages.ApplyEffort("req_" + ++ids, e.Effort));
 conversation.StopRequested += (_, _) => Send(StdinMessages.Interrupt("req_" + ++ids));
+// o que um comando em execução já imprimiu: a resposta do claude só traz o id de pedido que você põe aqui
+conversation.TaskOutputRequested += (_, e) =>
+    Send(StdinMessages.GetTaskOutput(e.RequestId = "req_" + ++ids, e.TaskId));
 ```
 
 O `StdinMessages.UserMessage(e)` escreve o texto, as imagens, uma linha marcadora para cada arquivo que chegou e o
 `uuid` da mensagem, pelo qual o claude avisa quando pega uma mensagem mandada enquanto ele trabalha
 (veja [Respostas e linha do tempo](#respostas-e-linha-do-tempo)). Use-o para todas as mensagens.
+
+O `TaskOutputRequested` dispara enquanto um comando Bash ou PowerShell roda, no máximo uma vez por segundo para cada
+comando. Ponha em `e.RequestId` o id que você manda, dentro do tratador: a resposta volta pelo `AppendLine`, é ligada ao
+comando por esse id e vira o `ToolCallItem.LiveOutput` da chamada. Um `claude` que não conhece o pedido responde com
+erro, e esse comando não é mais perguntado. Sem tratador nada é pedido.
 
 Um `/model x` ou `/effort x` digitado também muda o claude, mas o chip só acompanha depois do próximo `system/init` ou
 de uma resposta do `GetSettings`; por isso envie o `GetSettings` depois deles.

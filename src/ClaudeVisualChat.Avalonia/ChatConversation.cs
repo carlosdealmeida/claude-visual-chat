@@ -120,6 +120,7 @@ public sealed class ChatConversation : ChatObservableObject
     private EventHandler<LinkRequestedEventArgs>? _linkRequested;
     private EventHandler<FeedbackRequestedEventArgs>? _feedbackRequested;
     private EventHandler<PathActivatedEventArgs>? _pathActivated;
+    private EventHandler<TaskOutputRequestedEventArgs>? _taskOutputRequested;
 
     public ChatConversation()
     {
@@ -283,7 +284,33 @@ public sealed class ChatConversation : ChatObservableObject
         }
     }
 
-    /// <summary>The host began or stopped listening to <see cref="LinkRequested"/>, <see cref="FeedbackRequested"/> or <see cref="PathActivated"/>.</summary>
+    /// <summary>
+    /// Raised while a Bash or PowerShell call runs in the foreground as a task of the claude (<c>system/task_started</c>, of the type
+    /// <c>local_bash</c>), when the view wants what the command has printed so far: at most once a second for each command, and not
+    /// while the answer to the last request has not come. The host makes a new request id, sets
+    /// <see cref="TaskOutputRequestedEventArgs.RequestId"/> to it inside the handler and sends <see cref="StdinMessages.GetTaskOutput"/>
+    /// with it; the claude's answer comes back through <see cref="AppendLine"/> and becomes the call's <see cref="ToolCallItem.LiveOutput"/>.
+    /// An error answer (a claude that does not know the request) stops the asking for that command. Nothing is asked while the host
+    /// does not listen to this event.
+    /// </summary>
+    public event EventHandler<TaskOutputRequestedEventArgs>? TaskOutputRequested
+    {
+        add
+        {
+            _taskOutputRequested += value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+        remove
+        {
+            _taskOutputRequested -= value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
+    /// The host began or stopped listening to <see cref="LinkRequested"/>, <see cref="FeedbackRequested"/>, <see cref="PathActivated"/>
+    /// or <see cref="TaskOutputRequested"/>.
+    /// </summary>
     internal event EventHandler? HostHandlersChanged;
 
     /// <summary>The longest text of "What went wrong?" that goes to the host.</summary>
@@ -1003,6 +1030,7 @@ public sealed class ChatConversation : ChatObservableObject
         EndStreaming();
         // the history holds no turn ends: what it marked belongs to past turns, not to the next live one
         _turnTools.Clear();
+        ForgetCommandTasks(); // nor is a command it started
         ForgetStatus(); // a start-up hook the file never answered is not running now
         _interruptedThisTurn = false;
         IsBusy = false;
@@ -1030,6 +1058,8 @@ public sealed class ChatConversation : ChatObservableObject
         _turnTools.Clear();
         _live.Clear();
         _streamingMessageId = null;
+        ForgetCommandTasks();
+        _taskOutputRequests.Clear(); // the next session's requests may reuse the ids
         _parser = new StreamJsonParser();
         _echoes.Clear();
         _unanswered.Clear();
@@ -1784,6 +1814,7 @@ public sealed class ChatConversation : ChatObservableObject
         if (_tools.TryGetValue(call.ToolUseId, out var known) && ReferenceEquals(known, call)) _tools.Remove(call.ToolUseId);
         _turnTools.Remove(call);
         _nestedTools.Remove(call);
+        ForgetCommandTaskOf(call.ToolUseId);
         foreach (var child in call.Children) ForgetRetired(child);
     }
 
@@ -1828,6 +1859,7 @@ public sealed class ChatConversation : ChatObservableObject
     private void OnToolResult(UserBlock e, ToolResultBlock result)
     {
         RemovePermissionsFor(result.ToolUseId);
+        ForgetCommandTaskOf(result.ToolUseId);
         if (FindAgent(result.ToolUseId) is { } agent) OnAgentResult(agent, e, result);
         if (!_tools.TryGetValue(result.ToolUseId, out var tool)) return;
         var cut = ToolPresentation.Truncate(result.Text, ToolPresentation.OutputLines);
@@ -1836,6 +1868,9 @@ public sealed class ChatConversation : ChatObservableObject
         tool.FullResultText = KeptResult(tool.Name, result.Text);
         tool.RejectionReason = RefusalReason(result);
         tool.ResultImages = ToolPresentation.ChromeAction(tool.Name) == "computer" ? ResultImagesOf(result) : null; // only that action draws them
+        tool.LiveOutput = null; // the result shows what it printed
+        tool.LiveOutputBytes = 0;
+        tool.LiveOutputTruncated = false;
         tool.Status = ResultStatus(e, result);
     }
 
@@ -2217,6 +2252,7 @@ public sealed class ChatConversation : ChatObservableObject
     private void OnAgentTaskStarted(AgentTaskStarted e)
     {
         // a command the agent runs (local_bash) is a task too, but no agent
+        if (e.TaskType == CommandTaskType) OnCommandTaskStarted(e);
         if (e.TaskType.Length > 0 && e.TaskType != AgentTaskType) return;
         var agent = FindAgent(e.ToolUseId, e.TaskId);
         if (agent == null)
@@ -2251,6 +2287,7 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>A failure or a stop ends the agent here; <c>completed</c> waits for the notification or the result, which bring it.</summary>
     private void OnAgentTaskUpdated(AgentTaskUpdated e)
     {
+        if (EndsCommandTask(e)) ForgetCommandTask(e.TaskId);
         var agent = FindAgent(null, e.TaskId);
         if (agent == null || agent.Status != AgentStatus.Running || e.Status == null) return;
         var status = EndStatus(e.Status);
@@ -2259,6 +2296,7 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnAgentTaskFinished(AgentTaskFinished e)
     {
+        ForgetCommandTask(e.TaskId);
         var agent = FindAgent(e.ToolUseId, e.TaskId);
         if (agent == null) return;
         _agentsStoppedByHistory.Remove(agent);
@@ -2411,6 +2449,156 @@ public sealed class ChatConversation : ChatObservableObject
                 agent.Status = AgentStatus.Stopped;
             }
         }
+    }
+
+    // ---- the output of a running command ----
+
+    private const string CommandTaskType = "local_bash";
+
+    /// <summary>The least time between two requests for the output of the same command.</summary>
+    private static readonly TimeSpan TaskOutputInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>The commands the claude runs in the foreground as a task (<c>local_bash</c>), by their task id.</summary>
+    private readonly Dictionary<string, CommandTask> _commandTasks = new Dictionary<string, CommandTask>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The output requests the host sent and the claude has not answered, by their id, with the command each one asked about. A
+    /// command forgotten since leaves its request here, so that the late answer is dropped instead of being taken for another request.
+    /// </summary>
+    private readonly Dictionary<string, CommandTask> _taskOutputRequests = new Dictionary<string, CommandTask>(StringComparer.Ordinal);
+
+    /// <summary>A command running as a task, and how the asking for its output goes.</summary>
+    private sealed class CommandTask
+    {
+        public CommandTask(string taskId, string toolUseId)
+        {
+            TaskId = taskId;
+            ToolUseId = toolUseId;
+        }
+
+        public string TaskId { get; }
+
+        public string ToolUseId { get; }
+
+        /// <summary>The host sent no request for it, or the claude gave no output: it is not asked about again.</summary>
+        public bool HasNoOutput { get; set; }
+
+        /// <summary>The request sent for it that has no answer yet; null when none.</summary>
+        public string? PendingRequestId { get; set; }
+
+        /// <summary>When it was last asked about; null before the first request.</summary>
+        public DateTimeOffset? LastAskedAt { get; set; }
+
+        /// <summary>It is no longer asked about: an answer about it is dropped.</summary>
+        public bool IsForgotten { get; set; }
+    }
+
+    /// <summary>Whether the host is asked for the output of the running commands (it listens to <see cref="TaskOutputRequested"/>).</summary>
+    internal bool CanRequestTaskOutput => _taskOutputRequested != null;
+
+    /// <summary>
+    /// Asks the host for what <paramref name="item"/> has printed so far (raises <see cref="TaskOutputRequested"/>), when the host
+    /// listens, the item is a Bash or PowerShell call still running as a task of the claude, the claude did not say it has no output,
+    /// the last request about it was answered, and a second has passed since that request (by <see cref="Clock"/>). True when the event
+    /// was raised. The host's <see cref="TaskOutputRequestedEventArgs.RequestId"/> becomes the request that waits for its answer; none
+    /// means it is not asked about again. A handler that throws still leaves the request it named.
+    /// </summary>
+    internal bool RequestTaskOutput(ToolCallItem item)
+    {
+        if (item == null) throw new ArgumentNullException(nameof(item));
+        var handler = _taskOutputRequested;
+        if (handler == null || item.Status != ToolStatus.Running || (item.Name != "Bash" && item.Name != "PowerShell")) return false;
+        var task = CommandTaskOf(item.ToolUseId);
+        if (task == null || task.HasNoOutput || task.PendingRequestId != null) return false;
+        var now = _clock();
+        if (task.LastAskedAt is DateTimeOffset last && now - last < TaskOutputInterval) return false;
+        task.LastAskedAt = now;
+        var args = new TaskOutputRequestedEventArgs(task.TaskId, task.ToolUseId);
+        try
+        {
+            handler(this, args);
+        }
+        finally
+        {
+            if (string.IsNullOrEmpty(args.RequestId))
+            {
+                task.HasNoOutput = true;
+            }
+            else
+            {
+                task.PendingRequestId = args.RequestId;
+                _taskOutputRequests[args.RequestId!] = task;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>A command the claude starts as a task: one in the foreground, of a known call, is asked about; any other is not.</summary>
+    private void OnCommandTaskStarted(AgentTaskStarted e)
+    {
+        if (e.IsBackground || e.ToolUseId.Length == 0) ForgetCommandTask(e.TaskId);
+        else if (!_commandTasks.ContainsKey(e.TaskId)) _commandTasks[e.TaskId] = new CommandTask(e.TaskId, e.ToolUseId);
+    }
+
+    private CommandTask? CommandTaskOf(string toolUseId)
+    {
+        foreach (var task in _commandTasks.Values)
+        {
+            if (task.ToolUseId == toolUseId) return task;
+        }
+        return null;
+    }
+
+    private void ForgetCommandTask(string taskId)
+    {
+        if (!_commandTasks.TryGetValue(taskId, out var task)) return;
+        task.IsForgotten = true;
+        _commandTasks.Remove(taskId);
+    }
+
+    /// <summary>The call <paramref name="toolUseId"/> got its result, or left the conversation: its command is not asked about any more.</summary>
+    private void ForgetCommandTaskOf(string toolUseId)
+    {
+        if (CommandTaskOf(toolUseId) is { } task) ForgetCommandTask(task.TaskId);
+    }
+
+    /// <summary>The turn ended, or the history was read: no command is asked about; the answers still due are dropped when they come.</summary>
+    private void ForgetCommandTasks()
+    {
+        foreach (var task in _commandTasks.Values) task.IsForgotten = true;
+        _commandTasks.Clear();
+    }
+
+    /// <summary>A task update that ends the command's asking: it went to the background, or it ended.</summary>
+    private static bool EndsCommandTask(AgentTaskUpdated e) =>
+        e.IsBackgrounded == true || e.Status == "completed" || e.Status == "failed" || e.Status == "killed";
+
+    /// <summary>
+    /// The answer to an output request, which only this takes (true): an error, or one without an <c>output</c> text, stops the asking
+    /// for its command; a text that is empty once prepared (<see cref="LiveOutputText.Prepare"/>) keeps the output there was; any other
+    /// becomes the call's <see cref="ToolCallItem.LiveOutput"/>. An answer about a command forgotten since is dropped. False for an
+    /// answer to any other request.
+    /// </summary>
+    private bool TakeTaskOutput(ControlAcknowledged e)
+    {
+        if (!_taskOutputRequests.TryGetValue(e.RequestId, out var task)) return false;
+        _taskOutputRequests.Remove(e.RequestId);
+        if (task.PendingRequestId == e.RequestId) task.PendingRequestId = null;
+        if (task.IsForgotten || !_tools.TryGetValue(task.ToolUseId, out var call) || call.Status != ToolStatus.Running) return true;
+        var body = e.Response is { ValueKind: JsonValueKind.Object } response ? response : (JsonElement?)null;
+        var output = body == null ? null : JsonHelpers.Str(body.Value, "output");
+        if (e.IsError || output == null)
+        {
+            task.HasNoOutput = true;
+            return true;
+        }
+        var truncated = JsonHelpers.Bool(body!.Value, "truncated");
+        var text = LiveOutputText.Prepare(output, truncated);
+        if (text.Length == 0) return true;
+        call.LiveOutputBytes = JsonHelpers.Long(body.Value, "total_bytes") ?? 0;
+        call.LiveOutputTruncated = truncated;
+        call.LiveOutput = text;
+        return true;
     }
 
     // ---- permissions ----
@@ -2579,6 +2767,7 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnControlAcknowledged(ControlAcknowledged e)
     {
+        if (TakeTaskOutput(e)) return; // the answer to an output request, an error too, is that request's alone
         if (e.IsError)
         {
             // the host asked for the data of the panel that is open, and the claude refused
@@ -2629,6 +2818,7 @@ public sealed class ChatConversation : ChatObservableObject
         Items.Add(new TurnFooterItem(e.DurationMs, e.InputTokens, e.OutputTokens, e.CostUsd, e.IsError));
         AddToSession(e);
         _turnTools.Clear();
+        ForgetCommandTasks();
         _interruptedThisTurn = false;
         _autoModeAsked = false; // the claude answers a mode request at once: an error after the turn is about something else
         _unanswered.Clear();

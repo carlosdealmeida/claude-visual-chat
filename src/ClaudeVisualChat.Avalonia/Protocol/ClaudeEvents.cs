@@ -247,7 +247,11 @@ namespace ClaudeVisualChat.Protocol
         : ClaudeEvent;
 
     /// <summary>A task changed (<c>system/task_updated</c>); <paramref name="Status"/> is its patch's status, if any.</summary>
-    public sealed record AgentTaskUpdated(string TaskId, string? Status) : ClaudeEvent;
+    public sealed record AgentTaskUpdated(string TaskId, string? Status) : ClaudeEvent
+    {
+        /// <summary>Whether the task went to the background (its patch's <c>is_backgrounded</c>); null when the patch does not say.</summary>
+        public bool? IsBackgrounded { get; init; }
+    }
 
     /// <summary>
     /// A task ended (<c>system/task_notification</c>, or the <c>&lt;task-notification&gt;</c> text of a session file).

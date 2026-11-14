@@ -270,6 +270,13 @@ public class StdinMessagesTests
     }
 
     [Fact]
+    public void Get_task_output_asks_for_the_task()
+    {
+        Assert.Equal("{\"type\":\"control_request\",\"request_id\":\"r1\",\"request\":{\"subtype\":\"get_task_output\",\"task_id\":\"k1\"}}",
+                     StdinMessages.GetTaskOutput("r1", "k1"));
+    }
+
+    [Fact]
     public void Null_arguments_are_rejected()
     {
         Assert.Throws<ArgumentNullException>(() => StdinMessages.PermissionResponse(null!));

@@ -164,6 +164,17 @@ namespace ClaudeVisualChat.Protocol
 
         public static string GetContextUsage(string requestId) => ControlRequest(requestId, "get_context_usage", null);
 
+        /// <summary>
+        /// Asks what the command the claude runs as the task <paramref name="taskId"/> has printed so far
+        /// (<see cref="ChatConversation.TaskOutputRequested"/>). The answer carries <c>output</c>, <c>total_bytes</c> and
+        /// <c>truncated</c>; give it to <see cref="ChatConversation.AppendLine"/> like any other line.
+        /// </summary>
+        public static string GetTaskOutput(string requestId, string taskId)
+        {
+            if (taskId == null) throw new ArgumentNullException(nameof(taskId));
+            return ControlRequest(requestId, "get_task_output", w => w.WriteString("task_id", taskId));
+        }
+
         public static string RemoteControl(string requestId, bool enabled) =>
             ControlRequest(requestId, "remote_control", w => w.WriteBoolean("enabled", enabled));
 

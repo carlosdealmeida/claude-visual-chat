@@ -731,6 +731,45 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_live_output_api_of_a_running_command()
+    {
+        // the output of a command so far (0.8.0): a host event, its arguments, the line to send and what the call carries
+        var conversation = typeof(ChatConversation);
+        Assert.Equal(typeof(System.EventHandler<TaskOutputRequestedEventArgs>), conversation.GetEvent("TaskOutputRequested")?.EventHandlerType);
+        var args = typeof(TaskOutputRequestedEventArgs);
+        Assert.Contains("ClaudeVisualChat.TaskOutputRequestedEventArgs", Library.GetExportedTypes().Select(t => t.FullName));
+        Assert.True(args.IsSealed && typeof(System.EventArgs).IsAssignableFrom(args));
+        Assert.NotNull(args.GetConstructor(new[] { typeof(string), typeof(string) }));
+        foreach (var name in new[] { "TaskId", "ToolUseId" })
+        {
+            Assert.Equal(typeof(string), args.GetProperty(name)?.PropertyType);
+            Assert.Null(args.GetProperty(name)!.SetMethod);
+        }
+        var requestId = args.GetProperty("RequestId");
+        Assert.Equal(typeof(string), requestId?.PropertyType);
+        Assert.True(requestId!.SetMethod!.IsPublic); // the host sets it
+
+        var send = typeof(ClaudeVisualChat.Protocol.StdinMessages);
+        Assert.Equal(typeof(string), send.GetMethod("GetTaskOutput", new[] { typeof(string), typeof(string) })?.ReturnType);
+
+        var live = typeof(ToolCallItem).GetProperty("LiveOutput");
+        Assert.Equal(typeof(string), live?.PropertyType);
+        Assert.False(live!.SetMethod!.IsPublic); // the conversation sets it
+        Assert.Null(typeof(ToolCallItem).GetProperty("LiveOutputBytes"));
+        Assert.Null(typeof(ToolCallItem).GetProperty("LiveOutputTruncated"));
+
+        var backgrounded = typeof(ClaudeVisualChat.Protocol.AgentTaskUpdated).GetProperty("IsBackgrounded");
+        Assert.Equal(typeof(bool?), backgrounded?.PropertyType);
+        Assert.Contains(backgrounded!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        Assert.NotNull(typeof(ClaudeVisualChat.Protocol.AgentTaskUpdated).GetConstructor(new[] { typeof(string), typeof(string) })); // no new positional parameter
+
+        // the asking and the text it keeps stay internal
+        foreach (var member in new[] { "CanRequestTaskOutput", "RequestTaskOutput" })
+            Assert.Empty(conversation.GetMember(member));
+        Assert.DoesNotContain("ClaudeVisualChat.LiveOutputText", Library.GetExportedTypes().Select(t => t.FullName));
+    }
+
+    [Fact]
     public void The_divider_and_the_informational_line_api()
     {
         var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();

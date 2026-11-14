@@ -249,6 +249,9 @@ public sealed class ToolCallItem : ChatItem
     private bool _isOutputExpanded;
     private bool _isInputExpanded;
     private AgentInfo? _agent;
+    private string? _liveOutput;
+    private long _liveOutputBytes;
+    private bool _liveOutputTruncated;
 
     public string ToolUseId
     {
@@ -314,6 +317,31 @@ public sealed class ToolCallItem : ChatItem
     {
         get => _rejectionReason;
         internal set => SetField(ref _rejectionReason, value);
+    }
+
+    /// <summary>
+    /// What a running Bash or PowerShell command has printed so far, as the claude last told the host
+    /// (<see cref="ChatConversation.TaskOutputRequested"/>): without terminal codes, each line as a terminal leaves it after its carriage
+    /// returns, and its last 100,000 characters at most. Null when nothing was told, and again once the result arrives.
+    /// </summary>
+    public string? LiveOutput
+    {
+        get => _liveOutput;
+        internal set => SetField(ref _liveOutput, value);
+    }
+
+    /// <summary>How many bytes the command has printed in all (the answer's <c>total_bytes</c>), with <see cref="LiveOutput"/>.</summary>
+    internal long LiveOutputBytes
+    {
+        get => _liveOutputBytes;
+        set => SetField(ref _liveOutputBytes, value);
+    }
+
+    /// <summary>The claude kept only the end of what the command printed (the answer's <c>truncated</c>), with <see cref="LiveOutput"/>.</summary>
+    internal bool LiveOutputTruncated
+    {
+        get => _liveOutputTruncated;
+        set => SetField(ref _liveOutputTruncated, value);
     }
 
     /// <summary>Result lines left out of <see cref="ResultText"/>.</summary>

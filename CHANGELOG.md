@@ -14,6 +14,20 @@ All notable changes to this project are written here. The format follows
   shape reads as empty, and every block of the line carries the list.
 - `AssistantBlock.IsSynthetic`: true when the model of the line is `<synthetic>`.
 - `UserBlock.Uuid` (the line's `uuid`) and `UserBlock.IsQueuedCommand` (the message was delivered from the queue in the middle of a turn).
+- `ChatConversation.TaskOutputRequested` (`TaskOutputRequestedEventArgs`: `TaskId`, `ToolUseId`, `RequestId`): while a Bash or
+  PowerShell call runs in the foreground as a task of the `claude` (`system/task_started` of the type `local_bash`), the conversation
+  asks the host for what the command has printed so far, at most once a second for each command and never while the last request
+  has no answer. The host makes a new request id, sets `RequestId` to it inside the handler and writes
+  `StdinMessages.GetTaskOutput(requestId, taskId)`; the answer comes back through `AppendLine` like any other line, is matched to the
+  command by its id, and goes to no other handler. A host that leaves `RequestId` empty, or a `claude` that answers with an error
+  (one that does not know the request), is not asked again for that command. With no handler nothing is asked, and nothing changes.
+- `StdinMessages.GetTaskOutput(requestId, taskId)`: the `get_task_output` control request.
+- `ToolCallItem.LiveOutput`: what the running command has printed so far, from the answer's `output`, without terminal codes, each
+  line as the terminal leaves it after its carriage returns, and its last 100,000 characters at most; when the `claude` kept only
+  the end (`truncated`), the cut first line goes. An answer that leaves nothing keeps the output there was. It goes back to null when
+  the call's result arrives, and an answer that comes after the result is dropped. The command is no longer asked about once it goes
+  to the background, its task ends, its result arrives, the turn ends, or the conversation is cleared or read from a file.
+- `AgentTaskUpdated.IsBackgrounded`: the `is_backgrounded` of the update's patch; null when the patch does not say.
 
 ### Changed
 

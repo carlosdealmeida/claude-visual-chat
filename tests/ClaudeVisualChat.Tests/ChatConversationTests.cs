@@ -3612,4 +3612,416 @@ public class ChatConversationTests
         Assert.Equal("off", c.FastModeState);
         Assert.Equal(new[] { "on", "cooldown", "turbo", "off" }, changes);
     }
+
+    // ---- live output of a running command (0.8.0) ----
+
+    /// <summary>A Bash (or PowerShell) call <paramref name="toolUseId"/> that runs as the task <paramref name="taskId"/>, as the claude tells.</summary>
+    private static ToolCallItem RunningBash(ChatConversation c, string toolUseId, string taskId, string tool = "Bash")
+    {
+        c.Apply(new AssistantBlock("m_" + toolUseId, null, new ToolUseBlock(toolUseId, tool, J("{\"command\":\"sleep 5\"}"))));
+        c.Apply(new AgentTaskStarted(taskId, toolUseId, "", null, false, 0, "local_bash"));
+        return All(c.Items).OfType<ToolCallItem>().Single(t => t.ToolUseId == toolUseId);
+    }
+
+    /// <summary>The claude's answer to the output request <paramref name="requestId"/>.</summary>
+    private static void Answer(ChatConversation c, string requestId, string output, long bytes, bool truncated) =>
+        c.AppendLine(JsonSerializer.Serialize(new
+        {
+            type = "control_response",
+            response = new { subtype = "success", request_id = requestId, response = new { output, total_bytes = bytes, truncated } },
+        }));
+
+    /// <summary>What a claude that does not know the request answers.</summary>
+    private static void AnswerError(ChatConversation c, string requestId) =>
+        c.AppendLine("{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"" + requestId +
+                     "\",\"error\":\"Unsupported control request subtype: get_task_output\"}}");
+
+    /// <summary>A host that sends each request with the ids r1, r2…; the list has what it was asked.</summary>
+    private static List<TaskOutputRequestedEventArgs> AskedFor(ChatConversation c)
+    {
+        var asked = new List<TaskOutputRequestedEventArgs>();
+        c.TaskOutputRequested += (_, e) => { asked.Add(e); e.RequestId = "r" + asked.Count; };
+        return asked;
+    }
+
+    [Fact]
+    public void The_host_is_asked_for_the_output_of_a_running_command()
+    {
+        var c = new ChatConversation();
+        var item = RunningBash(c, "t1", "k1");
+        var asked = AskedFor(c);
+
+        Assert.True(c.CanRequestTaskOutput);
+        Assert.True(c.RequestTaskOutput(item));
+        Assert.Equal(("k1", "t1"), (asked[0].TaskId, asked[0].ToolUseId));
+
+        var shell = RunningBash(c, "t2", "k2", "PowerShell");
+        Assert.True(c.RequestTaskOutput(shell));
+        Assert.Equal(("k2", "t2"), (asked[1].TaskId, asked[1].ToolUseId));
+    }
+
+    [Fact]
+    public void The_answer_becomes_the_live_output_of_the_call()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var item = RunningBash(c, "t1", "k1");
+        AskedFor(c);
+        var changed = new List<string?>();
+        item.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        c.RequestTaskOutput(item);
+        Answer(c, "r1", "line 1\nline 2\n", 14, false);
+        Assert.Equal("line 1\nline 2\n", item.LiveOutput);
+        Assert.Equal(14, item.LiveOutputBytes);
+        Assert.False(item.LiveOutputTruncated);
+        Assert.Equal(ToolStatus.Running, item.Status);
+        Assert.Contains(nameof(ToolCallItem.LiveOutput), changed);
+        Assert.Contains(nameof(ToolCallItem.LiveOutputBytes), changed);
+
+        now = now.AddSeconds(1);
+        Assert.True(c.RequestTaskOutput(item));
+        Answer(c, "r2", "ne 2\nline 3\n\u001b[32mok\u001b[0m", 5000, true); // the claude kept only the end: its first line is cut
+        Assert.Equal("line 3\nok", item.LiveOutput);
+        Assert.Equal(5000, item.LiveOutputBytes);
+        Assert.True(item.LiveOutputTruncated);
+        Assert.Contains(nameof(ToolCallItem.LiveOutputTruncated), changed);
+    }
+
+    [Fact]
+    public void An_empty_answer_keeps_what_was_there()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var item = RunningBash(c, "t1", "k1");
+        AskedFor(c);
+
+        c.RequestTaskOutput(item);
+        Answer(c, "r1", "line 1\n", 7, false);
+        now = now.AddSeconds(1);
+        c.RequestTaskOutput(item);
+        Answer(c, "r2", "", 0, false);
+        Assert.Equal("line 1\n", item.LiveOutput);
+        Assert.Equal(7, item.LiveOutputBytes);
+
+        now = now.AddSeconds(1);
+        c.RequestTaskOutput(item);
+        Answer(c, "r3", "\u001b[0m", 4, true); // nothing is left of it once prepared
+        Assert.Equal("line 1\n", item.LiveOutput);
+        Assert.Equal(7, item.LiveOutputBytes);
+        Assert.False(item.LiveOutputTruncated);
+
+        now = now.AddSeconds(1);
+        Assert.True(c.RequestTaskOutput(item)); // and the asking goes on
+    }
+
+    [Fact]
+    public void Nothing_is_asked_without_a_host_handler()
+    {
+        var c = new ChatConversation();
+        var item = RunningBash(c, "t1", "k1");
+        var changes = 0;
+        c.HostHandlersChanged += (_, _) => changes++;
+
+        Assert.False(c.CanRequestTaskOutput);
+        Assert.False(c.RequestTaskOutput(item));
+
+        EventHandler<TaskOutputRequestedEventArgs> handler = (_, e) => e.RequestId = "r1";
+        c.TaskOutputRequested += handler;
+        Assert.True(c.CanRequestTaskOutput);
+        c.TaskOutputRequested -= handler;
+        Assert.Equal(2, changes);
+        Assert.False(c.CanRequestTaskOutput);
+        Assert.False(c.RequestTaskOutput(item));
+        Assert.Null(item.LiveOutput);
+    }
+
+    [Fact]
+    public void Nothing_is_asked_twice_within_a_second_nor_while_an_answer_is_pending()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var item = RunningBash(c, "t1", "k1");
+        var asked = AskedFor(c);
+
+        Assert.True(c.RequestTaskOutput(item));
+        Assert.False(c.RequestTaskOutput(item)); // a second view of the same conversation, at the same time
+        now = now.AddSeconds(5);
+        Assert.False(c.RequestTaskOutput(item)); // r1 has no answer yet
+        Answer(c, "r1", "a\n", 2, false);
+        now = now.AddSeconds(1);
+        Assert.True(c.RequestTaskOutput(item));
+        Answer(c, "r2", "a\nb\n", 4, false);
+        now = now.AddMilliseconds(999);
+        Assert.False(c.RequestTaskOutput(item)); // answered, but not a second since it was asked
+        now = now.AddMilliseconds(1);
+        Assert.True(c.RequestTaskOutput(item));
+        Assert.Equal(3, asked.Count);
+    }
+
+    [Fact]
+    public void Nothing_is_asked_for_a_call_that_is_not_a_running_command()
+    {
+        var c = new ChatConversation();
+        var asked = AskedFor(c);
+
+        var read = RunningBash(c, "t1", "k1", "Read");
+        Assert.False(c.RequestTaskOutput(read));
+
+        var done = RunningBash(c, "t2", "k2");
+        c.Apply(ToolResult("t2", "done"));
+        Assert.False(c.RequestTaskOutput(done));
+        done.Status = ToolStatus.Running; // the result forgot its task too
+        Assert.False(c.RequestTaskOutput(done));
+
+        var stopped = RunningBash(c, "t4", "k4");
+        stopped.Status = ToolStatus.Failed; // its task still runs, but the call does not
+        Assert.False(c.RequestTaskOutput(stopped));
+
+        c.Apply(new AssistantBlock("m3", null, new ToolUseBlock("t3", "Bash", J("{\"command\":\"ls\"}")))); // no task_started
+        Assert.False(c.RequestTaskOutput(All(c.Items).OfType<ToolCallItem>().Single(t => t.ToolUseId == "t3")));
+
+        Assert.Empty(asked);
+    }
+
+    [Fact]
+    public void Nothing_is_asked_for_a_backgrounded_or_finished_task()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var asked = AskedFor(c);
+
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"npm run dev\"}"))));
+        c.Apply(new AgentTaskStarted("k1", "t1", "", null, true, 0, "local_bash"));
+        Assert.False(c.RequestTaskOutput(All(c.Items).OfType<ToolCallItem>().Single(t => t.ToolUseId == "t1")));
+
+        var moved = RunningBash(c, "t2", "k2");
+        c.Apply(new AgentTaskUpdated("k2", null) { IsBackgrounded = false });
+        Assert.True(c.RequestTaskOutput(moved)); // still in the foreground
+        Answer(c, "r1", "ready\n", 6, false);
+        now = now.AddSeconds(5);
+        c.Apply(new AgentTaskUpdated("k2", null) { IsBackgrounded = true });
+        Assert.False(c.RequestTaskOutput(moved));
+
+        var finished = RunningBash(c, "t3", "k3");
+        c.Apply(new AgentTaskFinished("k3", "t3", "completed", null, null, null, null));
+        Assert.False(c.RequestTaskOutput(finished));
+
+        foreach (var (status, n) in new[] { ("completed", 4), ("failed", 5), ("killed", 6) })
+        {
+            var ended = RunningBash(c, "t" + n, "k" + n);
+            c.Apply(new AgentTaskUpdated("k" + n, "running"));
+            c.Apply(new AgentTaskUpdated("k" + n, status));
+            Assert.False(c.RequestTaskOutput(ended), status);
+        }
+
+        Assert.Single(asked);
+        Assert.Empty(c.Agents); // a command is still no agent
+    }
+
+    [Fact]
+    public void A_host_that_gives_no_request_id_is_not_asked_again()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var item = RunningBash(c, "t1", "k1");
+        var other = RunningBash(c, "t2", "k2");
+        var asked = 0;
+        c.TaskOutputRequested += (_, e) => { asked++; if (e.TaskId == "k2") e.RequestId = ""; };
+
+        Assert.True(c.RequestTaskOutput(item));
+        Assert.True(c.RequestTaskOutput(other));
+        now = now.AddSeconds(5);
+        Assert.False(c.RequestTaskOutput(item));
+        Assert.False(c.RequestTaskOutput(other));
+        Assert.Equal(2, asked);
+    }
+
+    [Fact]
+    public void An_error_answer_stops_the_asking_and_touches_nothing_else()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var item = RunningBash(c, "t1", "k1");
+        AskedFor(c);
+        c.InvokeCommand("context", ""); // the context panel is open, and has no data
+        var mode = c.PermissionMode;
+
+        Assert.True(c.RequestTaskOutput(item));
+        AnswerError(c, "r1");
+
+        Assert.Null(c.ContextError);
+        Assert.Equal(mode, c.PermissionMode);
+        Assert.Null(item.LiveOutput);
+        now = now.AddSeconds(5);
+        Assert.False(c.RequestTaskOutput(item));
+    }
+
+    [Fact]
+    public void An_answer_without_output_text_stops_the_asking()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var item = RunningBash(c, "t1", "k1");
+        AskedFor(c);
+
+        Assert.True(c.RequestTaskOutput(item));
+        c.AppendLine("{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"r1\",\"response\":{\"output\":null,\"total_bytes\":0}}}");
+        Assert.Null(item.LiveOutput);
+        now = now.AddSeconds(5);
+        Assert.False(c.RequestTaskOutput(item));
+    }
+
+    [Fact]
+    public void The_result_of_the_call_clears_the_live_output()
+    {
+        var c = new ChatConversation();
+        var item = RunningBash(c, "t1", "k1");
+        AskedFor(c);
+
+        c.RequestTaskOutput(item);
+        Answer(c, "r1", "line 1\n", 7, false);
+        Assert.Equal("line 1\n", item.LiveOutput);
+
+        c.Apply(ToolResult("t1", "line 1\nline 2"));
+        Assert.Null(item.LiveOutput);
+        Assert.Equal("line 1\nline 2", item.FullResultText);
+        Assert.False(c.RequestTaskOutput(item));
+    }
+
+    [Fact]
+    public void An_answer_that_arrives_after_the_result_is_dropped()
+    {
+        var c = new ChatConversation();
+        var item = RunningBash(c, "t1", "k1");
+        var other = RunningBash(c, "t2", "k2");
+        AskedFor(c);
+        c.InvokeCommand("context", "");
+
+        c.RequestTaskOutput(item);
+        c.RequestTaskOutput(other);
+        c.Apply(ToolResult("t1", "done"));
+        c.Apply(ToolResult("t2", "done"));
+        Answer(c, "r1", "late\n", 5, false);
+        AnswerError(c, "r2");
+
+        Assert.Null(item.LiveOutput);
+        Assert.Equal("done", item.FullResultText);
+        Assert.Null(c.ContextError); // the late error is the request's too, not the panel's
+    }
+
+    [Fact]
+    public void The_end_of_the_turn_and_a_clear_forget_the_tasks()
+    {
+        var c = new ChatConversation();
+        var asked = AskedFor(c);
+
+        var item = RunningBash(c, "t1", "k1");
+        c.Apply(new TurnCompleted("success", false, 1, null, null, null));
+        Assert.False(c.RequestTaskOutput(item));
+
+        var next = RunningBash(c, "t2", "k2");
+        c.Clear();
+        Assert.False(c.RequestTaskOutput(next));
+        Assert.Empty(asked);
+    }
+
+    [Fact]
+    public void After_a_clear_an_old_request_id_belongs_to_the_next_session()
+    {
+        var c = new ChatConversation();
+        var item = RunningBash(c, "t1", "k1");
+        AskedFor(c);
+        Assert.True(c.RequestTaskOutput(item));
+
+        c.Clear(); // a new claude, whose host may count its ids from the start again
+        c.AppendLine("{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"r1\",\"response\":{\"mode\":\"plan\"}}}");
+        Assert.Equal("plan", c.PermissionMode);
+    }
+
+    [Fact]
+    public void A_discarded_call_forgets_its_task_and_its_request()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var asked = AskedFor(c);
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"sleep 5\"}"))) { Uuid = "u1" });
+        c.Apply(new AgentTaskStarted("k1", "t1", "", null, false, 0, "local_bash"));
+        var item = Assert.IsType<ToolCallItem>(Assert.Single(c.Items));
+        Assert.True(c.RequestTaskOutput(item));
+        c.InvokeCommand("context", "");
+
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("again")) { Uuid = "u2", Supersedes = new[] { "u1" } });
+        Assert.DoesNotContain(item, c.Items);
+        AnswerError(c, "r1");
+
+        Assert.Null(item.LiveOutput);
+        Assert.Null(c.ContextError);
+        now = now.AddSeconds(5);
+        Assert.False(c.RequestTaskOutput(item));
+        Assert.Single(asked);
+    }
+
+    [Fact]
+    public void A_handler_that_throws_is_not_asked_again_before_its_answer()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var item = RunningBash(c, "t1", "k1");
+        c.TaskOutputRequested += (_, e) =>
+        {
+            e.RequestId = "r1";
+            throw new InvalidOperationException("the pipe is closed");
+        };
+
+        Assert.Throws<InvalidOperationException>(() => c.RequestTaskOutput(item));
+        now = now.AddSeconds(5);
+        Assert.False(c.RequestTaskOutput(item)); // r1 is pending
+        Answer(c, "r1", "a\n", 2, false);
+        Assert.Equal("a\n", item.LiveOutput);
+    }
+
+    [Fact]
+    public void A_reopened_session_asks_for_nothing()
+    {
+        var c = Load("bash");
+        var asked = AskedFor(c);
+        var calls = All(c.Items).OfType<ToolCallItem>().ToList();
+        Assert.NotEmpty(calls);
+
+        foreach (var call in calls)
+            Assert.False(c.RequestTaskOutput(call), call.Name);
+        Assert.Empty(asked);
+
+        // a file that ends while a command ran: the command is not running in this claude
+        var cut = new ChatConversation();
+        var askedCut = AskedFor(cut);
+        cut.LoadTranscript(new[]
+        {
+            "{\"type\":\"assistant\",\"uuid\":\"u1\",\"parentUuid\":null,\"isSidechain\":false,\"timestamp\":\"2026-10-23T10:00:02.000Z\"," +
+            "\"sessionId\":\"s1\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\"," +
+            "\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_b1\",\"name\":\"Bash\",\"input\":{\"command\":\"sleep 30\"}}]}}",
+            "{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"k1\",\"tool_use_id\":\"toolu_b1\",\"is_backgrounded\":false," +
+            "\"task_type\":\"local_bash\",\"uuid\":\"u2\",\"sessionId\":\"s1\"}",
+        });
+        var running = Assert.IsType<ToolCallItem>(Assert.Single(cut.Items));
+        Assert.Equal(ToolStatus.Running, running.Status);
+        Assert.False(cut.RequestTaskOutput(running));
+        Assert.Empty(askedCut);
+    }
+
+    [Fact]
+    public void A_task_update_says_when_it_went_to_the_background()
+    {
+        AgentTaskUpdated Updated(string patch) =>
+            Assert.IsType<AgentTaskUpdated>(Assert.Single(new StreamJsonParser().Parse(
+                "{\"type\":\"system\",\"subtype\":\"task_updated\",\"task_id\":\"k1\",\"patch\":" + patch + "}")));
+
+        var moved = Updated("{\"is_backgrounded\":true}");
+        Assert.True(moved.IsBackgrounded);
+        Assert.Null(moved.Status);
+        Assert.False(Updated("{\"is_backgrounded\":false,\"status\":\"running\"}").IsBackgrounded);
+        Assert.Null(Updated("{\"status\":\"completed\"}").IsBackgrounded);
+        Assert.Null(Updated("{\"is_backgrounded\":\"yes\"}").IsBackgrounded);
+    }
 }

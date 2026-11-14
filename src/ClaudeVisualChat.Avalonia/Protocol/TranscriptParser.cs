@@ -648,7 +648,16 @@ namespace ClaudeVisualChat.Protocol
                     break;
                 case "task_updated":
                     var patch = JsonHelpers.Obj(root, "patch");
-                    e = new AgentTaskUpdated(taskId!, patch == null ? null : JsonHelpers.Str(patch.Value, "status"));
+                    var backgrounded = patch == null ? null : JsonHelpers.Prop(patch.Value, "is_backgrounded");
+                    e = new AgentTaskUpdated(taskId!, patch == null ? null : JsonHelpers.Str(patch.Value, "status"))
+                    {
+                        IsBackgrounded = backgrounded?.ValueKind switch
+                        {
+                            JsonValueKind.True => true,
+                            JsonValueKind.False => false,
+                            _ => (bool?)null,
+                        },
+                    };
                     break;
                 default:
                     e = new AgentTaskFinished(
