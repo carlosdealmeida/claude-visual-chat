@@ -185,6 +185,31 @@ def test_transcript_allowlist():
     assert gravar.higienizar_transcript({"type": "system", "subtype": "compact_boundary"}, trocas()) is not None
 
 
+def test_transcript_keeps_only_a_queued_command_attachment():
+    linha = {
+        "type": "attachment", "uuid": "a1", "parentUuid": "p1", "isSidechain": False,
+        "timestamp": "2026-10-19T10:00:00Z", "sessionId": "s1",
+        "cwd": PASTA, "gitBranch": "main", "version": "2.1.323",
+        "attachment": {
+            "type": "queued_command", "prompt": "open " + PASTA, "commandMode": "prompt",
+            "origin": {"kind": "human"}, "source_uuid": "s0", "isMeta": False,
+            "delivery_id": "d1", "usage": {"input_tokens": 1}, "cwd": PASTA,
+        },
+    }
+    out = gravar.higienizar_transcript(linha, trocas())
+    assert set(out) == {"type", "uuid", "parentUuid", "isSidechain", "timestamp", "sessionId", "attachment"}
+    assert set(out["attachment"]) == {"type", "prompt", "commandMode", "origin", "source_uuid", "isMeta"}
+    assert out["attachment"]["prompt"] == r"open C:\demo\app"
+    blocos = dict(linha, attachment=dict(linha["attachment"], prompt=[
+        {"type": "text", "text": "in " + PASTA}, {"type": "image", "source": {"data": "x"}}]))
+    out = gravar.higienizar_transcript(blocos, trocas())
+    assert out["attachment"]["prompt"][0]["text"] == r"in C:\demo\app"
+    assert out["attachment"]["prompt"][1]["type"] == "image"
+    outro = dict(linha, attachment={"type": "todo_reminder", "content": []})
+    assert gravar.higienizar_transcript(outro, trocas()) is None
+    assert gravar.higienizar_transcript({"type": "queue-operation", "operation": "enqueue", "content": "x"}, trocas()) is None
+
+
 def test_expectation_denied_needs_text_after_rejection():
     negado = {"type": "user", "tool_use_result": "Error: Do not create files, just explain.",
               "message": {"content": [{"type": "tool_result", "tool_use_id": "t", "is_error": True,

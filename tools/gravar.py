@@ -33,6 +33,8 @@ TRANSCRIPT_CAMPOS = ("type", "subtype", "uuid", "parentUuid", "isSidechain", "is
                      "isCompactSummary", "timestamp", "sessionId", "message", "toolUseResult",
                      "toolDenialKind", "thinkingDurationMs")
 TRANSCRIPT_TIPOS = ("user", "assistant", "system")
+ATTACHMENT_CAMPOS = ("type", "uuid", "parentUuid", "isSidechain", "timestamp", "sessionId", "attachment")
+QUEUED_COMMAND_CAMPOS = ("type", "prompt", "commandMode", "origin", "source_uuid", "isMeta")
 
 # Slash commands that may stay in a recording: the built-ins of Claude Code and the demo's own.
 COMANDOS_PUBLICOS = ("compact", "context", "usage", "cost", "model", "effort", "hello")
@@ -217,7 +219,18 @@ def higienizar_stream_linhas(objs, troca):
 
 
 def higienizar_transcript(obj, troca):
-    if not isinstance(obj, dict) or obj.get("type") not in TRANSCRIPT_TIPOS:
+    if not isinstance(obj, dict):
+        return None
+    if obj.get("type") == "attachment":
+        # Only the message delivered from the queue mid-turn is kept: it is the one line of
+        # that message in the session file. The other attachment types stay out.
+        anexo = obj.get("attachment")
+        if not isinstance(anexo, dict) or anexo.get("type") != "queued_command":
+            return None
+        novo = {k: obj[k] for k in ATTACHMENT_CAMPOS if k in obj}
+        novo["attachment"] = {k: anexo[k] for k in QUEUED_COMMAND_CAMPOS if k in anexo}
+        return _trocar(novo, troca)
+    if obj.get("type") not in TRANSCRIPT_TIPOS:
         return None
     novo = {k: obj[k] for k in TRANSCRIPT_CAMPOS if k in obj}
     return _trocar(novo, troca)

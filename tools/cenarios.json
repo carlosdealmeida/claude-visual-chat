@@ -169,5 +169,17 @@
     ],
     "respostas": [],
     "espera": ["result_success"]
+  },
+  {
+    "id": "queued-compact",
+    "setup": {},
+    "passos": [
+      {"inicializar": true},
+      {"enviar": "Say hi in one line."},
+      {"enviar": "/compact", "sem_esperar": true},
+      {"enviar": "Say the word after in one line."}
+    ],
+    "respostas": [],
+    "espera": ["result_success"]
   }
 ]
