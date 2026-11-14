@@ -13,6 +13,7 @@ All notable changes to this project are written here. The format follows
 - `AssistantBlock.Supersedes`: the `uuid`s the line replaces (its `supersedes` list); only the non-empty strings are kept, any other
   shape reads as empty, and every block of the line carries the list.
 - `AssistantBlock.IsSynthetic`: true when the model of the line is `<synthetic>`.
+- `UserBlock.Uuid` (the line's `uuid`) and `UserBlock.IsQueuedCommand` (the message was delivered from the queue in the middle of a turn).
 
 ### Changed
 
@@ -27,6 +28,10 @@ All notable changes to this project are written here. The format follows
 
 ### Fixed
 
+- A session reopened from its file shows the message that was delivered from the queue in the middle of a turn. The file keeps it as
+  an `attachment` line of type `queued_command`, which the reader ignored; it now reads as the `user` line it stands for (text, images,
+  origin; a `task-notification` command mode gives that origin), and shows once when the file also has it as a `user` line with the
+  same uuid. A command forwarded from another session is still left out, and so is every other kind of attachment.
 - A reply the `claude` discards leaves the conversation instead of staying in the list next to the one that replaced it. A line
   whose `supersedes` names earlier lines takes their text, thoughts and tool calls out, wherever they are (a subagent's too); a
   bookmarked text loses its bookmark. A reply abandoned while it streamed (the main agent starts another message, or a line of

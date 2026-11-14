@@ -92,6 +92,12 @@ namespace ClaudeVisualChat.Protocol
         /// </summary>
         public MessageOrigin? Origin { get; init; }
 
+        /// <summary>The line's <c>uuid</c> (for a queued command, its <c>source_uuid</c>); null when the line has none.</summary>
+        public string? Uuid { get; init; }
+
+        /// <summary>The message was delivered from the queue in the middle of a turn: a session file keeps it as an <c>attachment</c> line, not a <c>user</c> line.</summary>
+        public bool IsQueuedCommand { get; init; }
+
         /// <summary>The terminal, browser and selection blocks that came before the text of this message; empty by default.</summary>
         internal IReadOnlyList<ContextBlock> Context { get; init; } = Array.Empty<ContextBlock>();
     }

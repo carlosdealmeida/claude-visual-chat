@@ -155,6 +155,95 @@ namespace ClaudeVisualChat.Tests.Protocol
             Assert.Empty(TranscriptParser.Parse(line));
         }
 
+        private static string Queued(string attachmentFields, string lineFields = "") =>
+            "{\"type\":\"attachment\",\"uuid\":\"line-1\",\"timestamp\":\"2026-10-28T00:05:05.185Z\"" + lineFields +
+            ",\"attachment\":{\"type\":\"queued_command\"," + attachmentFields + "}}";
+
+        [Fact]
+        public void A_queued_command_reads_as_the_user_line_it_stands_for()
+        {
+            var line = Queued("\"prompt\":\"second\",\"commandMode\":\"prompt\",\"origin\":{\"kind\":\"human\"},\"source_uuid\":\"s1\"");
+
+            var u = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(line)));
+
+            Assert.Equal("second", Assert.IsType<TextContentBlock>(u.Block).Text);
+            Assert.True(u.IsQueuedCommand);
+            Assert.Equal("s1", u.Uuid);
+            Assert.Equal("human", u.Origin!.Kind);
+            Assert.Equal(System.DateTimeOffset.Parse("2026-10-28T00:05:05.185Z"), u.Timestamp);
+            Assert.False(u.IsMeta);
+        }
+
+        [Fact]
+        public void A_queued_command_without_origin_or_meta_reads_without_them()
+        {
+            var u = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(Queued("\"prompt\":\"second\",\"source_uuid\":\"s1\""))));
+
+            Assert.Null(u.Origin);
+            Assert.False(u.IsMeta);
+        }
+
+        [Fact]
+        public void A_queued_command_with_blocks_keeps_its_text_and_images()
+        {
+            var line = Queued("\"prompt\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"iVBOR\"}},{\"type\":\"text\",\"text\":\"look\"}],\"isMeta\":true");
+
+            var u = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(line)));
+
+            Assert.Equal("look", Assert.IsType<TextContentBlock>(u.Block).Text);
+            Assert.Equal("iVBOR", Assert.Single(u.Images).Data);
+            Assert.True(u.IsMeta);
+            Assert.True(u.IsQueuedCommand);
+        }
+
+        [Fact]
+        public void A_queued_command_without_source_uuid_takes_the_uuid_of_its_line()
+        {
+            var u = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(Queued("\"prompt\":\"second\""))));
+
+            Assert.Equal("line-1", u.Uuid);
+        }
+
+        [Fact]
+        public void A_task_notification_command_mode_gives_that_origin()
+        {
+            var u = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(Queued("\"prompt\":\"x\",\"commandMode\":\"task-notification\""))));
+
+            Assert.Equal("task-notification", u.Origin!.Kind);
+        }
+
+        [Fact]
+        public void A_forwarded_queued_command_is_ignored()
+        {
+            Assert.Empty(TranscriptParser.Parse(Queued("\"prompt\":\"x\",\"forwardedIntent\":{\"lineage\":\"x\"}")));
+        }
+
+        [Theory]
+        [InlineData("\"prompt\":5")]
+        [InlineData("\"prompt\":null")]
+        [InlineData("\"commandMode\":\"prompt\"")]
+        public void A_queued_command_whose_prompt_is_not_text_or_a_list_is_ignored(string fields)
+        {
+            Assert.Empty(TranscriptParser.Parse(Queued(fields)));
+        }
+
+        [Fact]
+        public void Other_attachment_types_are_ignored()
+        {
+            Assert.Empty(TranscriptParser.Parse(
+                "{\"type\":\"attachment\",\"uuid\":\"a\",\"attachment\":{\"type\":\"todo_reminder\",\"prompt\":\"x\"}}"));
+        }
+
+        [Fact]
+        public void A_user_line_carries_its_uuid()
+        {
+            var u = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"user\",\"uuid\":\"u-9\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}")));
+
+            Assert.Equal("u-9", u.Uuid);
+            Assert.False(u.IsQueuedCommand);
+        }
+
         [Fact]
         public void Compact_boundary_gives_notice()
         {

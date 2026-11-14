@@ -29,6 +29,8 @@ namespace ClaudeVisualChat.Protocol
                             return EventReader.ReadAssistant(root, null);
                         case "system":
                             return EventReader.ReadNotice(root);
+                        case "attachment":
+                            return EventReader.ReadAttachment(root);
                         default:
                             return None;
                     }
@@ -175,15 +177,43 @@ namespace ClaudeVisualChat.Protocol
         {
             var message = JsonHelpers.Obj(root, "message");
             if (message == null) return None;
+            return ReadUserContent(JsonHelpers.Prop(message.Value, "content"), root, root, toolUseResultName, parent, JsonHelpers.Str(root, "uuid"), false);
+        }
+
+        /// <summary>
+        /// A message the claude delivered from its queue in the middle of a turn: a session file keeps it as an <c>attachment</c> line of
+        /// type <c>queued_command</c>, whose <c>prompt</c> stands for the content of a <c>user</c> line. It reads as that line would, with
+        /// <see cref="UserBlock.IsQueuedCommand"/> set and the <c>source_uuid</c> (else the line's <c>uuid</c>) as the uuid. Any other
+        /// attachment, a prompt that is neither text nor a list, and a command forwarded from another session give nothing.
+        /// </summary>
+        public static IReadOnlyList<ClaudeEvent> ReadAttachment(JsonElement root)
+        {
+            var attachment = JsonHelpers.Obj(root, "attachment");
+            if (attachment == null || JsonHelpers.Str(attachment.Value, "type") != "queued_command") return None;
+            var a = attachment.Value;
+            if (!a.TryGetProperty("prompt", out var prompt) || prompt.ValueKind != JsonValueKind.String && prompt.ValueKind != JsonValueKind.Array) return None;
+            if (JsonHelpers.Obj(a, "forwardedIntent") is { } forwarded && JsonHelpers.Str(forwarded, "lineage") is { Length: > 0 }) return None;
+            var uuid = JsonHelpers.Str(a, "source_uuid") ?? JsonHelpers.Str(root, "uuid");
+            return ReadUserContent(prompt, a, root, "toolUseResult", null, uuid, true);
+        }
+
+        /// <summary>
+        /// The events of one user message. <paramref name="fields"/> holds what describes it (<c>origin</c>, <c>isMeta</c>…), which is the
+        /// line itself or, for a queued command, its attachment; <paramref name="line"/> holds the <c>timestamp</c> and the tool result.
+        /// </summary>
+        private static IReadOnlyList<ClaudeEvent> ReadUserContent(
+            JsonElement? content, JsonElement fields, JsonElement line, string toolUseResultName, string? parent, string? uuid, bool queued)
+        {
+            var root = fields;
             var blocks = new List<ContentBlock>();
             var images = new List<ImageBlock>();
-            foreach (var block in BlockReader.ReadContent(JsonHelpers.Prop(message.Value, "content")))
+            foreach (var block in BlockReader.ReadContent(content))
             {
                 if (block is ImageBlock image) images.Add(image);
                 else blocks.Add(block);
             }
             if (blocks.Count == 0 && images.Count == 0) return None;
-            var origin = ReadOrigin(root);
+            var origin = ReadOrigin(root) ?? (queued && JsonHelpers.Str(root, "commandMode") == "task-notification" ? new MessageOrigin("task-notification") : null);
             var context = TakeContext(blocks, origin);
             // Images ride with the first text; an image on its own gets an empty text to ride with.
             var carrier = blocks.FindIndex(b => b is TextContentBlock);
@@ -193,13 +223,13 @@ namespace ClaudeVisualChat.Protocol
                 carrier = 0;
             }
 
-            var result = JsonHelpers.CloneNonNull(root, toolUseResultName);
+            var result = JsonHelpers.CloneNonNull(line, toolUseResultName);
             var isMeta = JsonHelpers.Bool(root, "isMeta");
             var isCompact = JsonHelpers.Bool(root, "isCompactSummary");
             var isSynthetic = JsonHelpers.Bool(root, "isSynthetic");
             var meta = JsonHelpers.Prop(root, "tool_result_meta"); // stream
             var denialKind = JsonHelpers.Str(root, "toolDenialKind"); // session file
-            var timestamp = JsonHelpers.Time(root, "timestamp");
+            var timestamp = JsonHelpers.Time(line, "timestamp");
             var events = new List<ClaudeEvent>(blocks.Count);
             for (var i = 0; i < blocks.Count; i++)
             {
@@ -215,7 +245,7 @@ namespace ClaudeVisualChat.Protocol
                 if (b is ToolResultBlock toolResult
                     && (NonExecutionKind(meta, toolResult.ToolUseId) ?? denialKind) is { } kind)
                     b = toolResult with { NonExecutionKind = kind };
-                var user = new UserBlock(parent, b, result, isMeta, isCompact) { Timestamp = timestamp, IsSynthetic = isSynthetic, Origin = origin };
+                var user = new UserBlock(parent, b, result, isMeta, isCompact) { Timestamp = timestamp, IsSynthetic = isSynthetic, Origin = origin, Uuid = uuid, IsQueuedCommand = queued };
                 if (i == blocks.Count - 1 && context.Count > 0) user = user with { Context = context };
                 events.Add(i == carrier && images.Count > 0 ? user with { Images = images } : user);
             }

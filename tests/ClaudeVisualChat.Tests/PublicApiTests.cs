@@ -697,6 +697,8 @@ public class PublicApiTests
             (typeof(ClaudeVisualChat.Protocol.SystemNotice), "PreTokens", typeof(long?)),
             (typeof(ClaudeVisualChat.Protocol.SystemNotice), "PostTokens", typeof(long?)),
             (typeof(ClaudeVisualChat.Protocol.UserBlock), "IsSynthetic", typeof(bool)),
+            (typeof(ClaudeVisualChat.Protocol.UserBlock), "Uuid", typeof(string)),
+            (typeof(ClaudeVisualChat.Protocol.UserBlock), "IsQueuedCommand", typeof(bool)),
             (typeof(ClaudeVisualChat.Protocol.AssistantBlock), "IsSynthetic", typeof(bool)),
             (typeof(ClaudeVisualChat.Protocol.AssistantBlock), "Supersedes", typeof(System.Collections.Generic.IReadOnlyList<string>)),
             (typeof(ClaudeVisualChat.Protocol.BlockDelta), "EstimatedTokens", typeof(long?)),

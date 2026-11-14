@@ -3348,6 +3348,56 @@ public class ChatConversationTests
         Assert.Empty(c.Items.OfType<MetaLineItem>());
     }
 
+    private static List<string> UserTexts(ChatConversation c) => c.Items.OfType<UserMessageItem>().Select(u => u.Text).ToList();
+
+    [Fact]
+    public void A_reopened_session_shows_the_message_that_was_queued()
+    {
+        var texts = UserTexts(Load("queued"));
+
+        Assert.EndsWith("After that, say the word second in one line.", texts.Last());
+    }
+
+    [Fact]
+    public void A_queued_message_right_after_a_compaction_summary_is_there_on_reopen()
+    {
+        var c = Load("queued-compact");
+
+        var at = c.Items.ToList().FindIndex(i => i is UserMessageItem u && u.Text == "Say the word after in one line.");
+        Assert.True(at >= 0);
+        Assert.Contains(c.Items.Take(at), i => i is CompactionItem);
+    }
+
+    [Fact]
+    public void A_queued_command_already_there_as_a_user_line_shows_once()
+    {
+        var c = new ChatConversation();
+        c.LoadTranscript(new[]
+        {
+            "{\"type\":\"user\",\"uuid\":\"s1\",\"message\":{\"role\":\"user\",\"content\":\"second\"}}",
+            "{\"type\":\"attachment\",\"uuid\":\"l2\",\"attachment\":{\"type\":\"queued_command\",\"prompt\":\"second\",\"source_uuid\":\"s1\"}}",
+        });
+
+        Assert.Equal(new[] { "second" }, UserTexts(c));
+    }
+
+    [Fact]
+    public void A_task_notification_from_the_queue_shows_as_it_does_live()
+    {
+        var queued = new ChatConversation();
+        queued.LoadTranscript(new[]
+        {
+            "{\"type\":\"attachment\",\"uuid\":\"l2\",\"attachment\":{\"type\":\"queued_command\",\"prompt\":" +
+            System.Text.Json.JsonSerializer.Serialize(ReplayedNotice) + ",\"commandMode\":\"task-notification\"}}",
+        });
+        var asUser = new ChatConversation();
+        asUser.LoadTranscript(new[] { UserLineWith(ReplayedNotice, "{\"kind\":\"task-notification\"}") });
+
+        Assert.Equal(asUser.Items.Select(Describe), queued.Items.Select(Describe));
+        var card = Assert.IsType<ExternalMessageItem>(Assert.Single(queued.Items));
+        Assert.Equal("task-notification", card.Kind);
+    }
+
     private const string ReplayedNotice =
         "<task-notification>\n<task-id>t9</task-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n</task-notification>";
 

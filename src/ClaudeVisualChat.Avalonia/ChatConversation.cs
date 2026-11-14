@@ -991,10 +991,14 @@ public sealed class ChatConversation : ChatObservableObject
     private void Replay(IEnumerable<string> lines)
     {
         Clear();
-        foreach (var line in lines)
+        var events = lines.SelectMany(TranscriptParser.Parse).ToList();
+        // a message delivered from the queue may be in the file as a user line too: it shows once
+        var userUuids = new HashSet<string>(
+            events.OfType<UserBlock>().Where(u => !u.IsQueuedCommand && u.Uuid != null).Select(u => u.Uuid!), StringComparer.Ordinal);
+        foreach (var e in events)
         {
-            foreach (var e in TranscriptParser.Parse(line))
-                Apply(e);
+            if (e is UserBlock { IsQueuedCommand: true, Uuid: { } uuid } && userUuids.Contains(uuid)) continue;
+            Apply(e);
         }
         EndStreaming();
         // the history holds no turn ends: what it marked belongs to past turns, not to the next live one
