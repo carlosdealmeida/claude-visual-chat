@@ -41,6 +41,10 @@ namespace ClaudeVisualChat.Controls;
 /// <c>task: "id"</c>, with only its output (without ANSI) in the box.
 /// The command's row (IN) of a Bash or PowerShell call has a button at its top right, shown while the pointer is over the row (always
 /// in the touch layout), that copies the whole command through <see cref="ChatClipboard"/>; for 2 s after a copy its icon is a check.
+/// While such a command runs and the host listens to <see cref="ChatConversation.TaskOutputRequested"/>, the row asks for what it has
+/// printed when it comes into the window and then once a second; what comes back shows in a box under its card, "Output" with an arrow
+/// that folds it, the text scrolling at 240 px and following its end unless the person scrolled up, and a line that says how much there
+/// is when the claude kept only its end. The box goes with the result.
 /// A Glob or a Grep that worked reads only a line under its name ("Found 3 files", "12 lines of output"), with no box; with output, a
 /// click, Enter or Space on the line opens the whole output under it. A Web Fetch that worked has only "Fetched from" and its url in the
 /// box (what it fetched stays out); a Web Search says the domains it was allowed or kept away from.
@@ -133,6 +137,23 @@ internal partial class ToolCallView : UserControl
     private int _generation; // counts the redraws of the body: a screenshot decoded after another redraw is for a box no longer there
     private NavigationMethod _focusMethod; // how a text of the box got the focus, so a redraw gives it back the same way (a key keeps the ring)
 
+    /// <summary>How often a running command's row asks the host for what the command has printed.</summary>
+    private static readonly TimeSpan AskOutputEvery = TimeSpan.FromSeconds(1);
+
+    /// <summary>The box's text follows its end on an update while the person is closer to the end than this.</summary>
+    private const double FollowEndWithin = 4;
+
+    private readonly DispatcherTimer _outputTimer = new DispatcherTimer { Interval = AskOutputEvery };
+    private bool _askingForOutput; // the row asks for its command's output: in the window, a running command, a host that listens
+    private Border? _liveBox; // the box with what the running command printed, while it is in the tree
+    private ToggleButton? _liveHeader;
+    private TextBlock? _liveHeaderText;
+    private Border? _liveFrame;
+    private SelectableTextBlock? _liveText;
+    private TextBlock? _liveEnd;
+    private bool _liveFollowsEnd = true; // the box's text was at its end (or the person brought it back there)
+    private ToolCallItem? _liveFoldedFor; // the call whose box the person folded: the view's own state, and a new command opens again
+
     public ToolCallView()
     {
         InitializeComponent();
@@ -141,6 +162,7 @@ internal partial class ToolCallView : UserControl
         Header.AddHandler(PointerPressedEvent, OnHeaderPointerPressed, RoutingStrategies.Tunnel);
         Header.AddHandler(PointerReleasedEvent, OnHeaderPointerReleased, RoutingStrategies.Tunnel);
         _copyTimer.Tick += (_, _) => EndCopied();
+        _outputTimer.Tick += (_, _) => AskForOutput();
         Refresh();
     }
 
@@ -302,24 +324,29 @@ internal partial class ToolCallView : UserControl
 
     /// <summary>
     /// An Artifact row shows its link only while the host listens to <see cref="ChatConversation.LinkRequested"/>, and the path of
-    /// a file row is a link only while it listens to <see cref="ChatConversation.PathActivated"/>, so those rows follow the
-    /// conversation's host handlers (as the rows under a reply do) while they are in the window; any other row listens to nothing.
+    /// a file row is a link only while it listens to <see cref="ChatConversation.PathActivated"/>, and a command's row asks for its
+    /// output only while it listens to <see cref="ChatConversation.TaskOutputRequested"/>, so those rows follow the conversation's host
+    /// handlers (as the rows under a reply do) while they are in the window; any other row listens to nothing.
     /// </summary>
     private void TrackHost()
     {
-        var follows = _item != null && (_item.Name == ArtifactTool || IsFileTool(_item.Name));
+        var follows = _item != null && (_item.Name == ArtifactTool || IsFileTool(_item.Name) || IsCommand(_item.Name));
         var wanted = _attached && follows ? this.FindAncestorOfType<ClaudeChatView>()?.Conversation : null;
-        if (ReferenceEquals(wanted, _host)) return;
-        if (_host != null) _host.HostHandlersChanged -= OnHostHandlersChanged;
-        _host = wanted;
-        if (_host != null) _host.HostHandlersChanged += OnHostHandlersChanged;
-        UpdateInteraction();
+        if (!ReferenceEquals(wanted, _host))
+        {
+            if (_host != null) _host.HostHandlersChanged -= OnHostHandlersChanged;
+            _host = wanted;
+            if (_host != null) _host.HostHandlersChanged += OnHostHandlersChanged;
+            UpdateInteraction();
+        }
+        UpdateAsking();
     }
 
     private void OnHostHandlersChanged(object? sender, EventArgs e)
     {
         if (_item?.Name == ArtifactTool) UpdateBody();
         UpdateInteraction();
+        UpdateAsking();
     }
 
     /// <summary>An Agent call's row follows its agent too: the prompt, whether it runs in the background, and its line's state.</summary>
@@ -369,6 +396,7 @@ internal partial class ToolCallView : UserControl
                 TrackHost();
                 UpdateHeader();
                 UpdateBody();
+                UpdateLiveOutput();
                 break;
             case nameof(ToolCallItem.Summary):
             case nameof(ToolCallItem.Input):
@@ -378,6 +406,13 @@ internal partial class ToolCallView : UserControl
             case nameof(ToolCallItem.Status):
                 UpdateStatus();
                 UpdateBody();
+                UpdateAsking();
+                UpdateLiveOutput();
+                break;
+            case nameof(ToolCallItem.LiveOutput):
+            case nameof(ToolCallItem.LiveOutputBytes):
+            case nameof(ToolCallItem.LiveOutputTruncated):
+                UpdateLiveOutput();
                 break;
             case nameof(ToolCallItem.Diff):
             case nameof(ToolCallItem.Todos):
@@ -400,6 +435,7 @@ internal partial class ToolCallView : UserControl
         UpdateStatus();
         UpdateChildren();
         UpdateBody();
+        UpdateLiveOutput();
     }
 
     // ---- the header ----
@@ -1019,6 +1055,146 @@ internal partial class ToolCallView : UserControl
         if (_copyButton == null || _copyIcon == null) return;
         _copyIcon.Classes.Set("copied", _copied);
         AutomationProperties.SetName(_copyButton, _copied ? Strings.Copied : Strings.CopyCodeToClipboard);
+    }
+
+    // ---- what a running command has printed so far ----
+
+    /// <summary>True while the row asks the host for its command's output (now and then once a second).</summary>
+    internal bool IsAskingForOutput => _askingForOutput;
+
+    /// <summary>
+    /// The row asks for its command's output while it is in the window, its call is a Bash or PowerShell still running, and the host
+    /// listens to <see cref="ChatConversation.TaskOutputRequested"/>; otherwise its timer stands still. The conversation keeps to one
+    /// request a second for each command, and none while the last one waits for its answer.
+    /// </summary>
+    private void UpdateAsking()
+    {
+        var item = _item;
+        var asks = _attached && item != null && IsCommand(item.Name) && item.Status == ToolStatus.Running && _host?.CanRequestTaskOutput == true;
+        if (asks == _askingForOutput) return;
+        _askingForOutput = asks;
+        _outputTimer.Stop();
+        // the first request is a job of its own, as each tick is: never inside the conversation's or the host's call that made the row ask
+        if (asks) Dispatcher.UIThread.Post(StartAsking);
+    }
+
+    private void StartAsking()
+    {
+        if (!_askingForOutput || _outputTimer.IsEnabled) return; // it stopped meanwhile, or a job before this one started it
+        _outputTimer.Start(); // the next request a second after this one
+        AskForOutput();
+    }
+
+    /// <summary>
+    /// One request (the timer's tick). A host handler that throws is not caught, as anywhere a row raises a host event: its exception
+    /// reaches the dispatcher like any other.
+    /// </summary>
+    private void AskForOutput()
+    {
+        if (_askingForOutput && _item is { } item && _host is { } host) host.RequestTaskOutput(item);
+    }
+
+    /// <summary>
+    /// The box under the card of a running command, while its <see cref="ToolCallItem.LiveOutput"/> has text: it is built when the text
+    /// first comes and kept while it changes (so the person's scrolling and the focus stay), and leaves the tree when the text goes or
+    /// the call stops running.
+    /// </summary>
+    private void UpdateLiveOutput()
+    {
+        var item = _item;
+        var output = item != null && IsCommand(item.Name) && item.Status == ToolStatus.Running ? item.LiveOutput : null;
+        if (string.IsNullOrEmpty(output))
+        {
+            if (_liveBox == null) return;
+            LiveOutputSlot.Children.Clear();
+            _liveBox = null;
+            _liveHeader = null;
+            _liveHeaderText = null;
+            _liveFrame = null;
+            _liveText = null;
+            _liveEnd = null;
+            return;
+        }
+        if (_liveBox == null) BuildLiveBox();
+
+        var strings = Strings;
+        var open = !ReferenceEquals(_liveFoldedFor, item);
+        _liveHeader!.IsChecked = open;
+        _liveHeaderText!.Text = strings.LiveOutputHeader;
+        _liveFrame!.IsVisible = open;
+        _liveText!.Text = output;
+        AutomationProperties.SetName(_liveText, strings.LiveOutputLabel);
+        // the claude kept only the end: how much there is (an answer that did not say leaves the line out, rather than "0 bytes")
+        var cut = item!.LiveOutputTruncated && item.LiveOutputBytes > 0;
+        _liveEnd!.Text = cut ? strings.FormatLiveOutputEnd(item.LiveOutputBytes) : "";
+        _liveEnd.IsVisible = open && cut;
+    }
+
+    /// <summary>
+    /// The box: 12 px from its top a header (a 16 px arrow, turned while open, and "Output"), then, 8 px under it, the text in a thin
+    /// frame that scrolls past 240 px, and the line about the end 4 px under that. The styles give the measures.
+    /// </summary>
+    private void BuildLiveBox()
+    {
+        var chevron = new Path();
+        chevron.Classes.Add("ClaudeChatChevron");
+        var label = new TextBlock();
+        label.Classes.Add("ClaudeChatLiveOutputHeaderText");
+        var header = new ToggleButton
+        {
+            Content = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { chevron, label } },
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+        };
+        header.Classes.Add("ClaudeChatDisclosure");
+        header.Classes.Add("ClaudeChatLiveOutputHeader");
+        header.Click += (_, _) =>
+        {
+            _liveFoldedFor = header.IsChecked == true ? null : _item;
+            UpdateLiveOutput();
+        };
+
+        var text = new SelectableTextBlock();
+        text.Classes.Add("ClaudeChatLiveOutputText");
+        var scroller = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = text,
+        };
+        scroller.ScrollChanged += OnLiveScrollChanged;
+        var frame = new Border { Child = scroller };
+        frame.Classes.Add("ClaudeChatLiveOutputFrame");
+
+        var end = new TextBlock();
+        end.Classes.Add("ClaudeChatLiveOutputEnd");
+
+        var box = new Border { Child = new StackPanel { Children = { header, frame, end } } };
+        box.Classes.Add("ClaudeChatLiveOutput");
+        _liveBox = box;
+        _liveHeader = header;
+        _liveHeaderText = label;
+        _liveFrame = frame;
+        _liveText = text;
+        _liveEnd = end;
+        _liveFollowsEnd = true;
+        LiveOutputSlot.Children.Add(box);
+    }
+
+    /// <summary>
+    /// The text grew (or the box opened): it goes to its end while it followed it. The person scrolled: it follows again only once
+    /// they are within <see cref="FollowEndWithin"/> of the end.
+    /// </summary>
+    private void OnLiveScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        if (sender is not ScrollViewer scroller) return;
+        if (e.ExtentDelta.Y != 0 || e.ViewportDelta.Y != 0)
+        {
+            if (_liveFollowsEnd) scroller.ScrollToEnd();
+        }
+        else if (e.OffsetDelta.Y != 0)
+        {
+            _liveFollowsEnd = scroller.Extent.Height - scroller.Viewport.Height - scroller.Offset.Y < FollowEndWithin;
+        }
     }
 
     /// <summary>

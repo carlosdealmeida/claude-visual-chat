@@ -744,6 +744,64 @@ public class DetachTests
     }
 
     [AvaloniaFact]
+    public void A_running_commands_row_asks_for_its_output_only_while_in_the_window()
+    {
+        var now = new DateTimeOffset(2026, 11, 14, 10, 0, 0, TimeSpan.Zero);
+        var c = Conversation();
+        c.Clock = () => now;
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"npm test\"}"))));
+        c.Apply(new AgentTaskStarted("k1", "t1", "", null, false, 0, "local_bash"));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        var asked = 0;
+        c.TaskOutputRequested += (_, e) =>
+        {
+            var id = e.RequestId = "r" + ++asked;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => c.AppendLine(
+                "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"" + id +
+                "\",\"response\":{\"output\":\"a\\nb\",\"total_bytes\":3,\"truncated\":false}}}"));
+        };
+        var m = new Mounted(c);
+        ToolCallView Row() => m.View.GetVisualDescendants().OfType<ToolCallView>().Single();
+        Border? Box() => Row().GetVisualDescendants().OfType<Border>().SingleOrDefault(b => b.Classes.Contains("ClaudeChatLiveOutput"));
+        bool Open() => Box()!.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputFrame")).IsVisible;
+        UiHelpers.Pump();
+        Assert.Equal(1, asked);
+        Assert.Equal("a\nb", tool.LiveOutput);
+        Assert.True(Row().IsAskingForOutput);
+        var header = Box()!.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputHeader"));
+        UiHelpers.Click(m.Window, header);
+        Assert.False(Open());
+
+        // out of the window nothing ticks and nothing is asked
+        var row = Row();
+        m.Out();
+        Assert.False(row.IsAskingForOutput);
+        now = now.AddSeconds(5);
+        UiHelpers.Pump();
+        Assert.Equal(1, asked);
+
+        // back: the list draws the row anew; it asks at once (the conversation lets one through a second after the last), and its box,
+        // whose fold is the view's, starts open with the text there is
+        m.In();
+        Assert.True(Row().IsAskingForOutput);
+        Assert.False(row.IsAskingForOutput);
+        Assert.Equal(2, asked);
+        Assert.True(Open());
+        Assert.Equal("a\nb", Box()!.GetVisualDescendants().OfType<SelectableTextBlock>().Single().Text);
+
+        // a list that reuses a folded box's view for another running command: its box starts open
+        header = Box()!.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputHeader"));
+        UiHelpers.Click(m.Window, header);
+        Assert.False(Open());
+        var other = new ToolCallItem { Name = "Bash", Summary = "ls", Status = ToolStatus.Running, LiveOutput = "x" };
+        Row().DataContext = other;
+        UiHelpers.Pump();
+        Assert.True(Open());
+        Assert.Equal("x", Box()!.GetVisualDescendants().OfType<SelectableTextBlock>().Single().Text);
+        m.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_copy_is_asked_of_the_view_only_while_it_is_in()
     {
         var gate = new System.Threading.Tasks.TaskCompletionSource<bool>();

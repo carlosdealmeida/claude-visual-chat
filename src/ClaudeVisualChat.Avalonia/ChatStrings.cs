@@ -95,6 +95,9 @@ public sealed record ChatStrings
         DismissNotice = "Dispensar aviso",
         ThoughtFor = "Pensou por {0} s",
         RunInBackground = "Rodando em segundo plano",
+        LiveOutputHeader = "Saída",
+        LiveOutputLabel = "Saída do comando",
+        LiveOutputEnd = "Mostrando o fim de {0} de saída.",
         ToolReason = "Motivo:",
         AgentToolTitle = "Agent:",
         WebFetchToolTitle = "Web Fetch",
@@ -642,6 +645,15 @@ public sealed record ChatStrings
 
     /// <summary>Under a command that runs in the background.</summary>
     public string RunInBackground { get; init; } = "Run in background";
+
+    /// <summary>The header of the box under a running command with what it has printed so far; a click folds and unfolds the box.</summary>
+    public string LiveOutputHeader { get; init; } = "Output";
+
+    /// <summary>The name of that box's text for a screen reader.</summary>
+    public string LiveOutputLabel { get; init; } = "Command output";
+
+    /// <summary>Under that text when the claude kept only its end; <c>{0}</c> is how much the command printed in all ("1.5MB").</summary>
+    public string LiveOutputEnd { get; init; } = "Showing the end of {0} of output.";
 
     /// <summary>The old text of the line at the end of the list; the line now shows <see cref="WorkingVerbs"/>, and this is no longer drawn.</summary>
     public string Working { get; init; } = "Working…";
@@ -2061,6 +2073,28 @@ public sealed record ChatStrings
         var whole = FormatNumber(tenths / 10);
         return (tenths % 10 == 0 ? whole : whole + DecimalSeparator + (tenths % 10)) + " MB";
     }
+
+    /// <summary>
+    /// A size as the extension writes the output of a running command: below 1024, "N bytes"; then KB, MB and GB with one decimal,
+    /// without a ".0" and with no space ("1.5KB", "2MB"). The point is the extension's, in every language. 1 KB is 1024 bytes.
+    /// </summary>
+    internal string FormatByteSize(long bytes)
+    {
+        if (bytes < 0) bytes = 0;
+        if (bytes < 1024) return bytes.ToString(CultureInfo.InvariantCulture) + " bytes";
+        var units = new[] { "KB", "MB", "GB" };
+        var size = bytes / 1024.0;
+        var unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+        var tenths = Math.Round(size * 10, MidpointRounding.AwayFromZero) / 10;
+        return tenths.ToString("0.#", CultureInfo.InvariantCulture) + units[unit];
+    }
+
+    internal string FormatLiveOutputEnd(long bytes) => LiveOutputEnd.Replace("{0}", FormatByteSize(bytes));
 
     internal string FormatFileTooBig(long maxBytes) => FileTooBig.Replace("{0}", FormatFileSize(maxBytes));
 

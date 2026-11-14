@@ -28,6 +28,17 @@ All notable changes to this project are written here. The format follows
   the call's result arrives, and an answer that comes after the result is dropped. The command is no longer asked about once it goes
   to the background, its task ends, its result arrives, the turn ends, or the conversation is cleared or read from a file.
 - `AgentTaskUpdated.IsBackgrounded`: the `is_backgrounded` of the update's patch; null when the patch does not say.
+- The output of a running command shows under its card, like the extension 2.1.323's, while the host handles
+  `TaskOutputRequested`: the row of a running Bash or PowerShell call asks when it comes on screen and then once a second (it
+  stops off screen, with the result, or when the host stops listening), and a box under the card shows `LiveOutput` once it
+  has text. The box has an "Output" header with an arrow that folds and unfolds it (open at first, a finger tall in the touch
+  layout), the text in the editor's font at .85em, wrapping, in a thin frame that scrolls past 240 px and follows the end
+  unless the person scrolled up, and, when the `claude` kept only the end and said how much there was, "Showing the end of
+  1.5MB of output.". It goes when the result arrives or the call stops running. With no handler nothing changes.
+- New `ChatStrings` for the box: `LiveOutputHeader` ("Output"), `LiveOutputLabel` ("Command output", the text's name for a
+  screen reader) and `LiveOutputEnd` ("Showing the end of {0} of output.").
+- The sample app has a made-up scenario, `live-output`: an `npm test` that runs for 8 s, its output growing in the box with
+  each `TaskOutputRequested` the sample answers.
 
 ### Changed
 

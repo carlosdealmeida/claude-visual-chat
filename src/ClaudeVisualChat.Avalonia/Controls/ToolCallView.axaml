@@ -28,6 +28,9 @@
         <!-- the line under the name, then the box: the diff, the file written, the command and its output -->
         <StackPanel Name="Body" />
 
+        <!-- what a running command has printed so far, under its card: the box is built from code while there is some -->
+        <Panel Name="LiveOutputSlot" />
+
         <!-- what the subagent did, behind the arrow; a background agent's steps are only in the map (shown from code) -->
         <ItemsControl Name="ChildList" Classes="ClaudeChatItems" Margin="0,4,0,0"
                       ItemsSource="{Binding Children}" IsVisible="False" />

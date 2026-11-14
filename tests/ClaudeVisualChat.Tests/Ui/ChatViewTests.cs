@@ -2878,6 +2878,370 @@ public class ChatViewTests
         window.Close();
     }
 
+    // ---- Bash and PowerShell: what a running command has printed so far ----
+
+    /// <summary>
+    /// A Bash call that runs as the task k1, and a host that asks for its output with the ids r1, r2…; the claude answers each request on
+    /// the next UI job with what the command has printed by then. The conversation's clock stands still (so only <see cref="Prints"/>
+    /// lets a new request through) unless <c>realClock</c>.
+    /// </summary>
+    private sealed class LiveHost
+    {
+        public DateTimeOffset Now = new DateTimeOffset(2026, 11, 14, 10, 0, 0, TimeSpan.Zero);
+        public readonly List<TaskOutputRequestedEventArgs> Asked = new List<TaskOutputRequestedEventArgs>();
+        public readonly ChatConversation C;
+        public readonly ToolCallItem Tool;
+        private string _output = "";
+        private long _bytes;
+        private bool _truncated;
+
+        public LiveHost(bool realClock = false, bool listens = true)
+        {
+            C = realClock ? new ChatConversation() : new ChatConversation { Clock = () => Now };
+            Tool = Start(C, "t1", "k1");
+            if (listens) Listen();
+        }
+
+        /// <summary>A Bash call <paramref name="toolUseId"/> that the claude runs in the foreground as the task <paramref name="taskId"/>.</summary>
+        public static ToolCallItem Start(ChatConversation c, string toolUseId, string taskId)
+        {
+            c.Apply(new AssistantBlock("m_" + toolUseId, null, new ToolUseBlock(toolUseId, "Bash",
+                J("{\"command\":\"npm test\",\"description\":\"Runs the tests\"}"))));
+            c.Apply(new ClaudeVisualChat.Protocol.AgentTaskStarted(taskId, toolUseId, "", null, false, 0, "local_bash"));
+            return c.Items.OfType<ToolCallItem>().Single(t => t.ToolUseId == toolUseId);
+        }
+
+        public void Listen() => C.TaskOutputRequested += OnRequested;
+
+        public void StopListening() => C.TaskOutputRequested -= OnRequested;
+
+        private void OnRequested(object? sender, TaskOutputRequestedEventArgs e)
+        {
+            Asked.Add(e);
+            var id = e.RequestId = "r" + Asked.Count;
+            // after the handler: an answer written inside it would come before the conversation knows the request
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => C.AppendLine(JsonSerializer.Serialize(new
+            {
+                type = "control_response",
+                response = new { subtype = "success", request_id = id, response = new { output = _output, total_bytes = _bytes, truncated = _truncated } },
+            })));
+        }
+
+        /// <summary>The command has printed <paramref name="output"/>: a second later the claude is asked again, and tells it.</summary>
+        public void Prints(string output, long bytes = 0, bool truncated = false)
+        {
+            _output = output;
+            _bytes = bytes == 0 ? System.Text.Encoding.UTF8.GetByteCount(output) : bytes;
+            _truncated = truncated;
+            Now = Now.AddSeconds(1);
+            C.RequestTaskOutput(Tool); // false while a request waits: its answer, still to come, tells the same
+            UiHelpers.Pump();
+            // the claude kept only the end: the cut first line goes
+            Assert.Equal(truncated && output.Contains('\n') ? output.Substring(output.IndexOf('\n') + 1) : output, Tool.LiveOutput);
+        }
+
+        /// <summary>The call's result: the command ended.</summary>
+        public void Ends(string output) =>
+            C.Apply(new UserBlock(null, new ToolResultBlock(Tool.ToolUseId, output, false), null, false, false));
+    }
+
+    /// <summary>The box under a command's card, or null while it is not in the tree.</summary>
+    private static Border? LiveBox(Visual root, ToolCallItem tool) =>
+        ViewOf(root, tool).GetVisualDescendants().OfType<Border>().SingleOrDefault(b => b.Classes.Contains("ClaudeChatLiveOutput"));
+
+    private static ToggleButton LiveHeader(Border box) =>
+        box.GetVisualDescendants().OfType<ToggleButton>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputHeader"));
+
+    private static Border LiveFrame(Border box) =>
+        box.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputFrame"));
+
+    private static SelectableTextBlock LiveText(Border box) =>
+        box.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Classes.Contains("ClaudeChatLiveOutputText"));
+
+    private static TextBlock? LiveEnd(Border box) =>
+        box.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(t => t.Classes.Contains("ClaudeChatLiveOutputEnd") && t.IsEffectivelyVisible);
+
+    private static double TopIn(Visual child, Visual ancestor) => child.TranslatePoint(default, ancestor)!.Value.Y;
+
+    [AvaloniaFact]
+    public void The_live_output_box_shows_under_a_running_command_once_there_is_text()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        Assert.Single(host.Asked);                              // asked on entering the window
+        Assert.Null(LiveBox(view, host.Tool));                  // nothing printed yet: no box
+
+        host.Prints("line 1\nline 2");
+        var box = LiveBox(view, host.Tool)!;
+        Assert.NotNull(box);
+        var header = LiveHeader(box);
+        var chevron = header.GetVisualDescendants().OfType<Path>().Single();
+        var label = header.GetVisualDescendants().OfType<TextBlock>().Single();
+        var frame = LiveFrame(box);
+        var text = LiveText(box);
+        Assert.Equal("Output", label.Text);
+        Assert.Equal("line 1\nline 2", text.Text);
+
+        // under the command's card, as wide as it, 8 px under it
+        var card = ViewOf(view, host.Tool).GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatToolBody"));
+        Assert.True(TopIn(box, view) >= card.TranslatePoint(new Point(0, card.Bounds.Height), view)!.Value.Y - 0.5, "under the card");
+        Assert.Equal(card.Bounds.Width, box.Bounds.Width, 1);
+        Assert.Equal(new Thickness(0, 0, 0, 8), box.Margin);
+        // the header 12 px from the top: a 16 px arrow in the secondary color, turned while open, 2 px, "Output" in the primary color
+        Assert.Equal(12, TopIn(header, box), 1);
+        Assert.Equal(new Size(16, 16), chevron.Bounds.Size);
+        Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), chevron.Stroke);
+        Assert.True(header.IsChecked);
+        Assert.True(chevron.RenderTransform!.Value.M12 > 0.5, "turned 90°");
+        Assert.Equal(2, label.TranslatePoint(default, header)!.Value.X - chevron.TranslatePoint(new Point(16, 0), header)!.Value.X, 1);
+        Assert.Same(Resource(view, "ClaudeChat.Foreground"), label.Foreground);
+        // the text 8 px under the header, in the editor's font at .85, wrapping, in a 0.5 px frame of the input's border
+        Assert.Equal(8, TopIn(frame, box) - (TopIn(header, box) + header.Bounds.Height), 1);
+        Assert.Equal(Resource(view, "ClaudeChat.MonoFontFamily"), text.FontFamily);
+        Assert.Equal(11.05, text.FontSize, 2);
+        Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
+        Assert.Equal(new Thickness(0.5), frame.BorderThickness);
+        Assert.Same(Resource(view, "ClaudeChat.InputBorder"), frame.BorderBrush);
+        Assert.Same(Resource(view, "ClaudeChat.ToolBackground"), frame.Background);
+        Assert.Equal(new CornerRadius(5), frame.CornerRadius);
+        Assert.Equal(new Thickness(8), frame.Padding);
+        Assert.Equal(240, frame.MaxHeight);
+        var scroller = frame.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        Assert.Equal(ScrollBarVisibility.Auto, scroller.VerticalScrollBarVisibility);
+        Assert.Equal(ScrollBarVisibility.Disabled, scroller.HorizontalScrollBarVisibility);
+        Assert.Equal("Command output", AutomationProperties.GetName(text));
+        Assert.Null(LiveEnd(box));                              // the whole output: no line about its end
+
+        // a long word breaks inside the box instead of running out of it
+        host.Prints(new string('x', 2000));
+        Assert.True(text.Bounds.Width <= frame.Bounds.Width, text.Bounds.ToString());
+        Assert.True(text.Bounds.Height > 3 * 11.05, "several lines");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_box_goes_when_the_result_arrives()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints("compiling…");
+        Assert.NotNull(LiveBox(view, host.Tool));
+
+        host.Ends("compiling…\ndone");
+        UiHelpers.Pump();
+        Assert.Null(host.Tool.LiveOutput);
+        Assert.Null(LiveBox(view, host.Tool));
+        Assert.Equal("compiling…\ndone", ResultOf(view, host.Tool)); // the result's OUT says it all now
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_box_goes_when_the_command_stops_running_without_a_result()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints("compiling…");
+        Assert.NotNull(LiveBox(view, host.Tool));
+
+        // the turn is cut short with no result line: the call keeps what it printed, but it no longer runs
+        host.C.Apply(new ClaudeVisualChat.Protocol.TurnCompleted("error_during_execution", true, 1, null, null, null));
+        UiHelpers.Pump();
+        Assert.NotEqual(ToolStatus.Running, host.Tool.Status);
+        Assert.Equal("compiling…", host.Tool.LiveOutput);
+        Assert.Null(LiveBox(view, host.Tool));
+        Assert.False(ViewOf(view, host.Tool).IsAskingForOutput);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_header_folds_and_unfolds_the_text()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints("ne 0\nline 1", 9_000, truncated: true);
+        var box = LiveBox(view, host.Tool)!;
+        var header = LiveHeader(box);
+        var chevron = header.GetVisualDescendants().OfType<Path>().Single();
+
+        UiHelpers.Click(window, header);
+        Assert.False(header.IsChecked);
+        Assert.False(LiveFrame(box).IsEffectivelyVisible);     // folded: only the header
+        Assert.Null(LiveEnd(box));
+        Assert.True(chevron.RenderTransform == null || Math.Abs(chevron.RenderTransform.Value.M12) < 0.01, "not turned");
+
+        host.Prints("ne 0\nline 1\nline 2", 9_000, truncated: true); // more output leaves it folded
+        Assert.Same(box, LiveBox(view, host.Tool));
+        Assert.False(LiveFrame(box).IsEffectivelyVisible);
+        view.Strings = ChatStrings.PortugueseBrazil;            // and so does a redraw
+        UiHelpers.Pump();
+        Assert.False(LiveFrame(LiveBox(view, host.Tool)!).IsEffectivelyVisible);
+
+        UiHelpers.Click(window, LiveHeader(LiveBox(view, host.Tool)!));
+        box = LiveBox(view, host.Tool)!;
+        Assert.True(LiveFrame(box).IsEffectivelyVisible);
+        Assert.Equal("line 1\nline 2", LiveText(box).Text);
+        Assert.NotNull(LiveEnd(box));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_truncated_output_says_how_much_there_is()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints("the end of it", 1_572_864, truncated: true);
+        var box = LiveBox(view, host.Tool)!;
+        var end = LiveEnd(box)!;
+        Assert.NotNull(end);
+        Assert.Equal("Showing the end of 1.5MB of output.", end.Text);
+        // 4 px under the text, in the secondary color at .85
+        var frame = LiveFrame(box);
+        Assert.Equal(4, TopIn(end, box) - (TopIn(frame, box) + frame.Bounds.Height), 1);
+        Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), end.Foreground);
+        Assert.Equal(11.05, end.FontSize, 2);
+
+        host.Prints("the whole of it", 15, truncated: false);  // the claude has it all again: no line
+        Assert.Null(LiveEnd(box));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_truncated_output_of_unknown_size_says_nothing_of_its_size()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints("the end of it", truncated: true);
+        host.Tool.LiveOutputBytes = 0;                          // an answer without its total_bytes
+        UiHelpers.Pump();
+        var box = LiveBox(view, host.Tool)!;
+        Assert.Equal("the end of it", LiveText(box).Text);
+        Assert.Null(LiveEnd(box));                              // it would say "0 bytes"
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_box_stays_at_the_end_unless_the_person_scrolled_up()
+    {
+        string Lines(int count) => string.Join("\n", Enumerable.Range(1, count).Select(i => "line " + i));
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints(Lines(60));
+        var scroller = LiveFrame(LiveBox(view, host.Tool)!).GetVisualDescendants().OfType<ScrollViewer>().Single();
+        Assert.True(scroller.Extent.Height > scroller.Viewport.Height, "it scrolls");
+        Assert.True(UiHelpers.AtEnd(scroller), "at the end from the start");
+
+        host.Prints(Lines(80));
+        Assert.True(UiHelpers.AtEnd(scroller), "each update brings it to the end");
+
+        scroller.Offset = new Vector(0, 40);                    // the person scrolls up to read
+        UiHelpers.Pump();
+        host.Prints(Lines(100));
+        Assert.Equal(40, scroller.Offset.Y, 1);                 // and it stays there
+
+        scroller.Offset = new Vector(0, scroller.Extent.Height - scroller.Viewport.Height - 3); // back to 3 px from the end
+        UiHelpers.Pump();
+        host.Prints(Lines(120));
+        Assert.True(UiHelpers.AtEnd(scroller), "follows again");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_view_asks_once_a_second_while_the_command_runs()
+    {
+        // the real clocks: the view's timer and the conversation's (a loaded machine is slow, so the waits are long and only the
+        // least time between two requests is checked)
+        var host = new LiveHost(realClock: true);
+        var clock = Stopwatch.StartNew();
+        var (view, window) = Open(host.C);
+        Assert.Single(host.Asked);                              // on entering the window
+        Assert.True(ViewOf(view, host.Tool).IsAskingForOutput);
+        WaitFor(() => host.Asked.Count >= 2);                   // and a second later
+        Assert.True(clock.Elapsed >= TimeSpan.FromSeconds(0.9), clock.Elapsed.ToString());
+        Assert.All(host.Asked, e => Assert.Equal(("k1", "t1"), (e.TaskId, e.ToolUseId)));
+
+        // the host stops listening: the timer stops; it listens again: the asking goes on
+        host.StopListening();
+        UiHelpers.Pump();
+        Assert.False(ViewOf(view, host.Tool).IsAskingForOutput);
+        var asked = host.Asked.Count;
+        host.Listen();
+        UiHelpers.Pump();
+        Assert.True(ViewOf(view, host.Tool).IsAskingForOutput);
+        WaitFor(() => host.Asked.Count > asked);
+
+        // none after the result
+        host.Ends("ok");
+        UiHelpers.Pump();
+        Assert.False(ViewOf(view, host.Tool).IsAskingForOutput);
+        asked = host.Asked.Count;
+        RunLoop(TimeSpan.FromSeconds(2.5));
+        Assert.Equal(asked, host.Asked.Count);
+
+        // none without a handler: another command, with the host no longer listening
+        host.StopListening();
+        var other = LiveHost.Start(host.C, "t2", "k2");
+        UiHelpers.Pump();
+        Assert.False(ViewOf(view, other).IsAskingForOutput);
+        RunLoop(TimeSpan.FromSeconds(2.5));
+        Assert.Equal(asked, host.Asked.Count);
+        window.Close();
+    }
+
+    /// <summary>
+    /// Runs the dispatcher on the real clock until <paramref name="done"/> (60 s at most: the machine may be slow). Its loop, not only
+    /// its jobs: <see cref="UiHelpers.Pump"/> runs what is queued, and a timer ticks only while the loop runs.
+    /// </summary>
+    private static void WaitFor(Func<bool> done)
+    {
+        var clock = Stopwatch.StartNew();
+        while (!done() && clock.Elapsed < TimeSpan.FromSeconds(60)) RunLoop(TimeSpan.FromMilliseconds(100));
+        UiHelpers.Pump();
+        Assert.True(done());
+    }
+
+    /// <summary>Runs the dispatcher's loop, timers and all, for <paramref name="time"/> on the real clock.</summary>
+    private static void RunLoop(TimeSpan time)
+    {
+        using var stop = new System.Threading.CancellationTokenSource(time);
+        Avalonia.Threading.Dispatcher.UIThread.MainLoop(stop.Token);
+    }
+
+    [AvaloniaFact]
+    public void The_box_follows_the_language()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints("the end of it", 1_572_864, truncated: true);
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        var box = LiveBox(view, host.Tool)!;
+        Assert.Equal("Saída", LiveHeader(box).GetVisualDescendants().OfType<TextBlock>().Single().Text);
+        Assert.Equal("Mostrando o fim de 1.5MB de saída.", LiveEnd(box)!.Text);
+        Assert.Equal("Saída do comando", AutomationProperties.GetName(LiveText(box)));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void In_touch_the_header_is_44_pixels_tall()
+    {
+        var host = new LiveHost();
+        var view = UiHelpers.TouchView(host.C);
+        var window = UiHelpers.ShowPhone(view);
+        host.Prints("line 1\nline 2");
+        var box = LiveBox(view, host.Tool)!;
+        var header = LiveHeader(box);
+        Assert.Equal(44, header.Bounds.Height, 1);
+        // the box takes the frame and the corners of the call's block
+        var frame = LiveFrame(box);
+        Assert.Same(Resource(view, "ClaudeChat.Border"), frame.BorderBrush);
+        Assert.Equal(new Thickness(1), frame.BorderThickness);
+        Assert.Equal(new CornerRadius(12), frame.CornerRadius);
+
+        UiHelpers.Click(window, header);                        // a tap folds it
+        Assert.False(LiveFrame(box).IsEffectivelyVisible);
+        window.Close();
+    }
+
     // ---- Glob, Grep, Web Fetch and Web Search ----
 
     private static (ChatConversation C, ToolCallItem Tool) SearchCall(string name, object input, string? result, bool isError = false)

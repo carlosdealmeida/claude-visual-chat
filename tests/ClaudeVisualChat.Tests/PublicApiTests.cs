@@ -767,6 +767,15 @@ public class PublicApiTests
         foreach (var member in new[] { "CanRequestTaskOutput", "RequestTaskOutput" })
             Assert.Empty(conversation.GetMember(member));
         Assert.DoesNotContain("ClaudeVisualChat.LiveOutputText", Library.GetExportedTypes().Select(t => t.FullName));
+
+        // the box under the command's card: its texts; the size it writes stays internal
+        foreach (var text in new[] { "LiveOutputHeader", "LiveOutputLabel", "LiveOutputEnd" })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+        Assert.Empty(typeof(ChatStrings).GetMember("FormatByteSize"));
     }
 
     [Fact]

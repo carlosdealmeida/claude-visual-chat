@@ -17,7 +17,7 @@ internal static class Recordings
     {
         "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model",
         "image", "commands", "effort", "plan", "plan-auto", "plan-feedback", "queued", "hook-blocked",
-        DemoSession.Scenario, TourSession.Tour, TourSession.AutoMode,
+        DemoSession.Scenario, TourSession.Tour, TourSession.AutoMode, LiveOutputSession.Scenario,
     };
 
     /// <summary>The folder the recordings were made in, after the recorder replaced the real one.</summary>
@@ -25,11 +25,13 @@ internal static class Recordings
 
     public static IReadOnlyList<string> Stream(string scenario) =>
         scenario == DemoSession.Scenario ? DemoSession.Stream()
+        : scenario == LiveOutputSession.Scenario ? LiveOutputSession.Stream()
         : TourSession.Is(scenario) ? TourSession.Stream(scenario)
         : Read(scenario + ".stream.ndjson");
 
     public static IReadOnlyList<string> Transcript(string scenario) =>
         scenario == DemoSession.Scenario ? DemoSession.Transcript()
+        : scenario == LiveOutputSession.Scenario ? LiveOutputSession.Transcript()
         : TourSession.Is(scenario) ? TourSession.Transcript(scenario)
         : Read(scenario + ".transcript.jsonl");
 

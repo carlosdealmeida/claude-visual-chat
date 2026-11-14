@@ -55,6 +55,7 @@ public partial class MainWindow : Window
     private bool _answerYes;
     private CancellationTokenSource? _playing;
     private int _requestIds;
+    private LiveOutputSession? _liveOutput; // the made-up running command, while its stream plays
 
     public MainWindow() : this(App.Options)
     {
@@ -136,6 +137,10 @@ public partial class MainWindow : Window
         var playing = _playing = new CancellationTokenSource();
         var scenario = (string?)ScenarioPicker.SelectedItem ?? Recordings.Scenarios[0];
         var conversation = Start();
+        // the made-up command answers the requests for its output while it runs (live only: the session file has it ended)
+        var live = _liveOutput = scenario == LiveOutputSession.Scenario && SourcePicker.SelectedIndex == 0
+            ? new LiveOutputSession(conversation)
+            : null;
         // the "Switched to" band gives way to the browser's banner (one at a time), so the tour sessions have the browser off
         if (TourSession.Is(scenario)) conversation.BrowserStatus = ChatBrowserStatus.Off;
         _player = null;
@@ -168,8 +173,9 @@ public partial class MainWindow : Window
         try
         {
             await player.PlayAsync(perStreamEvent, perOtherLine, playing.Token);
-            _finished = true;
             if (!_answerYes) endedAt = DateTimeOffset.Now;
+            if (live != null) await live.FinishAsync(playing.Token); // the command runs on, then ends
+            _finished = true;
             if (scenario == DemoSession.Scenario) AttachDemoFile(conversation);
             if (scenario == TourSession.Tour) BookmarkTourReply(conversation);
         }
@@ -205,6 +211,7 @@ public partial class MainWindow : Window
             old.LinkRequested -= OnLinkRequested;
             old.FeedbackRequested -= OnFeedbackRequested;
             old.StopRequested -= OnStopRequested;
+            old.TaskOutputRequested -= OnTaskOutputRequested;
             old.PropertyChanged -= OnConversationChanged;
         }
         _log.Clear();
@@ -230,6 +237,8 @@ public partial class MainWindow : Window
         conversation.LinkRequested += OnLinkRequested;
         conversation.FeedbackRequested += OnFeedbackRequested;
         conversation.StopRequested += OnStopRequested;
+        // and to this, so a running command shows what it has printed so far
+        conversation.TaskOutputRequested += OnTaskOutputRequested;
         conversation.PropertyChanged += OnConversationChanged;
         _conversation = conversation;
         Chat.Conversation = conversation;
@@ -397,6 +406,14 @@ public partial class MainWindow : Window
                 foreach (var request in conversation.PendingPermissions.ToList()) conversation.DismissPermission(request.RequestId);
             });
         }
+    }
+
+    private void OnTaskOutputRequested(object? sender, TaskOutputRequestedEventArgs e)
+    {
+        e.RequestId = NextRequestId();
+        Add("TaskOutputRequested", StdinMessages.GetTaskOutput(e.RequestId, e.TaskId));
+        // the claude answers with what the command has printed so far; the made-up session answers for it
+        if (_liveOutput is { } live && ReferenceEquals(sender, live.Conversation)) live.Answer(e.RequestId);
     }
 
     private string NextRequestId() => "sample_" + ++_requestIds;

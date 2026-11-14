@@ -477,6 +477,11 @@ Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt
 - **Uma chamada aparece quando a entrada dela termina,** não como uma linha vazia quando o bloco começa; assim, quem lê
   `ChatConversation.Items` a vê um pouco mais tarde que antes. As chamadas de `ToolSearch`, e os resultados delas, nunca
   aparecem.
+- **Um comando em execução mostra o que já imprimiu** quando o seu app trata o `TaskOutputRequested` (veja o
+  [Início rápido](#início-rápido)): uma caixa "Saída" embaixo do cartão dele, que se dobra com um clique, rola depois de
+  240 px e acompanha o fim a menos que a pessoa tenha rolado para cima, e diz "Mostrando o fim de 1.5MB de saída." quando
+  o claude guardou só o fim. A linha pergunta uma vez por segundo enquanto está na tela; a caixa some quando o resultado
+  chega. Sem tratador não há caixa.
 - **Um clique num diff da lista abre o Diff View** sobre a view inteira, lado a lado, com o caminho do arquivo no título.
   O Esc, o x dele e `CloseTopLayer()` o fecham (é uma camada, logo abaixo da prévia de imagem), e ele abre também numa view
   somente leitura. Numa view de 500 px de largura ou menos (só o layout desktop) a caixa de um Edit ou de um Write some,
@@ -891,7 +896,10 @@ um arquivo deixado na caixa de resposta. Mandá-lo mostra um envio de mentira, o
 marcadora. Outras duas são inventadas no `TourSession.cs`, para o que nenhuma gravação tem: a `tour` (um plano para
 aprovar e comentar, selecionando texto no documento dele, uma compactação, uma mensagem de outra sessão, a faixa "Switched
 to", uma resposta com bookmark e o raio do modo rápido na borda de cima da caixa de resposta, quando a caixa tem o teclado)
-e a `auto-mode` (uma conversa vazia no modo automático, com o aviso "Auto mode is enabled"). O log mostra também
+e a `auto-mode` (uma conversa vazia no modo automático, com o aviso "Auto mode is enabled"). A `live-output`
+(`LiveOutputSession.cs`) roda um `npm test` por 8 s: o exemplo trata o `TaskOutputRequested`, o log mostra uma linha
+`TaskOutputRequested` por segundo, e a caixa embaixo do comando cresce duas linhas a cada resposta até o resultado
+chegar. O log mostra também
 `SubmitUndone`, `LinkRequested` e `FeedbackRequested`; o exemplo escuta os dois últimos, então os links e os polegares
 aparecem.
 

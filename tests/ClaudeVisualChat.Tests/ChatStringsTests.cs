@@ -167,6 +167,26 @@ public class ChatStringsTests
         Assert.Equal(portuguese, Pt.FormatFileSize(bytes));
     }
 
+    [Fact]
+    public void Byte_sizes_are_written_as_the_extension_writes_them()
+    {
+        // the size of a running command's output: one decimal without its ".0", no space, a point in every language
+        foreach (var s in new[] { En, Pt })
+        {
+            Assert.Equal("512 bytes", s.FormatByteSize(512));
+            Assert.Equal("1KB", s.FormatByteSize(1024));
+            Assert.Equal("1.5KB", s.FormatByteSize(1536));
+            Assert.Equal("2MB", s.FormatByteSize(2 * 1024 * 1024));
+            Assert.Equal("1.5GB", s.FormatByteSize(1536L * 1024 * 1024));
+        }
+        Assert.Equal("Output", En.LiveOutputHeader);
+        Assert.Equal("Saída", Pt.LiveOutputHeader);
+        Assert.Equal("Command output", En.LiveOutputLabel);
+        Assert.Equal("Saída do comando", Pt.LiveOutputLabel);
+        Assert.Equal("Showing the end of 1.5MB of output.", En.FormatLiveOutputEnd(1_572_864));
+        Assert.Equal("Mostrando o fim de 1.5MB de saída.", Pt.FormatLiveOutputEnd(1_572_864));
+    }
+
     [Theory]
     [InlineData("plan", "Plan", "Plano")]
     [InlineData("default", "Manual", "Manual")] // the extension's name for the default mode

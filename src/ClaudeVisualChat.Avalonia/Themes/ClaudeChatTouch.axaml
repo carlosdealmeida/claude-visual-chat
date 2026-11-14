@@ -193,6 +193,17 @@
   <Style Selector="controls|ToolCallView:touch Grid.ClaudeChatCopyCell > Border.ClaudeChatToolContent">
     <Setter Property="Margin" Value="0,0,44,0" />
   </Style>
+  <!-- the box with what a running command has printed: its header, which a tap folds, a finger tall; the text in the frame and the
+       corners of the call's block -->
+  <Style Selector="controls|ToolCallView:touch ToggleButton.ClaudeChatLiveOutputHeader">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="controls|ToolCallView:touch Border.ClaudeChatLiveOutputFrame">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+  </Style>
   <Style Selector="controls|ToolCallView:touch Ellipse.ClaudeChatToolDot">
     <Setter Property="Width" Value="8" />
     <Setter Property="Height" Value="8" />
