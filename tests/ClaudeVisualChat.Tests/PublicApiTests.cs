@@ -697,6 +697,8 @@ public class PublicApiTests
             (typeof(ClaudeVisualChat.Protocol.SystemNotice), "PreTokens", typeof(long?)),
             (typeof(ClaudeVisualChat.Protocol.SystemNotice), "PostTokens", typeof(long?)),
             (typeof(ClaudeVisualChat.Protocol.UserBlock), "IsSynthetic", typeof(bool)),
+            (typeof(ClaudeVisualChat.Protocol.AssistantBlock), "IsSynthetic", typeof(bool)),
+            (typeof(ClaudeVisualChat.Protocol.AssistantBlock), "Supersedes", typeof(System.Collections.Generic.IReadOnlyList<string>)),
             (typeof(ClaudeVisualChat.Protocol.BlockDelta), "EstimatedTokens", typeof(long?)),
         })
         {
@@ -713,6 +715,17 @@ public class PublicApiTests
             Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
         }
         Assert.Contains("Compacted", System.Enum.GetNames(typeof(NoticeKind)));   // nothing public goes
+    }
+
+    [Fact]
+    public void The_message_started_event_api()
+    {
+        var started = typeof(ClaudeVisualChat.Protocol.MessageStarted);
+        Assert.Contains("ClaudeVisualChat.Protocol.MessageStarted", Library.GetExportedTypes().Select(t => t.FullName));
+        Assert.True(started.IsSealed && typeof(ClaudeVisualChat.Protocol.ClaudeEvent).IsAssignableFrom(started));
+        Assert.NotNull(started.GetConstructor(new[] { typeof(string), typeof(string) }));
+        Assert.Equal(typeof(string), started.GetProperty("MessageId")?.PropertyType);
+        Assert.Equal(typeof(string), started.GetProperty("ParentToolUseId")?.PropertyType);
     }
 
     [Fact]

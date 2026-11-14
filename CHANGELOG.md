@@ -5,6 +5,14 @@ All notable changes to this project are written here. The format follows
 
 ## [0.8.0] - Unreleased
 
+### Added
+
+- `MessageStarted` (`MessageId`, `ParentToolUseId`): the event `StreamJsonParser` now gives for a `message_start` that has an id, so
+  a host that lists the events of the parser sees where a reply begins. `ChatConversation.Apply` takes it and does nothing.
+- `AssistantBlock.Supersedes`: the `uuid`s the line replaces (its `supersedes` list); only the non-empty strings are kept, any other
+  shape reads as empty, and every block of the line carries the list.
+- `AssistantBlock.IsSynthetic`: true when the model of the line is `<synthetic>`.
+
 ### Changed
 
 - A message over 50,000 characters is no longer cut with a "[Message truncated ...]" line at the end: it stays in the reply box,

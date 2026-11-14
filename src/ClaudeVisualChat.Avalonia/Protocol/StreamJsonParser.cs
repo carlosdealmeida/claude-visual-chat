@@ -116,7 +116,7 @@ namespace ClaudeVisualChat.Protocol
                         var message = JsonHelpers.Obj(e, "message");
                         var id = message == null ? null : JsonHelpers.Str(message.Value, "id");
                         if (id != null) _messageIds[key] = id;
-                        return None;
+                        return id is { Length: > 0 } ? new ClaudeEvent[] { new MessageStarted(id, parent) } : None;
                     }
                 case "content_block_start":
                     {

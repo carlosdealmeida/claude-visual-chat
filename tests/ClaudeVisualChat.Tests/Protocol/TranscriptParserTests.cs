@@ -80,6 +80,15 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void A_session_line_carries_supersedes_too()
+        {
+            var block = Assert.IsType<AssistantBlock>(Assert.Single(TranscriptParser.Parse(
+                "{\"type\":\"assistant\",\"supersedes\":[\"u1\",\"u2\"],\"message\":{\"model\":\"<synthetic>\",\"id\":\"m1\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}}")));
+            Assert.Equal(new[] { "u1", "u2" }, block.Supersedes);
+            Assert.True(block.IsSynthetic);
+        }
+
+        [Fact]
         public void Transcript_tool_use_result_is_kept()
         {
             var events = FixtureFiles.TranscriptLines("edit").SelectMany(TranscriptParser.Parse).ToList();

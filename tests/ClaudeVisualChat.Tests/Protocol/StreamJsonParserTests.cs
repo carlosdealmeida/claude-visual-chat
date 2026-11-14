@@ -75,9 +75,9 @@ namespace ClaudeVisualChat.Tests.Protocol
         public void Deltas_carry_message_id_from_message_start()
         {
             var parser = new StreamJsonParser();
-            Assert.Empty(parser.Parse("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\"}}}"));
+            Assert.IsType<MessageStarted>(Assert.Single(parser.Parse("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\"}}}")));
 
-            var started = Assert.IsType<BlockStarted>(Assert.Single(parser.Parse(
+            var started =Assert.IsType<BlockStarted>(Assert.Single(parser.Parse(
                 "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}}")));
             var d1 = Assert.IsType<BlockDelta>(Assert.Single(parser.Parse(
                 "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}}")));
@@ -95,6 +95,80 @@ namespace ClaudeVisualChat.Tests.Protocol
             Assert.Equal("msg_1", d2.MessageId);
             Assert.Equal("lo", d2.Text);
             Assert.Equal("msg_1", stopped.MessageId);
+        }
+
+        [Fact]
+        public void Message_start_gives_a_message_started_event()
+        {
+            var parser = new StreamJsonParser();
+            var e = Assert.IsType<MessageStarted>(Assert.Single(parser.Parse(
+                "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"m1\"}}}")));
+            Assert.Equal("m1", e.MessageId);
+            Assert.Null(e.ParentToolUseId);
+        }
+
+        [Fact]
+        public void A_subagent_message_start_carries_its_parent()
+        {
+            var parser = new StreamJsonParser();
+            var e = Assert.IsType<MessageStarted>(Assert.Single(parser.Parse(
+                "{\"type\":\"stream_event\",\"parent_tool_use_id\":\"t1\",\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"m2\"}}}")));
+            Assert.Equal("m2", e.MessageId);
+            Assert.Equal("t1", e.ParentToolUseId);
+        }
+
+        [Theory]
+        [InlineData("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"\"}}}")]
+        [InlineData("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\",\"message\":{}}}")]
+        [InlineData("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\"}}")]
+        public void A_message_start_without_an_id_gives_no_event(string line)
+        {
+            Assert.Empty(new StreamJsonParser().Parse(line));
+        }
+
+        [Fact]
+        public void An_assistant_line_carries_what_it_supersedes()
+        {
+            var parser = new StreamJsonParser();
+            var events = parser.Parse(
+                "{\"type\":\"assistant\",\"supersedes\":[\"u1\",\"u2\"],\"message\":{\"id\":\"m1\",\"content\":[{\"type\":\"text\",\"text\":\"a\"},{\"type\":\"text\",\"text\":\"b\"}]}}");
+            Assert.Equal(2, events.Count);
+            Assert.All(events, e => Assert.Equal(new[] { "u1", "u2" }, Assert.IsType<AssistantBlock>(e).Supersedes));
+        }
+
+        [Theory]
+        [InlineData("\"supersedes\":\"u1\",")]
+        [InlineData("\"supersedes\":null,")]
+        [InlineData("\"supersedes\":{\"a\":\"u1\"},")]
+        [InlineData("\"supersedes\":[1,\"\",null],")]
+        [InlineData("")]
+        public void Supersedes_of_another_shape_reads_as_empty(string supersedes)
+        {
+            var parser = new StreamJsonParser();
+            var block = Assert.IsType<AssistantBlock>(Assert.Single(parser.Parse(
+                "{\"type\":\"assistant\"," + supersedes + "\"message\":{\"id\":\"m1\",\"content\":[{\"type\":\"text\",\"text\":\"a\"}]}}")));
+            Assert.Empty(block.Supersedes);
+        }
+
+        [Fact]
+        public void Supersedes_keeps_only_the_non_empty_strings()
+        {
+            var parser = new StreamJsonParser();
+            var block = Assert.IsType<AssistantBlock>(Assert.Single(parser.Parse(
+                "{\"type\":\"assistant\",\"supersedes\":[1,\"u1\",\"\",null,\"u2\"],\"message\":{\"id\":\"m1\",\"content\":[{\"type\":\"text\",\"text\":\"a\"}]}}")));
+            Assert.Equal(new[] { "u1", "u2" }, block.Supersedes);
+        }
+
+        [Fact]
+        public void A_synthetic_line_says_so()
+        {
+            var parser = new StreamJsonParser();
+            var synthetic = Assert.IsType<AssistantBlock>(Assert.Single(parser.Parse(
+                "{\"type\":\"assistant\",\"message\":{\"model\":\"<synthetic>\",\"id\":\"m1\",\"content\":[{\"type\":\"text\",\"text\":\"a\"}]}}")));
+            var real = Assert.IsType<AssistantBlock>(Assert.Single(parser.Parse(
+                "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-opus-4-5\",\"id\":\"m2\",\"content\":[{\"type\":\"text\",\"text\":\"a\"}]}}")));
+            Assert.True(synthetic.IsSynthetic);
+            Assert.False(real.IsSynthetic);
         }
 
         [Fact]

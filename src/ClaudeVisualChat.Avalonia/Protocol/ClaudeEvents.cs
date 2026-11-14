@@ -56,7 +56,22 @@ namespace ClaudeVisualChat.Protocol
 
         /// <summary>The line's <c>uuid</c>; null when the line has none.</summary>
         public string? Uuid { get; init; }
+
+        /// <summary>
+        /// The <c>uuid</c>s of the lines this one replaces (<c>supersedes</c>): a reply the claude discarded and wrote again. Empty when the
+        /// line says nothing or says it in another shape; the same list is on every block of the line.
+        /// </summary>
+        public IReadOnlyList<string> Supersedes { get; init; } = Array.Empty<string>();
+
+        /// <summary>The line is the claude's own (the model is <c>&lt;synthetic&gt;</c>), not a reply of the model.</summary>
+        public bool IsSynthetic { get; init; }
     }
+
+    /// <summary>
+    /// A streamed reply began (<c>message_start</c>): <paramref name="MessageId"/> is the id of the message; <paramref name="ParentToolUseId"/>
+    /// is the tool call of the sub-agent that writes it, null for the main conversation. Not sent when the message has no id.
+    /// </summary>
+    public sealed record MessageStarted(string MessageId, string? ParentToolUseId) : ClaudeEvent;
 
     public sealed record UserBlock(
         string? ParentToolUseId, ContentBlock Block, JsonElement? ToolUseResult, bool IsMeta, bool IsCompactSummary)

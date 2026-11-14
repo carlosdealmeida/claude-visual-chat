@@ -886,6 +886,8 @@ public sealed class ChatConversation : ChatObservableObject
             case AssistantBlock block:
                 OnAssistantBlock(block);
                 break;
+            case MessageStarted:
+                break;
             case BlockStarted started:
                 OnBlockStarted(started);
                 break;

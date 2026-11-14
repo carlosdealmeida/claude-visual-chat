@@ -469,13 +469,31 @@ namespace ClaudeVisualChat.Protocol
             var timestamp = JsonHelpers.Time(root, "timestamp");
             var thinking = JsonHelpers.Long(root, "thinkingDurationMs");
             var uuid = JsonHelpers.Str(root, "uuid");
+            var supersedes = ReadSupersedes(root);
+            var synthetic = JsonHelpers.Str(message.Value, "model") == "<synthetic>";
             var events = new List<ClaudeEvent>();
             foreach (var block in BlockReader.ReadContent(content))
-                events.Add(new AssistantBlock(id, parent, block) { Timestamp = timestamp, ThinkingDurationMs = thinking, Uuid = uuid });
-            if (parent == null && JsonHelpers.Str(message.Value, "model") != "<synthetic>"
+                events.Add(new AssistantBlock(id, parent, block)
+                {
+                    Timestamp = timestamp, ThinkingDurationMs = thinking, Uuid = uuid, Supersedes = supersedes, IsSynthetic = synthetic,
+                });
+            if (parent == null && !synthetic
                 && ReadCache(message.Value, timestamp) is { } cache)
                 events.Add(cache);
             return events;
+        }
+
+        /// <summary>The non-empty strings of the line's <c>supersedes</c> list; any other shape gives an empty list.</summary>
+        private static IReadOnlyList<string> ReadSupersedes(JsonElement root)
+        {
+            var list = JsonHelpers.Prop(root, "supersedes");
+            if (list == null || list.Value.ValueKind != JsonValueKind.Array) return Array.Empty<string>();
+            var uuids = new List<string>();
+            foreach (var item in list.Value.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 } uuid) uuids.Add(uuid);
+            }
+            return uuids;
         }
 
         /// <summary>The cache a reply used: 1 h or 5 min from <c>cache_creation</c>, no lifetime when only read.</summary>
