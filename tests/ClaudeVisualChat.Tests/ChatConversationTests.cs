@@ -517,6 +517,181 @@ public class ChatConversationTests
         Assert.False(c.IsBusy);
     }
 
+    // a reply the claude discards: replaced through supersedes, or abandoned while it streamed
+
+    [Fact]
+    public void A_reply_named_in_supersedes_leaves_the_list()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("first")) { Uuid = "u1" });
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("second")) { Uuid = "u2", Supersedes = new[] { "u1" } });
+
+        Assert.Equal("second", Assert.IsType<AssistantTextItem>(Assert.Single(c.Items)).Text);
+    }
+
+    [Fact]
+    public void Supersedes_takes_thinking_and_tool_calls_too()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ThinkingBlock("let me look")) { Uuid = "u1" });
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"ls\"}"))) { Uuid = "u2" });
+        Assert.Equal(2, c.Items.Count);
+
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("again")) { Uuid = "u3", Supersedes = new[] { "u1", "u2" } });
+        Assert.Equal(new[] { "text:again" }, c.Items.Select(Describe));
+
+        c.Apply(ToolResult("t1", "a.txt")); // the call is gone: its result finds nothing
+        Assert.Equal(new[] { "text:again" }, c.Items.Select(Describe));
+    }
+
+    [Fact]
+    public void Supersedes_of_an_unknown_uuid_changes_nothing()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("first")) { Uuid = "u1" });
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("second")) { Uuid = "u2", Supersedes = new[] { "nobody" } });
+
+        Assert.Equal(new[] { "text:first", "text:second" }, c.Items.Select(Describe));
+    }
+
+    [Fact]
+    public void A_superseded_reply_loses_its_bookmark()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("first")) { Uuid = "u1" });
+        var first = Assert.IsType<AssistantTextItem>(Assert.Single(c.Items));
+        c.ToggleBookmark(first);
+        Assert.Same(first, Assert.Single(c.Bookmarks));
+
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("second")) { Uuid = "u2", Supersedes = new[] { "u1" } });
+
+        Assert.False(first.IsBookmarked);
+        Assert.Empty(c.Bookmarks);
+        first.IsBookmarked = true; // the reply is no longer followed: a mark set by code does not bring it back
+        Assert.Empty(c.Bookmarks);
+    }
+
+    [Fact]
+    public void A_streamed_attempt_with_no_final_line_leaves_when_the_next_message_starts()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Apply(new BlockStarted("m1", 0, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Text, "half an ans"));
+        c.Apply(new MessageStarted("m2", null));
+
+        Assert.Empty(c.Items);
+        Assert.False(c.IsStreaming);
+    }
+
+    [Fact]
+    public void A_streamed_attempt_leaves_when_a_final_line_of_another_message_arrives()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Apply(new BlockStarted("m1", 0, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Text, "half an ans"));
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("the whole answer")));
+
+        Assert.Equal(new[] { "text:the whole answer" }, c.Items.Select(Describe));
+    }
+
+    [Fact]
+    public void A_synthetic_line_does_not_retire_the_attempt()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Apply(new BlockStarted("m1", 0, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Text, "half an ans"));
+        c.Apply(new AssistantBlock("x", null, new TextContentBlock("API Error")) { IsSynthetic = true });
+
+        Assert.Equal(new[] { "text:half an ans", "text:API Error" }, c.Items.Select(Describe));
+    }
+
+    [Fact]
+    public void Blocks_that_got_their_final_line_stay_when_the_next_message_starts()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Apply(new BlockStarted("m1", 0, null, new ThinkingBlock("")));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Thinking, "hm"));
+        c.Apply(new BlockStopped("m1", 0, null));
+        c.Apply(new AssistantBlock("m1", null, new ThinkingBlock("hm")));
+        c.Apply(new BlockStarted("m1", 1, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("m1", 1, null, DeltaKind.Text, "Hel"));
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("Hello"))); // its line came, its stop not yet
+        c.Apply(new MessageStarted("m2", null));
+
+        Assert.Equal(new[] { "thinking:hm", "text:Hello" }, c.Items.Select(Describe));
+    }
+
+    [Fact]
+    public void A_subagent_message_start_does_not_retire_the_main_attempt()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Apply(new BlockStarted("m1", 0, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Text, "half an ans"));
+        c.Apply(new MessageStarted("s1", "t1"));
+
+        var text = Assert.IsType<AssistantTextItem>(Assert.Single(c.Items));
+        Assert.Equal("half an ans", text.Text);
+        Assert.True(text.IsStreaming);
+    }
+
+    [Fact]
+    public void A_streamed_call_not_yet_shown_is_dropped_with_its_attempt()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Apply(new BlockStarted("m1", 0, null, new ToolUseBlock("t1", "Bash", J("{}"))));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.InputJson, "{\"comm"));
+        c.Apply(new MessageStarted("m2", null));
+
+        c.Apply(new BlockStopped("m1", 0, null)); // a stop would have shown it
+        c.Apply(ToolResult("t1", "a.txt"));
+        Assert.Empty(c.Items);
+    }
+
+    [Fact]
+    public void The_end_of_the_turn_keeps_the_partial_text()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Apply(new BlockStarted("m1", 0, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Text, "half an ans"));
+        c.Apply(new TurnCompleted("error_during_execution", true, 10, null, null, null));
+        c.Apply(new MessageStarted("m2", null)); // the next turn
+
+        var text = Assert.IsType<AssistantTextItem>(c.Items[0]);
+        Assert.Equal("half an ans", text.Text);
+        Assert.False(text.IsStreaming);
+    }
+
+    [Fact]
+    public void Clear_forgets_the_message_that_was_streaming()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Clear();
+        // a block of m1 that comes after the clear is no attempt of the message streaming then: another message does not take it away
+        c.Apply(new BlockStarted("m1", 0, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Text, "kept"));
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("next")));
+
+        Assert.Equal(new[] { "text:kept", "text:next" }, c.Items.Select(Describe));
+    }
+
+    [Theory]
+    [MemberData(nameof(Scenarios))]
+    public void No_recording_loses_an_item_to_retirement(string scenario)
+    {
+        var streamed = Play(scenario, withStreamEvents: true);
+        var lines = Play(scenario, withStreamEvents: false);
+
+        Assert.Equal(All(lines.Items).Select(Describe), All(streamed.Items).Select(Describe));
+    }
+
     // ---- results and notices ----
 
     [Fact]

@@ -8,7 +8,8 @@ All notable changes to this project are written here. The format follows
 ### Added
 
 - `MessageStarted` (`MessageId`, `ParentToolUseId`): the event `StreamJsonParser` now gives for a `message_start` that has an id, so
-  a host that lists the events of the parser sees where a reply begins. `ChatConversation.Apply` takes it and does nothing.
+  a host that lists the events of the parser sees where a reply begins. `ChatConversation.Apply` uses it to find a reply abandoned
+  while it streamed (see Fixed).
 - `AssistantBlock.Supersedes`: the `uuid`s the line replaces (its `supersedes` list); only the non-empty strings are kept, any other
   shape reads as empty, and every block of the line carries the list.
 - `AssistantBlock.IsSynthetic`: true when the model of the line is `<synthetic>`.
@@ -23,6 +24,15 @@ All notable changes to this project are written here. The format follows
   goes into the box, it is not remembered as a long paste, and a notice says by how many characters it is over.
 - New `ChatStrings` for these notices: `InvisibleTooLong`, `PromptOverLimitOne`, `PromptOverLimit`, `PasteOverLimitOne` and
   `PasteOverLimit` (English, with the Brazilian Portuguese texts in `ChatStrings.PortugueseBrazil`).
+
+### Fixed
+
+- A reply the `claude` discards leaves the conversation instead of staying in the list next to the one that replaced it. A line
+  whose `supersedes` names earlier lines takes their text, thoughts and tool calls out, wherever they are (a subagent's too); a
+  bookmarked text loses its bookmark. A reply abandoned while it streamed (the main agent starts another message, or a line of
+  another message comes, before the line of a block arrived) takes out the blocks that never got their line; a call whose input was
+  still arriving is dropped without ever showing. The blocks that got their line stay, and so does the partial text of a turn that
+  ends or is interrupted. A subagent's message and a `<synthetic>` line retire nothing.
 
 ## [0.7.1] - 2026-11-03
 

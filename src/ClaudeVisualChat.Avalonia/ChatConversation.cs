@@ -39,6 +39,11 @@ public sealed class ChatConversation : ChatObservableObject
     private readonly HashSet<ToolCallItem> _nestedTools = new HashSet<ToolCallItem>();
     private readonly List<ToolCallItem> _turnTools = new List<ToolCallItem>();
     private readonly List<LiveBlock> _live = new List<LiveBlock>();
+    /// <summary>
+    /// The main agent's message being streamed (its <c>message_start</c>); null when none is, or once the turn ended. Its blocks whose line
+    /// has not come are an attempt the claude may abandon.
+    /// </summary>
+    private string? _streamingMessageId;
     /// <summary>Sent messages shown at once, oldest first, whose repetition by the claude has not arrived.</summary>
     private readonly List<MessageSubmittedEventArgs> _echoes = new List<MessageSubmittedEventArgs>();
     /// <summary>Messages sent since the conversation was idle, while the claude has not answered: they alone keep it busy.</summary>
@@ -128,7 +133,8 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>
     /// The list follows the mark: a reply of the list that is bookmarked by code (a host restoring them) joins <see cref="Bookmarks"/>,
     /// and leaves it when unmarked, as a click on the bookmark button does. A reply that leaves the list keeps its bookmark (the
-    /// panel says it is no longer shown); the items emptied take the bookmarks with them.
+    /// panel says it is no longer shown), except a reply the claude discarded (<see cref="Retire"/>); the items emptied take the
+    /// bookmarks with them.
     /// </summary>
     private void OnItemsChangedForBookmarks(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -886,7 +892,8 @@ public sealed class ChatConversation : ChatObservableObject
             case AssistantBlock block:
                 OnAssistantBlock(block);
                 break;
-            case MessageStarted:
+            case MessageStarted started:
+                OnMessageStarted(started);
                 break;
             case BlockStarted started:
                 OnBlockStarted(started);
@@ -1018,6 +1025,7 @@ public sealed class ChatConversation : ChatObservableObject
         _nestedTools.Clear();
         _turnTools.Clear();
         _live.Clear();
+        _streamingMessageId = null;
         _parser = new StreamJsonParser();
         _echoes.Clear();
         _unanswered.Clear();
@@ -1492,6 +1500,11 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnAssistantBlock(AssistantBlock e)
     {
+        if (e.Supersedes.Count > 0) RetireSuperseded(e.Supersedes);
+        // the main agent writes another message: the one that was streaming was dropped where its line had not come
+        if (e.ParentToolUseId == null && !e.IsSynthetic && e.MessageId.Length > 0 && _streamingMessageId != null
+            && e.MessageId != _streamingMessageId)
+            RetireAttempt();
         ClaudeIsWorking();
         ReviveFromHistory(e.ParentToolUseId);
         var live = FindLive(e.MessageId, e.ParentToolUseId, e.Block);
@@ -1518,11 +1531,12 @@ public sealed class ChatConversation : ChatObservableObject
                     streamedThinking.IsStreaming = false;
                     streamedThinking.EstimatedTokens = null;
                     streamedThinking.DurationMs ??= e.ThinkingDurationMs ?? live.Elapsed(_clock());
+                    streamedThinking.Uuid = e.Uuid;
                     Complete(live);
                 }
                 else
                 {
-                    Place(new ThinkingItem { Text = thinking.Text, DurationMs = e.ThinkingDurationMs }, e.ParentToolUseId);
+                    Place(new ThinkingItem { Text = thinking.Text, DurationMs = e.ThinkingDurationMs, Uuid = e.Uuid }, e.ParentToolUseId);
                 }
                 break;
             case ToolUseBlock tool:
@@ -1536,12 +1550,13 @@ public sealed class ChatConversation : ChatObservableObject
                         Register(streamedTool);
                     }
                     Fill(streamedTool, tool);
+                    streamedTool.Uuid = e.Uuid;
                     Reveal(live); // its input is whole: if the stop did not bring it yet, it shows now
                     Complete(live);
                 }
                 else
                 {
-                    var item = new ToolCallItem { ToolUseId = tool.Id, Name = tool.Name, Status = ToolStatus.Running };
+                    var item = new ToolCallItem { ToolUseId = tool.Id, Name = tool.Name, Status = ToolStatus.Running, Uuid = e.Uuid };
                     Fill(item, tool);
                     AddTool(item, e.ParentToolUseId);
                 }
@@ -1681,11 +1696,106 @@ public sealed class ChatConversation : ChatObservableObject
         if (live.Stopped) _live.Remove(live);
     }
 
+    /// <summary>The turn ended: what was still arriving stays as it is, a partial text included; nothing is an attempt any more.</summary>
     private void EndStreaming()
     {
         foreach (var live in _live)
             StopStreaming(live.Item);
         _live.Clear();
+        _streamingMessageId = null;
+    }
+
+    // ---- what the claude discards ----
+
+    /// <summary>
+    /// A message of the main agent begins: the one streaming before it was abandoned where its line had not come (the claude dropped that
+    /// attempt and starts over). A subagent's message changes nothing.
+    /// </summary>
+    private void OnMessageStarted(MessageStarted e)
+    {
+        if (e.ParentToolUseId != null) return;
+        RetireAttempt();
+        _streamingMessageId = e.MessageId;
+    }
+
+    /// <summary>
+    /// The blocks of the main agent's message streaming whose line has not come leave: their items leave the list, and a call not shown
+    /// yet is only forgotten. The blocks that got their line stay.
+    /// </summary>
+    private void RetireAttempt()
+    {
+        if (_streamingMessageId == null) return;
+        var attempt = _live.Where(live => live.MessageId == _streamingMessageId && live.ParentToolUseId == null && !live.Completed).ToList();
+        foreach (var live in attempt)
+        {
+            if (live.Hidden) _live.Remove(live);
+            else Retire(live.Item);
+        }
+    }
+
+    /// <summary>The items brought by the lines <paramref name="uuids"/> names (a line that replaces them came) leave, wherever they are.</summary>
+    private void RetireSuperseded(IReadOnlyList<string> uuids)
+    {
+        var gone = new List<ChatItem>();
+        void Collect(IEnumerable<ChatItem> list)
+        {
+            foreach (var item in list)
+            {
+                if (UuidOf(item) is { } uuid && uuids.Contains(uuid)) gone.Add(item); // its children go with it
+                else if (item is ToolCallItem call) Collect(call.Children);
+            }
+        }
+        Collect(Items);
+        foreach (var item in gone) Retire(item);
+    }
+
+    private static string? UuidOf(ChatItem item) => item switch
+    {
+        AssistantTextItem text => text.Uuid,
+        ThinkingItem thought => thought.Uuid,
+        ToolCallItem call => call.Uuid,
+        _ => null,
+    };
+
+    /// <summary>
+    /// A reply the claude discarded leaves the conversation: a bookmarked text loses its bookmark first; the item, and every call in it,
+    /// is forgotten as a call and as a streamed block; then it leaves the list that holds it (the conversation's, or a call's
+    /// <see cref="ToolCallItem.Children"/>).
+    /// </summary>
+    private void Retire(ChatItem item)
+    {
+        if (item is AssistantTextItem reply)
+        {
+            if (reply.IsBookmarked) ToggleBookmark(reply);
+            if (_watched.Remove(reply)) reply.PropertyChanged -= OnWatchedItemChanged;
+        }
+        ForgetRetired(item);
+        RemoveFrom(Items, item);
+    }
+
+    private void ForgetRetired(ChatItem item)
+    {
+        _live.RemoveAll(live => ReferenceEquals(live.Item, item));
+        if (!(item is ToolCallItem call)) return;
+        if (_tools.TryGetValue(call.ToolUseId, out var known) && ReferenceEquals(known, call)) _tools.Remove(call.ToolUseId);
+        _turnTools.Remove(call);
+        _nestedTools.Remove(call);
+        foreach (var child in call.Children) ForgetRetired(child);
+    }
+
+    /// <summary>Takes <paramref name="item"/> out of <paramref name="list"/> or of the children of a call in it; looked for from the end.</summary>
+    private static bool RemoveFrom(ObservableCollection<ChatItem> list, ChatItem item)
+    {
+        for (var i = list.Count - 1; i >= 0; i--)
+        {
+            if (ReferenceEquals(list[i], item))
+            {
+                list.RemoveAt(i);
+                return true;
+            }
+            if (list[i] is ToolCallItem { Children.Count: > 0 } call && RemoveFrom(call.Children, item)) return true;
+        }
+        return false;
     }
 
     private static void StopStreaming(ChatItem item)

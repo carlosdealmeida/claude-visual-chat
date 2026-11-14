@@ -18,6 +18,8 @@ using ClaudeVisualChat.Controls;
 using Xunit;
 using Xunit.Abstractions;
 using AssistantBlock = ClaudeVisualChat.Protocol.AssistantBlock;
+using TextContentBlock = ClaudeVisualChat.Protocol.TextContentBlock;
+using ThinkingBlock = ClaudeVisualChat.Protocol.ThinkingBlock;
 using ToolResultBlock = ClaudeVisualChat.Protocol.ToolResultBlock;
 using ToolUseBlock = ClaudeVisualChat.Protocol.ToolUseBlock;
 using UserBlock = ClaudeVisualChat.Protocol.UserBlock;
@@ -4356,5 +4358,47 @@ public class ChatViewTests
         Assert.Equal("Network Access", ToolTitle(view, tool, "ToolName").Text);
         Assert.False(ToolTitle(view, tool, "DetailText").IsVisible);
         window.Close();
+    }
+
+    // ---- a reply the claude discards ----
+
+    [AvaloniaTheory]
+    [InlineData("desktop")]
+    [InlineData("touch")]
+    [InlineData("focus")]
+    public void A_retired_reply_leaves_the_view(string mode)
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("first reply")) { Uuid = "u1" });
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("middle reply")) { Uuid = "u2" });
+        c.Apply(new AssistantBlock("m3", null, new TextContentBlock("third reply")) { Uuid = "u3" });
+        var middle = c.Items[1];
+        var view = OpenIn(c, mode == "touch");
+        if (mode == "focus")
+        {
+            view.FocusView = true;
+            UiHelpers.Pump();
+        }
+        Assert.Contains("middle reply", UiHelpers.MarkdownText(view));
+
+        // a later line replaces the middle one: it leaves from between the other two
+        c.Apply(new AssistantBlock("m4", null, new ThinkingBlock("thinking again")) { Uuid = "u4", Supersedes = new[] { "u2" } });
+        UiHelpers.Pump();
+
+        var replies = view.GetVisualDescendants().OfType<MarkdownBlock>()
+            .Where(m => m.IsEffectivelyVisible && m.DataContext is AssistantTextItem)
+            .OrderBy(m => m.TranslatePoint(default, view)!.Value.Y)
+            .Select(m => ((AssistantTextItem)m.DataContext!).Text)
+            .ToList();
+        Assert.Equal(new[] { "first reply", "third reply" }, replies);
+        // (the touch layout keeps the row it no longer uses, hidden, for the next reply: what counts is what is shown)
+        Assert.DoesNotContain("middle reply", UiHelpers.MarkdownText(view));
+        Assert.DoesNotContain(view.GetVisualDescendants().OfType<Control>(), v => v.IsEffectivelyVisible && ReferenceEquals(v.DataContext, middle));
+        // no blank row: each row shown holds a row of the list, in its order
+        var list = UiHelpers.ItemList(view);
+        var shown = list.GetRealizedContainers().Where(r => r.IsVisible).OrderBy(r => r.TranslatePoint(default, list)!.Value.Y)
+            .Select(r => r is Avalonia.Controls.Presenters.ContentPresenter p ? p.Content : r.DataContext).ToList();
+        Assert.Equal(list.ItemsSource!.Cast<object>(), shown);
+        WindowOf(view).Close();
     }
 }

@@ -216,6 +216,9 @@ public sealed class ThinkingItem : ChatItem
 
     /// <summary>True while the count shown is still on its way to <see cref="EstimatedTokens"/>.</summary>
     internal bool IsCountingUp(long nowMs) => _countUp.IsMoving(nowMs);
+
+    /// <summary>The <c>uuid</c> of the claude's line that brought it (what a later line names to replace it); null until that line comes.</summary>
+    internal string? Uuid { get; set; }
 }
 
 /// <summary>State of a tool call.</summary>
@@ -367,6 +370,9 @@ public sealed class ToolCallItem : ChatItem
         get => _agent;
         set => SetField(ref _agent, value);
     }
+
+    /// <summary>The <c>uuid</c> of the claude's line that brought it (what a later line names to replace it); null until that line comes.</summary>
+    internal string? Uuid { get; set; }
 }
 
 /// <summary>Duration, tokens and cost of a finished turn.</summary>
