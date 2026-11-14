@@ -1062,6 +1062,9 @@ internal partial class ToolCallView : UserControl
     /// <summary>True while the row asks the host for its command's output (now and then once a second).</summary>
     internal bool IsAskingForOutput => _askingForOutput;
 
+    /// <summary>How long the timer waits between two requests.</summary>
+    internal TimeSpan OutputAskInterval => _outputTimer.Interval;
+
     /// <summary>
     /// The row asks for its command's output while it is in the window, its call is a Bash or PowerShell still running, and the host
     /// listens to <see cref="ChatConversation.TaskOutputRequested"/>; otherwise its timer stands still. The conversation keeps to one

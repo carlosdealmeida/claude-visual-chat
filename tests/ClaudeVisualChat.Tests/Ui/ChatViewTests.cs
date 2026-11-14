@@ -3148,15 +3148,15 @@ public class ChatViewTests
     [AvaloniaFact]
     public void The_view_asks_once_a_second_while_the_command_runs()
     {
-        // the real clocks: the view's timer and the conversation's (a loaded machine is slow, so the waits are long and only the
-        // least time between two requests is checked)
+        // the real clocks: the view's timer and the conversation's. The view's timer is pinned to one second (the conversation would
+        // hide a faster one by refusing the extra requests, and a loaded machine makes any wall-clock bound unreliable); the real loop
+        // shows only that it does tick, with a long wait for a slow machine
         var host = new LiveHost(realClock: true);
-        var clock = Stopwatch.StartNew();
         var (view, window) = Open(host.C);
         Assert.Single(host.Asked);                              // on entering the window
         Assert.True(ViewOf(view, host.Tool).IsAskingForOutput);
-        WaitFor(() => host.Asked.Count >= 2);                   // and a second later
-        Assert.True(clock.Elapsed >= TimeSpan.FromSeconds(0.9), clock.Elapsed.ToString());
+        Assert.Equal(TimeSpan.FromSeconds(1), ViewOf(view, host.Tool).OutputAskInterval); // then once a second
+        WaitFor(() => host.Asked.Count >= 2);                   // and the timer does tick
         Assert.All(host.Asked, e => Assert.Equal(("k1", "t1"), (e.TaskId, e.ToolUseId)));
 
         // the host stops listening: the timer stops; it listens again: the asking goes on
