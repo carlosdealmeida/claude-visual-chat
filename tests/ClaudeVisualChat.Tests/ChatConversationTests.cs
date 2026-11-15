@@ -572,6 +572,75 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void A_superseded_agent_call_takes_its_agent_with_it()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("a1", "Agent", J("{\"description\":\"Look around\",\"prompt\":\"p\"}"))) { Uuid = "u1" });
+        c.Apply(new AssistantBlock("s1", "a1", new ToolUseBlock("a2", "Agent", J("{\"description\":\"Look closer\",\"prompt\":\"q\"}"))) { Uuid = "c1" });
+        Assert.Equal(2, c.RunningAgents);
+
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("again")) { Uuid = "u2", Supersedes = new[] { "u1" } });
+        c.Apply(new TurnCompleted("success", false, 1, null, null, null));
+
+        Assert.Equal(new[] { "text:again", "footer:False" }, c.Items.Select(Describe));
+        Assert.Empty(c.Agents);
+        Assert.Equal(0, c.RunningAgents);
+    }
+
+    [Fact]
+    public void A_superseded_call_takes_its_permission_request_with_it()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"ls\"}"))) { Uuid = "u1" });
+        c.Apply(Request("p1", "t1"));
+        Assert.Equal("p1", c.CurrentPermission?.RequestId);
+
+        c.Apply(new AssistantBlock("m2", null, new TextContentBlock("again")) { Uuid = "u2", Supersedes = new[] { "u1" } });
+
+        Assert.Empty(c.PendingPermissions);
+        Assert.Null(c.CurrentPermission);
+    }
+
+    [Fact]
+    public void A_retired_item_stops_streaming_and_running()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Apply(new BlockStarted("m1", 0, null, new TextContentBlock("")));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.Text, "half an ans"));
+        var text = Assert.IsType<AssistantTextItem>(Assert.Single(c.Items));
+        Assert.True(text.IsStreaming);
+        c.Apply(new MessageStarted("m2", null));
+        Assert.False(text.IsStreaming);
+
+        c.Apply(new AssistantBlock("m2", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"npm test\"}"))) { Uuid = "u1" });
+        c.Apply(new AgentTaskStarted("k1", "t1", "", null, false, 0, "local_bash"));
+        var call = Assert.IsType<ToolCallItem>(Assert.Single(c.Items));
+        Assert.Equal(ToolStatus.Running, call.Status);
+        c.Apply(new AssistantBlock("m3", null, new TextContentBlock("again")) { Uuid = "u2", Supersedes = new[] { "u1" } });
+
+        Assert.DoesNotContain(call, c.Items);
+        Assert.Equal(ToolStatus.Rejected, call.Status); // a row the list keeps for later stops asking about it
+    }
+
+    [Fact]
+    public void Supersedes_retires_the_items_of_a_subagent()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("a1", "Agent", J("{\"description\":\"Look\",\"prompt\":\"p\"}"))) { Uuid = "u1" });
+        c.Apply(new AssistantBlock("s1", "a1", new TextContentBlock("sub first")) { Uuid = "c1" });
+        c.Apply(new AssistantBlock("s1", "a1", new ToolUseBlock("b1", "Bash", J("{\"command\":\"ls\"}"))) { Uuid = "c2" });
+        c.Apply(new AssistantBlock("s2", "a1", new TextContentBlock("sub again")) { Uuid = "c3", Supersedes = new[] { "c1", "c2" } });
+
+        var agent = Assert.IsType<ToolCallItem>(Assert.Single(c.Items));
+        Assert.Equal("tool:Agent:Look:Running:1", Describe(agent));
+        Assert.Equal(new[] { "text:sub again" }, agent.Children.Select(Describe));
+
+        c.Apply(new UserBlock("a1", new ToolResultBlock("b1", "x", false), null, false, false)); // the retired child's result finds nothing
+        Assert.Equal(new[] { "tool:Agent:Look:Running:1", "text:sub again" }, All(c.Items).Select(Describe));
+    }
+
+    [Fact]
     public void A_streamed_attempt_with_no_final_line_leaves_when_the_next_message_starts()
     {
         var c = new ChatConversation();

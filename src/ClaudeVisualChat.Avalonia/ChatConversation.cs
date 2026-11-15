@@ -1793,8 +1793,9 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>
     /// A reply the claude discarded leaves the conversation: a bookmarked text loses its bookmark first; the item, and every call in it,
-    /// is forgotten as a call and as a streamed block; then it leaves the list that holds it (the conversation's, or a call's
-    /// <see cref="ToolCallItem.Children"/>).
+    /// is forgotten as a call and as a streamed block, stops streaming, and a call still running stops running (a row the list keeps
+    /// for later stops asking about it), takes its permission requests and its agent with it; then it leaves the list that holds it
+    /// (the conversation's, or a call's <see cref="ToolCallItem.Children"/>).
     /// </summary>
     private void Retire(ChatItem item)
     {
@@ -1810,11 +1811,20 @@ public sealed class ChatConversation : ChatObservableObject
     private void ForgetRetired(ChatItem item)
     {
         _live.RemoveAll(live => ReferenceEquals(live.Item, item));
+        StopStreaming(item);
         if (!(item is ToolCallItem call)) return;
         if (_tools.TryGetValue(call.ToolUseId, out var known) && ReferenceEquals(known, call)) _tools.Remove(call.ToolUseId);
         _turnTools.Remove(call);
         _nestedTools.Remove(call);
         ForgetCommandTaskOf(call.ToolUseId);
+        if (call.Status == ToolStatus.Running) Reject(call);
+        RemovePermissionsFor(call.ToolUseId);
+        if (FindAgent(call.ToolUseId) is { } agent)
+        {
+            Agents.Remove(agent);
+            _agentsStoppedByHistory.Remove(agent);
+            _agentsChanged = true;
+        }
         foreach (var child in call.Children) ForgetRetired(child);
     }
 
@@ -2888,6 +2898,15 @@ public sealed class ChatConversation : ChatObservableObject
             if (tool.Status == ToolStatus.Running && !_nestedTools.Contains(tool) && !HasRunningChild(tool))
                 tool.Status = ToolStatus.Rejected;
         }
+    }
+
+    /// <summary>A call that stops running without a result: it is rejected, and what the command had printed so far goes.</summary>
+    private static void Reject(ToolCallItem tool)
+    {
+        tool.LiveOutput = null;
+        tool.LiveOutputBytes = 0;
+        tool.LiveOutputTruncated = false;
+        tool.Status = ToolStatus.Rejected;
     }
 
     private static bool HasRunningChild(ToolCallItem tool)

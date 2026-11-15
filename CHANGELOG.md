@@ -59,7 +59,8 @@ All notable changes to this project are written here. The format follows
   same uuid. A command forwarded from another session is still left out, and so is every other kind of attachment.
 - A reply the `claude` discards leaves the conversation instead of staying in the list next to the one that replaced it. A line
   whose `supersedes` names earlier lines takes their text, thoughts and tool calls out, wherever they are (a subagent's too); a
-  bookmarked text loses its bookmark. A reply abandoned while it streamed (the main agent starts another message, or a line of
+  bookmarked text loses its bookmark, a call takes its permission requests with it, and an `Agent` call its agent, which no longer
+  counts as running. What leaves stops streaming, and a call that was running is rejected. A reply abandoned while it streamed (the main agent starts another message, or a line of
   another message comes, before the line of a block arrived) takes out the blocks that never got their line; a call whose input was
   still arriving is dropped without ever showing. The blocks that got their line stay, and so does the partial text of a turn that
   ends or is interrupted. A subagent's message and a `<synthetic>` line retire nothing.
