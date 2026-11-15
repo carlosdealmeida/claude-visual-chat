@@ -145,7 +145,9 @@ internal partial class ToolCallView : UserControl
 
     private readonly DispatcherTimer _outputTimer = new DispatcherTimer { Interval = AskOutputEvery };
     private bool _askingForOutput; // the row asks for its command's output: in the window, a running command, a host that listens
-    private Visual? _container; // the row's parent in the tree, while it is in it: the touch list hides it while the row is off screen
+    // what hides the row while it is in the tree: its parent, which the touch list hides while the row is off screen, and for a
+    // subagent's step every ancestor up to the parent of the outermost row it is in (the folded steps' list is one of them)
+    private readonly List<Visual> _containers = new List<Visual>();
     private Border? _liveBox; // the box with what the running command printed, while it is in the tree
     private ToolCallItem? _liveBoxFor; // the call the box was built for: a row given to another call builds its own
     private ToggleButton? _liveHeader;
@@ -252,8 +254,7 @@ internal partial class ToolCallView : UserControl
     {
         base.OnAttachedToVisualTree(e);
         _attached = true;
-        _container = this.GetVisualParent();
-        if (_container != null) _container.PropertyChanged += OnContainerChanged;
+        ListenToContainers();
         Track(DataContext as ToolCallItem);
         TrackHost();
     }
@@ -261,8 +262,8 @@ internal partial class ToolCallView : UserControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
-        if (_container != null) _container.PropertyChanged -= OnContainerChanged;
-        _container = null;
+        foreach (var container in _containers) container.PropertyChanged -= OnContainerChanged;
+        _containers.Clear();
         _attached = false;
         Track(null); // the item outlives the view: let go of its events
         TrackHost();
@@ -1094,8 +1095,28 @@ internal partial class ToolCallView : UserControl
     }
 
     /// <summary>
-    /// The touch list hides the row's container while the row waits off screen for its next item; when it shows the row again the row
-    /// asks at once, as one that comes into the window does, and then once a second.
+    /// Listens to the visibility of what hides the row: its parent and, for a step of a subagent, the ancestors up to the parent of
+    /// the outermost row it is in.
+    /// </summary>
+    private void ListenToContainers()
+    {
+        var last = this.GetVisualParent();
+        for (var visual = last; visual != null; visual = visual.GetVisualParent())
+        {
+            if (visual is ToolCallView outer) last = outer.GetVisualParent() ?? outer;
+        }
+        for (var visual = this.GetVisualParent(); visual != null; visual = visual.GetVisualParent())
+        {
+            _containers.Add(visual);
+            visual.PropertyChanged += OnContainerChanged;
+            if (ReferenceEquals(visual, last)) break;
+        }
+    }
+
+    /// <summary>
+    /// The touch list hides the row's container while the row waits off screen for its next item, and a subagent's folded steps are
+    /// hidden with their list; when the row shows again it asks at once, as one that comes into the window does, and then once a
+    /// second.
     /// </summary>
     private void OnContainerChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {

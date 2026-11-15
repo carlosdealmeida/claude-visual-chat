@@ -276,6 +276,17 @@ public class RowReuseTests
         Assert.True(done());
     }
 
+    /// <summary>
+    /// Closes the test's window, so the row of its running command leaves the tree and stops its timer: the dispatcher is the one every
+    /// test shares, and a row left in a window would go on asking once a second until the end of the run.
+    /// </summary>
+    private static void CloseAndStopAsking(Window window, ToolCallView row)
+    {
+        window.Close();
+        UiHelpers.Pump();
+        Assert.Null(row.GetVisualRoot());
+    }
+
     [AvaloniaFact]
     public void A_running_command_kept_off_screen_is_not_asked_about()
     {
@@ -284,7 +295,7 @@ public class RowReuseTests
         LongReplies(c, 40);
         var host = new OutputHost(c);
         var view = UiHelpers.TouchView(c);
-        UiHelpers.ShowPhone(view);
+        var window = UiHelpers.ShowPhone(view);
         var scroller = UiHelpers.Scroller(view);
         scroller.Offset = new Vector(0, 0);
         UiHelpers.Pump();
@@ -303,6 +314,7 @@ public class RowReuseTests
         scroller.Offset = new Vector(0, 0);
         UiHelpers.Pump();
         WaitFor(() => host.Asked.Count > asked);
+        CloseAndStopAsking(window, row);
     }
 
     [AvaloniaFact]
@@ -317,7 +329,7 @@ public class RowReuseTests
         host.Output["k1"] = string.Join("\n", Enumerable.Range(1, 60).Select(i => "first " + i));
         host.Output["k2"] = string.Join("\n", Enumerable.Range(1, 90).Select(i => "second " + i));
         var view = UiHelpers.TouchView(c);
-        UiHelpers.ShowPhone(view);
+        var window = UiHelpers.ShowPhone(view);
         var scroller = UiHelpers.Scroller(view);
         scroller.Offset = new Vector(0, 0);
         UiHelpers.Pump();
@@ -344,5 +356,52 @@ public class RowReuseTests
 
         Assert.Contains("k2", host.Asked.Skip(asked)); // asked about at once, not on the next tick of the first command's timer
         Assert.True(UiHelpers.AtEnd(LiveScroller(row)), "the new command's box follows its end");
+        CloseAndStopAsking(window, row);
+    }
+
+    [AvaloniaFact]
+    public void A_subagents_running_command_asks_at_once_when_it_shows_again()
+    {
+        var now = new System.DateTimeOffset(2026, 11, 14, 10, 0, 0, System.TimeSpan.Zero);
+        var c = new ChatConversation { Clock = () => now };
+        c.Apply(new AssistantBlock("m_a1", null, new ToolUseBlock("a1", "Agent", J("{\"description\":\"Look around\",\"prompt\":\"go\"}"))));
+        c.Apply(new AssistantBlock("m_t1", "a1", new ToolUseBlock("t1", "Bash", J("{\"command\":\"npm test\"}"))));
+        c.Apply(new AgentTaskStarted("k1", "t1", "", null, false, 0, "local_bash"));
+        var agent = c.Items.OfType<ToolCallItem>().Single();
+        var tool = agent.Children.OfType<ToolCallItem>().Single();
+        agent.IsExpanded = true;
+        LongReplies(c, 40);
+        var host = new OutputHost(c);
+        var view = UiHelpers.TouchView(c);
+        var window = UiHelpers.ShowPhone(view);
+        var scroller = UiHelpers.Scroller(view);
+        scroller.Offset = new Vector(0, 0);
+        UiHelpers.Pump();
+        Assert.Contains("k1", host.Asked); // on screen it asks
+
+        // the agent's row scrolls away with its steps and comes back a while later: the command is asked about at once, not on the
+        // next tick of its row's timer (no timer runs here: only the jobs)
+        scroller.Offset = new Vector(0, scroller.Extent.Height);
+        UiHelpers.Pump();
+        var row = Assert.Single(RowsOf(view, tool));
+        Assert.False(row.IsEffectivelyVisible);
+        now = now.AddSeconds(5);
+        var asked = host.Asked.Count;
+        scroller.Offset = new Vector(0, 0);
+        UiHelpers.Pump();
+        row = Assert.Single(RowsOf(view, tool));
+        Assert.True(row.IsEffectivelyVisible);
+        Assert.True(host.Asked.Count > asked, "asked about when the agent's row came back on screen");
+
+        // the same when the person folds the agent's steps and opens them again
+        agent.IsExpanded = false;
+        UiHelpers.Pump();
+        Assert.False(row.IsEffectivelyVisible);
+        now = now.AddSeconds(5);
+        asked = host.Asked.Count;
+        agent.IsExpanded = true;
+        UiHelpers.Pump();
+        Assert.True(host.Asked.Count > asked, "asked about when the steps were opened again");
+        CloseAndStopAsking(window, row);
     }
 }
