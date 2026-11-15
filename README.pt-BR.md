@@ -946,7 +946,10 @@ centavos de dólar. Depois, o gravador guarda só os campos que os testes usam, 
 nome de usuário por `demo`, e escreve `<cenário>.stream.ndjson` e `<cenário>.transcript.jsonl` em `tests/fixtures`. O
 `FixturePrivacyTests` procura nos arquivos pastas de usuário que não sejam a do `demo` e, quando você as escreve uma por
 linha em `tests/private-words.txt` (que o git ignora), as suas próprias palavras: o seu nome de usuário, a empresa, os
-clientes. Mesmo assim, leia os arquivos antes do commit. Os testes do próprio gravador: `python -I tools/test_gravar.py`.
+clientes. Essas palavras só são conferidas quando o arquivo existe. Mesmo assim, leia os arquivos antes do commit. Uma
+gravação com o resumo de uma compactação traz um texto que o modelo escreve a partir de todo o seu contexto, e esse
+contexto inclui as suas próprias instruções para o claude: leia o resumo antes de fazer o commit da gravação. Os testes do
+próprio gravador: `python -I tools/test_gravar.py`.
 
 ## Compilar
 

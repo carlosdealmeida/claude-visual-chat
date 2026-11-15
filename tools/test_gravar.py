@@ -141,6 +141,15 @@ def test_higieniza_commands_changed():
     assert out["subtype"] == "commands_changed" and out["session_id"] == "s"
 
 
+def test_result_drops_when_the_login_expires():
+    resultado = {"type": "result", "subtype": "success", "session_id": "s", "total_cost_usd": 0.01,
+                 "credential_expires_at": "2026-11-28T22:27:46.138Z"}
+    out = gravar.higienizar_stream(resultado, trocas())
+    assert "credential_expires_at" not in out
+    assert out == {"type": "result", "subtype": "success", "session_id": "s", "total_cost_usd": 0.01}
+    assert "credential_expires_at" in resultado  # the line read is left as it was
+
+
 def test_gera_png_valido():
     import struct
     import zlib

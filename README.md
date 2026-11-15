@@ -933,8 +933,10 @@ Each scenario runs in a new temporary folder with the `haiku` model, `--setting-
 recorder then keeps only the fields the tests use, replaces the folder with `C:\demo\app` and your user name with
 `demo`, and writes `<scenario>.stream.ndjson` and `<scenario>.transcript.jsonl` to `tests/fixtures`.
 `FixturePrivacyTests` checks the files for user folders other than `demo`'s and, when you write them one per line in
-`tests/private-words.txt` (git ignores it), for your own words: your user name, company, clients. Read the files
-before you commit all the same. The recorder's own tests: `python -I tools/test_gravar.py`.
+`tests/private-words.txt` (git ignores it), for your own words: your user name, company, clients. It checks those words
+only when the file exists. Read the files before you commit all the same. A recording with a compaction summary carries
+text the model writes from its whole context, and that context includes your own instructions to the claude: read the
+summary before you commit the recording. The recorder's own tests: `python -I tools/test_gravar.py`.
 
 ## Building
 

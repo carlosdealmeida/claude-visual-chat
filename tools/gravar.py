@@ -42,6 +42,7 @@ INITIALIZE_CAMPOS = ("commands", "models")
 SETTINGS_APPLIED_CAMPOS = ("model", "effort")
 CONTEXTO_CAMPOS = ("totalTokens", "maxTokens", "percentage")
 CONTEXTO_CATEGORIA_CAMPOS = ("name", "tokens", "kind")
+RESULT_CAMPOS_FORA = ("credential_expires_at",)
 
 DEMO_PASTA = r"C:\demo\app"
 DEMO_HOME = r"C:\Users\demo"
@@ -161,6 +162,10 @@ def higienizar_stream(obj, troca):
     if tipo == "system" and obj.get("subtype") == "commands_changed":
         novo = dict(obj)
         novo["commands"] = _comandos_publicos(obj.get("commands"))
+        return _trocar(novo, troca)
+    if tipo == "result":
+        # When the recorder's login expires: the user's, and nothing the chat reads.
+        novo = {k: v for k, v in obj.items() if k not in RESULT_CAMPOS_FORA}
         return _trocar(novo, troca)
     if tipo == "system" and obj.get("subtype") == "init":
         novo = {k: obj[k] for k in INIT_CAMPOS if k in obj}

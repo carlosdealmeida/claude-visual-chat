@@ -12,11 +12,11 @@ namespace ClaudeVisualChat.Tests
     public class FixturePrivacyTests
     {
         /// <summary>
-        /// The prefix of the claude.ai connectors (an MCP server of whoever recorded). Each one's own words (user name,
-        /// company, clients, project folders) go in <c>tests/private-words.txt</c>, one per line, which git ignores:
-        /// they are checked too when the file exists.
+        /// The prefix of the claude.ai connectors (an MCP server of whoever recorded) and the key of the result line that
+        /// says when the recorder's login expires. Each one's own words (user name, company, clients, project folders) go
+        /// in <c>tests/private-words.txt</c>, one per line, which git ignores: they are checked too when the file exists.
         /// </summary>
-        private static readonly string[] Forbidden = { "claude_ai_" };
+        private static readonly string[] Forbidden = { "claude_ai_", "credential_expires_at" };
 
         private const string ImageCache = @"C:\\Users\\demo\\AppData\\Local\\Temp\\claude\\C--demo-app\\";
 
