@@ -42,9 +42,9 @@ namespace ClaudeVisualChat.Controls;
 /// The command's row (IN) of a Bash or PowerShell call has a button at its top right, shown while the pointer is over the row (always
 /// in the touch layout), that copies the whole command through <see cref="ChatClipboard"/>; for 2 s after a copy its icon is a check.
 /// While such a command runs and the host listens to <see cref="ChatConversation.TaskOutputRequested"/>, the row asks for what it has
-/// printed when it comes into the window and then once a second; what comes back shows in a box under its card, "Output" with an arrow
-/// that folds it, the text scrolling at 240 px and following its end unless the person scrolled up, and a line that says how much there
-/// is when the claude kept only its end. The box goes with the result.
+/// printed when it comes on screen and then once a second while it is on screen; what comes back shows in a box under its card,
+/// "Output" with an arrow that folds it, the text scrolling at 240 px and following its end unless the person scrolled up, and a line
+/// that says how much there is when the claude kept only its end. The box goes with the result, or when the call stops running.
 /// A Glob or a Grep that worked reads only a line under its name ("Found 3 files", "12 lines of output"), with no box; with output, a
 /// click, Enter or Space on the line opens the whole output under it. A Web Fetch that worked has only "Fetched from" and its url in the
 /// box (what it fetched stays out); a Web Search says the domains it was allowed or kept away from.
@@ -145,7 +145,9 @@ internal partial class ToolCallView : UserControl
 
     private readonly DispatcherTimer _outputTimer = new DispatcherTimer { Interval = AskOutputEvery };
     private bool _askingForOutput; // the row asks for its command's output: in the window, a running command, a host that listens
+    private Visual? _container; // the row's parent in the tree, while it is in it: the touch list hides it while the row is off screen
     private Border? _liveBox; // the box with what the running command printed, while it is in the tree
+    private ToolCallItem? _liveBoxFor; // the call the box was built for: a row given to another call builds its own
     private ToggleButton? _liveHeader;
     private TextBlock? _liveHeaderText;
     private Border? _liveFrame;
@@ -250,6 +252,8 @@ internal partial class ToolCallView : UserControl
     {
         base.OnAttachedToVisualTree(e);
         _attached = true;
+        _container = this.GetVisualParent();
+        if (_container != null) _container.PropertyChanged += OnContainerChanged;
         Track(DataContext as ToolCallItem);
         TrackHost();
     }
@@ -257,6 +261,8 @@ internal partial class ToolCallView : UserControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        if (_container != null) _container.PropertyChanged -= OnContainerChanged;
+        _container = null;
         _attached = false;
         Track(null); // the item outlives the view: let go of its events
         TrackHost();
@@ -310,6 +316,11 @@ internal partial class ToolCallView : UserControl
             _item.PropertyChanged += OnItemChanged;
             _item.Children.CollectionChanged += OnChildrenChanged;
         }
+        // a row the touch list gives to another call asks about the new command at once, as a row that comes into the window does,
+        // and builds a box of its own (the old one's scrolling was the other command's)
+        _askingForOutput = false;
+        _outputTimer.Stop();
+        if (_item != null && !ReferenceEquals(_item, _liveBoxFor)) DropLiveBox();
         TrackAgent(_item?.Agent);
         TrackHost();
         // out of the window, only the events go: Avalonia is taking the tree apart, and coming back draws it again
@@ -1067,8 +1078,9 @@ internal partial class ToolCallView : UserControl
 
     /// <summary>
     /// The row asks for its command's output while it is in the window, its call is a Bash or PowerShell still running, and the host
-    /// listens to <see cref="ChatConversation.TaskOutputRequested"/>; otherwise its timer stands still. The conversation keeps to one
-    /// request a second for each command, and none while the last one waits for its answer.
+    /// listens to <see cref="ChatConversation.TaskOutputRequested"/>; otherwise its timer stands still. While the row is hidden its
+    /// ticks ask nothing (see <see cref="AskForOutput"/>). The conversation keeps to one request a second for each command, and none
+    /// while the last one waits for its answer.
     /// </summary>
     private void UpdateAsking()
     {
@@ -1081,6 +1093,17 @@ internal partial class ToolCallView : UserControl
         if (asks) Dispatcher.UIThread.Post(StartAsking);
     }
 
+    /// <summary>
+    /// The touch list hides the row's container while the row waits off screen for its next item; when it shows the row again the row
+    /// asks at once, as one that comes into the window does, and then once a second.
+    /// </summary>
+    private void OnContainerChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property != IsVisibleProperty || !_askingForOutput || !IsEffectivelyVisible) return;
+        _outputTimer.Stop();
+        Dispatcher.UIThread.Post(StartAsking);
+    }
+
     private void StartAsking()
     {
         if (!_askingForOutput || _outputTimer.IsEnabled) return; // it stopped meanwhile, or a job before this one started it
@@ -1089,11 +1112,13 @@ internal partial class ToolCallView : UserControl
     }
 
     /// <summary>
-    /// One request (the timer's tick). A host handler that throws is not caught, as anywhere a row raises a host event: its exception
-    /// reaches the dispatcher like any other.
+    /// One request (the timer's tick). A row the touch list keeps hidden, off screen, ticks on and asks nothing until it shows again.
+    /// A host handler that throws is not caught, as anywhere a row raises a host event: its exception reaches the dispatcher like any
+    /// other.
     /// </summary>
     private void AskForOutput()
     {
+        if (!IsEffectivelyVisible) return;
         if (_askingForOutput && _item is { } item && _host is { } host) host.RequestTaskOutput(item);
     }
 
@@ -1108,14 +1133,7 @@ internal partial class ToolCallView : UserControl
         var output = item != null && IsCommand(item.Name) && item.Status == ToolStatus.Running ? item.LiveOutput : null;
         if (string.IsNullOrEmpty(output))
         {
-            if (_liveBox == null) return;
-            LiveOutputSlot.Children.Clear();
-            _liveBox = null;
-            _liveHeader = null;
-            _liveHeaderText = null;
-            _liveFrame = null;
-            _liveText = null;
-            _liveEnd = null;
+            DropLiveBox();
             return;
         }
         if (_liveBox == null) BuildLiveBox();
@@ -1131,6 +1149,20 @@ internal partial class ToolCallView : UserControl
         var cut = item!.LiveOutputTruncated && item.LiveOutputBytes > 0;
         _liveEnd!.Text = cut ? strings.FormatLiveOutputEnd(item.LiveOutputBytes) : "";
         _liveEnd.IsVisible = open && cut;
+    }
+
+    /// <summary>The box leaves the tree, with its scrolling: the next text builds a new one.</summary>
+    private void DropLiveBox()
+    {
+        if (_liveBox == null) return;
+        LiveOutputSlot.Children.Clear();
+        _liveBox = null;
+        _liveBoxFor = null;
+        _liveHeader = null;
+        _liveHeaderText = null;
+        _liveFrame = null;
+        _liveText = null;
+        _liveEnd = null;
     }
 
     /// <summary>
@@ -1174,6 +1206,7 @@ internal partial class ToolCallView : UserControl
         var box = new Border { Child = new StackPanel { Children = { header, frame, end } } };
         box.Classes.Add("ClaudeChatLiveOutput");
         _liveBox = box;
+        _liveBoxFor = _item;
         _liveHeader = header;
         _liveHeaderText = label;
         _liveFrame = frame;

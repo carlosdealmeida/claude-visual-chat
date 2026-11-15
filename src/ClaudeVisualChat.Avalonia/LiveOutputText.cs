@@ -25,7 +25,7 @@ internal static class LiveOutputText
         if (truncated)
         {
             var feed = text.IndexOf('\n');
-            text = feed >= 0 && feed < text.Length - 1 ? text.Substring(feed + 1) : text.TrimStart('�');
+            text = feed >= 0 && feed < text.Length - 1 ? text.Substring(feed + 1) : text.TrimStart('\uFFFD');
         }
         text = AnsiText.Strip(text);
         if (text.IndexOf('\r') >= 0) text = Overwritten(text);

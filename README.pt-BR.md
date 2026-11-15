@@ -481,7 +481,7 @@ Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt
   [Início rápido](#início-rápido)): uma caixa "Saída" embaixo do cartão dele, que se dobra com um clique, rola depois de
   240 px e acompanha o fim a menos que a pessoa tenha rolado para cima, e diz "Mostrando o fim de 1.5MB de saída." quando
   o claude guardou só o fim. A linha pergunta uma vez por segundo enquanto está na tela; a caixa some quando o resultado
-  chega. Sem tratador não há caixa.
+  chega ou a chamada para de rodar. Sem tratador não há caixa.
 - **Um clique num diff da lista abre o Diff View** sobre a view inteira, lado a lado, com o caminho do arquivo no título.
   O Esc, o x dele e `CloseTopLayer()` o fecham (é uma camada, logo abaixo da prévia de imagem), e ele abre também numa view
   somente leitura. Numa view de 500 px de largura ou menos (só o layout desktop) a caixa de um Edit ou de um Write some,

@@ -473,8 +473,8 @@ may want to know:
 - **A running command shows what it has printed so far** when your app handles `TaskOutputRequested` (see
   [Quick start](#quick-start)): an "Output" box under its card, which folds with a click, scrolls past
   240 px and follows the end unless the person scrolled up, and says "Showing the end of 1.5MB of output." when the claude
-  kept only the end. The row asks once a second while it is on screen; the box goes when the result arrives. With no
-  handler there is no box.
+  kept only the end. The row asks once a second while it is on screen; the box goes when the result arrives or the call
+  stops running. With no handler there is no box.
 - **A click on a diff in the list opens the Diff View** over the whole view, side by side, under the file's path. Esc, its
   x and `CloseTopLayer()` close it (it is a layer, right under the image preview), and it opens in a read-only view too.
   On a view 500 px wide or less (the desktop layout only) the box of an Edit or a Write is left out, as in the extension;

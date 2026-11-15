@@ -25,7 +25,8 @@ All notable changes to this project are written here. The format follows
 - `ToolCallItem.LiveOutput`: what the running command has printed so far, from the answer's `output`, without terminal codes, each
   line as the terminal leaves it after its carriage returns, and its last 100,000 characters at most; when the `claude` kept only
   the end (`truncated`), the cut first line goes. An answer that leaves nothing keeps the output there was. It goes back to null when
-  the call's result arrives, and an answer that comes after the result is dropped. The command is no longer asked about once it goes
+  the call's result arrives or the call stops running without one (it is rejected after an interrupted or failed turn, or it leaves
+  with a reply the `claude` discards), and an answer that comes after the result is dropped. The command is no longer asked about once it goes
   to the background, its task ends, its result arrives, the turn ends, or the conversation is cleared or read from a file.
 - `AgentTaskUpdated.IsBackgrounded`: the `is_backgrounded` of the update's patch; null when the patch does not say.
 - The output of a running command shows under its card, like the extension 2.1.323's, while the host handles

@@ -14,15 +14,15 @@ public class LiveOutputTextTests
     [Fact]
     public void A_truncated_output_with_one_line_loses_only_the_broken_start()
     {
-        Assert.Equal("abc", LiveOutputText.Prepare("��abc", truncated: true));
-        Assert.Equal("abc\n", LiveOutputText.Prepare("�abc\n", truncated: true)); // its only line break ends it
+        Assert.Equal("abc", LiveOutputText.Prepare("\uFFFD\uFFFDabc", truncated: true));
+        Assert.Equal("abc\n", LiveOutputText.Prepare("\uFFFDabc\n", truncated: true)); // its only line break ends it
     }
 
     [Fact]
     public void An_output_that_is_not_truncated_keeps_its_first_line()
     {
         Assert.Equal("a\nb\nc", LiveOutputText.Prepare("a\nb\nc", truncated: false));
-        Assert.Equal("�abc", LiveOutputText.Prepare("�abc", truncated: false));
+        Assert.Equal("\uFFFDabc", LiveOutputText.Prepare("\uFFFDabc", truncated: false));
     }
 
     [Fact]

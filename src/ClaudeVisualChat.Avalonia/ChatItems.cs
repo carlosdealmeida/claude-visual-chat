@@ -322,7 +322,8 @@ public sealed class ToolCallItem : ChatItem
     /// <summary>
     /// What a running Bash or PowerShell command has printed so far, as the claude last told the host
     /// (<see cref="ChatConversation.TaskOutputRequested"/>): without terminal codes, each line as a terminal leaves it after its carriage
-    /// returns, and its last 100,000 characters at most. Null when nothing was told, and again once the result arrives.
+    /// returns, and its last 100,000 characters at most. Null when nothing was told, and again once the result arrives or the call
+    /// stops running without one.
     /// </summary>
     public string? LiveOutput
     {

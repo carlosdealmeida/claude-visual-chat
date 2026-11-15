@@ -3959,6 +3959,24 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void A_call_rejected_without_a_result_loses_its_live_output()
+    {
+        var c = new ChatConversation();
+        var item = RunningBash(c, "t1", "k1");
+        AskedFor(c);
+        c.RequestTaskOutput(item);
+        Answer(c, "r1", "line 1\n", 9_000, true);
+        Assert.Equal("line 1\n", item.LiveOutput);
+
+        c.Apply(new TurnCompleted("error_during_execution", true, 1, null, null, null));
+
+        Assert.Equal(ToolStatus.Rejected, item.Status);
+        Assert.Null(item.LiveOutput);
+        Assert.Equal(0, item.LiveOutputBytes);
+        Assert.False(item.LiveOutputTruncated);
+    }
+
+    [Fact]
     public void An_answer_that_arrives_after_the_result_is_dropped()
     {
         var c = new ChatConversation();

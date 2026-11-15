@@ -7,6 +7,7 @@ using Avalonia.Controls.Presenters;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
+using ClaudeVisualChat.Protocol;
 using Xunit;
 
 namespace ClaudeVisualChat.Tests.Ui;
@@ -205,5 +206,143 @@ public class RowReuseTests
             Assert.Contains(s.Content!, other.Items.Cast<object>());
             Assert.Same(s.Content, s.Child!.DataContext);
         }
+    }
+
+    // ---- the row of a running command (0.8.0) ----
+
+    private static JsonElement J(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    /// <summary>A Bash call <paramref name="toolUseId"/> that the claude runs in the foreground as the task <paramref name="taskId"/>.</summary>
+    private static ToolCallItem RunningBash(ChatConversation c, string toolUseId, string taskId)
+    {
+        c.Apply(new AssistantBlock("m_" + toolUseId, null, new ToolUseBlock(toolUseId, "Bash", J("{\"command\":\"npm test\"}"))));
+        c.Apply(new AgentTaskStarted(taskId, toolUseId, "", null, false, 0, "local_bash"));
+        return c.Items.OfType<ToolCallItem>().Single(t => t.ToolUseId == toolUseId);
+    }
+
+    /// <summary><paramref name="count"/> replies of several paragraphs each: enough to take a row far off a phone's screen.</summary>
+    private static void LongReplies(ChatConversation c, int count)
+    {
+        for (var i = 0; i < count; i++)
+            c.Apply(new AssistantBlock("r" + i, null, new TextContentBlock("Reply " + i + "\n\n" + string.Join("\n\n", Enumerable.Repeat("A paragraph of text.", 6)))));
+    }
+
+    /// <summary>A host that asks for the output of each command (ids r1, r2…); the claude answers on the next UI job with <see cref="Output"/>.</summary>
+    private sealed class OutputHost
+    {
+        public readonly List<string> Asked = new List<string>(); // the task ids, in order
+        public readonly Dictionary<string, string> Output = new Dictionary<string, string>();
+
+        public OutputHost(ChatConversation c)
+        {
+            c.TaskOutputRequested += (_, e) =>
+            {
+                Asked.Add(e.TaskId);
+                var id = e.RequestId = "r" + Asked.Count;
+                var output = Output.TryGetValue(e.TaskId, out var text) ? text : "";
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => c.AppendLine(JsonSerializer.Serialize(new
+                {
+                    type = "control_response",
+                    response = new { subtype = "success", request_id = id, response = new { output, total_bytes = output.Length, truncated = false } },
+                })));
+            };
+        }
+    }
+
+    private static List<ToolCallView> RowsOf(ClaudeChatView view, ToolCallItem tool) =>
+        view.GetVisualDescendants().OfType<ToolCallView>().Where(v => ReferenceEquals(v.DataContext, tool)).ToList();
+
+    private static ScrollViewer LiveScroller(ToolCallView row) =>
+        row.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatLiveOutput"))
+            .GetVisualDescendants().OfType<ScrollViewer>().Single();
+
+    /// <summary>Runs the dispatcher's loop, timers and all, for <paramref name="time"/> on the real clock.</summary>
+    private static void RunLoop(System.TimeSpan time)
+    {
+        using var stop = new System.Threading.CancellationTokenSource(time);
+        Avalonia.Threading.Dispatcher.UIThread.MainLoop(stop.Token);
+    }
+
+    /// <summary>Runs the dispatcher on the real clock until <paramref name="done"/> (60 s at most: the machine may be slow).</summary>
+    private static void WaitFor(System.Func<bool> done)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (!done() && clock.Elapsed < System.TimeSpan.FromSeconds(60)) RunLoop(System.TimeSpan.FromMilliseconds(100));
+        UiHelpers.Pump();
+        Assert.True(done());
+    }
+
+    [AvaloniaFact]
+    public void A_running_command_kept_off_screen_is_not_asked_about()
+    {
+        var c = new ChatConversation();
+        var tool = RunningBash(c, "t1", "k1");
+        LongReplies(c, 40);
+        var host = new OutputHost(c);
+        var view = UiHelpers.TouchView(c);
+        UiHelpers.ShowPhone(view);
+        var scroller = UiHelpers.Scroller(view);
+        scroller.Offset = new Vector(0, 0);
+        UiHelpers.Pump();
+        WaitFor(() => host.Asked.Count >= 1); // on screen it asks
+
+        // the row scrolls away: the list keeps it, hidden, with its item
+        scroller.Offset = new Vector(0, scroller.Extent.Height);
+        UiHelpers.Pump();
+        var row = Assert.Single(RowsOf(view, tool));
+        Assert.False(row.IsEffectivelyVisible);
+        var asked = host.Asked.Count;
+        RunLoop(System.TimeSpan.FromSeconds(2.5));
+        Assert.Equal(asked, host.Asked.Count);
+
+        // back on screen: it asks again
+        scroller.Offset = new Vector(0, 0);
+        UiHelpers.Pump();
+        WaitFor(() => host.Asked.Count > asked);
+    }
+
+    [AvaloniaFact]
+    public void A_row_given_to_another_running_command_asks_at_once_and_its_box_follows_the_end()
+    {
+        var now = new System.DateTimeOffset(2026, 11, 14, 10, 0, 0, System.TimeSpan.Zero);
+        var c = new ChatConversation { Clock = () => now };
+        var first = RunningBash(c, "t1", "k1");
+        LongReplies(c, 40);
+        var second = RunningBash(c, "t2", "k2");
+        var host = new OutputHost(c);
+        host.Output["k1"] = string.Join("\n", Enumerable.Range(1, 60).Select(i => "first " + i));
+        host.Output["k2"] = string.Join("\n", Enumerable.Range(1, 90).Select(i => "second " + i));
+        var view = UiHelpers.TouchView(c);
+        UiHelpers.ShowPhone(view);
+        var scroller = UiHelpers.Scroller(view);
+        scroller.Offset = new Vector(0, 0);
+        UiHelpers.Pump();
+        Assert.NotNull(first.LiveOutput);
+
+        // the person scrolls the first command's box up: it no longer follows its end
+        var row = Assert.Single(RowsOf(view, first));
+        var box = LiveScroller(row);
+        Assert.True(box.Offset.Y > 0, "the box follows the end of a long output");
+        box.Offset = new Vector(0, 0);
+        UiHelpers.Pump();
+
+        // the second command has printed before its row shows (its row may have asked when the view opened at the end, too); a while
+        // later the list gives it the first command's row
+        now = now.AddSeconds(5);
+        c.RequestTaskOutput(second);
+        UiHelpers.Pump();
+        Assert.NotNull(second.LiveOutput);
+        now = now.AddSeconds(5);
+        var asked = host.Asked.Count;
+        scroller.Offset = new Vector(0, scroller.Extent.Height);
+        UiHelpers.Pump();
+        Assert.Same(row, Assert.Single(RowsOf(view, second)));
+
+        Assert.Contains("k2", host.Asked.Skip(asked)); // asked about at once, not on the next tick of the first command's timer
+        Assert.True(UiHelpers.AtEnd(LiveScroller(row)), "the new command's box follows its end");
     }
 }

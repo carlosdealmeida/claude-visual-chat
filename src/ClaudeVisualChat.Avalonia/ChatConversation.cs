@@ -2896,7 +2896,7 @@ public sealed class ChatConversation : ChatObservableObject
         foreach (var tool in _turnTools)
         {
             if (tool.Status == ToolStatus.Running && !_nestedTools.Contains(tool) && !HasRunningChild(tool))
-                tool.Status = ToolStatus.Rejected;
+                Reject(tool);
         }
     }
 

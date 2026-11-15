@@ -3043,13 +3043,28 @@ public class ChatViewTests
         host.Prints("compiling…");
         Assert.NotNull(LiveBox(view, host.Tool));
 
-        // the turn is cut short with no result line: the call keeps what it printed, but it no longer runs
+        // the turn is cut short with no result line: the call is rejected, and what it printed goes with it
         host.C.Apply(new ClaudeVisualChat.Protocol.TurnCompleted("error_during_execution", true, 1, null, null, null));
         UiHelpers.Pump();
-        Assert.NotEqual(ToolStatus.Running, host.Tool.Status);
-        Assert.Equal("compiling…", host.Tool.LiveOutput);
+        Assert.Equal(ToolStatus.Rejected, host.Tool.Status);
+        Assert.Null(host.Tool.LiveOutput);
         Assert.Null(LiveBox(view, host.Tool));
         Assert.False(ViewOf(view, host.Tool).IsAskingForOutput);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_box_shows_only_while_the_call_runs()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints("compiling…");
+        Assert.NotNull(LiveBox(view, host.Tool));
+
+        host.Tool.Status = ToolStatus.Failed; // a host's own item: the text is still there, the call no longer runs
+        UiHelpers.Pump();
+        Assert.Equal("compiling…", host.Tool.LiveOutput);
+        Assert.Null(LiveBox(view, host.Tool));
         window.Close();
     }
 
