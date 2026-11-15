@@ -57,7 +57,10 @@ All notable changes to this project are written here. The format follows
 - A session reopened from its file shows the message that was delivered from the queue in the middle of a turn. The file keeps it as
   an `attachment` line of type `queued_command`, which the reader ignored; it now reads as the `user` line it stands for (text, images,
   origin; a `task-notification` command mode gives that origin), and shows once when the file also has it as a `user` line with the
-  same uuid. A command forwarded from another session is still left out, and so is every other kind of attachment.
+  same uuid. Most of those lines in real session files are not messages a person queued but the notices of background tasks that
+  ended (command mode `task-notification`): they show too, as the cards a task notice already was in a reopened session, and one of
+  that mode whose text is no notice stays out. A command forwarded from another session is still left out, and so is every other
+  kind of attachment.
 - A reply the `claude` discards leaves the conversation instead of staying in the list next to the one that replaced it. A line
   whose `supersedes` names earlier lines takes their text, thoughts and tool calls out, wherever they are (a subagent's too); a
   bookmarked text loses its bookmark, a call takes its permission requests with it, and an `Agent` call its agent, which no longer

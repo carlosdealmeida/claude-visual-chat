@@ -3467,6 +3467,24 @@ public class ChatConversationTests
         Assert.Equal("task-notification", card.Kind);
     }
 
+    [Fact]
+    public void A_task_notification_from_the_queue_that_is_not_a_notice_is_left_out()
+    {
+        // a real session file has one: the mode of a task's notice, a plain text, no origin. It is no message the person wrote
+        var c = new ChatConversation();
+        c.LoadTranscript(new[]
+        {
+            "{\"type\":\"user\",\"uuid\":\"p0\",\"message\":{\"role\":\"user\",\"content\":\"first\"}}",
+            "{\"type\":\"attachment\",\"uuid\":\"l2\",\"attachment\":{\"type\":\"queued_command\",\"prompt\":\"The build is done.\"," +
+            "\"commandMode\":\"task-notification\",\"source_uuid\":\"s2\"}}",
+            "{\"type\":\"attachment\",\"uuid\":\"l3\",\"attachment\":{\"type\":\"queued_command\",\"prompt\":\"and this\"," +
+            "\"commandMode\":\"prompt\",\"source_uuid\":\"s3\"}}",
+        });
+
+        Assert.Equal(new[] { "user:first", "user:and this" }, c.Items.Select(Describe));
+        Assert.All(c.Items.OfType<UserMessageItem>(), u => Assert.True(u.IsUserPrompt));
+    }
+
     private const string ReplayedNotice =
         "<task-notification>\n<task-id>t9</task-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n</task-notification>";
 

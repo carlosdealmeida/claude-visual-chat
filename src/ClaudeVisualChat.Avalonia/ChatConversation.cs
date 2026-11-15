@@ -1988,6 +1988,9 @@ public sealed class ChatConversation : ChatObservableObject
             Place(card, e.ParentToolUseId);
             return;
         }
+        // what the queue delivered as a task's notice but is no notice: not a message the person wrote, so it stays out (as before
+        // the queue was read)
+        if (e.IsQueuedCommand && e.Origin?.Kind == "task-notification") return;
         // the files the host sent are named by lines at the end of the text: chips, not text
         var (shown, paths) = AttachedFileLine.Split(text);
         if (shown.Length == 0 && images == null && paths.Count == 0 && e.Context.Count == 0) return; // lines the IDE sent keep their message
