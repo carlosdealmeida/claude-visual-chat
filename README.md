@@ -110,8 +110,12 @@ conversation.TaskOutputRequested += (_, e) =>
 
 `TaskOutputRequested` is raised while a Bash or PowerShell command runs, at most once a second for each command. Set
 `e.RequestId` to the id you send, inside the handler: the answer comes back through `AppendLine`, is matched to the
-command by that id, and becomes the call's `ToolCallItem.LiveOutput`. A `claude` that does not know the request answers
-with an error, and that command is not asked about again. Without a handler nothing is asked.
+command by that id, and becomes the call's `ToolCallItem.LiveOutput`. The answer must reach `AppendLine` after the
+handler has returned: an answer given inside the handler (a test double, an in-process relay) comes before the request
+is known, so it is lost and that command is not asked about again. A `claude` that does not know the request answers
+with an error, and that command is not asked about again. Without a handler nothing is asked. The event comes from a
+timer, not from something the person did, so a handler that may fail (a pipe to a `claude` that has exited) catches its
+own exception.
 
 On Windows, a `claude` installed with npm is `claude.cmd`: start it with `cmd /c claude ...`, or give its full path.
 
@@ -227,7 +231,9 @@ The keys of the box, as in the extension 2.1.310:
   a line with right-to-left letters). A notice over the box says how many went; on send it fills the box with the clean
   text, asks to look at it and sends nothing, and the next send goes. When nothing is left of the message the notice
   says so and the box stays empty. The notice ends with its ×, with an edit of the text or with another conversation,
-  and a permission request hides it. A message over 50,000 characters is not sent and not cut: it stays in the box and the notice says by how much it is over. A paste that would take the text over that is refused, nothing of it goes in, and the notice says so.
+  and a permission request hides it. A message over 50,000 characters is not sent and not cut: it stays in the box and
+  the notice says by how much it is over. A paste that is itself over that is refused: nothing of it goes in, and the
+  notice says so.
 - **Long pastes.** The box remembers the long texts pasted into it (more than 800 characters or more than two line
   breaks) and `MessageSubmittedEventArgs.InlinePastes` lists those still in the message. `StdinMessages.UserMessage(e)`
   writes them as `inline_pastes`, only when there are some.

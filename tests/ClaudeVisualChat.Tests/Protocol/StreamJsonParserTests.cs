@@ -77,7 +77,7 @@ namespace ClaudeVisualChat.Tests.Protocol
             var parser = new StreamJsonParser();
             Assert.IsType<MessageStarted>(Assert.Single(parser.Parse("{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\"}}}")));
 
-            var started =Assert.IsType<BlockStarted>(Assert.Single(parser.Parse(
+            var started = Assert.IsType<BlockStarted>(Assert.Single(parser.Parse(
                 "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}}")));
             var d1 = Assert.IsType<BlockDelta>(Assert.Single(parser.Parse(
                 "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}}")));

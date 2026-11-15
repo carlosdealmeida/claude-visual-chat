@@ -3451,6 +3451,23 @@ public class ChatConversationTests
     }
 
     [Fact]
+    public void A_queued_command_whose_user_line_comes_later_shows_once_where_that_line_is()
+    {
+        // the reason the file is read whole before it is played: the attachment cannot know yet that its user line follows
+        var c = new ChatConversation();
+        c.LoadTranscript(new[]
+        {
+            "{\"type\":\"user\",\"uuid\":\"p0\",\"message\":{\"role\":\"user\",\"content\":\"first\"}}",
+            "{\"type\":\"assistant\",\"uuid\":\"u1\",\"message\":{\"model\":\"m\",\"id\":\"m1\",\"content\":[{\"type\":\"text\",\"text\":\"discarded\"}]}}",
+            "{\"type\":\"attachment\",\"uuid\":\"l2\",\"attachment\":{\"type\":\"queued_command\",\"prompt\":\"queued\",\"commandMode\":\"prompt\",\"source_uuid\":\"s1\"}}",
+            "{\"type\":\"assistant\",\"uuid\":\"u2\",\"supersedes\":[\"u1\"],\"message\":{\"model\":\"m\",\"id\":\"m2\",\"content\":[{\"type\":\"text\",\"text\":\"kept\"}]}}",
+            "{\"type\":\"user\",\"uuid\":\"s1\",\"message\":{\"role\":\"user\",\"content\":\"queued\"}}",
+        });
+
+        Assert.Equal(new[] { "user:first", "text:kept", "user:queued" }, c.Items.Select(Describe));
+    }
+
+    [Fact]
     public void A_task_notification_from_the_queue_shows_as_it_does_live()
     {
         var queued = new ChatConversation();

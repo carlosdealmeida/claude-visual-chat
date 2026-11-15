@@ -219,6 +219,17 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Theory]
+        [InlineData("{\"lineage\":\"\"}")]
+        [InlineData("{}")]
+        public void A_queued_command_with_a_forwarded_intent_but_no_lineage_reads_as_a_queued_message(string intent)
+        {
+            var u = Assert.IsType<UserBlock>(Assert.Single(TranscriptParser.Parse(Queued("\"prompt\":\"x\",\"forwardedIntent\":" + intent))));
+
+            Assert.Equal("x", Assert.IsType<TextContentBlock>(u.Block).Text);
+            Assert.True(u.IsQueuedCommand);
+        }
+
+        [Theory]
         [InlineData("\"prompt\":5")]
         [InlineData("\"prompt\":null")]
         [InlineData("\"commandMode\":\"prompt\"")]

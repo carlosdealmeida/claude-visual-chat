@@ -110,8 +110,12 @@ O `StdinMessages.UserMessage(e)` escreve o texto, as imagens, uma linha marcador
 
 O `TaskOutputRequested` dispara enquanto um comando Bash ou PowerShell roda, no máximo uma vez por segundo para cada
 comando. Ponha em `e.RequestId` o id que você manda, dentro do tratador: a resposta volta pelo `AppendLine`, é ligada ao
-comando por esse id e vira o `ToolCallItem.LiveOutput` da chamada. Um `claude` que não conhece o pedido responde com
-erro, e esse comando não é mais perguntado. Sem tratador nada é pedido.
+comando por esse id e vira o `ToolCallItem.LiveOutput` da chamada. A resposta tem de chegar ao `AppendLine` depois que o
+tratador retornou: uma resposta dada dentro do tratador (um dublê de teste, um relay no mesmo processo) chega antes de o
+pedido ser conhecido; assim ela se perde e esse comando não é mais perguntado. Um `claude` que não conhece o pedido
+responde com erro, e esse comando não é mais perguntado. Sem tratador nada é pedido. O evento vem de um timer, não de
+algo que a pessoa fez; por isso um tratador que pode falhar (um pipe para um `claude` que já saiu) trata a sua própria
+exceção.
 
 Um `/model x` ou `/effort x` digitado também muda o claude, mas o chip só acompanha depois do próximo `system/init` ou
 de uma resposta do `GetSettings`; por isso envie o `GetSettings` depois deles.
@@ -232,7 +236,9 @@ As teclas da caixa, como na extensão 2.1.310:
   marca de direção numa linha com letras da direita para a esquerda). Um aviso sobre a caixa diz quantos saíram; no
   envio ele preenche a caixa com o texto limpo, pede que se confira e não envia nada, e o envio seguinte vai. Quando
   nada sobra da mensagem, o aviso diz isso e a caixa fica vazia. O aviso termina com o ×, com uma edição do texto ou com
-  outra conversa, e um pedido de permissão o esconde. Uma mensagem com mais de 50.000 caracteres não é enviada nem cortada: fica na caixa e o aviso diz quanto passou. Uma colagem que passe desse limite é recusada, nada dela entra, e o aviso diz isso.
+  outra conversa, e um pedido de permissão o esconde. Uma mensagem com mais de 50.000 caracteres não é enviada nem
+  cortada: fica na caixa e o aviso diz quanto passou. Uma colagem que passe desse limite é recusada, nada dela entra, e
+  o aviso diz isso.
 - **Colagens longas.** A caixa lembra os textos longos colados nela (mais de 800 caracteres ou mais de duas quebras de
   linha) e o `MessageSubmittedEventArgs.InlinePastes` lista os que ainda estão na mensagem. O
   `StdinMessages.UserMessage(e)` os escreve como `inline_pastes`, só quando há algum.

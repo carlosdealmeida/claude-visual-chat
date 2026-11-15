@@ -1500,8 +1500,9 @@ public class ComposerTests
         // 49,999 once its line breaks are plain and its ends are trimmed: it goes in
         paste.Paste(new string('x', 25_000) + "\r\n" + new string('x', 24_998) + "  \r\n");
 
-        Assert.StartsWith(new string('x', 25_000), ui.Input.Text);
-        Assert.True(ui.Input.Text!.Length >= 49_999);
+        // whole: the cleaning of its first 50,000 characters makes their line break plain, and the rest goes in as it came
+        Assert.Equal(50_003, ui.Input.Text!.Length);
+        Assert.Equal(new string('x', 25_000) + "\n" + new string('x', 24_998) + "  \r\n", ui.Input.Text);
         Assert.False(Notice(ui).IsVisible);
         ui.Window.Close();
     }

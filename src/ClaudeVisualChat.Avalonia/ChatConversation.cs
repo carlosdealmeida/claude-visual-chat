@@ -290,8 +290,12 @@ public sealed class ChatConversation : ChatObservableObject
     /// while the answer to the last request has not come. The host makes a new request id, sets
     /// <see cref="TaskOutputRequestedEventArgs.RequestId"/> to it inside the handler and sends <see cref="StdinMessages.GetTaskOutput"/>
     /// with it; the claude's answer comes back through <see cref="AppendLine"/> and becomes the call's <see cref="ToolCallItem.LiveOutput"/>.
-    /// An error answer (a claude that does not know the request) stops the asking for that command. Nothing is asked while the host
-    /// does not listen to this event.
+    /// The answer must reach <see cref="AppendLine"/> after the handler has returned: the request is known only then, so an answer
+    /// given inside the handler (a test double, an in-process relay) is taken for a line of no request, and the command is not asked
+    /// about again. An error answer (a claude that
+    /// does not know the request) stops the asking for that command. Nothing is asked while the host does not listen to this event.
+    /// The event comes from the view's timer, not from something the person did, so a handler that may fail (a pipe to a claude that
+    /// has exited) catches its own exception.
     /// </summary>
     public event EventHandler<TaskOutputRequestedEventArgs>? TaskOutputRequested
     {
