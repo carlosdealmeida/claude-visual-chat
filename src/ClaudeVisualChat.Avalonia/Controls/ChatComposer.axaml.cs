@@ -33,7 +33,8 @@ namespace ClaudeVisualChat.Controls;
 /// Enter sends and clears; Shift+Enter breaks the line; Esc stops Claude while it works, and otherwise goes on to the
 /// app. The mode picker and the model chip show what the claude reports; picking only asks for a change through the
 /// conversation's events. The box takes the mode's color: classes
-/// <c>plan</c>, <c>acceptEdits</c> and <c>auto</c> on its frame.
+/// <c>plan</c>, <c>acceptEdits</c> and <c>auto</c> on its frame. In a narrow chat the bar's pieces that do not fit go to lines
+/// under it, the least needed first (<see cref="ComposerBarPanel"/>); +, / and send stay on the first line.
 /// In the touch layout (pseudo-class <c>:touch</c>) the bar is another, of 44 px targets: + and the model at the left;
 /// the context ring (from the first token), the microphone (while the host's dictation is available), send and, while
 /// Claude works, stop at the right. The + and the model ask
@@ -63,15 +64,19 @@ internal partial class ChatComposer : UserControl
     private static readonly StyledProperty<ChatLayout> LayoutProperty =
         ClaudeChatView.LayoutProperty.AddOwner<ChatComposer>();
 
-    /// <summary>A mode: its icon on the extension's 26 px box, and its name.</summary>
+    /// <summary>
+    /// A mode: its icon on the extension's 26 px box, and its name, which ends in an ellipsis only when the picker is given less
+    /// room than it needs (alone on a line of the bar narrower than it).
+    /// </summary>
     private static readonly FuncDataTemplate<Choice> ModeTemplate = new FuncDataTemplate<Choice>((choice, _) =>
     {
         var icon = new Path();
         icon.Classes.Add("ClaudeChatModeIcon");
         icon.Bind(Path.DataProperty, icon.GetResourceObservable(IconKey(choice?.Value)));
-        var label = new TextBlock { Text = choice?.Label };
+        DockPanel.SetDock(icon, Dock.Left);
+        var label = new TextBlock { Text = choice?.Label, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
         label.Classes.Add("ClaudeChatModeLabel");
-        return new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, label } };
+        return new DockPanel { Children = { icon, label } };
     });
 
     /// <summary>What was written in each conversation and not sent; it goes with the conversation.</summary>

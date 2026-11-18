@@ -23,6 +23,13 @@ All notable changes to this project are written here. The format follows
   longer moves the place said for the rules. Of several `setMode`s, the label names the last one with a mode, which is the mode
   the claude ends in (it named the first). The place still has its underline and tooltip, the mode's words come after it as plain
   text, and the existing sentence formats are used as before. A lone `setMode` reads as it did.
+- The desktop bar of the reply box no longer draws its pieces over one another in a narrow chat. At about 350 px the mode,
+  the model chip and send were drawn on top of each other. Where the pieces do not fit on one line, they now go to lines
+  under it, the least needed first: the cache clock, Remote Control, the agents chip, the context ring, the model chip and
+  the mode. +, / and send (and stop) stay on the first line, at its ends, so down to a chat 320 px wide every piece is
+  whole and can be clicked. Narrower than +, / and send together, the pieces follow one another line after line, and one
+  wider than a whole line is cut at its end, the mode with an ellipsis. Where everything fits, the bar is as it was,
+  and the order of Tab is unchanged.
 
 ## [0.8.0] - 2026-11-15
 

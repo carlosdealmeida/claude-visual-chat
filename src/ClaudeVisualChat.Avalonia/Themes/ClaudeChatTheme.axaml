@@ -2135,7 +2135,7 @@
                   CornerRadius="{TemplateBinding CornerRadius}"
                   Padding="{TemplateBinding Padding}">
             <Panel>
-              <TextBlock Name="PlaceholderTextBlock" VerticalAlignment="Center"
+              <TextBlock Name="PlaceholderTextBlock" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                          Text="{TemplateBinding PlaceholderText}"
                          Foreground="{TemplateBinding PlaceholderForeground}"
                          IsVisible="{TemplateBinding SelectionBoxItem, Converter={x:Static ObjectConverters.IsNull}}" />

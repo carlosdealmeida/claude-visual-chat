@@ -239,6 +239,12 @@ The keys of the box, as in the extension 2.1.310:
   writes them as `inline_pastes`, only when there are some.
 - On the desktop layout the idle placeholder is "Ask Claude to edit…" (`ChatStrings.InputPlaceholder`); while Claude
   works, "Queue another message…". The touch layout keeps "Type / for commands".
+- **A narrow chat.** On the desktop layout the bar under the text is one line while its pieces fit. When they do not,
+  they go to lines under it instead of being drawn over one another, the least needed first: the cache clock, Remote
+  Control, the agents chip, the context ring, the model chip and, last, the mode. +, / and send (and stop) stay on the
+  first line, so at a chat 320 px wide every piece is still whole and can be clicked. In a bar narrower than +, / and
+  send together, every piece follows the one before it, line after line, and a piece wider than a whole line is cut at
+  its end (the mode with an ellipsis).
 
 ## Commands
 

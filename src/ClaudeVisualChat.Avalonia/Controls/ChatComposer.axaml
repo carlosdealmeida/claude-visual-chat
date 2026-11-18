@@ -33,11 +33,14 @@
       </Grid>
       <!-- the bar, in the extension's (2.1.309) order: +, /, the context ring, the cache clock, the Remote Control chip,
            the agents chip, the model chip; at the right the mode, then send or stop. The touch layout has the bar below
-           instead -->
+           instead. Where they do not all fit on one line, the pieces go to the lines under it, in the order of Keep, the
+           highest first: the cache clock, Remote Control, the agents chip, the context ring, the model and the mode; +, / and
+           send (and stop) stay on the first line. The pieces at the right come first, the outermost first, as they did in
+           the dock panel the bar was: the order of the keyboard's Tab is the one it always was -->
       <Border Name="DesktopBar" Classes="ClaudeChatComposerBar">
-        <DockPanel>
+        <controls:ComposerBarPanel Name="BarPanel">
           <!-- send, and stop while Claude works: alone when nothing is written, next to send when something is -->
-          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" Margin="4,0,0,0">
+          <StackPanel Orientation="Horizontal" Spacing="2" Margin="4,0,0,0" controls:ComposerBarPanel.Right="True">
             <Button Name="SendButton" Classes="ClaudeChatButton ClaudeChatSend">
               <Path Classes="ClaudeChatSendIcon" />
             </Button>
@@ -45,22 +48,21 @@
               <Border Classes="ClaudeChatStopIcon" />
             </Button>
           </StackPanel>
-          <ComboBox Name="ModePicker" Classes="ClaudeChatPicker ClaudeChatModePicker" DockPanel.Dock="Right" />
-          <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-            <Button Name="AddButton" Classes="ClaudeChatButton ClaudeChatBarButton">
-              <Path Classes="ClaudeChatBarIcon ClaudeChatAddIcon" />
-            </Button>
-            <Button Name="CommandsButton" Classes="ClaudeChatButton ClaudeChatBarButton">
-              <Path Classes="ClaudeChatBarIcon ClaudeChatCommandsIcon" />
-            </Button>
-            <!-- each hidden, taking no room, until there is something to show -->
-            <controls:ContextRing Name="ContextRing" />
-            <controls:PromptCacheClock Name="CacheClock" />
-            <controls:RemoteControlChip Name="RemoteControlChip" />
-            <controls:AgentsChip Name="AgentsChip" />
-            <controls:ModelChip Name="ModelChip" />
-          </StackPanel>
-        </DockPanel>
+          <ComboBox Name="ModePicker" Classes="ClaudeChatPicker ClaudeChatModePicker"
+                    controls:ComposerBarPanel.Keep="1" controls:ComposerBarPanel.Right="True" />
+          <Button Name="AddButton" Classes="ClaudeChatButton ClaudeChatBarButton">
+            <Path Classes="ClaudeChatBarIcon ClaudeChatAddIcon" />
+          </Button>
+          <Button Name="CommandsButton" Classes="ClaudeChatButton ClaudeChatBarButton">
+            <Path Classes="ClaudeChatBarIcon ClaudeChatCommandsIcon" />
+          </Button>
+          <!-- each hidden, taking no room, until there is something to show -->
+          <controls:ContextRing Name="ContextRing" controls:ComposerBarPanel.Keep="3" />
+          <controls:PromptCacheClock Name="CacheClock" controls:ComposerBarPanel.Keep="6" />
+          <controls:RemoteControlChip Name="RemoteControlChip" controls:ComposerBarPanel.Keep="5" />
+          <controls:AgentsChip Name="AgentsChip" controls:ComposerBarPanel.Keep="4" />
+          <controls:ModelChip Name="ModelChip" controls:ComposerBarPanel.Keep="2" />
+        </controls:ComposerBarPanel>
       </Border>
       <!-- the touch layout's bar: + and the model at the left, the context ring, the microphone and send (stop, while
            Claude works) at the right, each one a target of 44 px. Its parts are separate instances that answer to the

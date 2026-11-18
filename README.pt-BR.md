@@ -244,6 +244,12 @@ As teclas da caixa, como na extensão 2.1.310:
   `StdinMessages.UserMessage(e)` os escreve como `inline_pastes`, só quando há algum.
 - No layout de desktop, o placeholder da caixa ociosa é "Peça ao Claude para editar…" (`ChatStrings.InputPlaceholder`);
   com o Claude trabalhando, "Pôr outra mensagem na fila…". O layout de toque mantém "Digite / para ver os comandos".
+- **Um chat estreito.** No layout de desktop, a barra embaixo do texto é uma linha enquanto as peças cabem. Quando não
+  cabem, elas descem para linhas embaixo dela em vez de uma ser desenhada sobre a outra, a menos necessária primeiro: o
+  relógio do cache, o Remote Control, o chip de agentes, o anel de contexto, o chip do modelo e, por último, o modo. O
+  +, o / e o enviar (e o parar) ficam na primeira linha, então num chat de 320 px de largura todas as peças continuam
+  inteiras e clicáveis. Numa barra mais estreita que o +, o / e o enviar juntos, cada peça segue a anterior, linha após
+  linha, e uma peça mais larga que uma linha inteira é cortada no fim (o modo com reticências).
 
 ## Comandos
 
