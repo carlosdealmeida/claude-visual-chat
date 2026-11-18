@@ -3,6 +3,27 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- New `ChatStrings` for option 2 of a permission request: `AllowAlwaysAndAllEdits` (", and all edits for {0}"),
+  `AllowAlwaysAndNormalMode` (", and return to normal mode for {0}") and `AllowAlwaysAndMode` (", and switch to {0} mode for {1}"),
+  with the Brazilian Portuguese texts in `ChatStrings.PortugueseBrazil`. `{0}` is where the mode is kept, or the mode's name and
+  then where it is kept.
+
+### Fixed
+
+- Option 2 of a permission request no longer hides a mode change that comes with rules or folders. When the claude's
+  `permission_suggestions` hold a `setMode` beside an `addRules` or `addDirectories`, answering "always" applies both, but the
+  sentence named only the rules ("Yes, allow touch a.txt for this project (just you)"). It now says what the mode change does after
+  where the rules are kept: "Yes, allow touch a.txt for this project (just you), and all edits for this session" for `acceptEdits`,
+  "…, and return to normal mode for this session" for `default`, and "…, and switch to Plan mode for this session" for any other
+  mode, by its name in the mode picker or the claude's own word for it. The place is that of the `setMode`, and a `setMode` no
+  longer moves the place said for the rules. Of several `setMode`s, the label names the last one with a mode, which is the mode
+  the claude ends in (it named the first). The place still has its underline and tooltip, the mode's words come after it as plain
+  text, and the existing sentence formats are used as before. A lone `setMode` reads as it did.
+
 ## [0.8.0] - 2026-11-15
 
 ### Added

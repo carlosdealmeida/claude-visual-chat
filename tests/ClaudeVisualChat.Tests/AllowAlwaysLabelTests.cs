@@ -119,6 +119,7 @@ public class AllowAlwaysLabelTests
         Assert.Null(label.DestinationTip);
         Assert.Equal("Yes, return to normal mode", Of("{\"type\":\"setMode\",\"mode\":\"default\",\"destination\":\"session\"}").Text);
         Assert.Equal("Yes, and don't ask again", Of("{\"type\":\"setMode\",\"mode\":\"plan\",\"destination\":\"session\"}").Text);
+        Assert.Null(label.ModeText); // the sentence is the mode's own
     }
 
     [Fact]
@@ -158,6 +159,155 @@ public class AllowAlwaysLabelTests
         Assert.Equal("this project (just you)", Of(Rules("cliArg", "a"), Rules("localSettings", "b")).Destination);
         Assert.Equal("this session",
             Of("{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"a\"}]}").Destination);
+    }
+
+    private static string SetMode(string mode, string destination = "session") =>
+        "{\"type\":\"setMode\",\"mode\":\"" + mode + "\",\"destination\":\"" + destination + "\"}";
+
+    [Fact]
+    public void A_rule_with_a_mode_change_to_accept_edits_also_says_all_edits_are_allowed()
+    {
+        // a command that touches a file: a rule kept in the local settings and acceptEdits for the session; answering
+        // "always" applies both, so the sentence names both
+        var label = Of(Rules("localSettings", "touch a.txt"), SetMode("acceptEdits"));
+        Assert.Equal("Yes, allow touch a.txt for this project (just you), and all edits for this session", label.Text);
+        Assert.Equal("this project (just you)", label.Destination);
+        Assert.Equal("Saves to .claude/settings.local.json (gitignored)", label.DestinationTip);
+        Assert.Equal(", and all edits for this session", label.ModeText);
+        // the place is followed only by the mode's words
+        Assert.EndsWith(label.Destination + label.ModeText, label.Text);
+        Assert.Empty(label.More);
+        Assert.Null(label.FullText);
+    }
+
+    [Fact]
+    public void Directories_with_a_mode_change_also_say_what_the_mode_does()
+    {
+        const string Directory = "{\"type\":\"addDirectories\",\"directories\":[\"C:\\\\demo\\\\data\"],\"destination\":\"session\"}";
+        var label = Of(Directory, SetMode("acceptEdits"));
+        Assert.Equal("Yes, allow access to data/ for this session, and all edits for this session", label.Text);
+        Assert.Equal("this session", label.Destination);
+        Assert.Equal(", and all edits for this session", label.ModeText);
+        Assert.Equal("Yes, allow access to 2 directories for this session, and return to normal mode for this session",
+            Of("{\"type\":\"addDirectories\",\"directories\":[\"C:\\\\a\",\"C:\\\\b\"],\"destination\":\"session\"}", SetMode("default")).Text);
+    }
+
+    [Fact]
+    public void A_rule_with_a_mode_change_to_default_says_it_returns_to_normal_mode()
+    {
+        var label = Of(Rules("session", "npm:*"), SetMode("default"));
+        Assert.Equal("Yes, allow npm for this session, and return to normal mode for this session", label.Text);
+        Assert.Equal(", and return to normal mode for this session", label.ModeText);
+    }
+
+    [Fact]
+    public void A_rule_with_any_other_mode_change_names_the_mode()
+    {
+        Assert.Equal("Yes, allow npm for this session, and switch to Plan mode for this session",
+            Of(Rules("session", "npm:*"), SetMode("plan")).Text);
+        Assert.Equal("Yes, allow npm for this session, and switch to Auto mode for this session",
+            Of(Rules("session", "npm:*"), SetMode("auto")).Text);
+        // a mode the library has no name for shows as the claude wrote it
+        Assert.Equal("Yes, allow npm for this session, and switch to bypassPermissions mode for this session",
+            Of(Rules("session", "npm:*"), SetMode("bypassPermissions")).Text);
+        Assert.Equal("Yes, allow npm for this session, and switch to a⏎b mode for this session",
+            Of(Rules("session", "npm:*"), "{\"type\":\"setMode\",\"mode\":\"a\\nb\",\"destination\":\"session\"}").Text);
+    }
+
+    [Fact]
+    public void The_mode_change_says_its_own_place_and_does_not_move_the_rule()
+    {
+        // the mode kept in the local settings: the rule stays in the session, and each part says where it goes
+        var label = Of(Rules("session", "npm:*"), SetMode("acceptEdits", "localSettings"));
+        Assert.Equal("Yes, allow npm for this session, and all edits for this project (just you)", label.Text);
+        Assert.Equal("this session", label.Destination);
+        Assert.Equal("Only for this session (not saved)", label.DestinationTip);
+        // a mode change with no place, or one that is not offered, lasts the session
+        Assert.Equal(", and all edits for this session",
+            Of(Rules("userSettings", "npm:*"), "{\"type\":\"setMode\",\"mode\":\"acceptEdits\"}").ModeText);
+        Assert.Equal(", and all edits for this session", Of(Rules("userSettings", "npm:*"), SetMode("acceptEdits", "cliArg")).ModeText);
+    }
+
+    [Fact]
+    public void Of_several_mode_changes_the_last_valid_one_is_named()
+    {
+        // the claude applies them in order: it ends in the mode of the last one
+        Assert.Equal(", and return to normal mode for this session",
+            Of(Rules("session", "npm:*"), SetMode("acceptEdits"), SetMode("default")).ModeText);
+        Assert.Equal(", and all edits for this project (just you)",
+            Of(SetMode("default"), Rules("session", "npm:*"), SetMode("acceptEdits", "localSettings")).ModeText);
+        // one without a mode is no mode change, and does not hide the one before it
+        Assert.Equal(", and all edits for this session",
+            Of(Rules("session", "npm:*"), SetMode("acceptEdits"), "{\"type\":\"setMode\",\"destination\":\"session\"}",
+                "{\"type\":\"setMode\",\"mode\":7,\"destination\":\"session\"}").ModeText);
+        // only mode changes: the sentence of the last one
+        Assert.Equal("Yes, return to normal mode", Of(SetMode("acceptEdits"), SetMode("default")).Text);
+        Assert.Equal("Yes, allow all edits this session", Of(SetMode("default"), SetMode("acceptEdits")).Text);
+    }
+
+    [Fact]
+    public void A_mode_change_that_cannot_be_read_adds_nothing_and_never_throws()
+    {
+        foreach (var odd in new[]
+        {
+            "{\"type\":\"setMode\",\"destination\":\"session\"}",                  // no mode
+            "{\"type\":\"setMode\",\"mode\":null,\"destination\":\"session\"}",    // not a string
+            "{\"type\":\"setMode\",\"mode\":\"\",\"destination\":\"session\"}",    // empty
+            "{\"type\":\"setMode\",\"mode\":[\"acceptEdits\"]}",
+            "{\"type\":\"setModes\",\"mode\":\"acceptEdits\",\"destination\":\"session\"}", // a type the library does not know
+            "\"setMode\"", "7", "null",                                           // not an object
+        })
+        {
+            var label = Of(Rules("localSettings", "npm:*"), odd);
+            Assert.Equal("Yes, allow npm for this project (just you)", label.Text);
+            Assert.Null(label.ModeText);
+        }
+    }
+
+    [Fact]
+    public void A_cut_rule_and_more_rules_keep_their_meaning_beside_a_mode_change()
+    {
+        const string Command = "sleep 5 && echo done > done.txt";
+        var cut = Of(Rules("localSettings", Command), SetMode("acceptEdits"));
+        Assert.Equal("Yes, allow sleep 5 && echo d… for this project (just you), and all edits for this session", cut.Text);
+        Assert.Equal("Yes, allow " + Command + " for this project (just you), and all edits for this session", cut.FullText);
+
+        var many = Of(Rules("localSettings", "npm:*", "git status", "ls"), SetMode("acceptEdits"));
+        Assert.Equal("Yes, allow npm and 2 more for this project (just you), and all edits for this session", many.Text);
+        Assert.Equal("2 more", many.MoreText);
+        Assert.Equal(new[] { "git status", "ls" }, many.More);
+    }
+
+    [Fact]
+    public void A_host_that_changed_the_sentences_keeps_them_and_can_change_the_mode_words()
+    {
+        var strings = ChatStrings.English with { AllowAlwaysOneRule = "Always {0} ({1})" };
+        var label = AllowAlwaysLabels.Of(J("[" + Rules("session", "npm:*") + "," + SetMode("acceptEdits") + "]"), strings);
+        Assert.Equal("Always npm (this session), and all edits for this session", label.Text);
+        Assert.Equal("this session", label.Destination);
+
+        strings = ChatStrings.English with
+        {
+            AllowAlwaysAndAllEdits = " + every edit ({0})", AllowAlwaysAndNormalMode = " + manual ({0})", AllowAlwaysAndMode = " + {0} ({1})",
+        };
+        Assert.Equal("Yes, allow npm for this session + every edit (this session)",
+            AllowAlwaysLabels.Of(J("[" + Rules("session", "npm:*") + "," + SetMode("acceptEdits") + "]"), strings).Text);
+        Assert.Equal("Yes, allow npm for this session + manual (this session)",
+            AllowAlwaysLabels.Of(J("[" + Rules("session", "npm:*") + "," + SetMode("default") + "]"), strings).Text);
+        Assert.Equal("Yes, allow npm for this session + Plan (this session)",
+            AllowAlwaysLabels.Of(J("[" + Rules("session", "npm:*") + "," + SetMode("plan") + "]"), strings).Text);
+    }
+
+    [Fact]
+    public void The_mode_words_follow_the_language()
+    {
+        var pt = ChatStrings.PortugueseBrazil;
+        Assert.Equal("Sim, permitir touch a.txt para este projeto (só você), e todas as edições para esta sessão",
+            AllowAlwaysLabels.Of(J("[" + Rules("localSettings", "touch a.txt") + "," + SetMode("acceptEdits") + "]"), pt).Text);
+        Assert.Equal("Sim, permitir npm para esta sessão, e voltar ao modo normal para esta sessão",
+            AllowAlwaysLabels.Of(J("[" + Rules("session", "npm:*") + "," + SetMode("default") + "]"), pt).Text);
+        Assert.Equal("Sim, permitir npm para esta sessão, e usar o modo Plano para esta sessão",
+            AllowAlwaysLabels.Of(J("[" + Rules("session", "npm:*") + "," + SetMode("plan") + "]"), pt).Text);
     }
 
     [Fact]

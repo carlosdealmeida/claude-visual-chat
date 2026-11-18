@@ -8,14 +8,23 @@ namespace ClaudeVisualChat;
 /// <summary>
 /// What option 2 of a permission request says, built from the claude's <c>permission_suggestions</c>.
 /// </summary>
-/// <param name="Text">The whole sentence ("Yes, allow npm for this project (just you)").</param>
-/// <param name="Destination">Where the rule is saved, as it ends <paramref name="Text"/> ("this project (just you)"); null when the sentence does not say.</param>
+/// <param name="Text">The whole sentence ("Yes, allow npm for this project (just you)"), with <paramref name="ModeText"/> at its end when there is one.</param>
+/// <param name="Destination">
+/// Where the rule is saved, as it ends <paramref name="Text"/> before <paramref name="ModeText"/> ("this project (just you)"); null when
+/// the sentence does not say.
+/// </param>
 /// <param name="DestinationTip">The tooltip of <paramref name="Destination"/>; null with it.</param>
 /// <param name="More">The rules that <paramref name="Text"/> does not name, for a tooltip of one line each; empty when it names them all.</param>
 /// <param name="MoreText">The words that stand for <paramref name="More"/> in <paramref name="Text"/> ("2 more"); null when <paramref name="More"/> is empty.</param>
 /// <param name="FullText">The sentence with every rule whole, when a rule in <paramref name="Text"/> was cut; null otherwise.</param>
+/// <param name="ModeText">
+/// What the mode change offered with the rules or the folders does, after <paramref name="Destination"/>, the last words of
+/// <paramref name="Text"/> and <paramref name="FullText"/> (", and all edits for this session"); null without one, and when the sentence
+/// is the mode's own.
+/// </param>
 internal readonly record struct AllowAlwaysLabel(
-    string Text, string? Destination, string? DestinationTip, IReadOnlyList<string> More, string? MoreText = null, string? FullText = null);
+    string Text, string? Destination, string? DestinationTip, IReadOnlyList<string> More, string? MoreText = null, string? FullText = null,
+    string? ModeText = null);
 
 /// <summary>Builds the <see cref="AllowAlwaysLabel"/> of a request.</summary>
 internal static class AllowAlwaysLabels
@@ -29,6 +38,7 @@ internal static class AllowAlwaysLabels
         var rules = new List<Rule>();
         var directories = new List<string>();
         string? mode = null;
+        string? modeDestination = null;
         var rank = -1;
         var destination = "session";
         if (suggestions is { ValueKind: JsonValueKind.Array } list)
@@ -36,34 +46,52 @@ internal static class AllowAlwaysLabels
             foreach (var suggestion in list.EnumerateArray())
             {
                 if (suggestion.ValueKind != JsonValueKind.Object) continue;
+                var type = String(suggestion, "type");
+                if (type == "setMode")
+                {
+                    // applied in order: the claude ends in the mode of the last one; it says its own place, and does not move the rules'
+                    var named = String(suggestion, "mode");
+                    if (string.IsNullOrEmpty(named)) continue;
+                    mode = named;
+                    modeDestination = String(suggestion, "destination");
+                    continue;
+                }
                 var at = RankOf(String(suggestion, "destination"));
                 if (at > rank)
                 {
                     rank = at;
                     destination = String(suggestion, "destination")!;
                 }
-                switch (String(suggestion, "type"))
-                {
-                    case "addRules":
-                        AddRules(suggestion, rules);
-                        break;
-                    case "addDirectories":
-                        AddDirectories(suggestion, directories);
-                        break;
-                    case "setMode":
-                        mode ??= String(suggestion, "mode");
-                        break;
-                }
+                if (type == "addRules") AddRules(suggestion, rules);
+                else if (type == "addDirectories") AddDirectories(suggestion, directories);
             }
         }
 
         var where = Where(destination, strings);
-        if (rules.Count > 0) return OfRules(rules, where, strings);
-        if (directories.Count > 0) return OfDirectories(directories, where, strings);
+        var modeText = mode == null ? null : ModeText(mode, Where(modeDestination ?? "session", strings).Text, strings);
+        if (rules.Count > 0) return OfRules(rules, where, strings).WithMode(modeText);
+        if (directories.Count > 0) return OfDirectories(directories, where, strings).WithMode(modeText);
         if (mode == "acceptEdits") return Plain(strings.AllowAlwaysAllEdits);
         if (mode == "default") return Plain(strings.AllowAlwaysNormalMode);
         return Plain(strings.PermissionYesAlwaysBeyondSession);
     }
+
+    /// <summary>What a mode change says after the rules or the folders: every mode is named, so none is hidden.</summary>
+    private static string ModeText(string mode, string where, ChatStrings strings) => mode switch
+    {
+        "acceptEdits" => Fill(strings.AllowAlwaysAndAllEdits, where),
+        "default" => Fill(strings.AllowAlwaysAndNormalMode, where),
+        _ => Fill(strings.AllowAlwaysAndMode, OneLine(strings.ModeLabel(mode)), where),
+    };
+
+    /// <summary>The label with the mode's words at the end of its sentences.</summary>
+    private static AllowAlwaysLabel WithMode(this AllowAlwaysLabel label, string? modeText) =>
+        modeText == null ? label : label with
+        {
+            Text = label.Text + modeText,
+            FullText = label.FullText == null ? null : label.FullText + modeText,
+            ModeText = modeText,
+        };
 
     private static AllowAlwaysLabel Plain(string text) => new AllowAlwaysLabel(text, null, null, Array.Empty<string>());
 

@@ -241,6 +241,9 @@ public sealed record ChatStrings
         AllowAlwaysManyDirectories = "Sim, permitir acesso a {0} pastas para {1}",
         AllowAlwaysAllEdits = "Sim, permitir todas as edições nesta sessão",
         AllowAlwaysNormalMode = "Sim, voltar ao modo normal",
+        AllowAlwaysAndAllEdits = ", e todas as edições para {0}",
+        AllowAlwaysAndNormalMode = ", e voltar ao modo normal para {0}",
+        AllowAlwaysAndMode = ", e usar o modo {0} para {1}",
         AllowAlwaysThisProjectJustYou = "este projeto (só você)",
         AllowAlwaysThisProjectJustYouTip = "Grava em .claude/settings.local.json (fora do git)",
         AllowAlwaysAllProjects = "todos os projetos",
@@ -1176,6 +1179,21 @@ public sealed record ChatStrings
 
     /// <summary>Option 2 when the claude only offers to go back to the normal mode.</summary>
     public string AllowAlwaysNormalMode { get; init; } = "Yes, return to normal mode";
+
+    /// <summary>
+    /// Added to option 2 when the claude offers to accept edits along with rules or folders, after where they are saved;
+    /// <c>{0}</c> is where the mode is kept (<see cref="AllowAlwaysThisSession"/> and the like).
+    /// </summary>
+    public string AllowAlwaysAndAllEdits { get; init; } = ", and all edits for {0}";
+
+    /// <summary>The same when the claude offers to go back to the normal mode; <c>{0}</c> is where the mode is kept.</summary>
+    public string AllowAlwaysAndNormalMode { get; init; } = ", and return to normal mode for {0}";
+
+    /// <summary>
+    /// The same for any other mode; <c>{0}</c> is the mode's name (<see cref="ModePlan"/> and the like, or the claude's own word for
+    /// a mode without one), <c>{1}</c> where it is kept.
+    /// </summary>
+    public string AllowAlwaysAndMode { get; init; } = ", and switch to {0} mode for {1}";
 
     /// <summary>Where option 2 saves the rule: the local settings (<c>localSettings</c>).</summary>
     public string AllowAlwaysThisProjectJustYou { get; init; } = "this project (just you)";

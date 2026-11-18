@@ -725,7 +725,8 @@ internal partial class PermissionPrompt : UserControl
 
     /// <summary>
     /// Option 2. On the desktop it names the rule and where it is saved, as the extension does, the place (and "2 more") underlined
-    /// with a tooltip. The touch layout keeps the 0.5.0 sentence, which has no tooltip to reach, and says "this session" only when
+    /// with a tooltip, and then what a mode change that comes with the rules does, in plain words. The touch layout keeps the 0.5.0
+    /// sentence, which has no tooltip to reach, and says "this session" only when
     /// every rule it saves stays in the session: the claude may keep one in the settings.
     /// </summary>
     private void FillAlways(PendingPermission? request, ChatStrings strings)
@@ -746,8 +747,12 @@ internal partial class PermissionPrompt : UserControl
         }
         var label = AllowAlwaysLabels.Of(request.Suggestions, strings);
         var text = label.Text;
-        var tail = label.Destination != null && text.EndsWith(label.Destination, StringComparison.Ordinal) ? label.Destination : null;
-        var head = tail == null ? text : text.Substring(0, text.Length - tail.Length);
+        // the mode change, when one comes with the rules, is said after the place, as plain words
+        var after = label.ModeText != null && text.EndsWith(label.ModeText, StringComparison.Ordinal) ? label.ModeText : "";
+        var said = text.Substring(0, text.Length - after.Length);
+        var tail = label.Destination != null && said.EndsWith(label.Destination, StringComparison.Ordinal) ? label.Destination : null;
+        if (tail == null) after = "";
+        var head = tail == null ? text : said.Substring(0, said.Length - tail.Length);
         var more = label.MoreText != null ? head.LastIndexOf(label.MoreText, StringComparison.Ordinal) : -1;
         if (tail == null && more < 0)
         {
@@ -768,6 +773,7 @@ internal partial class PermissionPrompt : UserControl
                 inlines.Add(new Run(head));
             }
             if (tail != null) inlines.Add(Hint(tail, label.DestinationTip!));
+            if (after.Length > 0) inlines.Add(new Run(after));
         }
         // a rule that was cut shows whole when the pointer rests on the option
         if (label.FullText != null) ToolTip.SetTip(AlwaysText, label.FullText);

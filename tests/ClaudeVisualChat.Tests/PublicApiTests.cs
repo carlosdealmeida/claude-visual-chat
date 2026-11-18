@@ -173,6 +173,13 @@ public class PublicApiTests
         {
             Assert.Equal(typeof(string), typeof(ChatStrings).GetProperty(text)?.PropertyType);
         }
+        // and the mode change that comes with the rules or the folders, after where they are saved
+        foreach (var text in new[] { "AllowAlwaysAndAllEdits", "AllowAlwaysAndNormalMode", "AllowAlwaysAndMode" })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
     }
 
     [Fact]

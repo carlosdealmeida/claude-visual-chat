@@ -622,6 +622,30 @@ public class PermissionPromptTests
     }
 
     [AvaloniaFact]
+    public void Option_two_with_a_mode_change_says_it_after_the_place_which_keeps_its_tooltip()
+    {
+        const string RuleAndMode = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"touch a.txt\"}],\"behavior\":\"allow\",\"destination\":\"localSettings\"},{\"type\":\"setMode\",\"mode\":\"acceptEdits\",\"destination\":\"session\"}]";
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "touch a.txt", RuleAndMode));
+        var ui = Open(c);
+
+        Assert.Equal("Yes, allow touch a.txt for this project (just you), and all edits for this session", AlwaysLabel(ui));
+        var where = Assert.Single(AlwaysHints(ui));
+        Assert.Equal("this project (just you)", where.Text);
+        Assert.Equal("Saves to .claude/settings.local.json (gitignored)", ToolTip.GetTip(where));
+        // the mode's words are plain text after the place, in the same sentence
+        var text = ui.Options[1].GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatOptionText"));
+        var last = Assert.IsType<Avalonia.Controls.Documents.Run>(text.Inlines!.Last());
+        Assert.Equal(", and all edits for this session", last.Text);
+
+        ui.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal("Sim, permitir touch a.txt para este projeto (só você), e todas as edições para esta sessão", AlwaysLabel(ui));
+        Assert.Equal("Grava em .claude/settings.local.json (fora do git)", ToolTip.GetTip(Assert.Single(AlwaysHints(ui))));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void Option_two_without_a_place_to_name_is_plain_text()
     {
         const string Unsaid = "[{\"type\":\"setMode\",\"mode\":\"plan\"}]";
