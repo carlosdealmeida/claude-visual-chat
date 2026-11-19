@@ -782,10 +782,31 @@ internal partial class PermissionPrompt : UserControl
     /// <summary>Words with a dotted underline and a tooltip, inline in a sentence (a <see cref="Run"/> cannot show one).</summary>
     private static InlineUIContainer Hint(string words, string tip)
     {
-        var hint = new TextBlock { Text = words };
+        var hint = new InlineText { Text = words };
         hint.Classes.Add("ClaudeChatAllowAlwaysHint");
         ToolTip.SetTip(hint, tip);
         return new InlineUIContainer(hint);
+    }
+
+    /// <summary>
+    /// A <see cref="TextBlock"/> inside a sentence that tells the sentence where its own letters stand, so that they sit on the
+    /// sentence's baseline. Without it Avalonia 11.1 and later stand the whole block on the baseline, its bottom there, and the
+    /// words rise by the depth under their letters (about 4 px); 11.0 puts the block at the top of the line, where its letters
+    /// already stand on the baseline, and the value changes nothing there. Styled as a <see cref="TextBlock"/>.
+    /// </summary>
+    private sealed class InlineText : TextBlock
+    {
+        protected override Type StyleKeyOverride => typeof(TextBlock);
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            var size = base.MeasureOverride(availableSize);
+            // measured by its container before the sentence's lines are made, which then read the value
+            var lines = TextLayout.TextLines;
+            var baseline = lines.Count > 0 ? Padding.Top + lines[0].Baseline : 0;
+            if (GetBaselineOffset(this) != baseline) SetBaselineOffset(this, baseline);
+            return size;
+        }
     }
 
     /// <summary>The touch layout's request, as in 0.5.0: a short question and the command or the file's diff. Returns the detail.</summary>

@@ -688,6 +688,48 @@ public class PermissionPromptTests
         ui.Window.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData(1800.0, false)] // the sentence on one line
+    [InlineData(420.0, true)]   // the sentence wraps
+    [InlineData(340.0, true)]   // and the place goes to a line under the first
+    public void The_place_sits_on_the_baseline_of_the_words_around_it(double width, bool wraps)
+    {
+        const string RuleAndMode = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"touch a.txt\"}],\"behavior\":\"allow\",\"destination\":\"localSettings\"},{\"type\":\"setMode\",\"mode\":\"acceptEdits\",\"destination\":\"session\"}]";
+        foreach (var strings in new[] { ChatStrings.English, ChatStrings.PortugueseBrazil })
+        {
+            var c = new ChatConversation();
+            c.Apply(Bash("r1", "touch a.txt", RuleAndMode));
+            var view = new ClaudeChatView { Conversation = c, Strings = strings };
+            view.Prompt.Clock = new SlowClock();
+            var window = UiHelpers.Show(view, width);
+            var prompt = UiHelpers.Prompt(view);
+            var option = prompt.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "AlwaysButton");
+            var text = option.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("ClaudeChatOptionText"));
+            var where = option.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatAllowAlwaysHint"));
+            Assert.Equal(wraps, text.TextLayout.TextLines.Count > 1);
+
+            // the line that holds the place, and where its words stand: the line's baseline, under the sentence's own words
+            var top = text.Padding.Top;
+            Avalonia.Media.TextFormatting.TextLine? line = null;
+            foreach (var each in text.TextLayout.TextLines)
+            {
+                if (each.TextRuns.Any(r => r is Avalonia.Media.TextFormatting.DrawableTextRun and not Avalonia.Media.TextFormatting.ShapedTextRun))
+                {
+                    line = each;
+                    break;
+                }
+                top += each.Height;
+            }
+            Assert.NotNull(line);
+            Assert.Contains(line!.TextRuns, r => r is Avalonia.Media.TextFormatting.ShapedTextRun); // words beside it, on its line
+            var words = top + line.Baseline;
+            // and where the place's own letters stand
+            var placed = where.TranslatePoint(new Point(0, 0), text)!.Value.Y + where.Padding.Top + where.TextLayout.TextLines[0].Baseline;
+            Assert.True(System.Math.Abs(placed - words) <= 1, $"{strings.AllowAlwaysThisProjectJustYou}: the place's baseline is at {placed}, the words' at {words}");
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_huge_write_request_still_opens_fast()
     {

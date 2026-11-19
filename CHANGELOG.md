@@ -3,6 +3,16 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- In option 2 of a permission request, where the rule is kept ("this project (just you)") now sits on the baseline of the
+  words around it in an app on Avalonia 11.1 or later. Those versions stand a control inside a sentence on the baseline by its
+  bottom, so the underlined words were drawn about 4 px above the rest of the sentence, on one line or wrapped, and their line
+  grew as tall. The words now tell the sentence where their own letters stand, and are placed as on Avalonia 11.0, where
+  nothing changes. "N more" is placed the same way. The text, the underline, the tooltip and the click are as before.
+
 ## [0.9.0] - 2026-11-18
 
 ### Added
