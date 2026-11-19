@@ -22,7 +22,8 @@ All notable changes to this project are written here. The format follows
   mode, by its name in the mode picker or the claude's own word for it. The place is that of the `setMode`, and a `setMode` no
   longer moves the place said for the rules. Of several `setMode`s, the label names the last one with a mode, which is the mode
   the claude ends in (it named the first). The place still has its underline and tooltip, the mode's words come after it as plain
-  text, and the existing sentence formats are used as before. A lone `setMode` reads as it did.
+  text, and the existing sentence formats are used as before. A lone `setMode` reads as it did. A mode's name longer than 20
+  characters is cut to 17 and "…", as a long rule is, and shows whole in the option's tooltip; a brace in it is shown as it is.
 - The desktop bar of the reply box no longer draws its pieces over one another in a narrow chat. At about 350 px the mode,
   the model chip and send were drawn on top of each other. Where the pieces do not fit on one line, they now go to lines
   under it, the least needed first: the cache clock, Remote Control, the agents chip, the context ring, the model chip and

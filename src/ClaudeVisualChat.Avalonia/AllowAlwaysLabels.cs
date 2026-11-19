@@ -16,7 +16,9 @@ namespace ClaudeVisualChat;
 /// <param name="DestinationTip">The tooltip of <paramref name="Destination"/>; null with it.</param>
 /// <param name="More">The rules that <paramref name="Text"/> does not name, for a tooltip of one line each; empty when it names them all.</param>
 /// <param name="MoreText">The words that stand for <paramref name="More"/> in <paramref name="Text"/> ("2 more"); null when <paramref name="More"/> is empty.</param>
-/// <param name="FullText">The sentence with every rule whole, when a rule in <paramref name="Text"/> was cut; null otherwise.</param>
+/// <param name="FullText">
+/// The sentence with every rule and the mode's name whole, when one of them was cut in <paramref name="Text"/>; null otherwise.
+/// </param>
 /// <param name="ModeText">
 /// What the mode change offered with the rules or the folders does, after <paramref name="Destination"/>, the last words of
 /// <paramref name="Text"/> and <paramref name="FullText"/> (", and all edits for this session"); null without one, and when the sentence
@@ -68,28 +70,38 @@ internal static class AllowAlwaysLabels
         }
 
         var where = Where(destination, strings);
-        var modeText = mode == null ? null : ModeText(mode, Where(modeDestination ?? "session", strings).Text, strings);
-        if (rules.Count > 0) return OfRules(rules, where, strings).WithMode(modeText);
-        if (directories.Count > 0) return OfDirectories(directories, where, strings).WithMode(modeText);
+        var modeWhere = Where(modeDestination ?? "session", strings).Text;
+        var modeText = mode == null ? null : ModeText(mode, modeWhere, strings, whole: false);
+        var modeWhole = mode == null ? null : ModeText(mode, modeWhere, strings, whole: true);
+        if (rules.Count > 0) return OfRules(rules, where, strings).WithMode(modeText, modeWhole);
+        if (directories.Count > 0) return OfDirectories(directories, where, strings).WithMode(modeText, modeWhole);
         if (mode == "acceptEdits") return Plain(strings.AllowAlwaysAllEdits);
         if (mode == "default") return Plain(strings.AllowAlwaysNormalMode);
         return Plain(strings.PermissionYesAlwaysBeyondSession);
     }
 
-    /// <summary>What a mode change says after the rules or the folders: every mode is named, so none is hidden.</summary>
-    private static string ModeText(string mode, string where, ChatStrings strings) => mode switch
+    /// <summary>
+    /// What a mode change says after the rules or the folders: every mode is named, so none is hidden. The name of any other mode is
+    /// cut as a long rule is (<paramref name="whole"/> false), or whole.
+    /// </summary>
+    private static string ModeText(string mode, string where, ChatStrings strings, bool whole) => mode switch
     {
         "acceptEdits" => Fill(strings.AllowAlwaysAndAllEdits, where),
         "default" => Fill(strings.AllowAlwaysAndNormalMode, where),
-        _ => Fill(strings.AllowAlwaysAndMode, OneLine(strings.ModeLabel(mode)), where),
+        _ => Fill(strings.AllowAlwaysAndMode, Name(new Rule(OneLine(strings.ModeLabel(mode)), cuttable: true), whole), where),
     };
 
-    /// <summary>The label with the mode's words at the end of its sentences.</summary>
-    private static AllowAlwaysLabel WithMode(this AllowAlwaysLabel label, string? modeText) =>
+    private static string Name(Rule name, bool whole) => whole ? name.Whole : name.Short;
+
+    /// <summary>
+    /// The label with the mode's words at the end of its sentences; when the mode's name was cut, the sentence with it whole is the
+    /// full text, as for a cut rule.
+    /// </summary>
+    private static AllowAlwaysLabel WithMode(this AllowAlwaysLabel label, string? modeText, string? modeWhole) =>
         modeText == null ? label : label with
         {
             Text = label.Text + modeText,
-            FullText = label.FullText == null ? null : label.FullText + modeText,
+            FullText = label.FullText == null && modeWhole == modeText ? null : (label.FullText ?? label.Text) + modeWhole,
             ModeText = modeText,
         };
 

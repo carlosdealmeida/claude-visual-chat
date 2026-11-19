@@ -215,6 +215,41 @@ public class AllowAlwaysLabelTests
     }
 
     [Fact]
+    public void A_long_mode_name_is_cut_as_a_long_rule_is_and_shows_whole_in_the_full_text()
+    {
+        const string Mode = "aVeryLongCustomPermissionMode";
+        var label = Of(Rules("session", "npm:*"), SetMode(Mode));
+        Assert.Equal("Yes, allow npm for this session, and switch to aVeryLongCustomPe… mode for this session", label.Text);
+        Assert.Equal(", and switch to aVeryLongCustomPe… mode for this session", label.ModeText);
+        Assert.Equal("Yes, allow npm for this session, and switch to " + Mode + " mode for this session", label.FullText);
+
+        // twenty characters still fit, and nothing was cut: no full text
+        var fits = Of(Rules("session", "npm:*"), SetMode("12345678901234567890"));
+        Assert.Equal("Yes, allow npm for this session, and switch to 12345678901234567890 mode for this session", fits.Text);
+        Assert.Null(fits.FullText);
+
+        // a cut rule and a cut mode: both whole in the full text
+        const string Command = "sleep 5 && echo done > done.txt";
+        var both = Of(Rules("localSettings", Command), SetMode(Mode));
+        Assert.Equal("Yes, allow sleep 5 && echo d… for this project (just you), and switch to aVeryLongCustomPe… mode for this session",
+            both.Text);
+        Assert.Equal("Yes, allow " + Command + " for this project (just you), and switch to " + Mode + " mode for this session", both.FullText);
+
+        // the name the host gave a mode is cut too
+        var strings = ChatStrings.English with { ModePlan = "Plan carefully before acting" };
+        Assert.Equal("Yes, allow npm for this session, and switch to Plan carefully be… mode for this session",
+            AllowAlwaysLabels.Of(J("[" + Rules("session", "npm:*") + "," + SetMode("plan") + "]"), strings).Text);
+    }
+
+    [Fact]
+    public void A_brace_in_a_mode_name_is_kept_as_it_is()
+    {
+        var label = Of(Rules("session", "npm:*"), SetMode("{1}{0}"));
+        Assert.Equal("Yes, allow npm for this session, and switch to {1}{0} mode for this session", label.Text);
+        Assert.Equal(", and switch to {1}{0} mode for this session", label.ModeText);
+    }
+
+    [Fact]
     public void The_mode_change_says_its_own_place_and_does_not_move_the_rule()
     {
         // the mode kept in the local settings: the rule stays in the session, and each part says where it goes

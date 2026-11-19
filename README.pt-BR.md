@@ -447,11 +447,12 @@ arquivos e afins) são puladas.
 No desktop, o pedido de permissão pergunta como a extensão 2.1.310: um título que diz a ferramenta e no que ela mexe, o
 comando, o diff ou a entrada embaixo, e as respostas numeradas na ordem em que aparecem (o dígito depois do último vai
 para o campo; "Não" recusa na hora com o que estiver escrito nele). A opção 2 diz a regra e onde ela fica guardada (por
-exemplo, "este projeto (só você)") e, quando o claude oferece junto uma troca de modo, o que ela faz ("Sim, permitir touch
-a.txt para este projeto (só você), e todas as edições para esta sessão"; `AllowAlwaysAndAllEdits`,
-`AllowAlwaysAndNormalMode` e `AllowAlwaysAndMode` em `ChatStrings`). As respostas ficam desligadas por 500 ms depois que o cartão aparece, e um
-pedido que chega enquanto a pessoa digita espera até a digitação parar. Um botão no alto, à direita, dobra o cartão até o
-título, para ler a conversa que está atrás. O layout de toque mantém o pedido como era na 0.5.0, fora o plano.
+exemplo, "este projeto (só você)") e, quando o claude oferece junto uma troca de modo, o que ela faz ("Sim, permitir
+touch a.txt para este projeto (só você), e todas as edições para esta sessão"; `AllowAlwaysAndAllEdits`,
+`AllowAlwaysAndNormalMode` e `AllowAlwaysAndMode` em `ChatStrings`). As respostas ficam desligadas por 500 ms depois que
+o cartão aparece, e um pedido que chega enquanto a pessoa digita espera até a digitação parar. Um botão no alto, à
+direita, dobra o cartão até o título, para ler a conversa que está atrás. O layout de toque mantém o pedido como era na
+0.5.0, fora o plano.
 
 O que o seu app faz é o que ele já fazia: mandar o que `PermissionAnswered` e `PermissionModeRequested` trazem e dar à
 view todas as linhas que o claude escreve, os erros também.
