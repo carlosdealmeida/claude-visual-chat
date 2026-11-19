@@ -44,7 +44,7 @@ public class ComposerWidthTests
     /// </summary>
     private sealed class Crowded
     {
-        public Crowded(double width, bool remote = true, double? composerMaxWidth = null)
+        public Crowded(double width, bool remote = true, double? composerMaxWidth = null, string? font = null, double? smallFontSize = null)
         {
             Conversation = new ChatConversation { Clock = () => Now, AvailableModels = new[] { LongModel } };
             Conversation.Apply(new SessionStarted("s1", LongModel.Value, null, "acceptEdits", "2.1.310"));
@@ -56,6 +56,8 @@ public class ComposerWidthTests
             Conversation.AppendLine(Call("toolu_b", "Write the missing tests"));
             View = new ClaudeChatView { Conversation = Conversation, Strings = LongMode };
             if (composerMaxWidth is double most) View.Resources["ClaudeChat.ComposerMaxWidth"] = most; // room for any font
+            if (font != null) View.Resources["ClaudeChat.FontFamily"] = new Avalonia.Media.FontFamily(font); // another machine's font
+            if (smallFontSize is double size) View.Resources["ClaudeChat.SmallFontSize"] = size; // the bar's texts, the clock's minutes
             Window = UiHelpers.Show(View, width, UiHelpers.Height);
             Composer = UiHelpers.Composer(View);
             Conversation.Submit("go"); // busy: stop shows
@@ -210,12 +212,17 @@ public class ComposerWidthTests
         ui.Window.Close();
     }
 
+    /// <summary>The widths of the narrow chat, each with the theme's font and with fonts much wider and narrower.</summary>
+    public static IEnumerable<object?[]> NarrowWidths =>
+        from width in new[] { 350.0, 320.0 }
+        from font in new[] { null, "Verdana", "Arial Narrow, Calibri", "Courier New" }
+        select new object?[] { width, font };
+
     [AvaloniaTheory]
-    [InlineData(350)]
-    [InlineData(320)]
-    public void At_a_narrow_width_nothing_in_the_bar_overlaps_and_everything_is_still_there(double width)
+    [MemberData(nameof(NarrowWidths))]
+    public void At_a_narrow_width_nothing_in_the_bar_overlaps_and_everything_is_still_there(double width, string? font)
     {
-        var ui = new Crowded(width);
+        var ui = new Crowded(width, font: font);
         var shown = ui.Shown();
 
         // every piece is still on screen, each one whole and inside the box
@@ -234,11 +241,14 @@ public class ComposerWidthTests
         ui.Window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_pieces_go_down_in_the_order_of_what_matters_least_and_never_come_back_as_the_chat_narrows()
+    [AvaloniaTheory]
+    [InlineData(null)]
+    [InlineData("Verdana")]
+    [InlineData("Courier New")]
+    public void The_pieces_go_down_in_the_order_of_what_matters_least_and_never_come_back_as_the_chat_narrows(string? font)
     {
         // at every width, the pieces under the first line are the first ones of the order, and narrowing never brings one back up
-        var ui = new Crowded(1000);
+        var ui = new Crowded(1000, font: font);
         var before = new List<string>();
         for (var width = 1000; width >= 200; width -= 5)
         {
@@ -286,30 +296,48 @@ public class ComposerWidthTests
         ui.Window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_minutes_of_the_cache_clock_going_by_never_move_the_line_breaks()
+    /// <summary>
+    /// The fonts of other machines, and sizes of the bar's texts with fractions in them: the sans-serif of a Linux runner falls
+    /// back from the theme's Segoe UI to a font of other widths, and the line breaks must hold with any of them.
+    /// </summary>
+    public static IEnumerable<object?[]> Fonts => new[]
     {
-        // an hour's cache shows "60m", then "9m", then, cold, only its icon: the clock narrows each time, and at no width may that
-        // bring a piece up from the lines under the first (the box would change height under the person's eyes every minute)
-        var ui = new Crowded(700);
-        for (var width = 700; width >= 300; width -= 2)
+        new object?[] { null, null },               // the theme's own
+        new object?[] { "Verdana", null },          // much wider
+        new object?[] { "Arial Narrow, Calibri", null }, // much narrower
+        new object?[] { "Courier New", null },      // every character as wide
+        new object?[] { null, 11.7 },               // a size with a fraction
+        new object?[] { "Verdana", 12.35 },
+        new object?[] { "Times New Roman", 10.4 },
+    };
+
+    [AvaloniaTheory]
+    [MemberData(nameof(Fonts))]
+    public void The_minutes_of_the_cache_clock_going_by_never_move_the_line_breaks(string? font, double? size)
+    {
+        // an hour's cache shows "60m", then "9m", then, cold, only its icon: the clock's width changes each time, and at no width
+        // may that move a piece between the lines (the box would change height under the person's eyes every minute)
+        var ui = new Crowded(700, font: font, smallFontSize: size);
+        for (var width = 700; width >= 300; width -= 1)
         {
             ui.At(TimeSpan.Zero);
             ui.Resize(width);
             Assert.Equal("60m", string.Join("", UiHelpers.Texts(ui.Clock)));
             var height = ui.Composer.Bounds.Height;
             var below = ui.Below();
-
-            ui.At(TimeSpan.FromMinutes(51));
-            Assert.Equal("9m", string.Join("", UiHelpers.Texts(ui.Clock)));
-            Assert.Equal(height, ui.Composer.Bounds.Height);
-            Assert.Equal(below, ui.Below());
-
-            ui.At(TimeSpan.FromMinutes(61));
-            Assert.Empty(UiHelpers.Texts(ui.Clock)); // cold: the icon alone
-            Assert.Equal(height, ui.Composer.Bounds.Height);
-            Assert.Equal(below, ui.Below());
-            AssertNoOverlap(ui.Shown());
+            var reserved = ui.Clock.ReservedWidth;
+            foreach (var (state, at) in new[] { ("9m", TimeSpan.FromMinutes(51)), ("cold", TimeSpan.FromMinutes(61)), ("60m again", TimeSpan.Zero) })
+            {
+                ui.At(at);
+                var where = "at " + width + " px, " + (font ?? "the theme's font") + " " + (size?.ToString() ?? "") + ", 60m -> " + state;
+                // the room the bar keeps for the clock is the same whatever it shows, and never less than it takes
+                Assert.True(reserved == ui.Clock.ReservedWidth, where + ": the clock's room went from " + reserved + " to " + ui.Clock.ReservedWidth);
+                Assert.True(ui.Clock.DesiredSize.Width <= reserved, where + ": the clock is " + ui.Clock.DesiredSize.Width + " wide, its room " + reserved);
+                Assert.True(height == ui.Composer.Bounds.Height, where + ": the box went from " + height + " to " + ui.Composer.Bounds.Height
+                    + " px high; under the first line " + string.Join(",", below) + " -> " + string.Join(",", ui.Below()));
+                Assert.True(below.SequenceEqual(ui.Below()), where + ": under the first line " + string.Join(",", below) + " -> " + string.Join(",", ui.Below()));
+                AssertNoOverlap(ui.Shown());
+            }
         }
         ui.Window.Close();
     }
