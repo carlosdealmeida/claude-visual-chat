@@ -688,17 +688,21 @@ public class PermissionPromptTests
         ui.Window.Close();
     }
 
+    private const string RuleAndMode = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"touch a.txt\"}],\"behavior\":\"allow\",\"destination\":\"localSettings\"},{\"type\":\"setMode\",\"mode\":\"acceptEdits\",\"destination\":\"session\"}]";
+
+    // two rules of 20 characters, the longest shown whole: the words before the place are wider than a narrow option in any font
+    private const string LongRulesAndMode = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"echo first-long-word\"},{\"toolName\":\"Bash\",\"ruleContent\":\"echo other-long-word\"}],\"behavior\":\"allow\",\"destination\":\"localSettings\"},{\"type\":\"setMode\",\"mode\":\"acceptEdits\",\"destination\":\"session\"}]";
+
     [AvaloniaTheory]
-    [InlineData(1800.0, false)] // the sentence on one line
-    [InlineData(420.0, true)]   // the sentence wraps
-    [InlineData(340.0, true)]   // and the place goes to a line under the first
-    public void The_place_sits_on_the_baseline_of_the_words_around_it(double width, bool wraps)
+    [InlineData(1800.0, false, false)] // the sentence on one line
+    [InlineData(420.0, true, false)]   // the sentence wraps
+    [InlineData(340.0, true, true)]    // and the place goes to a line under the first
+    public void The_place_sits_on_the_baseline_of_the_words_around_it(double width, bool wraps, bool laterLine)
     {
-        const string RuleAndMode = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"touch a.txt\"}],\"behavior\":\"allow\",\"destination\":\"localSettings\"},{\"type\":\"setMode\",\"mode\":\"acceptEdits\",\"destination\":\"session\"}]";
         foreach (var strings in new[] { ChatStrings.English, ChatStrings.PortugueseBrazil })
         {
             var c = new ChatConversation();
-            c.Apply(Bash("r1", "touch a.txt", RuleAndMode));
+            c.Apply(Bash("r1", "touch a.txt", laterLine ? LongRulesAndMode : RuleAndMode));
             var view = new ClaudeChatView { Conversation = c, Strings = strings };
             view.Prompt.Clock = new SlowClock();
             var window = UiHelpers.Show(view, width);
@@ -711,6 +715,7 @@ public class PermissionPromptTests
             // the line that holds the place, and where its words stand: the line's baseline, under the sentence's own words
             var top = text.Padding.Top;
             Avalonia.Media.TextFormatting.TextLine? line = null;
+            var index = 0;
             foreach (var each in text.TextLayout.TextLines)
             {
                 if (each.TextRuns.Any(r => r is Avalonia.Media.TextFormatting.DrawableTextRun and not Avalonia.Media.TextFormatting.ShapedTextRun))
@@ -719,14 +724,44 @@ public class PermissionPromptTests
                     break;
                 }
                 top += each.Height;
+                index++;
             }
             Assert.NotNull(line);
+            if (laterLine) Assert.True(index > 0, $"{strings.AllowAlwaysThisProjectJustYou}: the place is on the first line");
             Assert.Contains(line!.TextRuns, r => r is Avalonia.Media.TextFormatting.ShapedTextRun); // words beside it, on its line
             var words = top + line.Baseline;
             // and where the place's own letters stand
             var placed = where.TranslatePoint(new Point(0, 0), text)!.Value.Y + where.Padding.Top + where.TextLayout.TextLines[0].Baseline;
             Assert.True(System.Math.Abs(placed - words) <= 1, $"{strings.AllowAlwaysThisProjectJustYou}: the place's baseline is at {placed}, the words' at {words}");
             window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_underlined_words_tell_the_sentence_where_their_letters_stand()
+    {
+        // what Avalonia 11.1 and later read to put them on the sentence's baseline (11.0 places them without it): it holds on any version
+        const string ManyRules = "[{\"type\":\"addRules\",\"rules\":[{\"toolName\":\"Bash\",\"ruleContent\":\"git status\"},{\"toolName\":\"Bash\",\"ruleContent\":\"git diff\"},{\"toolName\":\"Read\"}],\"behavior\":\"allow\",\"destination\":\"userSettings\"}]";
+        foreach (var suggestions in new[] { RuleAndMode, ManyRules })
+        {
+            var c = new ChatConversation();
+            c.Apply(Bash("r1", "git status", suggestions));
+            var ui = Open(c);
+            foreach (var strings in new[] { ChatStrings.English, ChatStrings.PortugueseBrazil })
+            {
+                ui.View.Strings = strings;
+                UiHelpers.Pump();
+                var hints = AlwaysHints(ui);
+                Assert.Equal(suggestions == ManyRules ? 2 : 1, hints.Count); // "2 more" and the place, or the place
+                foreach (var hint in hints)
+                {
+                    var letters = hint.Padding.Top + hint.TextLayout.TextLines[0].Baseline;
+                    Assert.True(letters > 0);
+                    Assert.True(System.Math.Abs(TextBlock.GetBaselineOffset(hint) - letters) < 0.01,
+                        $"{hint.Text}: says {TextBlock.GetBaselineOffset(hint)}, its letters stand at {letters}");
+                }
+            }
+            ui.Window.Close();
         }
     }
 

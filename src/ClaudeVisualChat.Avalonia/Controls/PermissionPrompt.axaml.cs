@@ -804,6 +804,7 @@ internal partial class PermissionPrompt : UserControl
             // measured by its container before the sentence's lines are made, which then read the value
             var lines = TextLayout.TextLines;
             var baseline = lines.Count > 0 ? Padding.Top + lines[0].Baseline : 0;
+            // BaselineOffset is an attached property that inherits: set on purpose on this leaf, which has no children to pass it to
             if (GetBaselineOffset(this) != baseline) SetBaselineOffset(this, baseline);
             return size;
         }
