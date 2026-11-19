@@ -14,7 +14,8 @@ namespace ClaudeVisualChat.Controls;
 /// right, from the left, 2 px apart and 2 px under the line before. A piece with <see cref="KeepProperty"/> 0 never leaves the first line while those
 /// pieces fit on it; in a bar narrower than that, every piece follows the one before it from the left, line after line. A piece
 /// wider than a whole line has one to itself and is measured with its width, so that one that trims its text does so, and the bar
-/// clips what is still too wide.
+/// clips what is still too wide (only then: otherwise nothing is clipped, as before). Whether a piece fits is decided with the
+/// width it may come to take by itself (<see cref="IBarPieceWidth"/>), so that a clock that ticks cannot move the line breaks.
 /// </summary>
 internal sealed class ComposerBarPanel : Panel
 {
@@ -32,10 +33,12 @@ internal sealed class ComposerBarPanel : Panel
     /// <summary>The width of each piece as it would like it, taken before any is measured with less.</summary>
     private readonly Dictionary<Control, double> _natural = new Dictionary<Control, double>();
 
+    /// <summary>The width each piece is given room for when the lines are decided: its own, or more while it may grow by itself.</summary>
+    private readonly Dictionary<Control, double> _fit = new Dictionary<Control, double>();
+
     static ComposerBarPanel()
     {
         AffectsParentMeasure<ComposerBarPanel>(KeepProperty, RightProperty);
-        ClipToBoundsProperty.OverrideDefaultValue<ComposerBarPanel>(true);
     }
 
     public static int GetKeep(Control control) => control.GetValue(KeepProperty);
@@ -49,10 +52,13 @@ internal sealed class ComposerBarPanel : Panel
     protected override Size MeasureOverride(Size availableSize)
     {
         _natural.Clear();
+        _fit.Clear();
         foreach (var child in Children)
         {
             child.Measure(Size.Infinity);
-            if (child.IsVisible) _natural[child] = child.DesiredSize.Width;
+            if (!child.IsVisible) continue;
+            _natural[child] = child.DesiredSize.Width;
+            _fit[child] = child is IBarPieceWidth grows ? Math.Max(child.DesiredSize.Width, grows.ReservedWidth) : child.DesiredSize.Width;
         }
         var plan = Plan(availableSize.Width);
         foreach (var piece in plan.Pieces)
@@ -64,7 +70,13 @@ internal sealed class ComposerBarPanel : Panel
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        foreach (var piece in Plan(finalSize.Width).Pieces) piece.Control.Arrange(piece.Rect);
+        var squeezed = false;
+        foreach (var piece in Plan(finalSize.Width).Pieces)
+        {
+            piece.Control.Arrange(piece.Rect);
+            squeezed |= piece.Squeezed;
+        }
+        ClipToBounds = squeezed; // only a piece wider than its line can reach past the bar
         return finalSize;
     }
 
@@ -87,7 +99,7 @@ internal sealed class ComposerBarPanel : Panel
         {
             if (GetKeep(piece) == 0) first.Add(piece);
         }
-        if (LineWidth(first) <= width)
+        if (LineWidth(first, Fit) <= width)
         {
             // the others join the first line in the order they are kept, as long as each fits; the first that does not ends it
             var candidates = shown.FindAll(p => GetKeep(p) > 0);
@@ -95,7 +107,7 @@ internal sealed class ComposerBarPanel : Panel
             foreach (var piece in candidates)
             {
                 first.Add(piece);
-                if (LineWidth(first) <= width) continue;
+                if (LineWidth(first, Fit) <= width) continue;
                 first.Remove(piece);
                 break;
             }
@@ -121,7 +133,7 @@ internal sealed class ComposerBarPanel : Panel
                 x += Natural(piece);
                 left = false;
             }
-            var right = double.IsInfinity(width) ? LineWidth(first) : width;
+            var right = double.IsInfinity(width) ? LineWidth(first, Natural) : width;
             for (var i = shown.Count - 1; i >= 0; i--)
             {
                 var piece = shown[i];
@@ -130,7 +142,7 @@ internal sealed class ComposerBarPanel : Panel
                 layout.Add(piece, new Rect(right, 0, Natural(piece), height), false);
             }
             y = height;
-            layout.Width = LineWidth(first);
+            layout.Width = LineWidth(first, Natural);
         }
 
         // the rest, in the bar's order, line after line
@@ -139,13 +151,13 @@ internal sealed class ComposerBarPanel : Panel
         foreach (var piece in shown)
         {
             if (first.Contains(piece)) continue;
-            if (line.Count > 0 && lineWidth + Spacing + Natural(piece) > width)
+            if (line.Count > 0 && lineWidth + Spacing + Fit(piece) > width)
             {
                 y = PlaceLine(layout, line, y, width);
                 line.Clear();
                 lineWidth = 0;
             }
-            lineWidth += (line.Count > 0 ? Spacing : 0) + Natural(piece);
+            lineWidth += (line.Count > 0 ? Spacing : 0) + Fit(piece);
             line.Add(piece);
         }
         if (line.Count > 0) y = PlaceLine(layout, line, y, width);
@@ -174,8 +186,12 @@ internal sealed class ComposerBarPanel : Panel
 
     private double Natural(Control piece) => _natural.TryGetValue(piece, out var width) ? width : 0;
 
-    /// <summary>What the pieces take on one line: those at the left 2 px apart, those at the right against them.</summary>
-    private double LineWidth(HashSet<Control> pieces)
+    private double Fit(Control piece) => _fit.TryGetValue(piece, out var width) ? width : 0;
+
+    /// <summary>
+    /// What the pieces take on one line, each <paramref name="widthOf"/> wide: those at the left 2 px apart, those at the right against them.
+    /// </summary>
+    private static double LineWidth(HashSet<Control> pieces, Func<Control, double> widthOf)
     {
         double left = 0, right = 0;
         var count = 0;
@@ -183,11 +199,11 @@ internal sealed class ComposerBarPanel : Panel
         {
             if (GetRight(piece))
             {
-                right += Natural(piece);
+                right += widthOf(piece);
             }
             else
             {
-                left += Natural(piece);
+                left += widthOf(piece);
                 count++;
             }
         }
@@ -204,4 +220,11 @@ internal sealed class ComposerBarPanel : Panel
 
         public void Add(Control control, Rect rect, bool squeezed) => Pieces.Add((control, rect, squeezed));
     }
+}
+
+/// <summary>A piece of the bar whose width changes by itself (the cache clock's minutes as they go by).</summary>
+internal interface IBarPieceWidth
+{
+    /// <summary>The widest it may come to be without anything else changing; the bar keeps room for that when it decides its lines.</summary>
+    double ReservedWidth { get; }
 }

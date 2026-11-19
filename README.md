@@ -244,7 +244,8 @@ The keys of the box, as in the extension 2.1.310:
   Control, the agents chip, the context ring, the model chip and, last, the mode. +, / and send (and stop) stay on the
   first line, so at a chat 320 px wide every piece is still whole and can be clicked. In a bar narrower than +, / and
   send together, every piece follows the one before it, line after line, and a piece wider than a whole line is cut at
-  its end (the mode with an ellipsis).
+  its end (the mode with an ellipsis). The cache clock is given room for its widest minutes, so the lines do not change
+  as the minutes go by.
 
 ## Commands
 

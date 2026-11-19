@@ -5,6 +5,8 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 using Avalonia.Threading;
 
 namespace ClaudeVisualChat.Controls;
@@ -15,9 +17,10 @@ namespace ClaudeVisualChat.Controls;
 /// (class <c>cold</c>). The tooltip says the same in words. Hidden, taking no room, until the claude reports cache
 /// use. It is redone every second while it shows (the timer keeps running while the clock is in a window with data,
 /// and a second with the clock hidden, under a hidden ancestor, does nothing); the minutes never go below 1 while warm
-/// nor above the cache's lifetime, whatever the clock says.
+/// nor above the cache's lifetime, whatever the clock says. In the bar it keeps room for its widest minutes
+/// (<see cref="ReservedWidth"/>), so that the minutes going by, or the cache going cold, never move the bar's line breaks.
 /// </summary>
-internal sealed class PromptCacheClock : Border
+internal sealed class PromptCacheClock : Border, IBarPieceWidth
 {
     private static readonly StyledProperty<ChatStrings> StringsProperty =
         ClaudeChatView.StringsProperty.AddOwner<PromptCacheClock>();
@@ -28,6 +31,12 @@ internal sealed class PromptCacheClock : Border
     private ChatConversation? _conversation;
     private ChatConversation? _tracked;
     private bool _attached;
+
+    /// <summary>The room after the minutes while warm (the theme's 8 px); the cold clock has none, and may be warm again.</summary>
+    private double _warmPadding = 8;
+
+    /// <summary>The widest minutes, kept for the texts, the font and the lifetime it was measured with.</summary>
+    private (string Key, double Width)? _widest;
 
     public PromptCacheClock()
     {
@@ -66,6 +75,46 @@ internal sealed class PromptCacheClock : Border
     }
 
     private ChatStrings Strings => GetValue(StringsProperty) ?? ChatStrings.English;
+
+    /// <summary>
+    /// The clock's width with its widest minutes ("60m" for an hour's cache), warm, whatever it shows now: what the bar keeps room
+    /// for. Measured with the font of the minutes, so it holds for any font.
+    /// </summary>
+    public double ReservedWidth
+    {
+        get
+        {
+            var widest = WidestMinutes();
+            if (_minutes.IsVisible)
+            {
+                _warmPadding = Padding.Right;
+                return Math.Ceiling(DesiredSize.Width + Math.Max(0, widest - TextWidth(_minutes.Text ?? "")));
+            }
+            return Math.Ceiling(DesiredSize.Width - Padding.Right + _warmPadding + widest);
+        }
+    }
+
+    /// <summary>The widest of the minutes the clock can show: from 1 to the cache's lifetime (an hour when it is not known).</summary>
+    private double WidestMinutes()
+    {
+        var ttl = _tracked?.PromptCacheTtl;
+        var most = (int)Math.Min(999, Math.Max(1, Math.Ceiling(ttl is TimeSpan lifetime && lifetime > TimeSpan.Zero ? lifetime.TotalMinutes : 60)));
+        var strings = Strings;
+        var key = most + "|" + _minutes.FontFamily + "|" + _minutes.FontSize + "|" + _minutes.FontWeight + "|" + _minutes.FontStyle + "|" + strings.FormatCacheMinutes(88);
+        if (_widest is { } kept && kept.Key == key) return kept.Width;
+        double width = 0;
+        for (var minutes = 1; minutes <= most; minutes++) width = Math.Max(width, TextWidth(strings.FormatCacheMinutes(minutes)));
+        _widest = (key, width);
+        return width;
+    }
+
+    private double TextWidth(string text)
+    {
+        if (text.Length == 0) return 0;
+        var typeface = new Typeface(_minutes.FontFamily, _minutes.FontStyle, _minutes.FontWeight, _minutes.FontStretch);
+        using var layout = new TextLayout(text, typeface, _minutes.FontSize, null);
+        return layout.WidthIncludingTrailingWhitespace;
+    }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {

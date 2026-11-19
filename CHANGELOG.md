@@ -29,8 +29,9 @@ All notable changes to this project are written here. The format follows
   under it, the least needed first: the cache clock, Remote Control, the agents chip, the context ring, the model chip and
   the mode. +, / and send (and stop) stay on the first line, at its ends, so down to a chat 320 px wide every piece is
   whole and can be clicked. Narrower than +, / and send together, the pieces follow one another line after line, and one
-  wider than a whole line is cut at its end, the mode with an ellipsis. Where everything fits, the bar is as it was,
-  and the order of Tab is unchanged.
+  wider than a whole line is cut at its end, the mode with an ellipsis (the bar clips only then). The cache clock is given
+  room for its widest minutes, so the minutes going by never move a piece from one line to another. Where everything fits,
+  the bar is as it was, and the order of Tab is unchanged.
 
 ## [0.8.0] - 2026-11-15
 

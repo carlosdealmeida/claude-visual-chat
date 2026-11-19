@@ -249,7 +249,8 @@ As teclas da caixa, como na extensão 2.1.310:
   relógio do cache, o Remote Control, o chip de agentes, o anel de contexto, o chip do modelo e, por último, o modo. O
   +, o / e o enviar (e o parar) ficam na primeira linha, então num chat de 320 px de largura todas as peças continuam
   inteiras e clicáveis. Numa barra mais estreita que o +, o / e o enviar juntos, cada peça segue a anterior, linha após
-  linha, e uma peça mais larga que uma linha inteira é cortada no fim (o modo com reticências).
+  linha, e uma peça mais larga que uma linha inteira é cortada no fim (o modo com reticências). O relógio do cache tem
+  lugar para os seus minutos mais largos, então as linhas não mudam conforme os minutos passam.
 
 ## Comandos
 
