@@ -1083,4 +1083,31 @@ public class PublicApiTests
             Assert.Contains(property.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
         }
     }
+
+    [Fact]
+    public void The_auth_conflict_api_exists()
+    {
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.Contains("ClaudeVisualChat.AuthConflict", names);
+        Assert.Contains("ClaudeVisualChat.Protocol.AuthConflictReported", names);
+        Assert.Equal(new[] { "TokenSource", "ApiKeySource" },
+            typeof(AuthConflict).GetConstructors().Single().GetParameters().Select(p => p.Name).ToArray());
+        Assert.Equal(typeof(AuthConflict), typeof(ChatConversation).GetProperty("AuthConflict")?.PropertyType);
+        Assert.True(typeof(ChatConversation).GetProperty("AuthConflict")!.SetMethod?.IsPublic != true); // read only from outside
+        var key = typeof(ChatConversation).GetProperty("DismissedAuthConflictKey");
+        Assert.Equal(typeof(string), key?.PropertyType);
+        Assert.True(key!.SetMethod!.IsPublic);
+        Assert.NotNull(typeof(ChatConversation).GetMethod("DismissAuthConflict", System.Type.EmptyTypes));
+        foreach (var text in new[]
+        {
+            "AuthConflictNotUsing", "AuthConflictBoth", "AuthConflictKeepOne", "AuthConflictLogout", "AuthSourceClaudeAi",
+            "AuthSourceProfile", "AuthSourceLoginKey", "AuthSourceKeyHelper", "DismissWarning",
+        })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+        Assert.False(Library.GetType("ClaudeVisualChat.Controls.AuthConflictBanner")!.IsPublic);
+    }
 }

@@ -54,4 +54,13 @@ namespace ClaudeVisualChat
     /// <c>subscriptionType</c> is turned into it when the account is read, with each word in capitals, and "none" gives null.
     /// </summary>
     public sealed record AccountInfo(string? AuthMethod, string? Email, string? Organization, string? Plan);
+
+    /// <summary>
+    /// Where an auth token and an API key both come from, when the claude has both set (the <c>auth_conflict</c> of its
+    /// <c>initialize</c> reply). They are source names, never credentials. <paramref name="TokenSource"/> is one of
+    /// <c>apiKeyHelper</c>, <c>ANTHROPIC_AUTH_TOKEN</c>, <c>CLAUDE_CODE_OAUTH_TOKEN</c>, <c>CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR</c>,
+    /// <c>CCR_OAUTH_TOKEN_FILE</c>, <c>profile</c> or <c>claude.ai</c>; <paramref name="ApiKeySource"/> one of <c>ANTHROPIC_API_KEY</c>,
+    /// <c>apiKeyHelper</c> or <c>/login managed key</c>. The lists may grow: the warning writes a source it does not know as it came.
+    /// </summary>
+    public sealed record AuthConflict(string TokenSource, string ApiKeySource);
 }

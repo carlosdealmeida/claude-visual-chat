@@ -802,4 +802,27 @@ public class ChatStringsTests
         Assert.Equal("Essa colagem passa 10 caracteres do limite de 50000 · nada foi adicionado, cole menos", Pt.FormatInvisibleNotice(10, InvisibleNoticeKind.PasteOverLimit, false));
         Assert.Equal("Your prompt is 100,000 characters over the limit of 50000 · shorten it to send", En.FormatInvisibleNotice(100_000, InvisibleNoticeKind.PromptOverLimit, false));
     }
+
+    [Fact]
+    public void The_auth_conflict_texts_exist_in_both_languages()
+    {
+        Assert.Equal("Claude Code is not using {0}, because {1} takes priority.", En.AuthConflictNotUsing);
+        Assert.Equal("O Claude Code não está usando {0}, porque {1} tem prioridade.", Pt.AuthConflictNotUsing);
+        Assert.Equal("Claude Code has both {0} and {1}, so it may not use the credential you expect.", En.AuthConflictBoth);
+        Assert.Equal("O Claude Code tem {0} e {1} ao mesmo tempo, então pode não usar a credencial que você espera.", Pt.AuthConflictBoth);
+        Assert.Equal(" Keep one and remove the other, then start a new conversation (restart your editor if you removed one from your shell).", En.AuthConflictKeepOne);
+        Assert.Equal(" Mantenha uma e remova a outra, depois comece uma nova conversa (reinicie o editor se tirou uma do seu shell).", Pt.AuthConflictKeepOne);
+        Assert.Equal(" To use only {0}, run \"claude auth logout\" in a terminal to remove the saved key, then start a new conversation.", En.AuthConflictLogout);
+        Assert.Equal(" Para usar só {0}, rode \"claude auth logout\" num terminal para remover a chave salva, depois comece uma nova conversa.", Pt.AuthConflictLogout);
+        Assert.Equal("your claude.ai login", En.AuthSourceClaudeAi);
+        Assert.Equal("seu login do claude.ai", Pt.AuthSourceClaudeAi);
+        Assert.Equal("your Anthropic profile", En.AuthSourceProfile);
+        Assert.Equal("seu perfil da Anthropic", Pt.AuthSourceProfile);
+        Assert.Equal("an API key saved by /login", En.AuthSourceLoginKey);
+        Assert.Equal("uma chave de API salva pelo /login", Pt.AuthSourceLoginKey);
+        Assert.Equal("an apiKeyHelper setting", En.AuthSourceKeyHelper);
+        Assert.Equal("uma configuração apiKeyHelper", Pt.AuthSourceKeyHelper);
+        Assert.Equal("Dismiss warning", En.DismissWarning);
+        Assert.Equal("Dispensar aviso", Pt.DismissWarning);
+    }
 }

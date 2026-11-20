@@ -4280,4 +4280,48 @@ public class ChatConversationTests
         Assert.Null(Updated("{\"status\":\"completed\"}").IsBackgrounded);
         Assert.Null(Updated("{\"is_backgrounded\":\"yes\"}").IsBackgrounded);
     }
+
+    // ---- the warning of a token and an API key both set (Task 8) ----
+
+    [Fact]
+    public void Dismissing_hides_that_pair_only()
+    {
+        var c = new ChatConversation();
+        var changed = new List<string?>();
+        c.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        c.Apply(new AuthConflictReported(new AuthConflict("claude.ai", "ANTHROPIC_API_KEY")));
+        Assert.Equal(new AuthConflict("claude.ai", "ANTHROPIC_API_KEY"), c.AuthConflict);
+        Assert.Null(c.DismissedAuthConflictKey);
+
+        c.DismissAuthConflict();
+        Assert.Equal("claude.ai\nANTHROPIC_API_KEY", c.DismissedAuthConflictKey);
+        Assert.Contains(nameof(ChatConversation.DismissedAuthConflictKey), changed);
+
+        // the same pair again stays dismissed; another pair does not match the dismissal
+        c.Apply(new AuthConflictReported(new AuthConflict("claude.ai", "ANTHROPIC_API_KEY")));
+        Assert.Equal("claude.ai\nANTHROPIC_API_KEY", c.DismissedAuthConflictKey);
+        c.Apply(new AuthConflictReported(new AuthConflict("profile", "ANTHROPIC_API_KEY")));
+        Assert.NotEqual(c.DismissedAuthConflictKey, c.AuthConflict!.TokenSource + "\n" + c.AuthConflict.ApiKeySource);
+    }
+
+    [Fact]
+    public void A_reply_without_a_conflict_clears_the_dismissal()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AuthConflictReported(new AuthConflict("claude.ai", "ANTHROPIC_API_KEY")));
+        c.DismissAuthConflict();
+
+        c.Apply(new AuthConflictReported(null));
+
+        Assert.Null(c.AuthConflict);
+        Assert.Null(c.DismissedAuthConflictKey);
+    }
+
+    [Fact]
+    public void Dismissing_with_no_conflict_does_nothing()
+    {
+        var c = new ChatConversation();
+        c.DismissAuthConflict();
+        Assert.Null(c.DismissedAuthConflictKey);
+    }
 }

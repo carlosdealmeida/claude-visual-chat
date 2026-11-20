@@ -624,6 +624,13 @@ a star and verbs. Nothing to set up for those. What your app may want to know:
   (`system/model_refusal_fallback`, the `Protocol.ModelRefusalFallback` event), with "Why?" and "Hide". It is
   `ChatConversation.LastModelFallback`, and `DismissModelFallback()` closes it. A history read back never shows it, and
   it gives way to the browser notice and to a Remote Control error.
+- **The warning of a token and an API key set together** shows above the reply box, in the yellow tint, when the claude's
+  `initialize` answer has an `auth_conflict` (the sources of the two credentials, never their values): which one it may
+  not use, and to keep one and remove the other. **Your app has to pass the `initialize` answer** (the control response, through
+  `AppendLine`) for the warning to show; without it nothing shows. It is `ChatConversation.AuthConflict`
+  (`Protocol.AuthConflictReported` carries it, null when an answer has none); the ✕ closes it for that pair of sources
+  (`DismissAuthConflict()`), and `DismissedAuthConflictKey` holds the pair so your app can keep it between runs and set it
+  back. A browser notice, a Remote Control error or the "Switched to" band takes its place while it shows.
 - **The fast mode bolt** sits on the reply box's top border while the box has the keyboard and
   `ChatConversation.FastModeState` (the last `fast_mode_state` of `system/init` and of a `result`) is `on` or `cooldown`;
   its tooltip says which, and names the effort when it is known. A sandbox network access request shows as "Network

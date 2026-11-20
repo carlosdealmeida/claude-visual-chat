@@ -6,6 +6,29 @@ namespace ClaudeVisualChat.Tests.Protocol
 {
     public class TranscriptParserTests
     {
+        private static string InitializeReply(string extra) =>
+            "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"init-1\",\"response\":{\"commands\":[]," + extra + "\"models\":[]}}}";
+
+        [Fact]
+        public void An_initialize_reply_reports_the_auth_conflict()
+        {
+            // a hand-built line: the recorder's machine has no login that both sets a token and a key
+            var events = new StreamJsonParser().Parse(InitializeReply(
+                "\"auth_conflict\":{\"token_source\":\"claude.ai\",\"api_key_source\":\"ANTHROPIC_API_KEY\"},"));
+
+            var reported = Assert.Single(events.OfType<AuthConflictReported>());
+            Assert.Equal(new AuthConflict("claude.ai", "ANTHROPIC_API_KEY"), reported.Conflict);
+        }
+
+        [Fact]
+        public void An_initialize_reply_without_it_reports_none()
+        {
+            var events = new StreamJsonParser().Parse(InitializeReply(""));
+
+            var reported = Assert.Single(events.OfType<AuthConflictReported>());
+            Assert.Null(reported.Conflict);
+        }
+
         [Fact]
         public void Image_message_from_the_session_file()
         {

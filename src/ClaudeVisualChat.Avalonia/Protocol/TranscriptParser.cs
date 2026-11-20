@@ -293,7 +293,10 @@ namespace ClaudeVisualChat.Protocol
         public static void ReadControlBody(JsonElement body, List<ClaudeEvent> events)
         {
             if (JsonHelpers.Arr(body, "commands") is { } commands)
+            {
                 events.Add(new CommandsAvailable(ReadCommands(commands)));
+                events.Add(new AuthConflictReported(ReadAuthConflict(JsonHelpers.Obj(body, "auth_conflict"))));
+            }
             if (JsonHelpers.Arr(body, "models") is { } models)
                 events.Add(new ModelsAvailable(ReadModels(models)));
 
@@ -339,6 +342,12 @@ namespace ClaudeVisualChat.Protocol
             if (JsonHelpers.Str(body, "session_url") is { } url)
                 events.Add(new RemoteControlChanged(null, url, null));
         }
+
+        private static AuthConflict? ReadAuthConflict(JsonElement? conflict) =>
+            conflict is { } c && JsonHelpers.Str(c, "token_source") is { Length: > 0 } token
+                && JsonHelpers.Str(c, "api_key_source") is { Length: > 0 } key
+                ? new AuthConflict(token, key)
+                : null;
 
         /// <summary>
         /// The login, as a code the strings write out (<c>claudeai</c>, <c>api-key</c>, <c>bedrock</c>, <c>vertex</c>, <c>foundry</c>, <c>gateway</c>, <c>third-party</c>), from

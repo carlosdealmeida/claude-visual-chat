@@ -436,6 +436,38 @@ def test_pedido_sem_sugestao():
     assert not gravar.conferir("pedido_sem_sugestao", [_pedido(permission_suggestions=[{"type": "addRules"}])])
 
 
+def _initialize(**interno):
+    return {"type": "control_response", "response": {"subtype": "success", "request_id": "init-1", "response": interno}}
+
+
+def test_initialize_keeps_the_auth_conflict_sources_only():
+    conflito = {"token_source": "claude.ai", "api_key_source": "ANTHROPIC_API_KEY", "key": "sk-ant-fake"}
+    limpo = gravar.higienizar_stream(_initialize(commands=[], auth_conflict=conflito, account={"email": "a@b.c"}), trocas())
+    interno = limpo["response"]["response"]
+    assert interno["auth_conflict"] == {"token_source": "claude.ai", "api_key_source": "ANTHROPIC_API_KEY"}
+    assert "account" not in interno
+
+
+def test_initialize_without_a_conflict_has_none():
+    limpo = gravar.higienizar_stream(_initialize(commands=[]), trocas())
+    assert "auth_conflict" not in limpo["response"]["response"]
+
+
+def test_auth_conflict_check():
+    com = _initialize(commands=[], auth_conflict={"token_source": "claude.ai", "api_key_source": "ANTHROPIC_API_KEY"})
+    assert gravar.conferir("auth_conflict", [com])
+    assert not gravar.conferir("auth_conflict", [_initialize(commands=[])])
+    assert not gravar.conferir("auth_conflict", [_initialize(commands=[], auth_conflict={"token_source": "claude.ai"})])
+
+
+def test_ambiente_adds_variables_to_the_child_environment_only():
+    base = {"PATH": "x", "ANTHROPIC_API_KEY": "real"}
+    env = gravar.ambiente_do_cenario({"ambiente": {"ANTHROPIC_API_KEY": "sk-ant-fake"}}, base)
+    assert env["ANTHROPIC_API_KEY"] == "sk-ant-fake" and env["PATH"] == "x"
+    assert base["ANTHROPIC_API_KEY"] == "real"
+    assert gravar.ambiente_do_cenario({}, base) == base
+
+
 if __name__ == "__main__":
     falhas = 0
     for nome, fn in sorted(globals().items()):

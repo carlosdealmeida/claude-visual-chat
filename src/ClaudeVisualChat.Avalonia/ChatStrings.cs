@@ -497,6 +497,15 @@ public sealed record ChatStrings
         Back = "Voltar",
         Close = "Fechar",
         Dismiss = "Dispensar",
+        AuthConflictNotUsing = "O Claude Code não está usando {0}, porque {1} tem prioridade.",
+        AuthConflictBoth = "O Claude Code tem {0} e {1} ao mesmo tempo, então pode não usar a credencial que você espera.",
+        AuthConflictKeepOne = " Mantenha uma e remova a outra, depois comece uma nova conversa (reinicie o editor se tirou uma do seu shell).",
+        AuthConflictLogout = " Para usar só {0}, rode \"claude auth logout\" num terminal para remover a chave salva, depois comece uma nova conversa.",
+        AuthSourceClaudeAi = "seu login do claude.ai",
+        AuthSourceProfile = "seu perfil da Anthropic",
+        AuthSourceLoginKey = "uma chave de API salva pelo /login",
+        AuthSourceKeyHelper = "uma configuração apiKeyHelper",
+        DismissWarning = "Dispensar aviso",
         CopyAnswer = "Copiar",
         Copied = "Copiado",
         CopyCode = "Copiar código",
@@ -1985,6 +1994,39 @@ public sealed record ChatStrings
     /// <summary>The name of the button that dismisses a banner.</summary>
     public string Dismiss { get; init; } = "Dismiss";
 
+    /// <summary>
+    /// The first sentence of the warning over the reply box when the token is the Anthropic profile's: <c>{0}</c> is the API
+    /// key's source (the phrase for it) and <c>{1}</c> the token's.
+    /// </summary>
+    public string AuthConflictNotUsing { get; init; } = "Claude Code is not using {0}, because {1} takes priority.";
+
+    /// <summary>
+    /// The first sentence of the warning over the reply box when an auth token and an API key are both set: <c>{0}</c> is the
+    /// token's source and <c>{1}</c> the API key's (the phrases for them).
+    /// </summary>
+    public string AuthConflictBoth { get; init; } = "Claude Code has both {0} and {1}, so it may not use the credential you expect.";
+
+    /// <summary>The second sentence of that warning (it starts with a space): keep one credential, remove the other.</summary>
+    public string AuthConflictKeepOne { get; init; } = " Keep one and remove the other, then start a new conversation (restart your editor if you removed one from your shell).";
+
+    /// <summary>The second sentence when the API key is the one saved by <c>/login</c> (it starts with a space): <c>{0}</c> is the token's source.</summary>
+    public string AuthConflictLogout { get; init; } = " To use only {0}, run \"claude auth logout\" in a terminal to remove the saved key, then start a new conversation.";
+
+    /// <summary>The phrase for the token that comes from the claude.ai login.</summary>
+    public string AuthSourceClaudeAi { get; init; } = "your claude.ai login";
+
+    /// <summary>The phrase for the token that comes from the Anthropic profile.</summary>
+    public string AuthSourceProfile { get; init; } = "your Anthropic profile";
+
+    /// <summary>The phrase for the API key that <c>/login</c> saved.</summary>
+    public string AuthSourceLoginKey { get; init; } = "an API key saved by /login";
+
+    /// <summary>The phrase for a credential an <c>apiKeyHelper</c> setting gives.</summary>
+    public string AuthSourceKeyHelper { get; init; } = "an apiKeyHelper setting";
+
+    /// <summary>The name of the button that dismisses a warning over the reply box.</summary>
+    public string DismissWarning { get; init; } = "Dismiss warning";
+
     /// <summary>The name of the button under a finished turn that copies Claude's answer (the touch layout's).</summary>
     public string CopyAnswer { get; init; } = "Copy";
 
@@ -2283,6 +2325,31 @@ public sealed record ChatStrings
 
     /// <summary>"Switched to Opus 5.5".</summary>
     internal string FormatSwitchedTo(string model) => SwitchedTo.Replace("{0}", model);
+
+    /// <summary>The warning of an auth token and an API key set together: two sentences, from the two sources.</summary>
+    internal string FormatAuthConflict(AuthConflict conflict)
+    {
+        var token = AuthSourcePhrase(conflict.TokenSource);
+        var key = AuthSourcePhrase(conflict.ApiKeySource);
+        var first = conflict.TokenSource == "profile" ? AuthConflictNotUsing : AuthConflictBoth;
+        // "not using {0}" names the key (what loses); "has both {0} and {1}" names the token first
+        var firstText = conflict.TokenSource == "profile"
+            ? first.Replace("{0}", key).Replace("{1}", token)
+            : first.Replace("{0}", token).Replace("{1}", key);
+        var second = conflict.ApiKeySource == "/login managed key" && conflict.TokenSource != "claude.ai" && conflict.TokenSource != "profile"
+            ? AuthConflictLogout.Replace("{0}", token)
+            : AuthConflictKeepOne;
+        return firstText + second;
+    }
+
+    private string AuthSourcePhrase(string source) => source switch
+    {
+        "claude.ai" => AuthSourceClaudeAi,
+        "profile" => AuthSourceProfile,
+        "/login managed key" => AuthSourceLoginKey,
+        "apiKeyHelper" => AuthSourceKeyHelper,
+        _ => source,
+    };
 
     /// <summary>
     /// The line of a message from another agent, session or channel: "Message from @maria", with a colon after it when the first words of the

@@ -19,6 +19,15 @@ All notable changes to this project are written here. The format follows
 - `PermissionRequested` and `PendingPermission` have `DecisionReason`, `DecisionReasonType`, `DecisionReasonCode` and
   `McpServerSource` (from `decision_reason`, `decision_reason_type`, `decision_reason_code` and `mcp_server.source`), and
   `PendingPermission` has `AskReason` and `HookReason`, the texts the card shows (null when it shows none).
+- A warning above the reply box when an auth token and an API key are both set, read from the `auth_conflict` of the
+  claude's `initialize` answer (the sources of the two credentials, never their values): "Claude Code has both your
+  claude.ai login and ANTHROPIC_API_KEY, so it may not use the credential you expect", with what to do about it, and "Claude
+  Code is not using {key}, because your Anthropic profile takes priority" when the token is the profile's. Your app has to
+  pass the `initialize` answer through `AppendLine` for it to show. New: `AuthConflict`, `Protocol.AuthConflictReported`,
+  `ChatConversation.AuthConflict`, `DismissedAuthConflictKey` and `DismissAuthConflict()` (the ✕ closes it for that pair of
+  sources), and the strings `AuthConflictNotUsing`, `AuthConflictBoth`, `AuthConflictKeepOne`, `AuthConflictLogout`,
+  `AuthSourceClaudeAi`, `AuthSourceProfile`, `AuthSourceLoginKey`, `AuthSourceKeyHelper` and `DismissWarning`. The recorder
+  has an `ambiente` step (variables added to the claude process only) and an `auth_conflict` check.
 
 ### Changed
 

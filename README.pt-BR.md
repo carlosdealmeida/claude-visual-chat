@@ -632,6 +632,13 @@ uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O q
   modelo (`system/model_refusal_fallback`, o evento `Protocol.ModelRefusalFallback`), com "Por quê?" e "Ocultar". Ela é o
   `ChatConversation.LastModelFallback`, e o `DismissModelFallback()` a fecha. Um histórico lido de volta nunca a mostra, e
   ela dá lugar ao aviso do navegador e a um erro do Remote Control.
+- **O aviso de token e chave de API ao mesmo tempo** aparece acima da caixa de resposta, no tom amarelo, quando a resposta do
+  `initialize` do claude traz um `auth_conflict` (as origens das duas credenciais, nunca os valores): qual delas ele pode
+  não usar, e para manter uma e remover a outra. **O seu app precisa repassar a resposta do `initialize`** (a resposta de
+  controle, pelo `AppendLine`) para o aviso aparecer; sem ela nada aparece. É o `ChatConversation.AuthConflict`
+  (o `Protocol.AuthConflictReported` o traz, nulo quando uma resposta não tem); o ✕ o fecha para aquele par de origens
+  (`DismissAuthConflict()`), e o `DismissedAuthConflictKey` guarda o par para o seu app manter entre execuções e
+  repor. O aviso do navegador, um erro do Remote Control ou a faixa "Modelo trocado" tomam o lugar dele enquanto aparecem.
 - **O raio do modo rápido** fica na borda de cima da caixa de resposta enquanto a caixa tem o teclado e o
   `ChatConversation.FastModeState` (o último `fast_mode_state` do `system/init` e de um `result`) é `on` ou `cooldown`; a
   dica diz qual, e nomeia o esforço quando ele é conhecido. Um pedido de acesso à rede do sandbox aparece como "Acesso à

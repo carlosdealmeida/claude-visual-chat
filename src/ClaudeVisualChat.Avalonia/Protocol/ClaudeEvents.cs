@@ -229,6 +229,12 @@ namespace ClaudeVisualChat.Protocol
     /// <summary>The login, from the <c>account</c> of the <c>initialize</c> reply.</summary>
     public sealed record AccountReported(AccountInfo Account) : ClaudeEvent;
 
+    /// <summary>
+    /// What the <c>initialize</c> reply says about an auth token and an API key set together: the pair of sources (its
+    /// <c>auth_conflict</c>), or null when the reply has none. Raised for each reply that carries <c>commands</c>.
+    /// </summary>
+    public sealed record AuthConflictReported(AuthConflict? Conflict) : ClaudeEvent;
+
     /// <summary>Remote Control moved (<c>bridge_state</c>) or started (<c>session_url</c>).</summary>
     public sealed record RemoteControlChanged(string? State, string? Url, string? Detail) : ClaudeEvent;
 

@@ -180,3 +180,37 @@ internal sealed class RemoteControlBanner : ChatBanner
         || propertyName == nameof(ChatConversation.RemoteControlError)
         || propertyName == nameof(ChatConversation.BrowserStatus);
 }
+
+/// <summary>
+/// The warning, in the yellow tint, that the claude has an auth token and an API key set together, from the
+/// <c>auth_conflict</c> of its <c>initialize</c> reply: which credential it may not use, and what to do. The × closes it for that
+/// pair of sources (<see cref="ChatConversation.DismissAuthConflict"/>). One at a time with the other banners: the browser's,
+/// Remote Control's and the "Switched to" band take its place while they show.
+/// </summary>
+internal sealed class AuthConflictBanner : ChatBanner
+{
+    public AuthConflictBanner() => Classes.Add("warning");
+
+    protected override string? Describe(ChatConversation conversation, ChatStrings strings, out bool error)
+    {
+        error = false;
+        if (conversation.AuthConflict is not { } conflict
+            || ChatConversation.AuthConflictKey(conflict) == conversation.DismissedAuthConflictKey
+            || conversation.BrowserStatus != ChatBrowserStatus.Off
+            || conversation.RemoteControlStatus == ChatRemoteControlStatus.Error
+            || conversation.LastModelFallback != null)
+            return null;
+        return strings.FormatAuthConflict(conflict);
+    }
+
+    protected override string CloseName(ChatStrings strings) => strings.DismissWarning;
+
+    protected override void Close(ChatConversation conversation) => conversation.DismissAuthConflict();
+
+    protected override bool Concerns(string? propertyName) =>
+        propertyName == nameof(ChatConversation.AuthConflict)
+        || propertyName == nameof(ChatConversation.DismissedAuthConflictKey)
+        || propertyName == nameof(ChatConversation.BrowserStatus)
+        || propertyName == nameof(ChatConversation.RemoteControlStatus)
+        || propertyName == nameof(ChatConversation.LastModelFallback);
+}

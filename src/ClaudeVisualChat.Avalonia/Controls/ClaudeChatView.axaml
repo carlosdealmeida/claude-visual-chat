@@ -63,6 +63,8 @@
                                       MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
         <controls:ModelFallbackBand Name="FallbackBand" Margin="16,0,16,-8"
                                     MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
+        <controls:AuthConflictBanner Name="AuthConflictBanner" Margin="16,0,16,-8"
+                                     MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
         <controls:ChatComposer Name="Composer" Margin="16,0,16,16"
                                MaxWidth="{DynamicResource ClaudeChat.ComposerMaxWidth}" />
       </StackPanel>

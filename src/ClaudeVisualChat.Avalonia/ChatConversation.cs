@@ -112,6 +112,8 @@ public sealed class ChatConversation : ChatObservableObject
     private string? _remoteControlError;
     private bool _autoModeNoticeSeen;
     private ModelRefusalFallback? _lastModelFallback;
+    private AuthConflict? _authConflict;
+    private string? _dismissedAuthConflictKey;
 
     private readonly ObservableCollection<AssistantTextItem> _bookmarks = new ObservableCollection<AssistantTextItem>();
     private ChatStrings _strings = ChatStrings.English;
@@ -840,6 +842,35 @@ public sealed class ChatConversation : ChatObservableObject
     /// <summary>Closes the "Switched to" band (the × of it): <see cref="LastModelFallback"/> becomes null.</summary>
     public void DismissModelFallback() => LastModelFallback = null;
 
+    /// <summary>
+    /// The pair of sources the claude said it has an auth token and an API key from, in the answer to <c>initialize</c> (its
+    /// <c>auth_conflict</c>); null for none, until it answers, and always where the host does not pass that answer on. The warning
+    /// over the reply box shows it.
+    /// </summary>
+    public AuthConflict? AuthConflict
+    {
+        get => _authConflict;
+        private set => SetField(ref _authConflict, value);
+    }
+
+    /// <summary>
+    /// The pair the user closed the warning of (<c>TokenSource + "\n" + ApiKeySource</c>), so that the warning stays away for that pair
+    /// only; null for none. A host may keep it between runs and set it again. An answer without a conflict clears it.
+    /// </summary>
+    public string? DismissedAuthConflictKey
+    {
+        get => _dismissedAuthConflictKey;
+        set => SetField(ref _dismissedAuthConflictKey, value);
+    }
+
+    /// <summary>Closes the warning of the pair in <see cref="AuthConflict"/> (the × of it): <see cref="DismissedAuthConflictKey"/> becomes its key.</summary>
+    public void DismissAuthConflict()
+    {
+        if (AuthConflict is { } conflict) DismissedAuthConflictKey = AuthConflictKey(conflict);
+    }
+
+    internal static string AuthConflictKey(AuthConflict conflict) => conflict.TokenSource + "\n" + conflict.ApiKeySource;
+
     // ---- input ----
 
     /// <summary>Applies one line of <c>claude -p --output-format stream-json</c>; odd lines are ignored.</summary>
@@ -868,6 +899,10 @@ public sealed class ChatConversation : ChatObservableObject
                 break;
             case ModelsAvailable models:
                 AvailableModels = models.Models;
+                break;
+            case AuthConflictReported reported:
+                AuthConflict = reported.Conflict;
+                if (reported.Conflict == null) DismissedAuthConflictKey = null;
                 break;
             case SettingsApplied applied:
                 if (applied.Model != null)

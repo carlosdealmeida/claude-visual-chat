@@ -592,6 +592,7 @@ public partial class ClaudeChatView : UserControl
             BrowserBanner.Conversation = Conversation;
             RemoteControlBanner.Conversation = Conversation;
             FallbackBand.Conversation = Conversation;
+            AuthConflictBanner.Conversation = Conversation;
             AutoNotice.Conversation = Conversation;
             TouchAgentsChip.Conversation = Conversation;
             QueuedList.Conversation = Conversation;

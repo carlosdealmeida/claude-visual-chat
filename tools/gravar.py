@@ -38,7 +38,8 @@ QUEUED_COMMAND_CAMPOS = ("type", "prompt", "commandMode", "origin", "source_uuid
 
 # Slash commands that may stay in a recording: the built-ins of Claude Code and the demo's own.
 COMANDOS_PUBLICOS = ("compact", "context", "usage", "cost", "model", "effort", "hello")
-INITIALIZE_CAMPOS = ("commands", "models")
+INITIALIZE_CAMPOS = ("commands", "models", "auth_conflict")
+AUTH_CONFLICT_CAMPOS = ("token_source", "api_key_source")
 SETTINGS_APPLIED_CAMPOS = ("model", "effort")
 CONTEXTO_CAMPOS = ("totalTokens", "maxTokens", "percentage")
 CONTEXTO_CATEGORIA_CAMPOS = ("name", "tokens", "kind")
@@ -47,6 +48,14 @@ RESULT_CAMPOS_FORA = ("credential_expires_at",)
 DEMO_PASTA = r"C:\demo\app"
 DEMO_HOME = r"C:\Users\demo"
 DEMO_USUARIO = "demo"
+
+
+def ambiente_do_cenario(cenario, base):
+    """The environment of the claude child process: `base` plus the scenario's `ambiente` variables.
+
+    The variables go only to that process; `base` is not changed.
+    """
+    return dict(base, **(cenario.get("ambiente") or {}))
 
 
 def log(msg):
@@ -121,6 +130,10 @@ def _higienizar_initialize(interno):
     novo = {k: interno[k] for k in INITIALIZE_CAMPOS if k in interno}
     if "commands" in novo:
         novo["commands"] = _comandos_publicos(novo["commands"])
+    if "auth_conflict" in novo:
+        # source names only, never anything that could be a credential
+        conflito = novo["auth_conflict"] if isinstance(novo["auth_conflict"], dict) else {}
+        novo["auth_conflict"] = {k: conflito[k] for k in AUTH_CONFLICT_CAMPOS if isinstance(conflito.get(k), str)}
     return novo
 
 
@@ -416,7 +429,8 @@ class Gravacao:
 
     def executar(self, comando):
         self.proc = subprocess.Popen(comando, cwd=self.pasta, stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     env=ambiente_do_cenario(self.cenario, os.environ))
         threading.Thread(target=self._ler_stdout, daemon=True).start()
         threading.Thread(target=self._ler_stderr, daemon=True).start()
         passos = self.cenario["passos"]
@@ -548,6 +562,12 @@ def conferir(espera, eventos):
         return any(e.get("type") == "control_request" and
                    (e.get("request") or {}).get("subtype") == "can_use_tool" and
                    not (e.get("request") or {}).get("permission_suggestions")
+                   for e in eventos)
+    if nome == "auth_conflict":
+        return any(e.get("type") == "control_response" and isinstance(e.get("response"), dict) and
+                   isinstance((e["response"].get("response") or {}).get("auth_conflict"), dict) and
+                   all(isinstance(e["response"]["response"]["auth_conflict"].get(k), str)
+                       for k in AUTH_CONFLICT_CAMPOS)
                    for e in eventos)
     if nome == "resultado_ok":
         return any(nomes.get(b.get("tool_use_id")) == arg and not b.get("is_error")
