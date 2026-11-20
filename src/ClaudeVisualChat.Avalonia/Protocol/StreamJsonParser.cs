@@ -198,6 +198,10 @@ namespace ClaudeVisualChat.Protocol
                     AgentId = JsonHelpers.Str(r, "agent_id"),
                     DefaultToNo = JsonHelpers.Bool(r, "default_to_no"),
                     SuppressAlwaysAllowRule = JsonHelpers.Bool(r, "suppress_always_allow_rule"),
+                    DecisionReason = JsonHelpers.Str(r, "decision_reason"),
+                    DecisionReasonType = JsonHelpers.Str(r, "decision_reason_type"),
+                    DecisionReasonCode = JsonHelpers.Str(r, "decision_reason_code"),
+                    McpServerSource = JsonHelpers.Obj(r, "mcp_server") is { } server ? JsonHelpers.Str(server, "source") : null,
                 },
             };
         }

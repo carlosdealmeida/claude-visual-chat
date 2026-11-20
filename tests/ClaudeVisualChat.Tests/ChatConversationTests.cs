@@ -1205,6 +1205,87 @@ public class ChatConversationTests
         Assert.Empty(c.PendingPermissions);
     }
 
+    // ---- why the claude asks, and what a hook said ----
+
+    private static PendingPermission Asked(string? reason, string? type, string tool = "Bash", string? code = null, string? source = null)
+    {
+        var c = new ChatConversation();
+        c.Apply(new PermissionRequested("r1", tool, null, null, null, J("{}"), null)
+        {
+            DecisionReason = reason,
+            DecisionReasonType = type,
+            DecisionReasonCode = code,
+            McpServerSource = source,
+        });
+        return c.CurrentPermission!;
+    }
+
+    /// <summary>The request of a recording, played up to the line that asks (the turn's end takes it away).</summary>
+    private static PendingPermission Asked(string scenario)
+    {
+        var c = new ChatConversation();
+        foreach (var line in FixtureFiles.StreamLines(scenario))
+        {
+            c.AppendLine(line);
+            if (line.Contains("\"can_use_tool\"")) break;
+        }
+        return c.CurrentPermission!;
+    }
+
+    [Fact]
+    public void A_safety_check_gives_an_ask_reason_with_line_marks()
+    {
+        // the recording of a safety check: the reason as the claude wrote it, and no hook
+        var recorded = Asked("seguranca");
+        Assert.Equal("safetyCheck", recorded.DecisionReasonType);
+        Assert.Equal("Claude requested permissions to write to C:\\demo\\app\\.claude\\settings.local.json, but you haven't granted it yet.", recorded.AskReason);
+        Assert.Null(recorded.HookReason);
+
+        var asked = Asked("a\nb", "safetyCheck");
+        Assert.Equal("a⏎b", asked.AskReason);
+        Assert.Equal("a\nb", asked.DecisionReason);                                       // the raw reason stays as it came
+        Assert.Equal("one⏎two⏎three", Asked("  one\r\ntwo\u2028three \n", "subcommandResults").AskReason); // trimmed, every break a mark
+        Assert.Equal("ab", Asked("a\u200B\u0007b", "safetyCheck").AskReason);              // no invisible or control characters
+        Assert.Null(Asked(" \n ", "safetyCheck").AskReason);                                // nothing to say
+        Assert.Null(Asked(null, "safetyCheck").AskReason);
+        Assert.Null(Asked("a reason", "hook").AskReason);                                   // a hook's reason is not why the claude asks
+        Assert.Null(Asked("a reason", "rule").AskReason);
+        Assert.Null(Asked("a reason", null).AskReason);
+    }
+
+    [Fact]
+    public void An_mcp_reason_shows_only_from_a_claude_ai_connector()
+    {
+        const string Tool = "mcp__claude_ai_Gmail__send";
+        // its line breaks are one space, before the marks
+        Assert.Equal("This connector asks first. Every time.", Asked("This connector asks first.\n   Every time.", "other", Tool, source: "claudeai").AskReason);
+        Assert.Null(Asked("This connector asks first.", "other", Tool, source: "user").AskReason);       // another server
+        Assert.Null(Asked("This connector asks first.", "other", Tool).AskReason);
+        Assert.Null(Asked("This connector asks first.", "other", "Bash", source: "claudeai").AskReason); // not an MCP tool
+        Assert.Null(Asked("code: x", "other", Tool, source: "claudeai").AskReason);                       // a code, not a sentence
+        Assert.Null(Asked("some-code", "other", Tool, source: "claudeai").AskReason);
+        Assert.Equal("some code", Asked("some code", "other", Tool, source: "claudeai").AskReason);
+        Assert.Null(Asked("The transcript is too long.", "other", Tool, "classifier_transcript_too_long", "claudeai").AskReason);
+        Assert.Null(Asked("This connector asks first.", "rule", Tool, source: "claudeai").AskReason);
+    }
+
+    [Fact]
+    public void A_hook_reason_over_2000_is_cut_and_says_how_much()
+    {
+        // the recording of a hook that asks: its two lines, the break a mark, and no reason of the claude's own
+        var recorded = Asked("hook-ask");
+        Assert.Equal("The demo hook asks before any file is written.⏎It checks nothing else; this second line is here to test line breaks.", recorded.HookReason);
+        Assert.Null(recorded.AskReason);
+
+        var text = new string('x', 2500);
+        Assert.Equal(new string('x', 2000) + "… [+500 chars]", Asked(text, "hook").HookReason);
+        Assert.Equal(new string('x', 2000), Asked("  " + new string('x', 2000) + "\n", "hook").HookReason); // trimmed first: whole
+        var pair = "\U0001F600";
+        Assert.Equal(new string('x', 1999) + "… [+4 chars]", Asked(new string('x', 1999) + pair + "yz", "hook").HookReason); // a pair is not cut in half
+        Assert.Null(Asked("   ", "hook").HookReason);
+        Assert.Null(Asked("a reason", "safetyCheck").HookReason);
+    }
+
     [Fact]
     public void Permission_queue()
     {

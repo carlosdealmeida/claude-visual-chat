@@ -2647,6 +2647,10 @@ public sealed class ChatConversation : ChatObservableObject
             AgentId = e.AgentId,
             DefaultToNo = e.DefaultToNo,
             SuppressAlwaysAllowRule = e.SuppressAlwaysAllowRule,
+            DecisionReason = e.DecisionReason,
+            DecisionReasonType = e.DecisionReasonType,
+            DecisionReasonCode = e.DecisionReasonCode,
+            McpServerSource = e.McpServerSource,
         };
         if (e.AgentId == null && AskingAgent(e.ToolUseId) is { } asking) _requestAgents[request] = asking;
         PendingPermissions.Add(request);

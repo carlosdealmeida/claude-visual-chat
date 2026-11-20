@@ -155,6 +155,24 @@ public class PublicApiTests
             Assert.Equal(typeof(bool), type.GetProperty("DefaultToNo")?.PropertyType);
             Assert.Equal(typeof(bool), type.GetProperty("SuppressAlwaysAllowRule")?.PropertyType);
         }
+        // why the claude asks and what a hook said (0.10.0): the raw fields on both, and on the request the texts the card shows
+        foreach (var type in new[] { typeof(PendingPermission), typeof(ClaudeVisualChat.Protocol.PermissionRequested) })
+        {
+            foreach (var name in new[] { "DecisionReason", "DecisionReasonType", "DecisionReasonCode", "McpServerSource" })
+                Assert.Equal(typeof(string), type.GetProperty(name)?.PropertyType);
+        }
+        foreach (var name in new[] { "AskReason", "HookReason" })
+        {
+            var property = typeof(PendingPermission).GetProperty(name);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Null(property!.SetMethod);                                    // worked out from the raw fields
+        }
+        foreach (var text in new[] { "PermissionHookSays", "PermissionWhyAsks" })
+        {
+            var property = typeof(ChatStrings).GetProperty(text);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
         // the positional constructor does not change
         Assert.Equal(8, Assert.Single(typeof(PendingPermission).GetConstructors()).GetParameters().Length);
         foreach (var text in new[]

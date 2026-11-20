@@ -148,6 +148,21 @@ namespace ClaudeVisualChat.Protocol
 
         /// <summary>The claude offers no rule to remember (<c>suppress_always_allow_rule</c>): no "allow always"; false when not told.</summary>
         public bool SuppressAlwaysAllowRule { get; init; }
+
+        /// <summary>Why the claude asks (<c>decision_reason</c>), as it came: a hook's text, a safety check's sentence…; null when not told.</summary>
+        public string? DecisionReason { get; init; }
+
+        /// <summary>
+        /// What decided to ask (<c>decision_reason_type</c>): <c>hook</c>, <c>safetyCheck</c>, <c>subcommandResults</c>,
+        /// <c>other</c>…; null when not told.
+        /// </summary>
+        public string? DecisionReasonType { get; init; }
+
+        /// <summary>A code for the reason (<c>decision_reason_code</c>), such as <c>classifier_transcript_too_long</c>; null when not told.</summary>
+        public string? DecisionReasonCode { get; init; }
+
+        /// <summary>Where the MCP server of the tool comes from (<c>mcp_server.source</c>), <c>claudeai</c> for a claude.ai connector; null when not told.</summary>
+        public string? McpServerSource { get; init; }
     }
 
     public sealed record PermissionCancelled(string RequestId) : ClaudeEvent;

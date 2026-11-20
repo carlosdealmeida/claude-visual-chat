@@ -1447,6 +1447,199 @@ public class PermissionPromptTests
         ui.Window.Close();
     }
 
+    // ---- why the claude asks, and what a hook said ----
+
+    /// <summary>A recording played up to the line that asks (the turn's end would take the request away).</summary>
+    private static ChatConversation AskedIn(string scenario)
+    {
+        var c = new ChatConversation { WorkingDirectory = "C:\\demo\\app" };
+        foreach (var line in FixtureFiles.StreamLines(scenario))
+        {
+            c.AppendLine(line);
+            if (line.Contains("\"can_use_tool\"")) break;
+        }
+        return c;
+    }
+
+    private static PermissionRequested Reasoned(string id, string reason, string type, string tool = "Bash", string input = "{\"command\":\"ls\"}") =>
+        new PermissionRequested(id, tool, tool, null, "tool-" + id, J(input), null) { DecisionReason = reason, DecisionReasonType = type };
+
+    private static T Named<T>(Opened ui, string name) where T : Control =>
+        Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(ui.Prompt).OfType<T>().Single(c => c.Name == name);
+
+    private static double Top(Control control, Opened ui) => control.TranslatePoint(default, ui.Prompt)!.Value.Y;
+
+    private static double Bottom(Control control, Opened ui) => Top(control, ui) + control.Bounds.Height;
+
+    /// <summary>The controls Tab goes through from option 1, once round.</summary>
+    private static List<IInputElement> TabStops(Opened ui)
+    {
+        ui.Option("Yes").Focus(NavigationMethod.Tab);
+        var stops = new List<IInputElement>();
+        for (var i = 0; i < 12; i++)
+        {
+            UiHelpers.Press(ui.Window, Key.Tab);
+            if (UiHelpers.Focused(ui.Window) is { } focused) stops.Add(focused);
+        }
+        return stops;
+    }
+
+    [AvaloniaFact]
+    public void The_ask_reason_sits_under_the_title_and_scrolls_after_six_and_three_quarter_lines()
+    {
+        // the recording of a safety check: a write to the project's settings
+        var c = AskedIn("seguranca");
+        var ui = Open(c);
+        UiHelpers.Pump();
+
+        const string Reason = "Claude requested permissions to write to C:\\demo\\app\\.claude\\settings.local.json, but you haven't granted it yet.";
+        var text = Named<SelectableTextBlock>(ui, "AskReasonText");
+        var scroller = Named<ScrollViewer>(ui, "AskReasonScroller");
+        var panel = Named<Border>(ui, "AskReasonPanel");
+        Assert.True(text.IsEffectivelyVisible);
+        Assert.Equal(Reason, text.Text);
+        Assert.Equal("Why Claude Code asks", AutomationProperties.GetName(panel));
+        // after the title and what the tool will do, before the options
+        var title = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatPermissionTitle"));
+        Assert.True(Top(panel, ui) >= Bottom(title, ui) - 1);
+        Assert.True(Top(panel, ui) >= Bottom(Named<ScrollViewer>(ui, "DetailScroller"), ui) - 1);
+        Assert.True(Bottom(panel, ui) <= Top(ui.Options[0], ui));
+        // the primary color at .99 of the chat's font, breaking anywhere; 6.75 of its font and 4 px high at most
+        var fontSize = (double)Resource(ui.View, "ClaudeChat.FontSize")!;
+        Assert.Same(Resource(ui.View, "ClaudeChat.Foreground"), text.Foreground);
+        Assert.Equal(0.99 * fontSize, text.FontSize, 3);
+        Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
+        Assert.Equal(6.75 * 0.99 * fontSize + 4, scroller.MaxHeight, 3);
+        // short: its 1 px lines above and below are clear, and it is no stop for the keyboard
+        var above = Named<Border>(ui, "AskReasonTopLine");
+        var below = Named<Border>(ui, "AskReasonBottomLine");
+        Assert.Equal(1, above.Bounds.Height, 1);
+        Assert.Equal(1, below.Bounds.Height, 1);
+        Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<ISolidColorBrush>(above.Background).Color);
+        Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<ISolidColorBrush>(below.Background).Color);
+        Assert.False(scroller.Focusable);
+        Assert.DoesNotContain(scroller, TabStops(ui));
+
+        // a long one scrolls inside, takes the keyboard, and draws the widget's border where there is more
+        c.Apply(Reasoned("r2", string.Join(" ", Enumerable.Repeat("This command reaches outside the project and needs a careful look.", 30)), "subcommandResults"));
+        c.DismissPermission(c.CurrentPermission!.RequestId);
+        UiHelpers.Pump();
+        Assert.True(text.IsEffectivelyVisible);
+        Assert.True(System.Math.Abs(6.75 * 0.99 * fontSize + 4 - scroller.Bounds.Height) <= 1);   // (the layout rounds it to a pixel)
+        Assert.True(scroller.Extent.Height > scroller.Viewport.Height);
+        Assert.True(scroller.Focusable);
+        var widget = Resource(ui.View, "ClaudeChat.InputBorder");                  // editorWidget.border, the extension's widget border
+        Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<ISolidColorBrush>(above.Background).Color);
+        Assert.Same(widget, below.Background);                                       // more below
+        Assert.Contains(scroller, TabStops(ui));
+        scroller.Offset = new Vector(0, scroller.Extent.Height);
+        UiHelpers.Pump();
+        Assert.Same(widget, above.Background);                                       // more above
+        Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<ISolidColorBrush>(below.Background).Color);
+        scroller.Offset = new Vector(0, scroller.Extent.Height / 3);
+        UiHelpers.Pump();
+        Assert.Same(widget, above.Background);                                       // and both in the middle
+        Assert.Same(widget, below.Background);
+
+        // a request with no reason shows no block
+        c.Apply(Bash("r3", "ls"));
+        c.DismissPermission("r2");
+        UiHelpers.Pump();
+        Assert.False(panel.IsEffectivelyVisible);
+        Assert.False(Named<Border>(ui, "HookReasonPanel").IsEffectivelyVisible);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_hook_reason_says_a_hook_says_and_is_out_of_the_tab_order()
+    {
+        // the recording of a hook that asks before any file is written: its two lines, the break a mark
+        var c = AskedIn("hook-ask");
+        var ui = Open(c);
+        UiHelpers.Pump();
+
+        var panel = Named<Border>(ui, "HookReasonPanel");
+        var text = Named<SelectableTextBlock>(ui, "HookReasonText");
+        Assert.True(panel.IsEffectivelyVisible);
+        Assert.Contains("A hook says:", UiHelpers.Texts(panel));
+        Assert.Equal("The demo hook asks before any file is written.⏎It checks nothing else; this second line is here to test line breaks.", text.Text);
+        Assert.False(Named<Border>(ui, "AskReasonPanel").IsEffectivelyVisible);            // a hook's reason is not why the claude asks
+        Assert.True(Bottom(panel, ui) <= Top(ui.Options[0], ui));
+        // a 2 px bar of the secondary color, 6 px from the text, 4 px under what is above
+        Assert.Same(Resource(ui.View, "ClaudeChat.ForegroundMuted"), panel.BorderBrush);
+        Assert.Equal(new Thickness(2, 0, 0, 0), panel.BorderThickness);
+        Assert.Equal(6, panel.Padding.Left);
+        Assert.Equal(4, panel.Margin.Top);
+        var fontSize = (double)Resource(ui.View, "ClaudeChat.FontSize")!;
+        var label = panel.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "A hook says:");
+        Assert.Same(Resource(ui.View, "ClaudeChat.Foreground"), label.Foreground);
+        Assert.Same(Resource(ui.View, "ClaudeChat.Foreground"), text.Foreground);
+        Assert.Equal(0.99 * fontSize, text.FontSize, 3);
+        Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
+        Assert.Equal(6.75 * 0.99 * fontSize, Named<ScrollViewer>(ui, "HookReasonScroller").MaxHeight, 3);
+        // the text is no stop for Tab, long or short
+        var stops = TabStops(ui);
+        Assert.NotEmpty(stops);
+        Assert.DoesNotContain(stops, s => s is Visual v && (ReferenceEquals(v, panel) || v.GetVisualAncestors().Contains(panel)));
+
+        c.Apply(Reasoned("r2", string.Join("\n", Enumerable.Repeat("The hook has a lot to say about this command.", 40)), "hook"));
+        c.DismissPermission(c.CurrentPermission!.RequestId);
+        UiHelpers.Pump();
+        Assert.True(Named<ScrollViewer>(ui, "HookReasonScroller").Extent.Height > Named<ScrollViewer>(ui, "HookReasonScroller").Viewport.Height);
+        stops = TabStops(ui);
+        Assert.DoesNotContain(stops, s => s is Visual v && (ReferenceEquals(v, panel) || v.GetVisualAncestors().Contains(panel)));
+
+        // in Portuguese
+        ui.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Contains("Um hook diz:", UiHelpers.Texts(panel));
+        Assert.Equal("Por que o Claude Code pergunta", AutomationProperties.GetName(Named<Border>(ui, "AskReasonPanel")));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_folded_card_hides_both_reasons()
+    {
+        var c = new ChatConversation();
+        c.Apply(Reasoned("r1", "The hook asks.", "hook"));
+        var ui = Open(c);
+        UiHelpers.Pump();
+        var hook = Named<Border>(ui, "HookReasonPanel");
+        Assert.True(hook.IsEffectivelyVisible);
+        UiHelpers.Click(ui.Window, FoldButton(ui.Prompt));
+        Assert.False(hook.IsEffectivelyVisible);
+        Assert.DoesNotContain("The hook asks.", ui.Texts);
+
+        c.Apply(Reasoned("r2", "A safety check asks.", "safetyCheck"));
+        c.DismissPermission("r1");
+        UiHelpers.Pump();
+        var reason = Named<Border>(ui, "AskReasonPanel");
+        Assert.True(reason.IsEffectivelyVisible);                                     // a new request comes open
+        UiHelpers.Click(ui.Window, FoldButton(ui.Prompt));
+        Assert.False(reason.IsEffectivelyVisible);
+        Assert.DoesNotContain("A safety check asks.", ui.Texts);
+        UiHelpers.Click(ui.Window, FoldButton(ui.Prompt));
+        Assert.True(reason.IsEffectivelyVisible);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_open_title_wraps_a_long_file_name()
+    {
+        var name = new string('n', 300) + ".txt";
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "Write", JsonSerializer.Serialize(new { file_path = "C:\\demo\\" + name, content = "x" })));
+        var ui = Open(c);
+        UiHelpers.Pump();
+
+        var title = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatPermissionTitle"));
+        Assert.Equal("Allow write to " + name + "?", Title(ui));
+        Assert.Equal(TextWrapping.Wrap, title.TextWrapping);                          // the name breaks where it must
+        Assert.True(title.Bounds.Height > 2 * title.LineHeight);
+        Assert.True(title.Bounds.Right <= ui.Frame.Bounds.Width);
+        ui.Window.Close();
+    }
+
     // ---- folding the card to read the conversation behind it ----
 
     private static Button FoldButton(Control root) => root.GetVisualDescendants().OfType<Button>()

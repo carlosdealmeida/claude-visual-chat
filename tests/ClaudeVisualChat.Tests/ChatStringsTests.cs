@@ -83,6 +83,15 @@ public class ChatStringsTests
     }
 
     [Fact]
+    public void The_permission_card_reasons_in_both_languages()
+    {
+        Assert.Equal("A hook says:", En.PermissionHookSays);
+        Assert.Equal("Um hook diz:", Pt.PermissionHookSays);
+        Assert.Equal("Why Claude Code asks", En.PermissionWhyAsks);
+        Assert.Equal("Por que o Claude Code pergunta", Pt.PermissionWhyAsks);
+    }
+
+    [Fact]
     public void The_queue_texts()
     {
         Assert.Equal("You, queued", En.YouQueued);

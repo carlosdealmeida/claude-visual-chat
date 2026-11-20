@@ -34,7 +34,8 @@ internal interface IPromptClock
 /// refuse at once with what the field says, and ↑/↓ go round the options and the field. With <c>default_to_no</c> the keyboard
 /// starts on "No" and the digits answer nothing. When the user has text in the reply box and edited it less than
 /// <see cref="TypingPause"/> before, the card waits, and "Waiting for permission…" shows in its place. The request's own
-/// description is never shown (the extension does not).
+/// description is never shown (the extension does not). Between what the tool will do and the options, the card says why the
+/// claude asks (<see cref="PendingPermission.AskReason"/>) and what a hook said (<see cref="PendingPermission.HookReason"/>).
 /// </para>
 /// <para>
 /// No answer reaches a request the user has not seen: keys and clicks on the options are ignored for <see cref="SettleTime"/>
@@ -168,6 +169,15 @@ internal partial class PermissionPrompt : UserControl
         {
             if (e.Property == ToggleButton.IsCheckedProperty) UpdateDetails();
         };
+        AskReasonScroller.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ScrollViewer.ExtentProperty || e.Property == ScrollViewer.ViewportProperty
+                || e.Property == ScrollViewer.OffsetProperty)
+                UpdateAskReasonEdges();
+        };
+        AskReasonScroller.GotFocus += (_, e) =>
+            AskReasonPanel.Classes.Set("focusVisible", e.NavigationMethod is NavigationMethod.Tab or NavigationMethod.Directional);
+        AskReasonScroller.LostFocus += (_, _) => AskReasonPanel.Classes.Set("focusVisible", false);
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         DenyBox.AddHandler(KeyDownEvent, OnDenyKeyDown, RoutingStrategies.Tunnel);
         foreach (var control in new Control[] { YesButton, AlwaysButton, NoButton, DenyBox })
@@ -679,6 +689,8 @@ internal partial class PermissionPrompt : UserControl
         HintText.Text = strings.PermissionEscToCancel;
         WaitingText.Text = strings.WaitingForPermission;
         DetailsText.Text = strings.PermissionDetails;
+        HookReasonLabel.Text = strings.PermissionHookSays;
+        AutomationProperties.SetName(AskReasonPanel, strings.PermissionWhyAsks);
         UpdateFold();
         Fill();
         UpdateMorePending();
@@ -718,9 +730,60 @@ internal partial class PermissionPrompt : UserControl
         ExtraBox.IsVisible = !string.IsNullOrEmpty(ExtraText.Text);
         AlwaysButton.IsVisible = request != null && !_withComments && (plan || request.CanAllowAlways); // a plan's option 2 approves by hand
         HintText.IsVisible = !IsTouch;
+        FillReasons(request);
         UpdateNumbers();
         UpdateDetails();
         UpdateSelected();
+    }
+
+    /// <summary>How many of its font the text of a reason grows to before it scrolls (the extension's 6.75em).</summary>
+    private const double ReasonMaxEm = 6.75;
+
+    /// <summary>The font of a reason's text, to the chat's font (the extension's .99em).</summary>
+    private const double ReasonFontEm = 0.99;
+
+    /// <summary>The room over the text of why the claude asks, inside its scroll (the extension's 4 px).</summary>
+    private const double AskReasonTopSpace = 4;
+
+    /// <summary>
+    /// The desktop card's two blocks between what the tool will do and the options: why the claude asks
+    /// (<see cref="PendingPermission.AskReason"/>) and what a hook said (<see cref="PendingPermission.HookReason"/>), each hidden when
+    /// there is none to show. Their text is .99 of the chat's font; the touch layout keeps its request as it was, without them.
+    /// </summary>
+    private void FillReasons(PendingPermission? request)
+    {
+        var ask = request != null && !IsTouch ? request.AskReason : null;
+        var hook = request != null && !IsTouch ? request.HookReason : null;
+        var fontSize = ReasonFontEm * (this.TryFindResource("ClaudeChat.FontSize", out var found) && found is double size ? size : 13);
+        foreach (var text in new[] { AskReasonText, HookReasonText })
+        {
+            text.FontSize = fontSize;
+            text.LineHeight = 1.5 * fontSize;
+        }
+        AskReasonText.Text = ask;
+        AskReasonPanel.IsVisible = ask != null;
+        AskReasonScroller.MaxHeight = ReasonMaxEm * fontSize + AskReasonTopSpace;
+        AskReasonScroller.SetCurrentValue(ScrollViewer.OffsetProperty, default(Vector)); // a new request starts at its top
+        HookReasonText.Text = hook;
+        HookReasonPanel.IsVisible = hook != null;
+        HookReasonScroller.MaxHeight = ReasonMaxEm * fontSize;
+        HookReasonScroller.SetCurrentValue(ScrollViewer.OffsetProperty, default(Vector));
+        UpdateAskReasonEdges();
+    }
+
+    /// <summary>
+    /// The lines over and under why the claude asks show the widget's border where there is more to scroll to, and the block takes
+    /// the keyboard only while it scrolls.
+    /// </summary>
+    private void UpdateAskReasonEdges()
+    {
+        var scroller = AskReasonScroller;
+        var hidden = scroller.Extent.Height - scroller.Viewport.Height;
+        var scrolls = AskReasonPanel.IsVisible && hidden > 0.5;
+        AskReasonTopLine.Classes.Set("more", scrolls && scroller.Offset.Y > 0.5);
+        AskReasonBottomLine.Classes.Set("more", scrolls && scroller.Offset.Y < hidden - 0.5);
+        scroller.Focusable = scrolls;
+        scroller.IsTabStop = scrolls;
     }
 
     /// <summary>

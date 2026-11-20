@@ -451,8 +451,12 @@ para o campo; "Não" recusa na hora com o que estiver escrito nele). A opção 2
 exemplo, "este projeto (só você)") e, quando o claude oferece junto uma troca de modo, o que ela faz ("Sim, permitir
 touch a.txt para este projeto (só você), e todas as edições para esta sessão"; `AllowAlwaysAndAllEdits`,
 `AllowAlwaysAndNormalMode` e `AllowAlwaysAndMode` em `ChatStrings`). As respostas ficam desligadas por 500 ms depois que
-o cartão aparece, e um pedido que chega enquanto a pessoa digita espera até a digitação parar. Um botão no alto, à
-direita, dobra o cartão até o título, para ler a conversa que está atrás. O layout de toque mantém o pedido como era na
+o cartão aparece, e um pedido que chega enquanto a pessoa digita espera até a digitação parar. Embaixo do que a
+ferramenta vai fazer, o cartão diz por que o claude pergunta quando é uma checagem de segurança, um comando composto ou um
+conector do claude.ai (`PendingPermission.AskReason`), e o que um hook `PreToolUse` disse quando foi ele que perguntou,
+sob "Um hook diz:" (`PendingPermission.HookReason`); os campos crus são `DecisionReason`, `DecisionReasonType`,
+`DecisionReasonCode` e `McpServerSource`. Um botão no alto, à direita, dobra o cartão até o título, para ler a conversa
+que está atrás. O layout de toque mantém o pedido como era na
 0.5.0, fora o plano.
 
 O que o seu app faz é o que ele já fazia: mandar o que `PermissionAnswered` e `PermissionModeRequested` trazem e dar à

@@ -445,8 +445,11 @@ the last one goes to the field; "No" refuses at once with what is written in it)
 kept ("Yes, allow npm for this project (just you)"), and, when the claude also offers a mode change with it, what that
 does ("Yes, allow touch a.txt for this project (just you), and all edits for this session"; `AllowAlwaysAndAllEdits`,
 `AllowAlwaysAndNormalMode` and `AllowAlwaysAndMode` in `ChatStrings`). The answers stay off for 500 ms after the card
-appears, and a request that arrives while the person is typing waits until the typing stops. A button at the top right
-folds the card to its title, to read the conversation behind it. The touch layout keeps the request as it was in 0.5.0,
+appears, and a request that arrives while the person is typing waits until the typing stops. Under what the tool will do,
+the card says why the claude asks when it is a safety check, a compound command or a claude.ai connector
+(`PendingPermission.AskReason`), and what a `PreToolUse` hook said when the hook asked, under "A hook says:"
+(`PendingPermission.HookReason`); the raw fields are `DecisionReason`, `DecisionReasonType`, `DecisionReasonCode` and
+`McpServerSource`. A button at the top right folds the card to its title, to read the conversation behind it. The touch layout keeps the request as it was in 0.5.0,
 apart from the plan.
 
 What your app does is what it already did: send what `PermissionAnswered` and `PermissionModeRequested` carry, and give

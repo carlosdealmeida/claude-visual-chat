@@ -5,6 +5,21 @@ All notable changes to this project are written here. The format follows
 
 ## [0.10.0] - Unreleased
 
+### Added
+
+- The desktop permission card says why the claude asks and what a hook said, as the extension 2.1.329 does. Under the
+  title, the input and its description, a block shows the reason of a safety check, of a compound command, or of a claude.ai
+  connector (an `mcp__` tool whose server's source is `claudeai`, when the reason is a sentence and not a code): the primary
+  color at .99 of the chat's font, line breaks as ⏎, no invisible characters, scrolling past 6.75 of its font plus 4 px,
+  with a line of the widget's border where there is more to scroll to, and a stop for the keyboard only while it scrolls
+  (accessible name `ChatStrings.PermissionWhyAsks`, "Why Claude Code asks"). Under it, what a `PreToolUse` hook said when it
+  asked, after "A hook says:" (`ChatStrings.PermissionHookSays`), with a 2 px bar of the secondary color, cut at 2000
+  characters with "… [+N chars]", scrolling past 6.75 of its font and out of the Tab order. Both hide with the folded card;
+  the touch layout does not show them. The request's `title`, `display_name` and `description` still do not show.
+- `PermissionRequested` and `PendingPermission` have `DecisionReason`, `DecisionReasonType`, `DecisionReasonCode` and
+  `McpServerSource` (from `decision_reason`, `decision_reason_type`, `decision_reason_code` and `mcp_server.source`), and
+  `PendingPermission` has `AskReason` and `HookReason`, the texts the card shows (null when it shows none).
+
 ### Changed
 
 - The palette's descriptions of three commands now say what the extension says: `/copy` is "Copy the last response to

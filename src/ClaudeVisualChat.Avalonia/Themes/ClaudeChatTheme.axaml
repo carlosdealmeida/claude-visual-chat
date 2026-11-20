@@ -1947,6 +1947,47 @@
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.PromptCodeFontSize}" />
     <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
+  <!-- why the claude asks, after what the tool will do: 4 px wider on each side than the card's text (its scroll bar at the edge),
+       1 px over and under it taken back, so the lines take no room; 4 px over the text inside the scroll. The font size and the
+       height are the code's (.99 and 6.75 of the chat's font) -->
+  <Style Selector="Border.ClaudeChatPermissionReason">
+    <Setter Property="Margin" Value="-4,-1" />
+  </Style>
+  <Style Selector="Border.ClaudeChatPermissionReasonLine">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <!-- more to scroll to on that side: the widget's border (editorWidget.border) -->
+  <Style Selector="Border.ClaudeChatPermissionReasonLine.more">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBorder}" />
+  </Style>
+  <!-- reached with the keyboard (class focusVisible, set by the code): the accent's thin line inside, which takes no room -->
+  <Style Selector="Border.ClaudeChatPermissionReason.focusVisible">
+    <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.ToolContentFocusShadow}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatPermissionReason SelectableTextBlock.ClaudeChatPermissionReasonText">
+    <Setter Property="Margin" Value="4,4,4,0" />
+  </Style>
+  <Style Selector="SelectableTextBlock.ClaudeChatPermissionReasonText">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+  <!-- what a hook said: a 2 px bar of descriptionForeground, 6 px from the text, 4 px under what is above; "A hook says:" and the text
+       in the primary color -->
+  <Style Selector="Border.ClaudeChatPermissionHook">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="BorderThickness" Value="2,0,0,0" />
+    <Setter Property="Padding" Value="6,0,0,0" />
+    <Setter Property="Margin" Value="0,4,0,0" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatPermissionHookLabel">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
   <!-- the card's fold button, at its top right: 20 px, 4 px from the top and the right (8 px from the top when folded), the arrow
        12 px inside a padding of 4; the secondary color, the toolbar's hover with the pointer or the keyboard on it, .8 pressed -->
   <Style Selector="Button.ClaudeChatPermissionFold">

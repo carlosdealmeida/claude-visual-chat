@@ -55,6 +55,32 @@
               </StackPanel>
             </ScrollViewer>
 
+            <!-- why the claude asks (a safety check, a compound command, a claude.ai connector): the primary color at .99 of the chat's
+                 font, 6.75 of it and 4 px high at most (the code sets both), then it scrolls; a 1 px line above and below, clear, in
+                 the widget's border where there is more to scroll to; the keyboard stops on it only while it scrolls -->
+            <Border Name="AskReasonPanel" Classes="ClaudeChatPermissionReason" IsVisible="False">
+              <Grid RowDefinitions="Auto,Auto,Auto">
+                <Border Name="AskReasonTopLine" Classes="ClaudeChatPermissionReasonLine" />
+                <ScrollViewer Name="AskReasonScroller" Grid.Row="1" Classes="ClaudeChatPermissionReasonScroller"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Focusable="False" IsTabStop="False">
+                  <SelectableTextBlock Name="AskReasonText" Classes="ClaudeChatPermissionReasonText" IsTabStop="False" />
+                </ScrollViewer>
+                <Border Name="AskReasonBottomLine" Grid.Row="2" Classes="ClaudeChatPermissionReasonLine" />
+              </Grid>
+            </Border>
+
+            <!-- what a PreToolUse hook said when it asked: a 2 px bar of the secondary color, "A hook says:", and its text, which
+                 scrolls past 6.75 of its font and is no stop for Tab -->
+            <Border Name="HookReasonPanel" Classes="ClaudeChatPermissionHook" IsVisible="False">
+              <StackPanel>
+                <TextBlock Name="HookReasonLabel" Classes="ClaudeChatPermissionHookLabel" />
+                <ScrollViewer Name="HookReasonScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                              Focusable="False" IsTabStop="False">
+                  <SelectableTextBlock Name="HookReasonText" Classes="ClaudeChatPermissionReasonText" IsTabStop="False" />
+                </ScrollViewer>
+              </StackPanel>
+            </Border>
+
             <!-- the answers, 8 px apart; 2 only when the claude offers to remember it; the selected one in the accent (in the touch
                  layout, none is selected and the first, "primary", is always the accent). On the desktop the numbers are those of the
                  visible options, in order, and none shows with default_to_no (class noNumbers); for 500 ms after the card comes they

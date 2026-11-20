@@ -245,6 +245,53 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void A_permission_request_carries_its_decision_reason()
+        {
+            var parser = new StreamJsonParser();
+
+            // the recording of a hook that asks (claude 2.1.329): the reason is the hook's two lines
+            var hook = Assert.IsType<PermissionRequested>(Assert.Single(parser.Parse(FixtureFiles.StreamLines("hook-ask").First(l => l.Contains("can_use_tool")))));
+            Assert.Equal("hook", hook.DecisionReasonType);
+            Assert.Equal("The demo hook asks before any file is written.\nIt checks nothing else; this second line is here to test line breaks.", hook.DecisionReason);
+            Assert.Null(hook.DecisionReasonCode);
+            Assert.Null(hook.McpServerSource);
+
+            // a safety check (the recording of seguranca)
+            var safety = Assert.IsType<PermissionRequested>(Assert.Single(parser.Parse(FixtureFiles.StreamLines("seguranca").First(l => l.Contains("can_use_tool")))));
+            Assert.Equal("safetyCheck", safety.DecisionReasonType);
+            Assert.Equal("Claude requested permissions to write to C:\\demo\\app\\.claude\\settings.local.json, but you haven't granted it yet.", safety.DecisionReason);
+
+            // the code, when the claude sends one
+            var coded = Assert.IsType<PermissionRequested>(Assert.Single(parser.Parse(
+                "{\"type\":\"control_request\",\"request_id\":\"r1\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Bash\",\"input\":{},"
+                + "\"decision_reason\":\"too long\",\"decision_reason_type\":\"other\",\"decision_reason_code\":\"classifier_transcript_too_long\"}}")));
+            Assert.Equal("classifier_transcript_too_long", coded.DecisionReasonCode);
+
+            // and none of them in an older recording
+            var old = Assert.IsType<PermissionRequested>(Assert.Single(parser.Parse(FixtureFiles.StreamLines("edit").First(l => l.Contains("can_use_tool")))));
+            Assert.Null(old.DecisionReason);
+            Assert.Null(old.DecisionReasonType);
+        }
+
+        [Fact]
+        public void A_permission_request_carries_its_mcp_server_source()
+        {
+            var parser = new StreamJsonParser();
+            var line = "{\"type\":\"control_request\",\"request_id\":\"r1\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"mcp__claude_ai_Gmail__send\","
+                       + "\"input\":{},\"decision_reason\":\"This connector needs your approval.\",\"decision_reason_type\":\"other\","
+                       + "\"mcp_server\":{\"name\":\"claude.ai Gmail\",\"source\":\"claudeai\"}}}";
+
+            var ev = Assert.IsType<PermissionRequested>(Assert.Single(parser.Parse(line)));
+
+            Assert.Equal("claudeai", ev.McpServerSource);
+            Assert.Equal("other", ev.DecisionReasonType);
+
+            // mcp_server that is not an object, or has no source: none
+            var odd = Assert.IsType<PermissionRequested>(Assert.Single(parser.Parse(line.Replace("{\"name\":\"claude.ai Gmail\",\"source\":\"claudeai\"}", "\"claudeai\""))));
+            Assert.Null(odd.McpServerSource);
+        }
+
+        [Fact]
         public void Cancel_and_result()
         {
             var parser = new StreamJsonParser();
