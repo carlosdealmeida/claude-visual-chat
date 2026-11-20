@@ -510,6 +510,11 @@
         <SelectableTextBlock Classes="ClaudeChatMetaLine" Text="{Binding Text}" />
       </DataTemplate>
 
+      <!-- a message from another session that is held, released or dropped: a meta line, with a link to the user settings file -->
+      <DataTemplate DataType="cvc:PeerHoldItem">
+        <controls:PeerHoldLine />
+      </DataTemplate>
+
     </controls:ChatItemTemplates>
   </Styles.Resources>
 

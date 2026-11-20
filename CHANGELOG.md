@@ -28,6 +28,15 @@ All notable changes to this project are written here. The format follows
   sources), and the strings `AuthConflictNotUsing`, `AuthConflictBoth`, `AuthConflictKeepOne`, `AuthConflictLogout`,
   `AuthSourceClaudeAi`, `AuthSourceProfile`, `AuthSourceLoginKey`, `AuthSourceKeyHelper` and `DismissWarning`. The recorder
   has an `ambiente` step (variables added to the claude process only) and an `auth_conflict` check.
+- A notice in the timeline when a message from another session is held for review, still held, released to the claude or
+  dropped (`system/peer_message_hold`), as the extension 2.1.329 says it: who sent it (the address, or "an unidentified
+  session", and the name it calls itself), the cause of the hold in a sentence (an explicit, project or organization
+  setting, an unrecognized value, or a permission mode that differs or was not stated) and, for a drop, why. After the
+  notices that the user settings file can change, a link "Open user settings file" asks the host to open it: it shows only
+  while your app handles the new `ChatConversation.UserSettingsFileRequested`. New: `Protocol.PeerMessageHold`,
+  `PeerHoldItem` and the `Peer*` and `UnknownSession` strings. The message itself, once delivered, is still the card of
+  0.9.x. The way the claude records the acknowledgment (two sessions, or a message injected through stdin) is not
+  confirmed; the tests use lines written by hand in the format above, not a recording.
 
 ### Changed
 

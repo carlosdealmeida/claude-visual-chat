@@ -1110,4 +1110,39 @@ public class PublicApiTests
         }
         Assert.False(Library.GetType("ClaudeVisualChat.Controls.AuthConflictBanner")!.IsPublic);
     }
+
+    [Fact]
+    public void The_peer_hold_api()
+    {
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.Contains("ClaudeVisualChat.PeerHoldItem", names);
+        Assert.Contains("ClaudeVisualChat.Protocol.PeerMessageHold", names);
+        Assert.True(typeof(PeerHoldItem).IsSealed && typeof(ChatItem).IsAssignableFrom(typeof(PeerHoldItem)));
+        Assert.Equal(typeof(string), typeof(PeerHoldItem).GetProperty("Text")?.PropertyType);
+        Assert.Null(typeof(PeerHoldItem).GetProperty("Text")!.SetMethod);
+        Assert.Equal(typeof(bool), typeof(PeerHoldItem).GetProperty("PointsToUserSettings")?.PropertyType);
+        Assert.Null(typeof(PeerHoldItem).GetProperty("PointsToUserSettings")!.SetMethod);
+
+        var hold = typeof(ClaudeVisualChat.Protocol.PeerMessageHold);
+        Assert.True(hold.IsSealed && typeof(ClaudeVisualChat.Protocol.ClaudeEvent).IsAssignableFrom(hold));
+        foreach (var name in new[] { "State", "From", "MessageUuid", "FromName", "Cause", "Outcome" })
+            Assert.Equal(typeof(string), hold.GetProperty(name)?.PropertyType);
+        foreach (var name in new[] { "MessageUuid", "FromName", "Cause", "Outcome" })
+            Assert.Contains(hold.GetProperty(name)!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+
+        Assert.Equal(typeof(System.EventHandler), typeof(ChatConversation).GetEvent("UserSettingsFileRequested")?.EventHandlerType);
+
+        foreach (var name in new[]
+        {
+            "PeerHeld", "PeerStillHeld", "PeerReleased", "PeerDropped", "PeerDroppedExpired", "PeerDroppedRefused", "PeerDroppedDiscarded",
+            "PeerDroppedLimits", "UnknownSession", "PeerCallsItself", "PeerAcceptHow", "PeerExpiryNote", "PeerCauseModeMismatch",
+            "PeerCauseNoMode", "PeerCauseExplicit", "PeerCauseRepo", "PeerCauseManaged", "PeerCauseInvalid", "PeerCauseOther", "PeerOpenSettings",
+        })
+        {
+            var property = typeof(ChatStrings).GetProperty(name);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+        }
+        Assert.False(Library.GetType("ClaudeVisualChat.Controls.PeerHoldLine")!.IsPublic);
+    }
 }

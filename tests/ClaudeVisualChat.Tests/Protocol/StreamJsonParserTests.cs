@@ -740,5 +740,26 @@ namespace ClaudeVisualChat.Tests.Protocol
                 "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}")));
             Assert.False(plain.IsSynthetic);
         }
-    }
+    
+
+        [Fact]
+        public void A_peer_message_hold_line_is_read()
+        {
+            var parser = new StreamJsonParser();
+            var held = Assert.IsType<PeerMessageHold>(Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"peer_message_hold\",\"state\":\"held\",\"message_uuid\":\"m-1\",\"lane\":\"socket\",\"from\":\"sess-a\",\"from_name\":\"Maria\",\"cause\":\"mode-mismatch\",\"uuid\":\"u\",\"session_id\":\"s\"}")));
+            Assert.Equal(new PeerMessageHold("held", "sess-a") { MessageUuid = "m-1", FromName = "Maria", Cause = "mode-mismatch" }, held);
+
+            var released = Assert.IsType<PeerMessageHold>(Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"peer_message_hold\",\"state\":\"released\",\"message_uuid\":\"m-1\",\"lane\":\"stdin\",\"from\":\"sess-a\"}")));
+            Assert.Equal(new PeerMessageHold("released", "sess-a") { MessageUuid = "m-1" }, released);
+
+            var dropped = Assert.IsType<PeerMessageHold>(Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"peer_message_hold\",\"state\":\"dropped\",\"lane\":\"bridge\",\"from\":\"\",\"outcome\":\"expired\",\"reason\":\"timeout\"}")));
+            Assert.Equal(new PeerMessageHold("dropped", "") { Outcome = "expired" }, dropped);
+
+            // without a state it says nothing
+            Assert.Empty(parser.Parse("{\"type\":\"system\",\"subtype\":\"peer_message_hold\",\"from\":\"sess-a\"}"));
+        }
+}
 }

@@ -634,6 +634,26 @@ public sealed class MetaLineItem : ChatItem
 }
 
 /// <summary>
+/// The notice that a message from another session is held for the user to review, still held, released to the claude or dropped
+/// (<c>system/peer_message_hold</c>): a line like a <see cref="MetaLineItem"/>, with a link after it that asks the host to open the user
+/// settings file when <see cref="PointsToUserSettings"/> and the host listens to <see cref="ChatConversation.UserSettingsFileRequested"/>.
+/// </summary>
+public sealed class PeerHoldItem : ChatItem
+{
+    public PeerHoldItem(string text, bool pointsToUserSettings)
+    {
+        Text = text ?? "";
+        PointsToUserSettings = pointsToUserSettings;
+    }
+
+    /// <summary>The notice, in the language of the conversation when it was said.</summary>
+    public string Text { get; }
+
+    /// <summary>Whether the user settings file can change what the notice tells about (the link to it is for these).</summary>
+    public bool PointsToUserSettings { get; }
+}
+
+/// <summary>
 /// What a slash command printed in one line, as the extension shows it: a divider, the text between two wavy rules (the date line's).
 /// "Set model to X" is "Switched to X" with the short label "Switched model". A label that does not fit, or any label in a panel of
 /// 330 px or less, can be tapped to show the whole <see cref="Text"/>.

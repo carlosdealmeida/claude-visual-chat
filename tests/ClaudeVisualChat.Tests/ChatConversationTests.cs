@@ -4324,4 +4324,184 @@ public class ChatConversationTests
         c.DismissAuthConflict();
         Assert.Null(c.DismissedAuthConflictKey);
     }
+
+    // ---- a message from another session that is held ----
+
+    private static string HoldLine(string state, string? uuid = "m-1", string from = "sess-a", string? cause = null, string? outcome = null, string? name = null) =>
+        "{\"type\":\"system\",\"subtype\":\"peer_message_hold\",\"state\":\"" + state + "\"" +
+        (uuid == null ? "" : ",\"message_uuid\":\"" + uuid + "\"") + ",\"lane\":\"socket\",\"from\":\"" + from + "\"" +
+        (name == null ? "" : ",\"from_name\":\"" + name + "\"") +
+        (cause == null ? "" : ",\"cause\":\"" + cause + "\"") + (outcome == null ? "" : ",\"outcome\":\"" + outcome + "\"") +
+        ",\"uuid\":\"u\",\"session_id\":\"s\"}";
+
+    private static string Accept(string template) => template.Replace("{0}", ChatStrings.English.PeerAcceptHow);
+
+    [Fact]
+    public void A_first_hold_says_held_and_the_next_says_still()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("held", cause: "explicit-setting"));
+
+        var first = Assert.IsType<PeerHoldItem>(Assert.Single(c.Items));
+        Assert.Equal("Held a message from sess-a. Claude has not seen it." + Accept(ChatStrings.English.PeerCauseExplicit), first.Text);
+        Assert.Contains("\"crossSessionInbound\" to \"accept\" in Claude Code's user settings file", first.Text);
+        Assert.True(first.PointsToUserSettings);
+
+        c.AppendLine(HoldLine("held", cause: "explicit-setting"));
+        var next = Assert.IsType<PeerHoldItem>(c.Items[1]);
+        Assert.Equal("Still holding the message from sess-a." + Accept(ChatStrings.English.PeerCauseExplicit), next.Text);
+
+        // another message is a first time again
+        c.AppendLine(HoldLine("held", uuid: "m-2", cause: "explicit-setting"));
+        Assert.StartsWith("Held a message from sess-a.", Assert.IsType<PeerHoldItem>(c.Items[2]).Text);
+    }
+
+    [Fact]
+    public void The_sender_is_the_address_or_an_unidentified_session_with_its_name()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("held", from: "", cause: "invalid-setting", name: "maria"));
+
+        var item = Assert.IsType<PeerHoldItem>(Assert.Single(c.Items));
+        Assert.StartsWith("Held a message from an unidentified session (calls itself @maria). Claude has not seen it.", item.Text);
+        Assert.EndsWith(ChatStrings.English.PeerCauseInvalid, item.Text);
+        Assert.True(item.PointsToUserSettings);
+    }
+
+    [Theory]
+    [InlineData("mode-mismatch", true)]
+    [InlineData("no-mode-asserted", true)]
+    [InlineData("explicit-setting", true)]
+    [InlineData("repo-setting", true)]
+    [InlineData("invalid-setting", true)]
+    [InlineData("bypass-default", true)]
+    [InlineData("something-new", true)]
+    [InlineData("managed-setting", false)]
+    [InlineData("mode-unknown", false)]
+    public void The_cause_gives_its_sentence_and_whether_the_user_file_helps(string cause, bool points)
+    {
+        var en = ChatStrings.English;
+        var expected = cause switch
+        {
+            "mode-mismatch" => en.PeerCauseModeMismatch + Accept(en.PeerExpiryNote),
+            "no-mode-asserted" => en.PeerCauseNoMode + Accept(en.PeerExpiryNote),
+            "explicit-setting" => Accept(en.PeerCauseExplicit),
+            "repo-setting" => Accept(en.PeerCauseRepo),
+            "managed-setting" => en.PeerCauseManaged,
+            "invalid-setting" => en.PeerCauseInvalid,
+            "mode-unknown" => "",
+            _ => en.PeerCauseOther,
+        };
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("held", cause: cause));
+
+        var item = Assert.IsType<PeerHoldItem>(Assert.Single(c.Items));
+        Assert.Equal("Held a message from sess-a. Claude has not seen it." + expected, item.Text);
+        Assert.Equal(points, item.PointsToUserSettings);
+    }
+
+    [Fact]
+    public void Mode_unknown_has_no_cause_sentence()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("held", cause: "mode-unknown"));
+        Assert.Equal("Held a message from sess-a. Claude has not seen it.", Assert.IsType<PeerHoldItem>(Assert.Single(c.Items)).Text);
+
+        c.AppendLine(HoldLine("held", cause: "mode-unknown"));
+        Assert.Equal("Still holding the message from sess-a.", Assert.IsType<PeerHoldItem>(c.Items[1]).Text);
+    }
+
+    [Fact]
+    public void A_release_after_a_shown_hold_says_released()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("held", cause: "explicit-setting"));
+        c.AppendLine(HoldLine("released"));
+
+        var released = Assert.IsType<PeerHoldItem>(c.Items[1]);
+        Assert.Equal("Released the held message from sess-a to Claude.", released.Text);
+        Assert.False(released.PointsToUserSettings);
+    }
+
+    [Fact]
+    public void A_release_without_a_shown_hold_says_nothing()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("released", uuid: "m-9"));
+        Assert.Empty(c.Items); // never shown as held
+
+        c.AppendLine(HoldLine("held", uuid: "m-1", cause: "explicit-setting"));
+        c.AppendLine(HoldLine("released", uuid: "m-2"));
+        Assert.Single(c.Items);
+    }
+
+    [Fact]
+    public void A_release_without_a_uuid_says_released()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("released", uuid: null));
+        Assert.Equal("Released the held message from sess-a to Claude.", Assert.IsType<PeerHoldItem>(Assert.Single(c.Items)).Text);
+    }
+
+    [Theory]
+    [InlineData("expired", ": it waited too long, or too many messages were held. Ask the sender to send it again")]
+    [InlineData("refused", ": this session no longer accepts messages from other sessions")]
+    [InlineData("discarded", ": the session ended")]
+    [InlineData("dropped", ": the limits on messages from other sessions stopped it")]
+    [InlineData("denied", "")]
+    [InlineData(null, "")]
+    public void A_drop_says_why(string? outcome, string why)
+    {
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("held", cause: "explicit-setting"));
+        c.AppendLine(HoldLine("dropped", outcome: outcome));
+
+        var item = Assert.IsType<PeerHoldItem>(c.Items[1]);
+        Assert.Equal("Dropped the held message from sess-a without delivering it" + why + ".", item.Text);
+        Assert.False(item.PointsToUserSettings);
+    }
+
+    [Fact]
+    public void The_delivered_message_after_a_release_shows_once()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("held", cause: "explicit-setting"));
+        c.AppendLine(HoldLine("released"));
+        c.AppendLine(UserLineWith(CrossSession, "{\"kind\":\"peer\",\"name\":\"Maria Souza\"}"));
+
+        Assert.Equal(2, c.Items.OfType<PeerHoldItem>().Count());
+        Assert.Single(c.Items.OfType<ExternalMessageItem>());
+    }
+
+    [Fact]
+    public void Clearing_forgets_the_held_messages()
+    {
+        var c = new ChatConversation();
+        c.AppendLine(HoldLine("held", cause: "explicit-setting"));
+        c.Clear();
+        c.AppendLine(HoldLine("released"));
+        Assert.Empty(c.Items);
+    }
+
+    [Fact]
+    public void The_hold_notice_follows_the_strings_of_the_conversation()
+    {
+        var c = new ChatConversation { Strings = ChatStrings.PortugueseBrazil };
+        c.AppendLine(HoldLine("held", cause: "managed-setting"));
+        Assert.Equal("Mensagem de sess-a retida. O Claude ainda não a viu." + ChatStrings.PortugueseBrazil.PeerCauseManaged,
+            Assert.IsType<PeerHoldItem>(Assert.Single(c.Items)).Text);
+    }
+
+    [Fact]
+    public void The_user_settings_file_event_tells_the_view_when_the_host_listens()
+    {
+        var c = new ChatConversation();
+        var changes = 0;
+        c.HostHandlersChanged += (_, _) => changes++;
+        EventHandler handler = (_, _) => { };
+        c.UserSettingsFileRequested += handler;
+        Assert.Equal(1, changes);
+        c.UserSettingsFileRequested -= handler;
+        Assert.Equal(2, changes);
+    }
 }

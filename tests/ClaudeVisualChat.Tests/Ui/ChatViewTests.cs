@@ -4893,4 +4893,84 @@ public class ChatViewTests
         Assert.Equal(list.ItemsSource!.Cast<object>(), shown);
         WindowOf(view).Close();
     }
+
+    // ---- the notice of a held message from another session ----
+
+    private static ChatConversation HeldWith(string cause, bool listen, List<string>? requests = null)
+    {
+        var c = new ChatConversation();
+        if (listen) c.UserSettingsFileRequested += (_, _) => requests?.Add("open");
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"peer_message_hold\",\"state\":\"held\",\"message_uuid\":\"m-1\",\"lane\":\"socket\",\"from\":\"sess-a\",\"cause\":\"" + cause + "\"}");
+        return c;
+    }
+
+    private static List<PeerHoldLine> HoldLinesOf(Visual root) => root.GetVisualDescendants().OfType<PeerHoldLine>().ToList();
+
+    [AvaloniaFact]
+    public void The_settings_link_shows_only_while_the_host_listens()
+    {
+        var c = HeldWith("explicit-setting", listen: false);
+        var (view, window) = Open(c);
+        var line = Assert.Single(HoldLinesOf(view));
+        Assert.Equal(((PeerHoldItem)c.Items[0]).Text, line.Body);
+        Assert.False(line.IsLinkShown);
+
+        EventHandler handler = (_, _) => { };
+        c.UserSettingsFileRequested += handler;
+        UiHelpers.Pump();
+        Assert.True(line.IsLinkShown);
+        Assert.Equal("Open user settings file", line.Link.Text);
+        Assert.Equal(TextDecorations.Underline, line.Link.TextDecorations);
+        Assert.NotNull(line.Link.Cursor);
+
+        c.UserSettingsFileRequested -= handler;
+        UiHelpers.Pump();
+        Assert.False(line.IsLinkShown);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Clicking_the_link_asks_the_host()
+    {
+        var requests = new List<string>();
+        var c = HeldWith("explicit-setting", listen: true, requests);
+        var (view, window) = Open(c);
+        var line = Assert.Single(HoldLinesOf(view));
+        Assert.True(line.IsLinkShown);
+
+        var point = line.Link.TranslatePoint(new Point(line.Link.Bounds.Width / 2, line.Link.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(point, RawInputModifiers.None);
+        window.MouseDown(point, MouseButton.Left, RawInputModifiers.None);
+        window.MouseUp(point, MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+
+        Assert.Equal(new[] { "open" }, requests);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("managed-setting")]
+    [InlineData("mode-unknown")]
+    public void A_managed_setting_has_no_link(string cause)
+    {
+        var c = HeldWith(cause, listen: true);
+        var (view, window) = Open(c);
+        Assert.False(Assert.Single(HoldLinesOf(view)).IsLinkShown);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_hold_notice_draws_as_a_meta_line_and_a_release_has_no_link()
+    {
+        var c = HeldWith("explicit-setting", listen: true);
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"peer_message_hold\",\"state\":\"released\",\"message_uuid\":\"m-1\",\"lane\":\"socket\",\"from\":\"sess-a\"}");
+        var (view, window) = Open(c);
+        var lines = HoldLinesOf(view);
+        Assert.Equal(2, lines.Count);
+        Assert.All(lines, l => Assert.Contains("ClaudeChatMetaLine", l.Classes));
+        Assert.True(lines[0].IsLinkShown);
+        Assert.False(lines[1].IsLinkShown);
+        Assert.Equal("Released the held message from sess-a to Claude.", lines[1].Body);
+        window.Close();
+    }
 }

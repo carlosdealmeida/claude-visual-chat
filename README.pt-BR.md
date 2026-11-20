@@ -632,6 +632,12 @@ uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O q
   modelo (`system/model_refusal_fallback`, o evento `Protocol.ModelRefusalFallback`), com "Por quê?" e "Ocultar". Ela é o
   `ChatConversation.LastModelFallback`, e o `DismissModelFallback()` a fecha. Um histórico lido de volta nunca a mostra, e
   ela dá lugar ao aviso do navegador e a um erro do Remote Control.
+- **O aviso de mensagem retida de outra sessão** (`system/peer_message_hold`, o evento `Protocol.PeerMessageHold`,
+  mostrado como um `PeerHoldItem`) diz na linha do tempo que o claude retém uma mensagem de outra sessão para você
+  revisar, que ainda a retém, que a liberou ou que a descartou, com a causa e, no descarte, o motivo. Depois de um aviso
+  que o arquivo de settings de usuário pode mudar, "Abrir o arquivo de settings de usuário" levanta
+  `ChatConversation.UserSettingsFileRequested`; o seu app abre o arquivo, e o link só aparece onde ele trata esse evento.
+  Um histórico lido de volta nunca o mostra.
 - **O aviso de token e chave de API ao mesmo tempo** aparece acima da caixa de resposta, no tom amarelo, quando a resposta do
   `initialize` do claude traz um `auth_conflict` (as origens das duas credenciais, nunca os valores): qual delas ele pode
   não usar, e para manter uma e remover a outra. **O seu app precisa repassar a resposta do `initialize`** (a resposta de

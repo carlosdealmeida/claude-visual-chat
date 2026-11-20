@@ -244,6 +244,26 @@ namespace ClaudeVisualChat.Protocol
     /// </summary>
     public sealed record ModelRefusalFallback(string? OriginalModel, string? FallbackModel, string? Category) : ClaudeEvent;
 
+    /// <summary>
+    /// What became of a message from another session that the claude held back for the user to review
+    /// (<c>system/peer_message_hold</c>). <paramref name="State"/> is <c>held</c>, <c>released</c> or <c>dropped</c>;
+    /// <paramref name="From"/> is the sender's address, empty when the line has none. Live only: a session file never has it.
+    /// </summary>
+    public sealed record PeerMessageHold(string State, string From) : ClaudeEvent
+    {
+        /// <summary>The held message's uuid (<c>message_uuid</c>), which ties a release or a drop to its hold; null when the line has none.</summary>
+        public string? MessageUuid { get; init; }
+
+        /// <summary>The name the sender calls itself (<c>from_name</c>).</summary>
+        public string? FromName { get; init; }
+
+        /// <summary>Why it was held (<c>cause</c>, on <c>held</c>): <c>explicit-setting</c>, <c>managed-setting</c>, <c>repo-setting</c>, <c>invalid-setting</c>, <c>bypass-default</c>, <c>mode-unknown</c>, <c>mode-mismatch</c> or <c>no-mode-asserted</c>.</summary>
+        public string? Cause { get; init; }
+
+        /// <summary>Why it was dropped (<c>outcome</c>, on <c>dropped</c>): <c>expired</c>, <c>refused</c>, <c>dropped</c>, <c>discarded</c> or <c>denied</c>.</summary>
+        public string? Outcome { get; init; }
+    }
+
     /// <summary>A slash command the user ran; <paramref name="Name"/> has no leading slash.</summary>
     public sealed record CommandEcho(string Name, string Arguments) : ClaudeEvent;
 

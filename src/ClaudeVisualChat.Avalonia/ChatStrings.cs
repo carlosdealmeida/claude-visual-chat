@@ -376,6 +376,26 @@ public sealed record ChatStrings
         ModelFallbackWhy = "Por quê?",
         ModelFallbackHide = "Ocultar",
         ModelFallbackWhyBody = "As salvaguardas de {0} sinalizaram esta mensagem. Isso às vezes acontece em conversas normais e seguras. {1} está respondendo no lugar de {0}.",
+        PeerHeld = "Mensagem de {0} retida. O Claude ainda não a viu.",
+        PeerStillHeld = "A mensagem de {0} continua retida.",
+        PeerReleased = "A mensagem retida de {0} foi liberada para o Claude.",
+        PeerDropped = "A mensagem retida de {0} foi descartada sem ser entregue{1}.",
+        PeerDroppedExpired = ": esperou demais, ou havia mensagens retidas demais. Peça para quem mandou enviar de novo",
+        PeerDroppedRefused = ": esta sessão não aceita mais mensagens de outras sessões",
+        PeerDroppedDiscarded = ": a sessão terminou",
+        PeerDroppedLimits = ": os limites de mensagens de outras sessões a barraram",
+        UnknownSession = "uma sessão não identificada",
+        PeerCallsItself = " (se chama @{0})",
+        PeerAcceptHow = "defina \"crossSessionInbound\" como \"accept\" no arquivo de settings de usuário do Claude Code (todas as suas sessões neste computador)",
+        PeerExpiryNote = " A mensagem será descartada se esperar demais (5 minutos por padrão). Para entregar mensagens sem revisão, {0}. O Claude pode então agir sobre mensagens antes de você as ler. Para que as próximas esperem mais, defina \"dialogExpiry\" como \"10m\" ou \"never\" nesse arquivo.",
+        PeerCauseModeMismatch = " Uma das duas sessões ignora os pedidos de permissão e a outra não.",
+        PeerCauseNoMode = " Esta sessão ignora os pedidos de permissão, e quem mandou não disse o seu modo de permissão.",
+        PeerCauseExplicit = " A sua configuração \"crossSessionInbound\" é \"hold\". Para entregar mensagens sem revisão, {0}. O Claude pode então agir sobre mensagens antes de você as ler.",
+        PeerCauseRepo = " Este projeto define \"crossSessionInbound\" como \"hold\" em .claude/settings.json ou .claude/settings.local.json, e um projeto pode ser mais rígido que a sua configuração. Para entregar mensagens sem revisão, tire de lá e {0}. O Claude pode então agir sobre mensagens antes de você as ler.",
+        PeerCauseManaged = " A sua organização definiu \"crossSessionInbound\" como \"hold\". Peça ao administrador para mudar.",
+        PeerCauseInvalid = " As suas settings de usuário, as deste projeto ou o --settings têm um valor de \"crossSessionInbound\" que não é reconhecido. Use \"accept\", \"hold\" ou \"refuse\".",
+        PeerCauseOther = " A configuração \"crossSessionInbound\" decide quais mensagens ficam retidas.",
+        PeerOpenSettings = "Abrir o arquivo de settings de usuário",
         SelectModel = "Selecione um modelo",
         SelectModelTitle = "Selecionar modelo",
         OtherModels = "Outros modelos",
@@ -1627,6 +1647,66 @@ public sealed record ChatStrings
     /// <summary>The explanation of the band: <c>{0}</c> is the model before, <c>{1}</c> the one answering.</summary>
     public string ModelFallbackWhyBody { get; init; } = "{0}'s safeguards flagged this message. This sometimes happens with safe, normal conversations. {1} is answering instead of {0}.";
 
+    /// <summary>The notice of a message from another session held for review: <c>{0}</c> is the sender.</summary>
+    public string PeerHeld { get; init; } = "Held a message from {0}. Claude has not seen it.";
+
+    /// <summary>The notice when the same message is held again: <c>{0}</c> is the sender.</summary>
+    public string PeerStillHeld { get; init; } = "Still holding the message from {0}.";
+
+    /// <summary>The notice when a held message goes to Claude: <c>{0}</c> is the sender.</summary>
+    public string PeerReleased { get; init; } = "Released the held message from {0} to Claude.";
+
+    /// <summary>The notice when a held message is dropped: <c>{0}</c> is the sender, <c>{1}</c> the reason (<see cref="PeerDroppedExpired"/> and its kin, or nothing).</summary>
+    public string PeerDropped { get; init; } = "Dropped the held message from {0} without delivering it{1}.";
+
+    /// <summary>The reason of a drop that waited too long (starts with a colon).</summary>
+    public string PeerDroppedExpired { get; init; } = ": it waited too long, or too many messages were held. Ask the sender to send it again";
+
+    /// <summary>The reason of a drop when the session no longer accepts messages from other sessions (starts with a colon).</summary>
+    public string PeerDroppedRefused { get; init; } = ": this session no longer accepts messages from other sessions";
+
+    /// <summary>The reason of a drop when the session ended (starts with a colon).</summary>
+    public string PeerDroppedDiscarded { get; init; } = ": the session ended";
+
+    /// <summary>The reason of a drop stopped by the limits on messages from other sessions (starts with a colon).</summary>
+    public string PeerDroppedLimits { get; init; } = ": the limits on messages from other sessions stopped it";
+
+    /// <summary>What the sender is called when the line does not say who it is.</summary>
+    public string UnknownSession { get; init; } = "an unidentified session";
+
+    /// <summary>After the sender, when it names itself: <c>{0}</c> is the name.</summary>
+    public string PeerCallsItself { get; init; } = " (calls itself @{0})";
+
+    /// <summary>How to deliver messages from other sessions without review: what <c>{0}</c> is in <see cref="PeerExpiryNote"/>, <see cref="PeerCauseExplicit"/> and <see cref="PeerCauseRepo"/>.</summary>
+    public string PeerAcceptHow { get; init; } = "set \"crossSessionInbound\" to \"accept\" in Claude Code's user settings file (all your sessions on this computer)";
+
+    /// <summary>What follows the cause of a hold that expires: <c>{0}</c> is <see cref="PeerAcceptHow"/>.</summary>
+    public string PeerExpiryNote { get; init; } = " The message will be dropped if it waits too long (5 minutes by default). To deliver messages without review, {0}. Claude may then act on messages before you have read them. To make later messages wait longer instead, set \"dialogExpiry\" to \"10m\" or \"never\" in that file.";
+
+    /// <summary>The cause of a hold when one of the two sessions bypasses permission prompts and the other does not (<see cref="PeerExpiryNote"/> follows it).</summary>
+    public string PeerCauseModeMismatch { get; init; } = " One of the two sessions bypasses permission prompts and the other does not.";
+
+    /// <summary>The cause of a hold when the sender did not state its permission mode (<see cref="PeerExpiryNote"/> follows it).</summary>
+    public string PeerCauseNoMode { get; init; } = " This session bypasses permission prompts, and the sender did not state its permission mode.";
+
+    /// <summary>The cause of a hold set by the user's own setting: <c>{0}</c> is <see cref="PeerAcceptHow"/>.</summary>
+    public string PeerCauseExplicit { get; init; } = " Your \"crossSessionInbound\" setting is \"hold\". To deliver messages without review, {0}. Claude may then act on messages before you have read them.";
+
+    /// <summary>The cause of a hold set by the project's settings: <c>{0}</c> is <see cref="PeerAcceptHow"/>.</summary>
+    public string PeerCauseRepo { get; init; } = " This project sets \"crossSessionInbound\" to \"hold\" in .claude/settings.json or .claude/settings.local.json, and a project can be stricter than your own setting. To deliver messages without review, remove it there and {0}. Claude may then act on messages before you have read them.";
+
+    /// <summary>The cause of a hold set by the organization.</summary>
+    public string PeerCauseManaged { get; init; } = " Your organization set \"crossSessionInbound\" to \"hold\". Ask your admin to change it.";
+
+    /// <summary>The cause of a hold when a setting has a value the claude does not recognize.</summary>
+    public string PeerCauseInvalid { get; init; } = " Your user settings, this project's settings, or --settings has an unrecognized \"crossSessionInbound\" value. Set it to \"accept\", \"hold\", or \"refuse\".";
+
+    /// <summary>The cause of a hold the view has no sentence for.</summary>
+    public string PeerCauseOther { get; init; } = " The \"crossSessionInbound\" setting controls which messages are held.";
+
+    /// <summary>The link after a notice of a held message that asks the host to open the user settings file.</summary>
+    public string PeerOpenSettings { get; init; } = "Open user settings file";
+
     /// <summary>The title of the model menu.</summary>
     public string SelectModel { get; init; } = "Select a model";
 
@@ -2605,6 +2685,49 @@ public sealed record ChatStrings
 
     /// <summary><see cref="CacheExpired"/> with the idle time (<see cref="FormatIdle"/>).</summary>
     internal string FormatCacheExpired(TimeSpan idle) => CacheExpired.Replace("{0}", FormatIdle(idle));
+
+    /// <summary>The sender of a held message: its address, or "an unidentified session", and the name it calls itself when it has one.</summary>
+    internal string FormatPeerSender(string? from, string? name)
+    {
+        var sender = string.IsNullOrEmpty(from) ? UnknownSession : from!;
+        return string.IsNullOrEmpty(name) ? sender : sender + PeerCallsItself.Replace("{0}", name);
+    }
+
+    /// <summary>The notice of a held message: "Held" the first time and "Still holding" after, then the sentence of its cause (none for <c>mode-unknown</c>).</summary>
+    internal string FormatPeerHeld(string sender, bool again, string? cause) =>
+        (again ? PeerStillHeld : PeerHeld).Replace("{0}", sender) + PeerCauseSentence(cause);
+
+    /// <summary>The notice of a dropped message, with the reason of its outcome (none for an outcome that has no sentence).</summary>
+    internal string FormatPeerDropped(string sender, string? outcome)
+    {
+        var why = outcome switch
+        {
+            "expired" => PeerDroppedExpired,
+            "refused" => PeerDroppedRefused,
+            "discarded" => PeerDroppedDiscarded,
+            "dropped" => PeerDroppedLimits,
+            _ => "",
+        };
+        return PeerDropped.Replace("{0}", sender).Replace("{1}", why);
+    }
+
+    private string PeerCauseSentence(string? cause)
+    {
+        switch (cause)
+        {
+            case "mode-mismatch": return PeerCauseModeMismatch + PeerExpiryNote.Replace("{0}", PeerAcceptHow);
+            case "no-mode-asserted": return PeerCauseNoMode + PeerExpiryNote.Replace("{0}", PeerAcceptHow);
+            case "explicit-setting": return PeerCauseExplicit.Replace("{0}", PeerAcceptHow);
+            case "repo-setting": return PeerCauseRepo.Replace("{0}", PeerAcceptHow);
+            case "managed-setting": return PeerCauseManaged;
+            case "invalid-setting": return PeerCauseInvalid;
+            case "mode-unknown": return "";
+            default: return PeerCauseOther;
+        }
+    }
+
+    /// <summary>Whether the user settings file can change what a hold of this cause tells about: not the organization's setting, and not a cause that is not known.</summary>
+    internal static bool PeerCausePointsToUserSettings(string? cause) => cause != "managed-setting" && cause != "mode-unknown";
 
     internal string FormatModelFallbackWhy(string original, string fallback) =>
         ModelFallbackWhyBody.Replace("{0}", original ?? "").Replace("{1}", fallback ?? "");

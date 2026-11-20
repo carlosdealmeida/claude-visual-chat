@@ -121,6 +121,8 @@ public sealed class ChatConversation : ChatObservableObject
     private EventHandler<LinkRequestedEventArgs>? _linkRequested;
     private EventHandler<FeedbackRequestedEventArgs>? _feedbackRequested;
     private EventHandler<PathActivatedEventArgs>? _pathActivated;
+    private EventHandler? _userSettingsFileRequested;
+    private readonly HashSet<string> _heldPeerMessages = new HashSet<string>(StringComparer.Ordinal); // the uuids shown as held
     private EventHandler<TaskOutputRequestedEventArgs>? _taskOutputRequested;
 
     public ChatConversation()
@@ -266,6 +268,25 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
+    /// Raised when the user clicks "Open user settings file" in the notice of a held message from another session
+    /// (<see cref="PeerHoldItem"/>): the host opens Claude Code's user settings file (<c>~/.claude/settings.json</c>); the component
+    /// never does. The link shows only while the host listens to this event.
+    /// </summary>
+    public event EventHandler? UserSettingsFileRequested
+    {
+        add
+        {
+            _userSettingsFileRequested += value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+        remove
+        {
+            _userSettingsFileRequested -= value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
     /// Raised when the user rates a reply with the thumbs under its turn, takes the rating back, or sends what went wrong after a bad
     /// one (see <see cref="FeedbackRequestedEventArgs"/>): the host sends it to Anthropic. The thumbs show only while the host listens
     /// to this event, only under a reply that has its line's <see cref="AssistantTextItem.Uuid"/> (what the rating names it by), and
@@ -312,8 +333,8 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
-    /// The host began or stopped listening to <see cref="LinkRequested"/>, <see cref="FeedbackRequested"/>, <see cref="PathActivated"/>
-    /// or <see cref="TaskOutputRequested"/>.
+    /// The host began or stopped listening to <see cref="LinkRequested"/>, <see cref="FeedbackRequested"/>, <see cref="PathActivated"/>,
+    /// <see cref="UserSettingsFileRequested"/> or <see cref="TaskOutputRequested"/>.
     /// </summary>
     internal event EventHandler? HostHandlersChanged;
 
@@ -325,6 +346,16 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>Whether the host opens file paths (it listens to <see cref="PathActivated"/>).</summary>
     internal bool CanActivatePaths => _pathActivated != null;
+
+    /// <summary>Whether the host opens the user settings file (it listens to <see cref="UserSettingsFileRequested"/>).</summary>
+    internal bool CanOpenUserSettingsFile => _userSettingsFileRequested != null;
+
+    /// <summary>Asks the host to open the user settings file (raises <see cref="UserSettingsFileRequested"/>).</summary>
+    internal void RequestUserSettingsFile()
+    {
+        if (PressStoppedFling) return;
+        _userSettingsFileRequested?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>Whether the host takes feedback (it listens to <see cref="FeedbackRequested"/>).</summary>
     internal bool CanSendFeedback => _feedbackRequested != null;
@@ -998,6 +1029,9 @@ public sealed class ChatConversation : ChatObservableObject
             case ModelRefusalFallback fallback:
                 if (!string.IsNullOrEmpty(fallback.FallbackModel)) LastModelFallback = fallback;
                 break;
+            case PeerMessageHold hold:
+                OnPeerMessageHold(hold);
+                break;
             case AgentTaskStarted started:
                 OnAgentTaskStarted(started);
                 break;
@@ -1080,6 +1114,7 @@ public sealed class ChatConversation : ChatObservableObject
     public void Clear()
     {
         Items.Clear();
+        _heldPeerMessages.Clear();
         LastModelFallback = null; // a switch of the session that is gone
         _held.Clear();
         if (QueuedMessages.Count > 0) QueuedMessages.Clear();
@@ -2175,6 +2210,34 @@ public sealed class ChatConversation : ChatObservableObject
     // ---- the queue ----
 
     /// <summary>What the claude says of a message sent with its uuid: it takes held ones, or ran one at once.</summary>
+    /// <summary>
+    /// The notice of a message from another session that is held: the first hold says "Held" and the next of the same message "Still
+    /// holding"; a release says so only for a message shown as held (or one that names no uuid); a drop says why.
+    /// </summary>
+    private void OnPeerMessageHold(PeerMessageHold e)
+    {
+        var strings = Strings;
+        var sender = strings.FormatPeerSender(e.From, e.FromName);
+        var uuid = string.IsNullOrEmpty(e.MessageUuid) ? null : e.MessageUuid;
+        switch (e.State)
+        {
+            case "held":
+                {
+                    var again = uuid != null && !_heldPeerMessages.Add(uuid);
+                    Items.Add(new PeerHoldItem(strings.FormatPeerHeld(sender, again, e.Cause), ChatStrings.PeerCausePointsToUserSettings(e.Cause)));
+                    break;
+                }
+            case "released":
+                if (uuid != null && !_heldPeerMessages.Remove(uuid)) break;
+                Items.Add(new PeerHoldItem(strings.PeerReleased.Replace("{0}", sender), false));
+                break;
+            case "dropped":
+                if (uuid != null) _heldPeerMessages.Remove(uuid);
+                Items.Add(new PeerHoldItem(strings.FormatPeerDropped(sender, e.Outcome), false));
+                break;
+        }
+    }
+
     private void OnCommandLifecycle(CommandLifecycle e)
     {
         _claudeTellsLifecycle = true;

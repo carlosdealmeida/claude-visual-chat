@@ -624,6 +624,11 @@ a star and verbs. Nothing to set up for those. What your app may want to know:
   (`system/model_refusal_fallback`, the `Protocol.ModelRefusalFallback` event), with "Why?" and "Hide". It is
   `ChatConversation.LastModelFallback`, and `DismissModelFallback()` closes it. A history read back never shows it, and
   it gives way to the browser notice and to a Remote Control error.
+- **The notice of a held message from another session** (`system/peer_message_hold`, the `Protocol.PeerMessageHold`
+  event, shown as a `PeerHoldItem`) says in the timeline that the claude holds a message from another session for you to
+  review, still holds it, released it or dropped it, with the cause and, for a drop, why. After a notice the user settings
+  file can change, "Open user settings file" raises `ChatConversation.UserSettingsFileRequested`; your app opens the file,
+  and the link shows only where it handles that event. A history read back never shows it.
 - **The warning of a token and an API key set together** shows above the reply box, in the yellow tint, when the claude's
   `initialize` answer has an `auth_conflict` (the sources of the two credentials, never their values): which one it may
   not use, and to keep one and remove the other. **Your app has to pass the `initialize` answer** (the control response, through

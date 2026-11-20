@@ -96,6 +96,20 @@ namespace ClaudeVisualChat.Protocol
                     return JsonHelpers.Str(root, "fallback_model") is { Length: > 0 } fallback
                         ? new ClaudeEvent[] { new ModelRefusalFallback(JsonHelpers.Str(root, "original_model"), fallback, JsonHelpers.Str(root, "api_refusal_category")) }
                         : None;
+                case "peer_message_hold":
+                    // live state: a session file never has it, so the history reader (ReadNotice) leaves it out
+                    return JsonHelpers.Str(root, "state") is { Length: > 0 } holdState
+                        ? new ClaudeEvent[]
+                        {
+                            new PeerMessageHold(holdState, JsonHelpers.Str(root, "from") ?? "")
+                            {
+                                MessageUuid = JsonHelpers.Str(root, "message_uuid"),
+                                FromName = JsonHelpers.Str(root, "from_name"),
+                                Cause = JsonHelpers.Str(root, "cause"),
+                                Outcome = JsonHelpers.Str(root, "outcome"),
+                            },
+                        }
+                        : None;
                 default:
                     return EventReader.ReadNotice(root);
             }

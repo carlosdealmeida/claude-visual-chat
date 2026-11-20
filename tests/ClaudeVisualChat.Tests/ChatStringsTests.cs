@@ -825,4 +825,49 @@ public class ChatStringsTests
         Assert.Equal("Dismiss warning", En.DismissWarning);
         Assert.Equal("Dispensar aviso", Pt.DismissWarning);
     }
+
+    [Fact]
+    public void The_peer_hold_texts_in_both_languages()
+    {
+        Assert.Equal("Held a message from {0}. Claude has not seen it.", En.PeerHeld);
+        Assert.Equal("Mensagem de {0} retida. O Claude ainda não a viu.", Pt.PeerHeld);
+        Assert.Equal("Still holding the message from {0}.", En.PeerStillHeld);
+        Assert.Equal("A mensagem de {0} continua retida.", Pt.PeerStillHeld);
+        Assert.Equal("Released the held message from {0} to Claude.", En.PeerReleased);
+        Assert.Equal("A mensagem retida de {0} foi liberada para o Claude.", Pt.PeerReleased);
+        Assert.Equal("Dropped the held message from {0} without delivering it{1}.", En.PeerDropped);
+        Assert.Equal("A mensagem retida de {0} foi descartada sem ser entregue{1}.", Pt.PeerDropped);
+        Assert.Equal(": it waited too long, or too many messages were held. Ask the sender to send it again", En.PeerDroppedExpired);
+        Assert.Equal(": esperou demais, ou havia mensagens retidas demais. Peça para quem mandou enviar de novo", Pt.PeerDroppedExpired);
+        Assert.Equal(": this session no longer accepts messages from other sessions", En.PeerDroppedRefused);
+        Assert.Equal(": esta sessão não aceita mais mensagens de outras sessões", Pt.PeerDroppedRefused);
+        Assert.Equal(": the session ended", En.PeerDroppedDiscarded);
+        Assert.Equal(": a sessão terminou", Pt.PeerDroppedDiscarded);
+        Assert.Equal(": the limits on messages from other sessions stopped it", En.PeerDroppedLimits);
+        Assert.Equal(": os limites de mensagens de outras sessões a barraram", Pt.PeerDroppedLimits);
+        Assert.Equal("an unidentified session", En.UnknownSession);
+        Assert.Equal("uma sessão não identificada", Pt.UnknownSession);
+        Assert.Equal(" (calls itself @{0})", En.PeerCallsItself);
+        Assert.Equal(" (se chama @{0})", Pt.PeerCallsItself);
+        Assert.Equal("set \"crossSessionInbound\" to \"accept\" in Claude Code's user settings file (all your sessions on this computer)", En.PeerAcceptHow);
+        Assert.Equal("defina \"crossSessionInbound\" como \"accept\" no arquivo de settings de usuário do Claude Code (todas as suas sessões neste computador)", Pt.PeerAcceptHow);
+        Assert.Equal(" The message will be dropped if it waits too long (5 minutes by default). To deliver messages without review, {0}. Claude may then act on messages before you have read them. To make later messages wait longer instead, set \"dialogExpiry\" to \"10m\" or \"never\" in that file.", En.PeerExpiryNote);
+        Assert.Equal(" A mensagem será descartada se esperar demais (5 minutos por padrão). Para entregar mensagens sem revisão, {0}. O Claude pode então agir sobre mensagens antes de você as ler. Para que as próximas esperem mais, defina \"dialogExpiry\" como \"10m\" ou \"never\" nesse arquivo.", Pt.PeerExpiryNote);
+        Assert.Equal(" One of the two sessions bypasses permission prompts and the other does not.", En.PeerCauseModeMismatch);
+        Assert.Equal(" Uma das duas sessões ignora os pedidos de permissão e a outra não.", Pt.PeerCauseModeMismatch);
+        Assert.Equal(" This session bypasses permission prompts, and the sender did not state its permission mode.", En.PeerCauseNoMode);
+        Assert.Equal(" Esta sessão ignora os pedidos de permissão, e quem mandou não disse o seu modo de permissão.", Pt.PeerCauseNoMode);
+        Assert.Equal(" Your \"crossSessionInbound\" setting is \"hold\". To deliver messages without review, {0}. Claude may then act on messages before you have read them.", En.PeerCauseExplicit);
+        Assert.Equal(" A sua configuração \"crossSessionInbound\" é \"hold\". Para entregar mensagens sem revisão, {0}. O Claude pode então agir sobre mensagens antes de você as ler.", Pt.PeerCauseExplicit);
+        Assert.Equal(" This project sets \"crossSessionInbound\" to \"hold\" in .claude/settings.json or .claude/settings.local.json, and a project can be stricter than your own setting. To deliver messages without review, remove it there and {0}. Claude may then act on messages before you have read them.", En.PeerCauseRepo);
+        Assert.Equal(" Este projeto define \"crossSessionInbound\" como \"hold\" em .claude/settings.json ou .claude/settings.local.json, e um projeto pode ser mais rígido que a sua configuração. Para entregar mensagens sem revisão, tire de lá e {0}. O Claude pode então agir sobre mensagens antes de você as ler.", Pt.PeerCauseRepo);
+        Assert.Equal(" Your organization set \"crossSessionInbound\" to \"hold\". Ask your admin to change it.", En.PeerCauseManaged);
+        Assert.Equal(" A sua organização definiu \"crossSessionInbound\" como \"hold\". Peça ao administrador para mudar.", Pt.PeerCauseManaged);
+        Assert.Equal(" Your user settings, this project's settings, or --settings has an unrecognized \"crossSessionInbound\" value. Set it to \"accept\", \"hold\", or \"refuse\".", En.PeerCauseInvalid);
+        Assert.Equal(" As suas settings de usuário, as deste projeto ou o --settings têm um valor de \"crossSessionInbound\" que não é reconhecido. Use \"accept\", \"hold\" ou \"refuse\".", Pt.PeerCauseInvalid);
+        Assert.Equal(" The \"crossSessionInbound\" setting controls which messages are held.", En.PeerCauseOther);
+        Assert.Equal(" A configuração \"crossSessionInbound\" decide quais mensagens ficam retidas.", Pt.PeerCauseOther);
+        Assert.Equal("Open user settings file", En.PeerOpenSettings);
+        Assert.Equal("Abrir o arquivo de settings de usuário", Pt.PeerOpenSettings);
+    }
 }
