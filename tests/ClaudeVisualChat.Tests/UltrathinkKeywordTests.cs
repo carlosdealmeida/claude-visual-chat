@@ -118,14 +118,20 @@ public class UltrathinkKeywordTests
     public void Path_and_flag_neighbours_do_not_count(string text, int count) => Assert.Equal(count, Find(text).Count);
 
     [Fact]
-    public void Masked_ranges_are_blanked_before_the_search()
+    public void Masked_ranges_are_word_characters_for_the_search()
     {
         var text = "ultrathink PASTE ultrathink tail ultrathink";
         // the second occurrence lies in a long paste: it does not count, and the others keep their places
         var found = UltrathinkKeyword.Find(text, new[] { (11, 21) }).ToList();
         Assert.Equal(new[] { (0, 10), (33, 10) }, found);
-        // a paste that leaves a word next to blanks: the blanks are spaces, a boundary
-        Assert.Equal(new[] { (5, 10) }, UltrathinkKeyword.Find("PASTEultrathinkPASTE", new[] { (0, 5), (15, 5) }).ToList());
+        // a paste stands for letters, as the extension's "x": a word glued to one has no boundary
+        Assert.Empty(UltrathinkKeyword.Find("PASTEultrathinkPASTE", new[] { (0, 5), (15, 5) }));
+        // nor does a paste that ends in a slash, a backslash or a dash make the word a path or a flag: it is a word glued to it
+        Assert.Empty(UltrathinkKeyword.Find("ab/ultrathink", new[] { (0, 3) }));
+        // a paste with spaces around it leaves the word alone
+        Assert.Equal(new[] { (6, 10) }, UltrathinkKeyword.Find("PASTE ultrathink", new[] { (0, 5) }).ToList());
+        // a quote right after a paste does not open a span: the word after it counts
+        Assert.Single(UltrathinkKeyword.Find("ab' ultrathink' c", new[] { (0, 2) }));
         // ranges out of the text are ignored
         Assert.Single(UltrathinkKeyword.Find("ultrathink", new[] { (20, 5), (-3, 2) }));
     }

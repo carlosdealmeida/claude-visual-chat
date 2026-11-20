@@ -18,7 +18,8 @@ internal static class UltrathinkKeyword
 
     /// <summary>
     /// Every occurrence of the word in <paramref name="text"/>, in order. The ranges in <paramref name="masked"/> (the long pastes) are
-    /// spaces for the search. None in a text that, trimmed, starts with <c>/</c> or is over <see cref="MaxLength"/> characters. An
+    /// letters for the search (an <c>x</c> each, as the extension does): a word glued to a paste has no boundary there, and the paste's
+    /// last character does not count as one before or after the word. None in a text that, trimmed, starts with <c>/</c> or is over <see cref="MaxLength"/> characters. An
     /// occurrence counts when it has a word boundary on both sides; is outside <c>`…`</c>, <c>"…"</c>, <c>{…}</c>, <c>[…]</c>,
     /// <c>(…)</c>, <c>'…'</c> (a <c>'</c> opens only after a character that is not a letter, a digit or <c>_</c>, and closes only before
     /// one) and <c>&lt;…&gt;</c> (a <c>&lt;</c> opens only before a letter or <c>/</c>), where an opener with no closer makes no span; has
@@ -35,7 +36,7 @@ internal static class UltrathinkKeyword
         var chars = text.ToCharArray();
         foreach (var (start, length) in masked)
         {
-            for (var i = Math.Max(0, start); i < Math.Min(chars.Length, start + length); i++) chars[i] = ' ';
+            for (var i = Math.Max(0, start); i < Math.Min(chars.Length, start + length); i++) chars[i] = 'x';
         }
         var inSpan = Spans(chars);
 

@@ -338,10 +338,24 @@ internal sealed class UltrathinkMirror : Control
             }
         }
 
-        TextLayout Make(IBrush? rest, IBrush? word) => new TextLayout(
-            text, typeface, size, rest, _presenter.TextAlignment, _presenter.TextWrapping, TextTrimming.None, null,
-            _presenter.FlowDirection, source.MaxWidth, source.MaxHeight, _presenter.LineHeight, _presenter.LetterSpacing, source.MaxLines,
-            pieces.Select(p => new ValueSpan<TextRunProperties>(p.Start, p.Length, new GenericTextRunProperties(typeface, size, null, word))).ToList());
+        TextLayout Make(IBrush? rest, IBrush? word)
+        {
+            // the spans cover the whole text, the gaps with the text's own color: Avalonia 11.0 runs the properties of a span on to the
+            // next one when there is a gap between them (two words on a line painted with all that is between them)
+            var spans = new List<ValueSpan<TextRunProperties>>();
+            var at = 0;
+            foreach (var piece in pieces)
+            {
+                if (piece.Start > at) spans.Add(new ValueSpan<TextRunProperties>(at, piece.Start - at, new GenericTextRunProperties(typeface, size, null, rest)));
+                spans.Add(new ValueSpan<TextRunProperties>(piece.Start, piece.Length, new GenericTextRunProperties(typeface, size, null, word)));
+                at = piece.Start + piece.Length;
+            }
+            if (at < text.Length) spans.Add(new ValueSpan<TextRunProperties>(at, text.Length - at, new GenericTextRunProperties(typeface, size, null, rest)));
+            return new TextLayout(
+                text, typeface, size, rest, _presenter.TextAlignment, _presenter.TextWrapping, TextTrimming.None, null,
+                _presenter.FlowDirection, source.MaxWidth, source.MaxHeight, _presenter.LineHeight, _presenter.LetterSpacing, source.MaxLines,
+                spans);
+        }
 
         _layout = Make(Foreground, Rainbow);
         _shineLayout = Make(Brushes.Transparent, new ImmutableSolidColorBrush(Shine));

@@ -186,6 +186,21 @@ public class UltrathinkMirrorTests
         Assert.Contains(frame.In(about), p => Light(p) > 120);
         Assert.DoesNotContain(frame.In(about), Rainbow);
 
+        // two on a line: each its own rainbow, and the word between them in the normal grey
+        Write(input, "ultrathink and ultrathink");
+        frame = new Frame(window);
+        foreach (var start in new[] { 0, 15 })
+        {
+            var each = Where(input, window, start, 10);
+            Assert.Contains(frame.In(Third(each, 0)), Warm);
+            Assert.DoesNotContain(frame.In(Third(each, 0)), Cool);
+            Assert.Contains(frame.In(Third(each, 2)), Cool);
+            Assert.DoesNotContain(frame.In(Third(each, 2)), Warm);
+        }
+        var and = Where(input, window, 11, 3);
+        Assert.Contains(frame.In(and), p => Light(p) > 120);
+        Assert.DoesNotContain(frame.In(and), Rainbow);
+
         // the word taken away: the box's own text again
         Write(input, "please about it");
         Assert.False(mirror.IsPainting);
@@ -267,12 +282,12 @@ public class UltrathinkMirrorTests
     [AvaloniaFact]
     public void The_mirror_lines_up_with_the_box_after_it_scrolls()
     {
-        var (view, window, _) = Open();
+        var (view, window, _) = Open(reduceMotion: true); // the rainbow alone: a shine passing would whiten the colors read
         var input = UiHelpers.Input(view);
         var mirror = Mirror(view);
         input.Focus();
-        // a paragraph that wraps, then lines enough to go past the box's 200 px, and the word at the end
-        var text = string.Join(" ", Enumerable.Repeat("a long sentence that wraps across the width of the reply box", 6)) + "\n"
+        // the word, a paragraph that wraps, then lines enough to go past the box's 200 px, and the word at the end
+        var text = "ultrathink first, " + string.Join(" ", Enumerable.Repeat("a long sentence that wraps across the width of the reply box", 6)) + "\n"
                    + string.Join("\n", Enumerable.Range(1, 14).Select(i => "line " + i)) + "\nnow ultrathink";
         Write(input, text);
         var presenter = Presenter(input);
@@ -281,14 +296,20 @@ public class UltrathinkMirrorTests
         Assert.True(scroller.Offset.Y > 0, "the box scrolled to the caret");
         Assert.True(mirror.IsPainting);
 
-        void LinedUp()
+        // in a frame drawn now, the word where the box has it: red at its start, violet at its end
+        void PaintedAt(int start, string when)
         {
-            UiHelpers.DrawFrames();
-            var drawnAt = mirror.TranslatePoint(mirror.TextOrigin, window)!.Value;
-            var boxAt = presenter.TranslatePoint(default, window)!.Value;
-            Assert.Equal(boxAt.X, drawnAt.X, 1);
-            Assert.Equal(boxAt.Y, drawnAt.Y, 1);
-            // the same lines, broken at the same places, as wide
+            var frame = new Frame(window);
+            var word = Where(input, window, start, 10);
+            Assert.True(Viewport(input, window).Contains(word), when + ": the word is in sight");
+            Assert.True(frame.In(Third(word, 0)).Any(Warm), when + ": warm at the start");
+            Assert.False(frame.In(Third(word, 0)).Any(Cool), when + ": no cool at the start");
+            Assert.True(frame.In(Third(word, 2)).Any(Cool), when + ": cool at the end");
+            Assert.False(frame.In(Third(word, 2)).Any(Warm), when + ": no warm at the end");
+        }
+
+        void SameLines()
+        {
             var mine = mirror.Layout!.TextLines;
             var its = presenter.TextLayout.TextLines;
             Assert.Equal(its.Count, mine.Count);
@@ -299,31 +320,88 @@ public class UltrathinkMirrorTests
                 Assert.Equal(its[i].WidthIncludingTrailingWhitespace, mine[i].WidthIncludingTrailingWhitespace, 2);
                 Assert.Equal(its[i].Height, mine[i].Height, 2);
             }
-            // it draws only where the box shows its text
-            var viewport = scroller.GetVisualDescendants().OfType<ScrollContentPresenter>().First();
-            var shown = new Rect(viewport.TranslatePoint(default, mirror)!.Value, viewport.Bounds.Size);
-            Assert.Equal(shown, mirror.Viewport);
         }
 
-        LinedUp();
-        var frame = new Frame(window);
-        var word = Where(input, window, text.Length - 10, 10);
-        Assert.Contains(frame.In(Third(word, 0)), Warm);
+        scroller.Offset = new Vector(0, scroller.Extent.Height - scroller.Viewport.Height); // the last line whole
+        UiHelpers.Pump();
+        PaintedAt(text.Length - 10, "scrolled to the end");
+        SameLines();
         // the lines scrolled above the text's area are not drawn over the box's top padding
+        var frame = new Frame(window);
         var box = input.TranslatePoint(default, window)!.Value;
         var top = scroller.TranslatePoint(default, window)!.Value;
         Assert.True(top.Y - box.Y >= 8);
         Assert.DoesNotContain(frame.In(new Rect(top.X, box.Y + 1, input.Bounds.Width - 50, top.Y - box.Y - 2)), p => Light(p) > 90);
 
-        // back to the top: it follows
+        // back to the top: the first word, where the box has it now
         scroller.Offset = default;
         UiHelpers.Pump();
-        LinedUp();
+        PaintedAt(0, "scrolled back");
 
-        // a narrower window wraps it again: still lined up
+        // a narrower window wraps it again
         window.Width = 520;
         UiHelpers.Pump();
-        LinedUp();
+        Assert.Equal(0, scroller.Offset.Y);
+        PaintedAt(0, "narrower");
+        SameLines();
+        window.Close();
+    }
+
+    /// <summary>The part of the box that shows text, in the window.</summary>
+    private static Rect Viewport(TextBox input, Window window)
+    {
+        var viewport = input.GetVisualDescendants().OfType<ScrollContentPresenter>().First();
+        return new Rect(viewport.TranslatePoint(default, window)!.Value, viewport.Bounds.Size);
+    }
+
+    /// <summary>
+    /// The mirror, its word in the box's own color, against the box drawing its own text: the two frames of the text's area match but
+    /// for antialiasing (a pixel off by more than 48 in a channel, on at most 1 in 20 of the inked ones).
+    /// </summary>
+    private static void DrawnLikeTheBox(ChatConversation c, UltrathinkMirror mirror, TextBox input, Window window, string when)
+    {
+        var area = Viewport(input, window);
+        Assert.True(mirror.IsPainting, when);
+        var painted = new Frame(window).In(area).ToList();
+        c.Apply(new PerTurnEffortChanged()); // the box draws its own text
+        UiHelpers.Pump();
+        Assert.False(mirror.IsPainting, when);
+        Assert.NotSame(Brushes.Transparent, input.Foreground);
+        var own = new Frame(window).In(area).ToList();
+        c.Apply(new SettingsApplied(null, null, false) { UltrathinkAvailable = true });
+        UiHelpers.Pump();
+
+        var ink = own.Count(p => Light(p) > 60);
+        var off = painted.Zip(own, (a, b) => Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)))).Count(d => d > 48);
+        Assert.True(ink > 200, when + ": text in the area (" + ink + ")");
+        Assert.True(off * 20 <= ink, when + ": " + off + " pixels off of " + ink + " inked");
+    }
+
+    [AvaloniaFact]
+    public void The_mirror_draws_the_text_where_the_box_does()
+    {
+        var (view, window, c) = Open(reduceMotion: true); // no shine: the word in the plain color
+        var input = UiHelpers.Input(view);
+        var mirror = Mirror(view);
+        mirror.Rainbow = Normal(view);
+        var text = "ultrathink first, " + string.Join(" ", Enumerable.Repeat("a long sentence that wraps across the width of the reply box", 6)) + "\n"
+                   + string.Join("\n", Enumerable.Range(1, 14).Select(i => "line " + i)) + "\nnow ultrathink";
+        Write(input, text);
+        var scroller = input.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        DrawnLikeTheBox(c, mirror, input, window, "at the top");
+
+        scroller.Offset = new Vector(0, scroller.Extent.Height - scroller.Viewport.Height);
+        UiHelpers.Pump();
+        Assert.True(scroller.Offset.Y > 100);
+        DrawnLikeTheBox(c, mirror, input, window, "scrolled to the end");
+
+        scroller.Offset = new Vector(0, 37);
+        UiHelpers.Pump();
+        DrawnLikeTheBox(c, mirror, input, window, "scrolled part of a line");
+
+        window.Width = 520;
+        UiHelpers.Pump();
+        DrawnLikeTheBox(c, mirror, input, window, "narrower");
         window.Close();
     }
 
