@@ -198,9 +198,11 @@
     <Thickness x:Key="ClaudeChat.ListPadding">20,20,20,40</Thickness>
     <x:Double x:Key="ClaudeChat.ComposerMaxWidth">680</x:Double>
     <x:Double x:Key="ClaudeChat.ScrollBarGutter">16</x:Double>
-    <x:Double x:Key="ClaudeChat.PromptDetailMaxHeight">200</x:Double>   <!-- the command or the diff of a permission request: a taller one scrolls -->
+    <!-- the command or the diff of a permission request: a taller one scrolls. No limit of its own on the desktop, where the card is
+         70 % of the view at most and the command takes the room it leaves -->
+    <x:Double x:Key="ClaudeChat.PromptDetailMaxHeight">Infinity</x:Double>
     <!-- the same while the field of option 3 is open: only the touch layout shrinks it (its keyboard leaves the view some 400 px) -->
-    <x:Double x:Key="ClaudeChat.PromptDetailPeekHeight">200</x:Double>
+    <x:Double x:Key="ClaudeChat.PromptDetailPeekHeight">Infinity</x:Double>
     <!-- the field of "What went wrong?": four lines of its .9em text, with its 8 px inside and its border -->
     <x:Double x:Key="ClaudeChat.FeedbackFieldHeight">80</x:Double>
 
@@ -1794,6 +1796,15 @@
   <Style Selector="Border.ClaudeChatPermission:focus-within">
     <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.PermissionActiveBorder}" />
   </Style>
+  <!-- the block of the title: 4 px wider on each side than the card's text (its scroll bar at the edge), 1 px over and under it taken
+       back, so its lines take no room; reached with the keyboard while it scrolls (class focusVisible, set by the code), the accent's
+       thin line inside, as the reason's -->
+  <Style Selector="Border.ClaudeChatPermissionTitleBlock">
+    <Setter Property="Margin" Value="-4,-1" />
+  </Style>
+  <Style Selector="controls|ShrinkPanel.ClaudeChatPermissionTitleParts">
+    <Setter Property="Margin" Value="4,0" />
+  </Style>
   <Style Selector="TextBlock.ClaudeChatPermissionTitle">
     <Setter Property="FontWeight" Value="Bold" />
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.PromptFontSize}" />
@@ -1913,6 +1924,15 @@
   <Style Selector="TextBlock.ClaudeChatPermissionDescription">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
   </Style>
+  <!-- the lines after what the tool will do (a command's description, a skill's description and its arguments): the same .9em, 6 px
+       under each -->
+  <Style Selector="ScrollViewer.ClaudeChatPermissionInputNote, TextBlock.ClaudeChatPermissionInputNote">
+    <Setter Property="Margin" Value="0,0,0,6" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatPermissionInputText">
+    <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.PromptCodeFontSize}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
   <!-- "Details": the fold of any other tool's input, its 12 px arrow turned over when open -->
   <Style Selector="ToggleButton.ClaudeChatPermissionDetails">
     <Setter Property="HorizontalAlignment" Value="Left" />
@@ -1962,7 +1982,7 @@
     <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBorder}" />
   </Style>
   <!-- reached with the keyboard (class focusVisible, set by the code): the accent's thin line inside, which takes no room -->
-  <Style Selector="Border.ClaudeChatPermissionReason.focusVisible">
+  <Style Selector="Border.ClaudeChatPermissionReason.focusVisible, Border.ClaudeChatPermissionTitleBlock.focusVisible">
     <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.ToolContentFocusShadow}" />
   </Style>
   <Style Selector="Border.ClaudeChatPermissionReason SelectableTextBlock.ClaudeChatPermissionReasonText">
@@ -1989,17 +2009,23 @@
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
   </Style>
   <!-- the card's fold button, at its top right: 20 px, 4 px from the top and the right (8 px from the top when folded), the arrow
-       12 px inside a padding of 4; the secondary color, the toolbar's hover with the pointer or the keyboard on it, .8 pressed -->
+       12 px inside a padding of 4; the secondary color, the toolbar's hover with the pointer or the keyboard on it, .8 pressed. It
+       stands on the card's own background (input.background), so that the block of the title, scrolled under it, does not show
+       through -->
+  <Style Selector="Border.ClaudeChatPermissionFoldBack">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.InputBackground}" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Margin" Value="0,-5,-5,0" />
+  </Style>
+  <Style Selector="Border.ClaudeChatPermissionFoldBack.folded">
+    <Setter Property="Margin" Value="0,-1,-5,0" />
+  </Style>
   <Style Selector="Button.ClaudeChatPermissionFold">
     <Setter Property="Width" Value="20" />
     <Setter Property="Height" Value="20" />
     <Setter Property="Padding" Value="4" />
     <Setter Property="CornerRadius" Value="4" />
-    <Setter Property="Margin" Value="0,-5,-5,0" />
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
-  </Style>
-  <Style Selector="Button.ClaudeChatPermissionFold.folded">
-    <Setter Property="Margin" Value="0,-1,-5,0" />
   </Style>
   <Style Selector="Button.ClaudeChatPermissionFold:pointerover, Button.ClaudeChatPermissionFold:focus-visible">
     <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />

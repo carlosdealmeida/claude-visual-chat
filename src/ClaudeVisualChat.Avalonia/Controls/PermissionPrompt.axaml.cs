@@ -36,6 +36,9 @@ internal interface IPromptClock
 /// <see cref="TypingPause"/> before, the card waits, and "Waiting for permission…" shows in its place. The request's own
 /// description is never shown (the extension does not). Between what the tool will do and the options, the card says why the
 /// claude asks (<see cref="PendingPermission.AskReason"/>) and what a hook said (<see cref="PendingPermission.HookReason"/>).
+/// The card is 70 % of the view high at most (<see cref="ViewHeight"/>), and in a low view its parts give way, as the extension
+/// 2.1.328's (a <see cref="ShrinkPanel"/>): the block of the title and the reasons scroll inside, and the title, the options, the
+/// field and "Esc to cancel" stay whole (<see cref="UpdateShares"/>).
 /// </para>
 /// <para>
 /// No answer reaches a request the user has not seen: keys and clicks on the options are ignored for <see cref="SettleTime"/>
@@ -122,11 +125,16 @@ internal partial class PermissionPrompt : UserControl
     /// <summary>True while the touch layout's field of option 3 is open (the desktop's is always there).</summary>
     private bool _denyOpen;
 
-    /// <summary>True while the detail's height is bound to <see cref="DetailPeekKey"/> (see <see cref="UpdateDenyField"/>).</summary>
-    private bool _peeking;
-
     /// <summary>True while the desktop's card is folded to its title (see <see cref="IsFolded"/>).</summary>
     private bool _folded;
+
+    /// <summary>See <see cref="ViewHeight"/>; 0 until the view says.</summary>
+    private double _viewHeight;
+
+    /// <summary>The resource the detail's height is bound to, the hook's cap on it, and the binding (see <see cref="UpdateDetailHeight"/>).</summary>
+    private string? _detailKey;
+    private double _detailCap = double.PositiveInfinity;
+    private IDisposable? _detailBinding;
 
     /// <summary>The last request on screen; it stays when the prompt leaves the window, so that the same request is no new one.</summary>
     private PendingPermission? _lastRequest;
@@ -178,6 +186,25 @@ internal partial class PermissionPrompt : UserControl
         AskReasonScroller.GotFocus += (_, e) =>
             AskReasonPanel.Classes.Set("focusVisible", e.NavigationMethod is NavigationMethod.Tab or NavigationMethod.Directional);
         AskReasonScroller.LostFocus += (_, _) => AskReasonPanel.Classes.Set("focusVisible", false);
+        TitleScroller.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ScrollViewer.ViewportProperty)
+            {
+                // what gives way inside the block fits the room the scroll has, once it has been laid out
+                var room = TitleScroller.Viewport.Height;
+                TitleParts.Room = room > 0 ? room : double.PositiveInfinity;
+            }
+            if (e.Property == ScrollViewer.ExtentProperty || e.Property == ScrollViewer.ViewportProperty
+                || e.Property == ScrollViewer.OffsetProperty)
+                UpdateTitleEdges();
+        };
+        TitleScroller.GotFocus += (_, e) =>
+            TitleBlock.Classes.Set("focusVisible", e.NavigationMethod is NavigationMethod.Tab or NavigationMethod.Directional);
+        TitleScroller.LostFocus += (_, _) => TitleBlock.Classes.Set("focusVisible", false);
+        Header.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == BoundsProperty) UpdateShares(); // the block of the title keeps its title
+        };
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         DenyBox.AddHandler(KeyDownEvent, OnDenyKeyDown, RoutingStrategies.Tunnel);
         foreach (var control in new Control[] { YesButton, AlwaysButton, NoButton, DenyBox })
@@ -416,6 +443,7 @@ internal partial class PermissionPrompt : UserControl
         Refresh();
         UpdateDenyField();
         UpdateFold();
+        UpdateCardHeight();
         UpdateArming();
         UpdateTimer();
     }
@@ -431,12 +459,21 @@ internal partial class PermissionPrompt : UserControl
         else OnCardKeyDown(e);
     }
 
-    /// <summary>The desktop card's keys: the digits, Esc for "No", and ↑/↓ (Enter is the focused button's own).</summary>
+    /// <summary>
+    /// The desktop card's keys: the digits, Esc for "No", and ↑/↓ (Enter is the focused button's own), which scroll the block that
+    /// has the keyboard when it scrolls (the block of the title, why the claude asks), and go round the options otherwise.
+    /// </summary>
     private void OnCardKeyDown(KeyEventArgs e)
     {
         if (e.Key == Key.Up || e.Key == Key.Down)
         {
             e.Handled = true;
+            if (FocusedScroll() is { } scroll)
+            {
+                if (e.Key == Key.Down) scroll.LineDown();
+                else scroll.LineUp();
+                return;
+            }
             Move(e.Key == Key.Down ? 1 : -1);
             return;
         }
@@ -533,6 +570,16 @@ internal partial class PermissionPrompt : UserControl
         var request = _request;
         if (conversation == null || request == null) return;
         conversation.ApprovePlan(request, mode);
+    }
+
+    /// <summary>The block that scrolls and has the keyboard (it takes it only while it scrolls); null when none has.</summary>
+    private ScrollViewer? FocusedScroll()
+    {
+        foreach (var scroll in new[] { TitleScroller, AskReasonScroller })
+        {
+            if (scroll.Focusable && scroll.IsKeyboardFocusWithin) return scroll;
+        }
+        return null;
     }
 
     /// <summary>↑/↓ on the desktop's card: round the options and the field.</summary>
@@ -661,14 +708,146 @@ internal partial class PermissionPrompt : UserControl
     {
         var strings = Strings;
         var name = _folded ? strings.PermissionExpand : strings.PermissionCollapse;
-        Body.IsVisible = !_folded;
-        CommentsPanel.IsVisible = _withComments && !_folded;
         Frame.Classes.Set("folded", _folded);
         FoldButton.Classes.Set("folded", _folded);
-        FoldButton.IsVisible = !IsTouch;
+        FoldBack.Classes.Set("folded", _folded);
+        FoldBack.IsVisible = !IsTouch;
         Header.Classes.Set("foldable", !IsTouch);
         AutomationProperties.SetName(FoldButton, name);
         ToolTip.SetTip(FoldButton, name);
+        UpdateParts();
+    }
+
+    /// <summary>
+    /// The parts that show: folded, only the title; open, the title and each part that has something to say. The block of the title
+    /// gives way after the reason when there is one, as the extension's (GivesWay 3), and before the reasons otherwise.
+    /// </summary>
+    private void UpdateParts()
+    {
+        var open = !_folded;
+        CommentsPanel.IsVisible = _withComments && open;
+        NotesPanel.IsVisible = open;
+        DetailScroller.IsVisible = open;
+        DescriptionScroller.IsVisible = open && !string.IsNullOrEmpty(DescriptionText.Text);
+        ArgumentsText.IsVisible = open && !string.IsNullOrEmpty(ArgumentsText.Text);
+        AskReasonPanel.IsVisible = open && !string.IsNullOrEmpty(AskReasonText.Text);
+        HookReasonPanel.IsVisible = open && !string.IsNullOrEmpty(HookReasonText.Text);
+        Answers.IsVisible = open;
+        ShrinkPanel.SetGivesWay(TitleBlock, AskReasonPanel.IsVisible ? 3 : 1);
+        UpdateAskReasonEdges();
+        UpdateTitleEdges();
+        UpdateDetailHeight();
+    }
+
+    /// <summary>
+    /// The height of the view the card is in (<see cref="ClaudeChatView"/> hands it over as it changes): on the desktop the card is
+    /// 70 % of it at most, and, with a hook's reason, what the tool will do 40 % of it less 3.4 of its font.
+    /// </summary>
+    internal double ViewHeight
+    {
+        get => _viewHeight;
+        set
+        {
+            if (value == _viewHeight) return;
+            _viewHeight = value;
+            UpdateCardHeight();
+            UpdateDetailHeight();
+        }
+    }
+
+    /// <summary>The most of the view the desktop's card takes (the extension's 70vh); the touch layout's has no ceiling.</summary>
+    private const double CardMaxShare = 0.7;
+
+    /// <summary>The share of the view what the tool will do takes at most with a hook's reason (the extension's 40vh)...</summary>
+    private const double HookDetailShare = 0.4;
+
+    /// <summary>...less this many of its font (3.4em).</summary>
+    private const double HookDetailLessEm = 3.4;
+
+    /// <summary>The block of the title keeps at least this many of its font (4.5em)...</summary>
+    private const double TitleBlockMinEm = 4.5;
+
+    /// <summary>...or its title, up to 7.5 of its font, and 1.8 of its font more.</summary>
+    private const double TitleMaxEm = 7.5, TitleMoreEm = 1.8;
+
+    /// <summary>What the tool will do keeps 5.25 of its font when it gives way inside the block.</summary>
+    private const double DetailMinEm = 5.25;
+
+    /// <summary>A description that gives way keeps a line and a half of its font.</summary>
+    private const double DescriptionMinEm = 1.5;
+
+    /// <summary>What a hook said keeps 3 of the chat's font.</summary>
+    private const double HookMinEm = 3;
+
+    private void UpdateCardHeight() =>
+        Frame.MaxHeight = !IsTouch && _viewHeight > 0 ? CardMaxShare * _viewHeight : double.PositiveInfinity;
+
+    /// <summary>A size of the theme (a <c>ClaudeChat.*</c> key), or <paramref name="fallback"/> when it has none.</summary>
+    private double ThemeSize(string key, double fallback) =>
+        this.TryFindResource(key, out var found) && found is double size ? size : fallback;
+
+    /// <summary>
+    /// How far each part gives way, in its own font: the block of the title down to 4.5 of it, or to its title (up to 7.5 of it)
+    /// and 1.8 of it more; inside it, what the tool will do down to 5.25 of its font, and the description to a line and a half; what
+    /// a hook said, to 3 of the chat's font. A part that wants less keeps what it wants. In a view so low that even these do not
+    /// leave the answers, the field and "Esc to cancel" their room, the reasons go on giving way to nothing and the block of the
+    /// title to its title (the floors), and inside the block what the tool will do and the description keep theirs and scroll
+    /// with it.
+    /// </summary>
+    private void UpdateShares()
+    {
+        var card = ThemeSize("ClaudeChat.PromptFontSize", 14.3);
+        var code = ThemeSize("ClaudeChat.PromptCodeFontSize", 12.87);
+        var chat = ThemeSize("ClaudeChat.FontSize", 13);
+        var title = Header.Bounds.Height;
+        ShrinkPanel.SetMinShare(TitleBlock, Math.Max(TitleBlockMinEm * card, Math.Min(title, TitleMaxEm * card) + TitleMoreEm * card));
+        ShrinkPanel.SetFloor(TitleBlock, title);
+        var detail = DetailMinEm * code + DetailScroller.Margin.Top + DetailScroller.Margin.Bottom;
+        ShrinkPanel.SetMinShare(DetailScroller, detail);
+        ShrinkPanel.SetFloor(DetailScroller, detail);
+        var description = DescriptionMinEm * code + DescriptionScroller.Margin.Top + DescriptionScroller.Margin.Bottom;
+        ShrinkPanel.SetMinShare(DescriptionScroller, description);
+        ShrinkPanel.SetFloor(DescriptionScroller, description);
+        ShrinkPanel.SetMinShare(HookReasonPanel, HookMinEm * chat + HookReasonPanel.Margin.Top + HookReasonPanel.Margin.Bottom);
+    }
+
+    /// <summary>
+    /// The most what the tool will do grows to before it scrolls by itself: <see cref="DetailHeightKey"/> (no limit on the desktop, and
+    /// 240 px in the touch layout), <see cref="DetailPeekKey"/> while the touch layout's field of option 3 is open, and on the desktop,
+    /// with a hook's reason, no more than 40 % of the view less 3.4 of its font.
+    /// </summary>
+    private void UpdateDetailHeight()
+    {
+        var key = IsTouch && _denyOpen ? DetailPeekKey : DetailHeightKey;
+        var cap = !IsTouch && HookReasonPanel.IsVisible && _viewHeight > 0
+            ? Math.Max(0, HookDetailShare * _viewHeight - HookDetailLessEm * ThemeSize("ClaudeChat.PromptCodeFontSize", 12.87))
+            : double.PositiveInfinity;
+        if (key == _detailKey && cap == _detailCap) return;
+        _detailKey = key;
+        _detailCap = cap;
+        _detailBinding?.Dispose();
+        _detailBinding = null;
+        if (double.IsPositiveInfinity(cap))
+            _detailBinding = DetailScroller.Bind(MaxHeightProperty, DetailScroller.GetResourceObservable(key));
+        else
+            DetailScroller.MaxHeight = Math.Min(ThemeSize(key, double.PositiveInfinity), cap);
+    }
+
+    /// <summary>
+    /// The lines over and under the block of the title show the widget's border where there is more to scroll to; the block takes
+    /// the keyboard, with its name, only while it scrolls.
+    /// </summary>
+    private void UpdateTitleEdges()
+    {
+        var scroller = TitleScroller;
+        var hidden = scroller.Extent.Height - scroller.Viewport.Height;
+        var scrolls = TitleBlock.IsVisible && !_folded && hidden > 0.5;
+        TitleTopLine.Classes.Set("more", scrolls && scroller.Offset.Y > 0.5);
+        TitleBottomLine.Classes.Set("more", scrolls && scroller.Offset.Y < hidden - 0.5);
+        scroller.Focusable = scrolls;
+        scroller.IsTabStop = scrolls;
+        if (scrolls) AutomationProperties.SetName(scroller, Strings.PermissionRequestDetails);
+        else scroller.ClearValue(AutomationProperties.NameProperty);
     }
 
     /// <summary>The desktop card's options are drawn disabled until it is armed.</summary>
@@ -703,6 +882,8 @@ internal partial class PermissionPrompt : UserControl
         NotesPanel.Children.Clear();
         ExtraText.Text = "";
         DetailsJson.Text = "";
+        DescriptionText.Text = "";
+        ArgumentsText.Text = "";
         var request = _request;
         var strings = Strings;
         var plan = IsPlan;
@@ -734,6 +915,9 @@ internal partial class PermissionPrompt : UserControl
         UpdateNumbers();
         UpdateDetails();
         UpdateSelected();
+        UpdateParts();
+        UpdateShares();
+        DescriptionScroller.SetCurrentValue(ScrollViewer.OffsetProperty, default(Vector));
     }
 
     /// <summary>How many of its font the text of a reason grows to before it scrolls (the extension's 6.75em).</summary>
@@ -761,14 +945,11 @@ internal partial class PermissionPrompt : UserControl
             text.LineHeight = 1.5 * fontSize;
         }
         AskReasonText.Text = ask;
-        AskReasonPanel.IsVisible = ask != null;
         AskReasonScroller.MaxHeight = ReasonMaxEm * fontSize + AskReasonTopSpace;
         AskReasonScroller.SetCurrentValue(ScrollViewer.OffsetProperty, default(Vector)); // a new request starts at its top
         HookReasonText.Text = hook;
-        HookReasonPanel.IsVisible = hook != null;
         HookReasonScroller.MaxHeight = ReasonMaxEm * fontSize;
         HookReasonScroller.SetCurrentValue(ScrollViewer.OffsetProperty, default(Vector));
-        UpdateAskReasonEdges();
     }
 
     /// <summary>
@@ -920,7 +1101,7 @@ internal partial class PermissionPrompt : UserControl
             case "Bash":
             case "PowerShell":
                 SetTitle(request.ToolName == "Bash" ? strings.PermissionBash : strings.PermissionPowerShell);
-                AddNote(InputString(request, "description"), muted: true);
+                DescriptionText.Text = InputString(request, "description"); // under the command, as in 2.1.329
                 // the whole command: the user says yes to all of it (the extension lets it be edited; the host can't send that)
                 return InputString(request, "command") ?? request.Summary;
             case "Edit":
@@ -965,9 +1146,9 @@ internal partial class PermissionPrompt : UserControl
                 var skill = (InputString(request, "skill") ?? "").TrimStart('/');
                 SetTitle(strings.PermissionSkill, "/" + skill, "ClaudeChatPermissionPath");
                 AddNote(strings.PermissionSkillNote, muted: false);
-                AddNote(SkillDescription(skill), muted: true);
+                DescriptionText.Text = SkillDescription(skill);
                 var arguments = InputString(request, "args");
-                if (!string.IsNullOrEmpty(arguments)) AddNote(strings.FormatSkillArguments(arguments!), muted: true);
+                if (!string.IsNullOrEmpty(arguments)) ArgumentsText.Text = strings.FormatSkillArguments(arguments!);
                 return "";
         }
         // everything else (MCP, MultiEdit, NotebookEdit, Agent…): the raw name in bold, and its input folded under "Details"
@@ -1000,7 +1181,6 @@ internal partial class PermissionPrompt : UserControl
     private void FillComments(IList<PlanComment>? comments, ChatStrings strings)
     {
         CommentsList.Children.Clear();
-        CommentsPanel.IsVisible = _withComments && !_folded;
         if (comments == null || comments.Count == 0) return;
         CommentsTitle.Text = strings.FormatPlanComments(comments.Count);
         var plan = PlanOnScreen;
@@ -1145,12 +1325,9 @@ internal partial class PermissionPrompt : UserControl
     /// </summary>
     private void UpdateDenyField()
     {
-        var touchField = IsTouch && _denyOpen;
         DenyBox.IsVisible = IsTouch ? _denyOpen : true;
-        DenySendButton.IsVisible = touchField;
-        if (touchField == _peeking) return;
-        _peeking = touchField;
-        DetailScroller.Bind(MaxHeightProperty, DetailScroller.GetResourceObservable(touchField ? DetailPeekKey : DetailHeightKey));
+        DenySendButton.IsVisible = IsTouch && _denyOpen;
+        UpdateDetailHeight();
     }
 
     private void OnDenyKeyDown(object? sender, KeyEventArgs e)

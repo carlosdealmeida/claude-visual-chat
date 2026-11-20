@@ -37,6 +37,19 @@ All notable changes to this project are written here. The format follows
 
 ### Fixed
 
+- The desktop permission card fits a low view without cutting its buttons, its title or the reply field, as the extension
+  2.1.328 does. The card is 70 % of the view high at most (a detached window does the same sums with its own height), and
+  its parts give way from the top down: the block of the title (the title, what the tool will do and its description) down
+  to 4.5 of its font, or to its title and 1.8 of its font more; with a reason, after it; then why the claude asks and what a
+  hook said (this one down to 3 of the chat's font). Inside the block, a command's or a skill's description gives way first,
+  down to a line and a half, then the command, the diff or the input, down to 5.25 of its font; the block scrolls when even
+  that is too high, with a line of the widget's border where there is more above or below, and then takes the keyboard (↑ and
+  ↓ scroll it) with the accessible name `ChatStrings.PermissionRequestDetails` ("Details of the request"). The answers, the
+  field and "Esc to cancel" never give way; in a view too low even for those minimums, the reasons give way to nothing and
+  the block to its title. The command no longer stops at 200 px on the desktop (`ClaudeChat.PromptDetailMaxHeight` is now
+  unlimited there; the touch layout keeps 240 and 56); with a hook's reason it stops at 40 % of the view less 3.4 of its
+  font. A command's description now sits under the command, as in 2.1.329, and the fold button has the card's background
+  under it. ↑ and ↓ on the scrolling block of why the claude asks now scroll it instead of moving between the options.
 - A failed or refused tool call shows its whole reason, cleaned. The correction note, the `<tool_use_error>` wrapper (when it
   wraps the whole text and has no tag inside), the retry guidance, the refusal sentence before a typed reason, terminal codes
   (commands only) and invisible characters go, and the text stops at 2000 characters. The text wraps at any point on no code

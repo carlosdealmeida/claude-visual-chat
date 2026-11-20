@@ -455,9 +455,10 @@ o cartão aparece, e um pedido que chega enquanto a pessoa digita espera até a 
 ferramenta vai fazer, o cartão diz por que o claude pergunta quando é uma checagem de segurança, um comando composto ou um
 conector do claude.ai (`PendingPermission.AskReason`), e o que um hook `PreToolUse` disse quando foi ele que perguntou,
 sob "Um hook diz:" (`PendingPermission.HookReason`); os campos crus são `DecisionReason`, `DecisionReasonType`,
-`DecisionReasonCode` e `McpServerSource`. Um botão no alto, à direita, dobra o cartão até o título, para ler a conversa
-que está atrás. O layout de toque mantém o pedido como era na
-0.5.0, fora o plano.
+`DecisionReasonCode` e `McpServerSource`. O cartão tem no máximo 70% da altura da view; numa view baixa o comando, o diff
+ou os motivos cedem altura e rolam por dentro, e o título, as respostas, o campo e "Esc para cancelar" ficam inteiros. Um
+botão no alto, à direita, dobra o cartão até o título, para ler a conversa que está atrás. O layout de toque mantém o
+pedido como era na 0.5.0, fora o plano.
 
 O que o seu app faz é o que ele já fazia: mandar o que `PermissionAnswered` e `PermissionModeRequested` trazem e dar à
 view todas as linhas que o claude escreve, os erros também.
@@ -682,7 +683,7 @@ As chaves, todas com o prefixo `ClaudeChat.`:
 | Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade`, `DiffExpandHover`, `DiffExpandPillHoverBorder`, `DiffViewShadow` |
 | Fontes | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |
 | Tamanhos | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize`, `PromptHintFontSize`, `WorkingGlyphFontSize` (a estrela da linha de trabalho), `WorkingRowHeight` |
-| Lugares | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (o comando ou o diff de um pedido de permissão: um mais alto rola), `PromptDetailPeekHeight` (o mesmo enquanto o campo do "Não" está aberto), `PlanCommentsMaxHeight` (a lista de comentários no cartão do plano), `FeedbackFieldHeight` (o campo de "O que deu errado?") |
+| Lugares | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (o comando ou o diff de um pedido de permissão: um mais alto rola; sem limite no desktop por padrão, onde o cartão cabe na view, e 240 no layout de toque), `PromptDetailPeekHeight` (o mesmo enquanto o campo do "Não" do layout de toque está aberto), `PlanCommentsMaxHeight` (a lista de comentários no cartão do plano), `FeedbackFieldHeight` (o campo de "O que deu errado?") |
 | Ícones (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.ChevronDown`, `Icon.ChevronUp`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External`, `Icon.Bookmark`, `Icon.ThumbUp`, `Icon.ThumbDown` |
 | Menus e paleta de comandos | `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`, `ListActiveForeground`, `EffortThumbShadow` |
 | Anexos | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |

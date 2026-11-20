@@ -167,7 +167,7 @@ public class PublicApiTests
             Assert.Equal(typeof(string), property?.PropertyType);
             Assert.Null(property!.SetMethod);                                    // worked out from the raw fields
         }
-        foreach (var text in new[] { "PermissionHookSays", "PermissionWhyAsks" })
+        foreach (var text in new[] { "PermissionHookSays", "PermissionWhyAsks", "PermissionRequestDetails" })
         {
             var property = typeof(ChatStrings).GetProperty(text);
             Assert.Equal(typeof(string), property?.PropertyType);

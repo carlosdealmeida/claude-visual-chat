@@ -676,6 +676,7 @@ public partial class ClaudeChatView : UserControl
                 SetValue(IsTinyProperty, width <= TinyWidth);
             }
             Sticky.CapHeight = Math.Max(0, StickyCap * Bounds.Height);
+            Prompt.ViewHeight = Bounds.Height; // the permission card is 70 % of the view at most
             AutoNotice.ViewSize = Bounds.Size; // the view's own size, in either layout
             PlaceBookmarks();
         }

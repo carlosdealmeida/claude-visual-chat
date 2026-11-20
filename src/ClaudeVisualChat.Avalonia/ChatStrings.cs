@@ -213,6 +213,7 @@ public sealed record ChatStrings
         PermissionExpand = "Expandir",
         PermissionHookSays = "Um hook diz:",
         PermissionWhyAsks = "Por que o Claude Code pergunta",
+        PermissionRequestDetails = "Detalhes do pedido",
         PlanAccept = "Aceitar este plano?",
         PlanCommentHint = "Selecione um trecho na prévia para comentar",
         PlanYesAutoMode = "Sim, e usar o modo automático",
@@ -1094,6 +1095,12 @@ public sealed record ChatStrings
     /// (<see cref="PendingPermission.AskReason"/>): a safety check, a compound command, a claude.ai connector.
     /// </summary>
     public string PermissionWhyAsks { get; init; } = "Why Claude Code asks";
+
+    /// <summary>
+    /// The accessible name of the desktop card's block of the title (the title, what the tool will do and its description) while
+    /// it has more than its room and scrolls, and so takes the keyboard.
+    /// </summary>
+    public string PermissionRequestDetails { get; init; } = "Details of the request";
 
     /// <summary>The plan card's title (an <c>ExitPlanMode</c> request); the card holds no plan text.</summary>
     public string PlanAccept { get; init; } = "Accept this plan?";

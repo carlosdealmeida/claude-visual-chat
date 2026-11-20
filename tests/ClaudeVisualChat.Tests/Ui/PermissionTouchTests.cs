@@ -750,8 +750,8 @@ public class PermissionTouchTests
         Assert.DoesNotContain(Send, ui.Texts);                                           // the button is the touch layout's: Enter sends there
         Assert.Equal(new CornerRadius(8), ui.Frame.CornerRadius);
         Assert.Equal(new Thickness(8), ui.Frame.Padding);
-        Assert.Equal(200, ui.Detail.MaxHeight);
-        Assert.Equal(200, ui.Detail.Bounds.Height, 0);
+        Assert.True(double.IsPositiveInfinity(ui.Detail.MaxHeight));                    // no limit of its own: the room the card leaves
+        Assert.True(ui.Detail.Bounds.Height > 240, $"the detail is {ui.Detail.Bounds.Height} high");
 
         ui.View.Layout = ChatLayout.Touch;                                               // and again
         UiHelpers.Pump();
@@ -959,7 +959,8 @@ public class PermissionTouchTests
         ui.View.Layout = ChatLayout.Desktop;                                             // the desktop never shrinks it, field or not
         UiHelpers.Pump();
         Assert.NotNull(ui.DenyField);
-        Assert.Equal(200, ui.Detail.Bounds.Height, 0);
+        Assert.True(double.IsPositiveInfinity(ui.Detail.MaxHeight));
+        Assert.True(ui.Detail.Bounds.Height > 240, $"the detail is {ui.Detail.Bounds.Height} high");
         ui.View.Layout = ChatLayout.Touch;                                               // and the touch layout does again, the field being open
         UiHelpers.Pump();
         Assert.Equal(56, ui.Detail.Bounds.Height, 0);
@@ -978,13 +979,14 @@ public class PermissionTouchTests
         var c = new ChatConversation();
         c.Apply(LongEdit());
         var ui = new Opened(c, layout: ChatLayout.Desktop);
-        Assert.Equal(200, ui.Detail.Bounds.Height, 0);
+        var room = ui.Detail.Bounds.Height;                                              // the room the card leaves it, no peek
+        Assert.True(room > 240, $"the detail is {room} high");
 
         Assert.NotNull(ui.DenyField);                                                    // the desktop's field is always there (its "No" refuses at once)
         ui.DenyField!.Focus();
         UiHelpers.Pump();
-        Assert.Equal(200, ui.Detail.MaxHeight);
-        Assert.Equal(200, ui.Detail.Bounds.Height, 0);
+        Assert.True(double.IsPositiveInfinity(ui.Detail.MaxHeight));
+        Assert.Equal(room, ui.Detail.Bounds.Height, 0);
         ui.Window.Close();
     }
 

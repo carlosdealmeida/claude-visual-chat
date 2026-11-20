@@ -449,8 +449,10 @@ appears, and a request that arrives while the person is typing waits until the t
 the card says why the claude asks when it is a safety check, a compound command or a claude.ai connector
 (`PendingPermission.AskReason`), and what a `PreToolUse` hook said when the hook asked, under "A hook says:"
 (`PendingPermission.HookReason`); the raw fields are `DecisionReason`, `DecisionReasonType`, `DecisionReasonCode` and
-`McpServerSource`. A button at the top right folds the card to its title, to read the conversation behind it. The touch layout keeps the request as it was in 0.5.0,
-apart from the plan.
+`McpServerSource`. The card is 70 % of the view high at most; in a low view the command, the diff or the reasons give way
+and scroll inside, and the title, the answers, the field and "Esc to cancel" stay whole. A button at the top right folds
+the card to its title, to read the conversation behind it. The touch layout keeps the request as it was in 0.5.0, apart
+from the plan.
 
 What your app does is what it already did: send what `PermissionAnswered` and `PermissionModeRequested` carry, and give
 the view every line the claude writes, errors included.
@@ -673,7 +675,7 @@ The keys, all prefixed with `ClaudeChat.`:
 | Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade`, `DiffExpandHover`, `DiffExpandPillHoverBorder`, `DiffViewShadow` |
 | Fonts | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |
 | Sizes | `FontSize`, `LineHeight`, `SmallFontSize`, `SmallLineHeight`, `CodeFontSize`, `EditorFontSize`, `EditorLineHeight`, `PromptFontSize`, `PromptLineHeight`, `PromptCodeFontSize`, `PromptHintFontSize`, `WorkingGlyphFontSize` (the working line's star), `WorkingRowHeight` |
-| Places | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (the command or the diff of a permission request: a taller one scrolls), `PromptDetailPeekHeight` (the same while the field of "No" is open), `PlanCommentsMaxHeight` (the list of comments in the plan card), `FeedbackFieldHeight` (the field of "What went wrong?") |
+| Places | `ListPadding`, `ComposerMaxWidth`, `ScrollBarGutter`, `PromptDetailMaxHeight` (the command or the diff of a permission request: a taller one scrolls; no limit on the desktop by default, where the card fits the view, and 240 in the touch layout), `PromptDetailPeekHeight` (the same while the touch layout's field of "No" is open), `PlanCommentsMaxHeight` (the list of comments in the plan card), `FeedbackFieldHeight` (the field of "What went wrong?") |
 | Icons (`StreamGeometry`) | `Icon.ModeDefault`, `Icon.ModeAcceptEdits`, `Icon.ModePlan`, `Icon.ModeAuto`, `Icon.Send`, `Icon.Chevron`, `Icon.ChevronDown`, `Icon.ChevronUp`, `Icon.Add`, `Icon.Slash`, `Icon.Check`, `Icon.Clock`, `Icon.Close`, `Icon.Remove`, `Icon.ArrowLeft`, `Icon.FilePdf`, `Icon.FileText`, `Icon.Table`, `Icon.Copy`, `Icon.Mic`, `Icon.Refresh`, `Icon.Photo`, `Icon.Globe`, `Icon.Remote`, `Icon.External`, `Icon.Bookmark`, `Icon.ThumbUp`, `Icon.ThumbDown` |
 | Menus and the command palette | `MenuBackground`, `MenuForeground`, `ListHoverBackground`, `ListActiveBackground`, `ListActiveForeground`, `EffortThumbShadow` |
 | Attachments | `AttachmentBackground`, `AttachmentHoverBorder`, `AttachmentRemoveFade`, `ThumbnailHoverBorder`, `PreviewOverlay`, `PreviewShadow` |

@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:ClaudeVisualChat.Controls"
              x:Class="ClaudeVisualChat.Controls.PermissionPrompt">
   <StackPanel>
     <!-- the desktop's card waits while the user is typing in the reply box: this line, above the box, in its place -->
@@ -8,7 +9,10 @@
     <!-- the reply box's frame: 8 px corners, 8 px inside; the active border with the focus inside -->
     <Border Name="Frame" Classes="ClaudeChatPermission">
       <Grid>
-        <StackPanel>
+        <!-- the card's parts, from the top down. On the desktop the card is 70 % of the view high at most (the code sets it from the
+             view's height): where its parts come to more, the block of the title gives way first (after the reason, when there is
+             one), then the reasons; the answers, the field and "Esc to cancel" never. How far each gives way is the code's -->
+        <controls:ShrinkPanel Name="Parts">
           <!-- a plan's comments, over the title: "Comments (N)" and the list, which scrolls; each comment its passage, its words and a × -->
           <StackPanel Name="CommentsPanel" Classes="ClaudeChatPlanComments" IsVisible="False">
             <TextBlock Name="CommentsTitle" Classes="ClaudeChatPlanCommentsTitle" />
@@ -17,70 +21,95 @@
               <StackPanel Name="CommentsList" />
             </ScrollViewer>
           </StackPanel>
-          <DockPanel Name="Header" Classes="ClaudeChatPermissionHeader">
-            <TextBlock Name="MoreText" Classes="ClaudeChatPermissionMore" DockPanel.Dock="Right" />
-            <TextBlock Name="TitleText" Classes="ClaudeChatPermissionTitle" />
-          </DockPanel>
 
-          <!-- everything under the title, hidden while the card is folded -->
-          <StackPanel Name="Body">
+          <!-- the block of the title, the part that folds to the title: the title, what the tool will do and its description. It
+               scrolls when what gives way inside it still leaves it too high; then a 1 px line above and below, clear, shows the
+               widget's border where there is more to scroll to, and the keyboard stops on it ("Details of the request") -->
+          <Border Name="TitleBlock" Classes="ClaudeChatPermissionTitleBlock" controls:ShrinkPanel.GivesWay="1">
+            <Grid RowDefinitions="Auto,*,Auto">
+              <Border Name="TitleTopLine" Classes="ClaudeChatPermissionReasonLine" />
+              <ScrollViewer Name="TitleScroller" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                            Focusable="False" IsTabStop="False">
+                <!-- inside, the description gives way first, then what the tool will do; the code hands it the scroll's height -->
+                <controls:ShrinkPanel Name="TitleParts" Classes="ClaudeChatPermissionTitleParts" VerticalAlignment="Top">
+                  <DockPanel Name="Header" Classes="ClaudeChatPermissionHeader">
+                    <TextBlock Name="MoreText" Classes="ClaudeChatPermissionMore" DockPanel.Dock="Right" />
+                    <TextBlock Name="TitleText" Classes="ClaudeChatPermissionTitle" />
+                  </DockPanel>
 
-            <!-- the desktop card's lines under the title: a command's description, a skill's note, description and arguments -->
-            <StackPanel Name="NotesPanel" Classes="ClaudeChatPermissionNotes" />
+                  <!-- the desktop card's lines under the title: a skill's note, a plan's hint -->
+                  <StackPanel Name="NotesPanel" Classes="ClaudeChatPermissionNotes" />
 
-            <!-- what the tool will do: the command, the url, the query, or the file's diff, and the input of any other tool; a long one
-                 scrolls inside (200 px, 240 in the touch layout, where the code binds ClaudeChat.PromptDetailPeekHeight instead while the
-                 field of option 3 is open) -->
-            <ScrollViewer Name="DetailScroller" MaxHeight="{DynamicResource ClaudeChat.PromptDetailMaxHeight}"
-                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-              <StackPanel>
-                <Border Name="SummaryBox" Classes="ClaudeChatPermissionSummary">
-                  <SelectableTextBlock Name="SummaryText" Classes="ClaudeChatPermissionSummaryText" />
-                </Border>
-                <!-- a second box: the domains a web search keeps to or leaves out -->
-                <Border Name="ExtraBox" Classes="ClaudeChatPermissionSummary" IsVisible="False">
-                  <SelectableTextBlock Name="ExtraText" Classes="ClaudeChatPermissionSummaryText" />
-                </Border>
-                <StackPanel Name="DiffPanel" />
-                <!-- any other tool: "Details", folded, over its input as indented JSON -->
-                <ToggleButton Name="DetailsButton" Classes="ClaudeChatDisclosure ClaudeChatPermissionDetails" IsVisible="False">
-                  <StackPanel Orientation="Horizontal" Spacing="4">
-                    <TextBlock Name="DetailsText" Classes="ClaudeChatPermissionDetailsText" />
-                    <Path Classes="ClaudeChatPermissionDetailsChevron" />
-                  </StackPanel>
-                </ToggleButton>
-                <Border Name="DetailsBox" Classes="ClaudeChatPermissionJson" IsVisible="False">
-                  <SelectableTextBlock Name="DetailsJson" Classes="ClaudeChatPermissionJsonText" />
-                </Border>
-              </StackPanel>
-            </ScrollViewer>
+                  <!-- what the tool will do: the command, the url, the query, or the file's diff, and the input of any other tool; a
+                       long one scrolls inside: in the room the card has on the desktop (with a hook's reason, 40 % of the view less 3.4
+                       of its font at most), in 240 px in the touch layout, where the code binds ClaudeChat.PromptDetailPeekHeight
+                       instead while the field of option 3 is open -->
+                  <ScrollViewer Name="DetailScroller" controls:ShrinkPanel.GivesWay="1"
+                                HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                      <Border Name="SummaryBox" Classes="ClaudeChatPermissionSummary">
+                        <SelectableTextBlock Name="SummaryText" Classes="ClaudeChatPermissionSummaryText" />
+                      </Border>
+                      <!-- a second box: the domains a web search keeps to or leaves out -->
+                      <Border Name="ExtraBox" Classes="ClaudeChatPermissionSummary" IsVisible="False">
+                        <SelectableTextBlock Name="ExtraText" Classes="ClaudeChatPermissionSummaryText" />
+                      </Border>
+                      <StackPanel Name="DiffPanel" />
+                      <!-- any other tool: "Details", folded, over its input as indented JSON -->
+                      <ToggleButton Name="DetailsButton" Classes="ClaudeChatDisclosure ClaudeChatPermissionDetails" IsVisible="False">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <TextBlock Name="DetailsText" Classes="ClaudeChatPermissionDetailsText" />
+                          <Path Classes="ClaudeChatPermissionDetailsChevron" />
+                        </StackPanel>
+                      </ToggleButton>
+                      <Border Name="DetailsBox" Classes="ClaudeChatPermissionJson" IsVisible="False">
+                        <SelectableTextBlock Name="DetailsJson" Classes="ClaudeChatPermissionJsonText" />
+                      </Border>
+                    </StackPanel>
+                  </ScrollViewer>
 
-            <!-- why the claude asks (a safety check, a compound command, a claude.ai connector): the primary color at .99 of the chat's
-                 font, 6.75 of it and 4 px high at most (the code sets both), then it scrolls; a 1 px line above and below, clear, in
-                 the widget's border where there is more to scroll to; the keyboard stops on it only while it scrolls -->
-            <Border Name="AskReasonPanel" Classes="ClaudeChatPermissionReason" IsVisible="False">
-              <Grid RowDefinitions="Auto,Auto,Auto">
-                <Border Name="AskReasonTopLine" Classes="ClaudeChatPermissionReasonLine" />
-                <ScrollViewer Name="AskReasonScroller" Grid.Row="1" Classes="ClaudeChatPermissionReasonScroller"
-                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Focusable="False" IsTabStop="False">
-                  <SelectableTextBlock Name="AskReasonText" Classes="ClaudeChatPermissionReasonText" IsTabStop="False" />
-                </ScrollViewer>
-                <Border Name="AskReasonBottomLine" Grid.Row="2" Classes="ClaudeChatPermissionReasonLine" />
-              </Grid>
-            </Border>
+                  <!-- the description of a command (under it, as in 2.1.329) or of a skill: the first to give way, and then it scrolls -->
+                  <ScrollViewer Name="DescriptionScroller" Classes="ClaudeChatPermissionInputNote" controls:ShrinkPanel.GivesWay="4"
+                                HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" IsVisible="False">
+                    <TextBlock Name="DescriptionText" Classes="ClaudeChatPermissionInputText ClaudeChatPermissionDescription" />
+                  </ScrollViewer>
+                  <!-- a skill's arguments -->
+                  <TextBlock Name="ArgumentsText" Classes="ClaudeChatPermissionInputNote ClaudeChatPermissionInputText ClaudeChatPermissionDescription"
+                             IsVisible="False" />
+                </controls:ShrinkPanel>
+              </ScrollViewer>
+              <Border Name="TitleBottomLine" Grid.Row="2" Classes="ClaudeChatPermissionReasonLine" />
+            </Grid>
+          </Border>
 
-            <!-- what a PreToolUse hook said when it asked: a 2 px bar of the secondary color, "A hook says:", and its text, which
-                 scrolls past 6.75 of its font and is no stop for Tab -->
-            <Border Name="HookReasonPanel" Classes="ClaudeChatPermissionHook" IsVisible="False">
-              <StackPanel>
-                <TextBlock Name="HookReasonLabel" Classes="ClaudeChatPermissionHookLabel" />
-                <ScrollViewer Name="HookReasonScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
-                              Focusable="False" IsTabStop="False">
-                  <SelectableTextBlock Name="HookReasonText" Classes="ClaudeChatPermissionReasonText" IsTabStop="False" />
-                </ScrollViewer>
-              </StackPanel>
-            </Border>
+          <!-- why the claude asks (a safety check, a compound command, a claude.ai connector): the primary color at .99 of the chat's
+               font, 6.75 of it and 4 px high at most (the code sets both), then it scrolls; a 1 px line above and below, clear, in
+               the widget's border where there is more to scroll to; the keyboard stops on it only while it scrolls -->
+          <Border Name="AskReasonPanel" Classes="ClaudeChatPermissionReason" controls:ShrinkPanel.GivesWay="2" IsVisible="False">
+            <Grid RowDefinitions="Auto,*,Auto">
+              <Border Name="AskReasonTopLine" Classes="ClaudeChatPermissionReasonLine" />
+              <ScrollViewer Name="AskReasonScroller" Grid.Row="1" Classes="ClaudeChatPermissionReasonScroller"
+                            HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Focusable="False" IsTabStop="False">
+                <SelectableTextBlock Name="AskReasonText" Classes="ClaudeChatPermissionReasonText" IsTabStop="False" />
+              </ScrollViewer>
+              <Border Name="AskReasonBottomLine" Grid.Row="2" Classes="ClaudeChatPermissionReasonLine" />
+            </Grid>
+          </Border>
 
+          <!-- what a PreToolUse hook said when it asked: a 2 px bar of the secondary color, "A hook says:", and its text, which
+               scrolls past 6.75 of its font and is no stop for Tab -->
+          <Border Name="HookReasonPanel" Classes="ClaudeChatPermissionHook" controls:ShrinkPanel.GivesWay="2" IsVisible="False">
+            <DockPanel>
+              <TextBlock Name="HookReasonLabel" Classes="ClaudeChatPermissionHookLabel" DockPanel.Dock="Top" />
+              <ScrollViewer Name="HookReasonScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                            Focusable="False" IsTabStop="False">
+                <SelectableTextBlock Name="HookReasonText" Classes="ClaudeChatPermissionReasonText" IsTabStop="False" />
+              </ScrollViewer>
+            </DockPanel>
+          </Border>
+
+          <!-- the answers, the field of "No" and the hint: they never give way -->
+          <StackPanel Name="Answers">
             <!-- the answers, 8 px apart; 2 only when the claude offers to remember it; the selected one in the accent (in the touch
                  layout, none is selected and the first, "primary", is always the accent). On the desktop the numbers are those of the
                  visible options, in order, and none shows with default_to_no (class noNumbers); for 500 ms after the card comes they
@@ -115,11 +144,14 @@
             <!-- the desktop's hint under the field -->
             <TextBlock Name="HintText" Classes="ClaudeChatPermissionHint" IsVisible="False" />
           </StackPanel>
-        </StackPanel>
-        <!-- fold / unfold: 20 px, at the card's top right (desktop only; the touch layout's request does not fold) -->
-        <Button Name="FoldButton" Classes="ClaudeChatButton ClaudeChatPermissionFold" HorizontalAlignment="Right" VerticalAlignment="Top">
-          <Path Classes="ClaudeChatPermissionFoldIcon" />
-        </Button>
+        </controls:ShrinkPanel>
+        <!-- fold / unfold: 20 px, at the card's top right (desktop only; the touch layout's request does not fold), on the card's own
+             background, so that nothing scrolled under it shows through -->
+        <Border Name="FoldBack" Classes="ClaudeChatPermissionFoldBack" HorizontalAlignment="Right" VerticalAlignment="Top">
+          <Button Name="FoldButton" Classes="ClaudeChatButton ClaudeChatPermissionFold">
+            <Path Classes="ClaudeChatPermissionFoldIcon" />
+          </Button>
+        </Border>
       </Grid>
     </Border>
   </StackPanel>

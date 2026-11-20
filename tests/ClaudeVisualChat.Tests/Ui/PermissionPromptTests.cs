@@ -70,14 +70,14 @@ public class PermissionPromptTests
 
     private sealed class Opened
     {
-        public Opened(ChatConversation conversation, ChatStrings? strings, IPromptClock? clock)
+        public Opened(ChatConversation conversation, ChatStrings? strings, IPromptClock? clock, double height = UiHelpers.Height)
         {
             Conversation = conversation;
             conversation.PermissionAnswered += (_, e) => Answers.Add(e);
             View = new ClaudeChatView { Conversation = conversation };
             View.Prompt.Clock = clock ?? new SlowClock();
             if (strings != null) View.Strings = strings;
-            Window = UiHelpers.Show(View);
+            Window = UiHelpers.Show(View, UiHelpers.Width, height);
             Prompt = UiHelpers.Prompt(View);
         }
 
@@ -107,8 +107,9 @@ public class PermissionPromptTests
         public Border Frame => Prompt.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatPermission"));
     }
 
-    private static Opened Open(ChatConversation conversation, ChatStrings? strings = null, IPromptClock? clock = null) =>
-        new Opened(conversation, strings, clock);
+    private static Opened Open(ChatConversation conversation, ChatStrings? strings = null, IPromptClock? clock = null,
+        double height = UiHelpers.Height) =>
+        new Opened(conversation, strings, clock, height);
 
     private static object? Resource(Control view, string key) =>
         view.TryFindResource(key, out var value) ? value : null;
@@ -1066,7 +1067,7 @@ public class PermissionPromptTests
     }
 
     [AvaloniaFact]
-    public void A_huge_request_never_pushes_the_reply_box_away()
+    public void The_detail_has_no_fixed_200_limit_on_the_desktop()
     {
         var c = new ChatConversation();
         var command = string.Join("\n", Enumerable.Range(1, 2000).Select(i => "echo " + i));
@@ -1076,11 +1077,13 @@ public class PermissionPromptTests
         var input = UiHelpers.Input(ui.View);
         var bottom = input.TranslatePoint(new Point(0, input.Bounds.Height), ui.Window)!.Value;
         Assert.True(bottom.Y <= UiHelpers.Height, $"the reply box ends at {bottom.Y}");
-        // the command scrolls inside its 200 px; the card around it (title, options, the field of "No" and its hint, always there
-        // since the card of 2.1.310) takes what it takes whatever the command
+        // the command takes the room the card has (70 % of the view, less the options, the field of "No" and its hint), not 200 px,
+        // and scrolls inside it
         var detail = ui.Prompt.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "DetailScroller");
-        Assert.Equal(200, detail.Bounds.Height, 0);
-        Assert.True(ui.Prompt.Bounds.Height < UiHelpers.Height * 0.6, $"the prompt is {ui.Prompt.Bounds.Height} high");
+        Assert.True(double.IsPositiveInfinity(detail.MaxHeight), $"the detail stops at {detail.MaxHeight}");
+        Assert.True(detail.Bounds.Height > 250, $"the detail is {detail.Bounds.Height} high");
+        Assert.True(detail.Extent.Height > detail.Viewport.Height);
+        Assert.True(ui.Frame.Bounds.Height <= 0.7 * ui.View.Bounds.Height + 0.5, $"the card is {ui.Frame.Bounds.Height} high");
         ui.Window.Close();
     }
 
@@ -1094,18 +1097,23 @@ public class PermissionPromptTests
     }
 
     [AvaloniaFact]
-    public void Bash_asks_allow_this_bash_command_and_shows_its_description()
+    public void A_bash_description_sits_under_the_command()
     {
         var c = new ChatConversation();
         c.Apply(Request("r1", "Bash", "{\"command\":\"ls -la\",\"description\":\"List files\"}"));
         var ui = Open(c);
 
         Assert.Equal("Allow this bash command?", Title(ui));
-        Assert.Contains("List files", ui.Texts);                                 // the input's description, under the title
+        Assert.Contains("List files", ui.Texts);                                 // the input's description...
         var box = ui.Prompt.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "SummaryBox");
         Assert.Equal(new[] { "ls -la" }, UiHelpers.Texts(box));                   // the command in its box
         var description = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "List files");
-        Assert.True(description.TranslatePoint(default, ui.Prompt)!.Value.Y < box.TranslatePoint(default, ui.Prompt)!.Value.Y);
+        var title = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatPermissionTitle"));
+        Assert.True(description.TranslatePoint(default, ui.Prompt)!.Value.Y                // ...under the command, as in 2.1.329
+            >= box.TranslatePoint(new Point(0, box.Bounds.Height), ui.Prompt)!.Value.Y - 0.5);
+        Assert.True(box.TranslatePoint(default, ui.Prompt)!.Value.Y >= title.TranslatePoint(new Point(0, title.Bounds.Height), ui.Prompt)!.Value.Y - 0.5);
+        Assert.True(description.TranslatePoint(new Point(0, description.Bounds.Height), ui.Prompt)!.Value.Y
+            <= Top(ui.Options[0], ui));                                           // and over the options
         Assert.Same(Resource(ui.View, "ClaudeChat.ForegroundMuted"), description.Foreground);
         ui.Window.Close();
     }
@@ -1637,6 +1645,212 @@ public class PermissionPromptTests
         Assert.Equal(TextWrapping.Wrap, title.TextWrapping);                          // the name breaks where it must
         Assert.True(title.Bounds.Height > 2 * title.LineHeight);
         Assert.True(title.Bounds.Right <= ui.Frame.Bounds.Width);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Down_scrolls_a_focused_ask_reason_that_overflows()
+    {
+        var c = new ChatConversation();
+        c.Apply(Reasoned("r1", string.Join(" ", Enumerable.Repeat("This command reaches outside the project and needs a careful look.", 30)), "subcommandResults"));
+        var ui = Open(c);
+        UiHelpers.Pump();
+        var scroller = Named<ScrollViewer>(ui, "AskReasonScroller");
+        Assert.True(scroller.Focusable);
+        scroller.Focus(NavigationMethod.Tab);
+        UiHelpers.Pump();
+
+        UiHelpers.Press(ui.Window, Key.Down);                                       // a line down, and the keyboard stays
+        Assert.True(scroller.Offset.Y > 0);
+        Assert.Same(scroller, UiHelpers.Focused(ui.Window));
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.Equal(0, scroller.Offset.Y, 1);
+        Assert.Same(scroller, UiHelpers.Focused(ui.Window));
+        Assert.Empty(ui.Answers);
+
+        ui.Option("Yes").Focus(NavigationMethod.Tab);                               // on an option, ↓ still goes round the options
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.True(ui.Option(No).IsFocused);
+        ui.Window.Close();
+    }
+
+    // ---- a low view: the card fits, and gives way inside ----
+
+    /// <summary>A command of <paramref name="lines"/> lines.</summary>
+    private static string LongCommand(int lines) =>
+        JsonSerializer.Serialize(new { command = string.Join("\n", Enumerable.Range(1, lines).Select(i => "echo line " + i)), description = "Prints many lines" });
+
+    /// <summary>Asserts that <paramref name="control"/> shows whole, inside the card: not hidden, not squeezed, not past its frame.</summary>
+    private static void Whole(Opened ui, Control control, string what)
+    {
+        Assert.True(control.IsEffectivelyVisible, what + " is hidden");
+        var top = control.TranslatePoint(default, ui.Frame)!.Value.Y;
+        var bottom = top + control.Bounds.Height;
+        var wants = control.DesiredSize.Height - control.Margin.Top - control.Margin.Bottom;
+        Assert.True(control.Bounds.Height >= wants - 0.5, $"{what} is {control.Bounds.Height} high of {wants}");
+        Assert.True(top >= -0.5 && bottom <= ui.Frame.Bounds.Height + 0.5, $"{what} is at {top}..{bottom} in a card of {ui.Frame.Bounds.Height}");
+    }
+
+    /// <summary>The title, both answers, the field of "No" and "Esc to cancel" show whole, and the title is not scrolled away.</summary>
+    private static void CardWhole(Opened ui)
+    {
+        var title = ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatPermissionTitle"));
+        Whole(ui, title, "the title");
+        var scroller = Named<ScrollViewer>(ui, "TitleScroller");
+        var titleBottom = title.TranslatePoint(new Point(0, title.Bounds.Height), scroller)!.Value.Y;
+        Assert.InRange(titleBottom, 0, scroller.Viewport.Height + 0.5);
+        Whole(ui, ui.Option("Yes"), "Yes");
+        Whole(ui, ui.Option(No), "No");
+        Whole(ui, ui.DenyField!, "the field");
+        Whole(ui, ui.Prompt.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Esc to cancel"), "Esc to cancel");
+        var frameBottom = ui.Frame.TranslatePoint(new Point(0, ui.Frame.Bounds.Height), ui.View)!.Value.Y;
+        Assert.True(frameBottom <= ui.View.Bounds.Height + 0.5, $"the card ends at {frameBottom} in a view of {ui.View.Bounds.Height}");
+    }
+
+    [AvaloniaFact]
+    public void The_card_never_cuts_its_buttons_title_or_reply_field_in_a_low_view()
+    {
+        // a command of 60 lines and a hook that says 20, in a view 320 px high
+        var c = new ChatConversation();
+        c.Apply(Reasoned("r1", string.Join("\n", Enumerable.Range(1, 20).Select(i => "The hook says line " + i + ".")), "hook", "Bash", LongCommand(60)));
+        var ui = Open(c, height: 320);
+        UiHelpers.Pump();
+
+        CardWhole(ui);
+        Assert.True(ui.Frame.Bounds.Height <= 0.7 * ui.View.Bounds.Height + 0.5, $"the card is {ui.Frame.Bounds.Height} high");
+        // what gave way scrolls inside: the command in the block of the title (the hook's reason gave way first, to make room)
+        var block = Named<ScrollViewer>(ui, "TitleScroller");
+        Assert.True(block.Extent.Height > block.Viewport.Height);
+        Assert.Contains(ui.Texts, t => t.StartsWith("echo line 1\n", System.StringComparison.Ordinal));
+        // with a hook's reason, the command is 40 % of the view less 3.4 of its font at most (the extension's rule)
+        var codeFont = (double)Resource(ui.View, "ClaudeChat.PromptCodeFontSize")!;
+        Assert.Equal(0.4 * ui.View.Bounds.Height - 3.4 * codeFont, Named<ScrollViewer>(ui, "DetailScroller").MaxHeight, 1);
+
+        // a little higher, the hook's reason keeps 3 of the chat's font, and scrolls in it; the block of the title takes the rest
+        ui.Window.Height = 480;
+        UiHelpers.Pump();
+        CardWhole(ui);
+        var fontSize = (double)Resource(ui.View, "ClaudeChat.FontSize")!;
+        Assert.Equal(3 * fontSize, Named<Border>(ui, "HookReasonPanel").Bounds.Height, 0);
+        var hook = Named<ScrollViewer>(ui, "HookReasonScroller");
+        Assert.True(hook.Extent.Height > hook.Viewport.Height);
+        Assert.Equal(0.4 * ui.View.Bounds.Height - 3.4 * codeFont, Named<ScrollViewer>(ui, "DetailScroller").MaxHeight, 1);
+        ui.Window.Height = 320;
+        UiHelpers.Pump();
+
+        // the same with three answers and no hook, and with a long ask reason
+        c.Apply(Request("r2", "Bash", LongCommand(60), Suggestions));
+        c.DismissPermission("r1");
+        UiHelpers.Pump();
+        CardWhole(ui);
+        Whole(ui, ui.Option(YesAlways), "Yes, always");
+        Assert.True(double.IsPositiveInfinity(Named<ScrollViewer>(ui, "DetailScroller").MaxHeight));
+        c.Apply(Reasoned("r3", string.Join(" ", Enumerable.Repeat("This command reaches outside the project.", 40)), "safetyCheck", "Bash", LongCommand(60)));
+        c.DismissPermission("r2");
+        UiHelpers.Pump();
+        CardWhole(ui);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_card_is_at_most_seventy_percent_of_the_view()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "Bash", LongCommand(300)));
+        var ui = Open(c);
+        UiHelpers.Pump();
+        Assert.Equal(0.7 * ui.View.Bounds.Height, ui.Frame.Bounds.Height, 1);         // a long command fills it
+        Assert.Equal(new Thickness(8), ui.Frame.Padding);
+        CardWhole(ui);
+
+        ui.Window.Height = 500;                                                       // and follows the view
+        UiHelpers.Pump();
+        Assert.Equal(0.7 * ui.View.Bounds.Height, ui.Frame.Bounds.Height, 1);
+        CardWhole(ui);
+
+        c.Apply(Bash("r2", "ls"));                                                    // a short one is as high as it is
+        c.DismissPermission("r1");
+        UiHelpers.Pump();
+        Assert.True(ui.Frame.Bounds.Height < 0.5 * ui.View.Bounds.Height);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_details_show_a_border_where_more_is_above_or_below()
+    {
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "Bash", LongCommand(60)));
+        var ui = Open(c, height: 320);
+        UiHelpers.Pump();
+
+        var scroller = Named<ScrollViewer>(ui, "TitleScroller");
+        var above = Named<Border>(ui, "TitleTopLine");
+        var below = Named<Border>(ui, "TitleBottomLine");
+        var widget = Resource(ui.View, "ClaudeChat.InputBorder");                      // editorWidget.border, the extension's widget border
+        // the block of the title has more than its room: a line under it, the keyboard stops on it, and it says what it is
+        Assert.True(scroller.Extent.Height > scroller.Viewport.Height + 0.5);
+        Assert.Equal(1, above.Bounds.Height, 1);
+        Assert.Equal(1, below.Bounds.Height, 1);
+        Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<ISolidColorBrush>(above.Background).Color);
+        Assert.Same(widget, below.Background);
+        Assert.True(scroller.Focusable);
+        Assert.Equal("Details of the request", AutomationProperties.GetName(scroller));
+        Assert.Contains(scroller, TabStops(ui));
+
+        // with the keyboard on it: the accent's thin line inside, and ↓ and ↑ scroll it
+        scroller.Focus(NavigationMethod.Tab);
+        UiHelpers.Pump();
+        var block = Named<Border>(ui, "TitleBlock");
+        Assert.Contains("focusVisible", block.Classes);
+        Assert.Equal(Resource(ui.View, "ClaudeChat.ToolContentFocusShadow"), block.BoxShadow);
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.True(scroller.Offset.Y > 0);
+        Assert.Same(scroller, UiHelpers.Focused(ui.Window));
+        Assert.Same(widget, above.Background);                                         // more above and below, in the middle
+        Assert.Same(widget, below.Background);
+        scroller.Offset = new Vector(0, scroller.Extent.Height);
+        UiHelpers.Pump();
+        Assert.Same(widget, above.Background);                                         // at the end, only above
+        Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<ISolidColorBrush>(below.Background).Color);
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(scroller.Offset.Y < scroller.Extent.Height - scroller.Viewport.Height);
+
+        // in Portuguese
+        ui.View.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal("Detalhes do pedido", AutomationProperties.GetName(scroller));
+
+        // in a view where it all fits: no lines, no stop for the keyboard, no name
+        ui.Window.Height = UiHelpers.Height;
+        UiHelpers.Pump();
+        Assert.True(scroller.Extent.Height <= scroller.Viewport.Height + 0.5);
+        Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<ISolidColorBrush>(above.Background).Color);
+        Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<ISolidColorBrush>(below.Background).Color);
+        Assert.False(scroller.Focusable);
+        Assert.Null(AutomationProperties.GetName(scroller));
+        // the fold button over it stands on the card's own background, so nothing scrolled under it shows through
+        var back = Named<Border>(ui, "FoldBack");
+        Assert.Same(Resource(ui.View, "ClaudeChat.InputBackground"), back.Background);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_detached_window_keeps_the_card_whole()
+    {
+        // the view taken out of the main window into a low window of its own: the card does the same sums with the new height
+        var c = new ChatConversation();
+        c.Apply(Reasoned("r1", string.Join("\n", Enumerable.Range(1, 20).Select(i => "The hook says line " + i + ".")), "hook", "Bash", LongCommand(60)));
+        var ui = Open(c);
+        UiHelpers.Pump();
+        ui.Window.Content = null;
+        UiHelpers.Pump();
+        var detached = UiHelpers.Show(ui.View, 480, 340);
+        UiHelpers.Pump();
+
+        Assert.Equal(340, ui.View.Bounds.Height, 1);
+        Assert.Equal(0.7 * ui.View.Bounds.Height, ui.Frame.Bounds.Height, 1);
+        CardWhole(ui);
+        detached.Close();
         ui.Window.Close();
     }
 

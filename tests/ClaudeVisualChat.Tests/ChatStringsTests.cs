@@ -89,6 +89,8 @@ public class ChatStringsTests
         Assert.Equal("Um hook diz:", Pt.PermissionHookSays);
         Assert.Equal("Why Claude Code asks", En.PermissionWhyAsks);
         Assert.Equal("Por que o Claude Code pergunta", Pt.PermissionWhyAsks);
+        Assert.Equal("Details of the request", En.PermissionRequestDetails);
+        Assert.Equal("Detalhes do pedido", Pt.PermissionRequestDetails);
     }
 
     [Fact]
