@@ -29,6 +29,26 @@ namespace ClaudeVisualChat.Tests.Protocol
             Assert.Null(reported.Conflict);
         }
 
+        private static SettingsApplied Settings(string applied)
+        {
+            var events = new System.Collections.Generic.List<ClaudeEvent>();
+            using var doc = System.Text.Json.JsonDocument.Parse("{\"applied\":" + applied + "}");
+            EventReader.ReadControlBody(doc.RootElement, events);
+            return Assert.IsType<SettingsApplied>(Assert.Single(events));
+        }
+
+        [Fact]
+        public void Settings_say_whether_ultrathink_is_available()
+        {
+            Assert.True(Settings("{\"model\":\"m\",\"ultrathinkAvailable\":true}").UltrathinkAvailable);
+            Assert.False(Settings("{\"model\":\"m\",\"ultrathinkAvailable\":false}").UltrathinkAvailable);
+            Assert.Null(Settings("{\"model\":\"m\"}").UltrathinkAvailable);
+            Assert.Null(Settings("{\"ultrathinkAvailable\":1}").UltrathinkAvailable);
+            // the rest of the reply reads as before
+            Assert.Equal(new SettingsApplied("m", "high", true) { UltrathinkAvailable = true },
+                Settings("{\"model\":\"m\",\"effort\":\"high\",\"ultrathinkAvailable\":true}"));
+        }
+
         [Fact]
         public void Image_message_from_the_session_file()
         {

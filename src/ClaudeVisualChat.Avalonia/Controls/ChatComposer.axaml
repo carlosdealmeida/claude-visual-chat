@@ -26,6 +26,9 @@
       <TextBlock Name="AttachError" Classes="ClaudeChatAttachmentError" IsVisible="False" />
       <!-- Enter sends, Shift+Enter breaks the line (in the touch layout, Enter breaks it and Ctrl+Enter sends) -->
       <Grid>
+        <!-- while the claude offers it, the text drawn again under the box with each "ultrathink" in a rainbow; the box's own text is
+             transparent then, and its caret and selection are drawn over it -->
+        <controls:UltrathinkMirror Name="Ultrathink" />
         <TextBox Name="Input" Classes="ClaudeChatInput" AcceptsReturn="True" TextWrapping="Wrap" />
         <!-- after "/name " and nothing else, the hint of the command's arguments: the text itself, clear, then the hint in the
              placeholder's color, over the box, so that it starts where the text ends and wraps as it does -->

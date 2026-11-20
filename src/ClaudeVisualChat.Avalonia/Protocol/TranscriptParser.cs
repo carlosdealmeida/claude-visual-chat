@@ -303,7 +303,10 @@ namespace ClaudeVisualChat.Protocol
             if (JsonHelpers.Obj(body, "applied") is { } applied)
             {
                 var hasEffort = applied.TryGetProperty("effort", out _);
-                events.Add(new SettingsApplied(JsonHelpers.Str(applied, "model"), JsonHelpers.Str(applied, "effort"), hasEffort));
+                events.Add(new SettingsApplied(JsonHelpers.Str(applied, "model"), JsonHelpers.Str(applied, "effort"), hasEffort)
+                {
+                    UltrathinkAvailable = JsonHelpers.OptionalBool(applied, "ultrathinkAvailable"),
+                });
             }
 
             if (JsonHelpers.Arr(body, "categories") is { } categories && JsonHelpers.Long(body, "totalTokens") is { } total)

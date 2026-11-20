@@ -156,8 +156,8 @@ public partial class ClaudeChatView : UserControl
         AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(SpinnerVerbsReplace));
 
     /// <summary>
-    /// True to keep the working line's star still (at ✻) and swap its verbs whole, without writing them from left to right; false
-    /// (the default) moves them. The view cannot ask the system whether the user wants less motion (Avalonia 11.0 does not tell), so the
+    /// True to keep the working line's star still (at ✻) and swap its verbs whole, without writing them from left to right, and to paint
+    /// the word <c>ultrathink</c> in the reply box without its shine; false (the default) moves them. The view cannot ask the system whether the user wants less motion (Avalonia 11.0 does not tell), so the
     /// host that knows sets it. Inherited by everything inside the view.
     /// </summary>
     public static readonly StyledProperty<bool> ReduceMotionProperty =
@@ -464,7 +464,7 @@ public partial class ClaudeChatView : UserControl
         set => SetValue(SpinnerVerbsReplaceProperty, value);
     }
 
-    /// <summary>Keeps the working line's star still and swaps its verbs whole (see <see cref="ReduceMotionProperty"/>). False by default.</summary>
+    /// <summary>Keeps the working line's star still, swaps its verbs whole and leaves the shine off <c>ultrathink</c> (see <see cref="ReduceMotionProperty"/>). False by default.</summary>
     public bool ReduceMotion
     {
         get => GetValue(ReduceMotionProperty);

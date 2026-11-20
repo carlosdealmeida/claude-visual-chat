@@ -80,6 +80,7 @@ public sealed class ChatConversation : ChatObservableObject
     private string? _effort;
     private string? _requestedEffort;
     private string? _fastModeState;
+    private bool _ultrathinkAvailable;
     private string? _workingDirectory;
     private IReadOnlyList<ChatCommand> _commands = Array.Empty<ChatCommand>();
     private IReadOnlyList<string> _terminalCommands = Array.Empty<string>();
@@ -547,8 +548,38 @@ public sealed class ChatConversation : ChatObservableObject
         get => _model;
         private set
         {
-            if (SetField(ref _model, value)) OnPropertyChanged(nameof(CurrentModel));
+            var before = _model;
+            if (!SetField(ref _model, value)) return;
+            OnPropertyChanged(nameof(CurrentModel));
+            if (before != null && !SameModel(before, value)) UltrathinkAvailable = false; // what the claude said was about the other model
         }
+    }
+
+    /// <summary>
+    /// True while the claude says that the word <c>ultrathink</c> in a prompt raises the turn's effort, for the model in use: the reply box
+    /// paints the word then. From the <c>system/init</c> of the current model (or of the first model told) and from every
+    /// <c>get_settings</c> reply; false until told, after a turn whose effort changed by itself (<see cref="PerTurnEffortChanged"/>), and
+    /// when the model changes or the user picks one. The claude raises the effort itself: nothing is asked.
+    /// </summary>
+    public bool UltrathinkAvailable
+    {
+        get => _ultrathinkAvailable;
+        private set => SetField(ref _ultrathinkAvailable, value);
+    }
+
+    /// <summary>
+    /// The two ids name the same model: equal without case, once trimmed and without a trailing <c>[...]</c> (<c>claude-opus-5-5[1m]</c>).
+    /// </summary>
+    internal static bool SameModel(string? a, string? b)
+    {
+        string? Bare(string? id)
+        {
+            if (id == null) return null;
+            var trimmed = id.Trim();
+            var open = ModelSuffixStart(trimmed);
+            return open > 0 ? trimmed.Substring(0, open) : trimmed;
+        }
+        return string.Equals(Bare(a), Bare(b), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>The models the session offers; null until the claude tells. Also filled by <c>ModelsAvailable</c>.</summary>
@@ -918,6 +949,9 @@ public sealed class ChatConversation : ChatObservableObject
         {
             case SessionStarted started:
                 if (started.SessionId != null) SessionId = started.SessionId;
+                // taken only for the model in use: an init of another one is about that one (and the new model turns it off below)
+                if (started.UltrathinkAvailable is { } ultrathink && (_model == null || SameModel(_model, started.Model)))
+                    UltrathinkAvailable = ultrathink;
                 if (started.Model != null) Model = started.Model;
                 RequestedModel = null; // the turn runs with the model it reports, whatever was asked
                 if (started.WorkingDirectory != null) WorkingDirectory = started.WorkingDirectory;
@@ -946,6 +980,10 @@ public sealed class ChatConversation : ChatObservableObject
                     Effort = applied.Effort;
                     RequestedEffort = null;
                 }
+                UltrathinkAvailable = applied.UltrathinkAvailable == true; // the settings in force: a reply without it means no
+                break;
+            case PerTurnEffortChanged:
+                UltrathinkAvailable = false;
                 break;
             case ContextUsageReported context:
                 ContextError = null;
@@ -1453,6 +1491,7 @@ public sealed class ChatConversation : ChatObservableObject
     public void SetModel(string model)
     {
         if (model == null) throw new ArgumentNullException(nameof(model));
+        UltrathinkAvailable = false; // until the claude tells for the model it switches to
         RequestedModel = model;
         ModelRequested?.Invoke(this, new ModelRequestedEventArgs(model));
     }

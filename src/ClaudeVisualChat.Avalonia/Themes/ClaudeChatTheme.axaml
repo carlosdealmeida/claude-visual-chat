@@ -78,6 +78,19 @@
     <SolidColorBrush x:Key="ClaudeChat.BannerWarningForeground" Color="#D2B285" />
     <SolidColorBrush x:Key="ClaudeChat.BannerWarningBackground" Color="#473822" />
     <SolidColorBrush x:Key="ClaudeChat.FastModeBolt" Color="#E5A54B" />         <!-- the bolt on the reply box while the fast mode is on (cooling down: disabledForeground) -->
+    <!-- the word "ultrathink" in the reply box while the claude offers it: the extension's rainbow, its seven colors from the start to
+         the end of each piece of the word, and the color of the shine that sweeps it (the dark values; the README has the light ones) -->
+    <LinearGradientBrush x:Key="ClaudeChat.UltrathinkGradient" StartPoint="0%,0%" EndPoint="100%,0%">
+      <GradientStop Offset="0" Color="#EB5F57" />
+      <GradientStop Offset="0.1667" Color="#F58B57" />
+      <GradientStop Offset="0.3333" Color="#FAC35F" />
+      <GradientStop Offset="0.5" Color="#91C882" />
+      <GradientStop Offset="0.6667" Color="#82AADC" />
+      <GradientStop Offset="0.8333" Color="#9B82C8" />
+      <GradientStop Offset="1" Color="#C882B4" />
+    </LinearGradientBrush>
+    <Color x:Key="ClaudeChat.UltrathinkShine">#B3FFFFFF</Color>                   <!-- #ffffffb3 -->
+
     <SolidColorBrush x:Key="ClaudeChat.FocusRing" Color="#D97757" />            <!-- the reply box with the focus, default mode -->
     <SolidColorBrush x:Key="ClaudeChat.Spinner" Color="#D97757" />              <!-- the working line's star, default mode -->
     <!-- an image attached to the reply box: a pill of input.background with 15 % of descriptionForeground; its border
@@ -2160,6 +2173,12 @@
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
     <Setter Property="VerticalContentAlignment" Value="Top" />
+  </Style>
+  <!-- the text drawn again under the box while "ultrathink" is painted: the box's own color, the word's rainbow and shine -->
+  <Style Selector="controls|UltrathinkMirror">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
+    <Setter Property="Rainbow" Value="{DynamicResource ClaudeChat.UltrathinkGradient}" />
+    <Setter Property="Shine" Value="{DynamicResource ClaudeChat.UltrathinkShine}" />
   </Style>
   <Style Selector="TextBox.ClaudeChatInput /template/ Border#PART_BorderElement, TextBox.ClaudeChatInput:pointerover /template/ Border#PART_BorderElement, TextBox.ClaudeChatInput:focus /template/ Border#PART_BorderElement, TextBox.ClaudeChatInput:disabled /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="Transparent" />

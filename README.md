@@ -237,6 +237,27 @@ The keys of the box, as in the extension 2.1.310:
 - **Long pastes.** The box remembers the long texts pasted into it (more than 800 characters or more than two line
   breaks) and `MessageSubmittedEventArgs.InlinePastes` lists those still in the message. `StdinMessages.UserMessage(e)`
   writes them as `inline_pastes`, only when there are some.
+- **`ultrathink`.** The word is painted in a rainbow, with a shine that sweeps it twice after it is written, only while the
+  claude says the feature is available (`ChatConversation.UltrathinkAvailable`, from `ultrathink_available` of the
+  `system/init` of the model in use or `ultrathinkAvailable` of a `get_settings` answer, which your app passes through
+  `AppendLine`; off after `system/per_turn_effort_changed` and when the model changes). It is not painted in a `/command`,
+  a path, a file name, quotes, brackets or a long paste. The claude raises the turn's effort by itself; the view asks
+  nothing. `ReduceMotion` leaves the shine out. The colors are `ClaudeChat.UltrathinkGradient` (a horizontal
+  `LinearGradientBrush` of seven stops) and `ClaudeChat.UltrathinkShine` (a `Color`), with the dark theme's values; for a
+  light theme, the extension's are:
+
+  ```xml
+  <LinearGradientBrush x:Key="ClaudeChat.UltrathinkGradient" StartPoint="0%,0%" EndPoint="100%,0%">
+    <GradientStop Offset="0" Color="#C8322D" />
+    <GradientStop Offset="0.1667" Color="#CD5F1E" />
+    <GradientStop Offset="0.3333" Color="#A57800" />
+    <GradientStop Offset="0.5" Color="#2D823C" />
+    <GradientStop Offset="0.6667" Color="#2864B9" />
+    <GradientStop Offset="0.8333" Color="#5A41AA" />
+    <GradientStop Offset="1" Color="#A53C82" />
+  </LinearGradientBrush>
+  <Color x:Key="ClaudeChat.UltrathinkShine">#73FFFFFF</Color>
+  ```
 - On the desktop layout the idle placeholder is "Ask Claude to edit…" (`ChatStrings.InputPlaceholder`); while Claude
   works, "Queue another message…". The touch layout keeps "Type / for commands".
 - **A narrow chat.** On the desktop layout the bar under the text is one line while its pieces fit. When they do not,
@@ -682,7 +703,7 @@ The keys, all prefixed with `ClaudeChat.`:
 | Group | Keys |
 | --- | --- |
 | Theme colors (change with the VS Code theme) | `Background`, `Surface`, `Border`, `BorderStrong`, `Foreground`, `ForegroundMuted`, `Accent`, `AccentFill`, `AccentForeground`, `FocusBorder`, `Warning`, `Error`, `Success`, `InputBackground`, `InputBorder`, `InputActiveBorder`, `PermissionActiveBorder`, `InputPlaceholder`, `HoverBackground`, `OptionBorder`, `TimelineLine`, `Dot`, `ToolBackground`, `CodeBackground`, `CodeForeground`, `CodeBlockBackground`, `PillBackground`, `PillHoverBackground`, `DisabledForeground` (the date line) |
-| The extension's own colors | `DotSucceeded`, `DotFailed`, `DotRejected` (not used since 0.6.0), `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground` |
+| The extension's own colors | `DotSucceeded`, `DotFailed`, `DotRejected` (not used since 0.6.0), `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground`, `UltrathinkGradient` and `UltrathinkShine` (the word `ultrathink` in the reply box; see [The reply box](#the-reply-box) for the light values) |
 | Reply box and tool box shadows (`BoxShadows`) | `ComposerShadow`, `ComposerFocusShadow`, `ComposerFocusShadowAcceptEdits`, `ComposerFocusShadowPlan`, `ComposerFocusShadowAuto`, `ToolContentFocusShadow` (the focus of a tool box) |
 | Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade`, `DiffExpandHover`, `DiffExpandPillHoverBorder`, `DiffViewShadow` |
 | Fonts | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |

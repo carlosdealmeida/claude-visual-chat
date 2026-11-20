@@ -1145,4 +1145,27 @@ public class PublicApiTests
         }
         Assert.False(Library.GetType("ClaudeVisualChat.Controls.PeerHoldLine")!.IsPublic);
     }
+
+    [Fact]
+    public void The_ultrathink_api()
+    {
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        Assert.Contains("ClaudeVisualChat.Protocol.PerTurnEffortChanged", names);
+        var changed = typeof(ClaudeVisualChat.Protocol.PerTurnEffortChanged);
+        Assert.True(changed.IsSealed && typeof(ClaudeVisualChat.Protocol.ClaudeEvent).IsAssignableFrom(changed));
+        Assert.NotNull(changed.GetConstructor(System.Type.EmptyTypes));
+
+        foreach (var type in new[] { typeof(ClaudeVisualChat.Protocol.SessionStarted), typeof(ClaudeVisualChat.Protocol.SettingsApplied) })
+        {
+            var property = type.GetProperty("UltrathinkAvailable");
+            Assert.Equal(typeof(bool?), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit"); // init only
+        }
+
+        var available = typeof(ChatConversation).GetProperty("UltrathinkAvailable");
+        Assert.Equal(typeof(bool), available?.PropertyType);
+        Assert.True(available!.SetMethod?.IsPublic != true); // read only from outside
+        Assert.False(Library.GetType("ClaudeVisualChat.UltrathinkKeyword")!.IsPublic);
+        Assert.False(Library.GetType("ClaudeVisualChat.Controls.UltrathinkMirror")!.IsPublic);
+    }
 }

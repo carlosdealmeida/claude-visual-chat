@@ -38,6 +38,30 @@ namespace ClaudeVisualChat.Tests.Protocol
         }
 
         [Fact]
+        public void An_init_line_says_whether_ultrathink_is_available()
+        {
+            var parser = new StreamJsonParser();
+            SessionStarted Init(string extra) => Assert.IsType<SessionStarted>(Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s\",\"model\":\"m\"" + extra + "}")));
+
+            Assert.True(Init(",\"ultrathink_available\":true").UltrathinkAvailable);
+            Assert.False(Init(",\"ultrathink_available\":false").UltrathinkAvailable);
+            // absent, or not a boolean: not told
+            Assert.Null(Init("").UltrathinkAvailable);
+            Assert.Null(Init(",\"ultrathink_available\":\"yes\"").UltrathinkAvailable);
+        }
+
+        [Fact]
+        public void A_per_turn_effort_change_is_read()
+        {
+            var parser = new StreamJsonParser();
+            Assert.IsType<PerTurnEffortChanged>(Assert.Single(parser.Parse(
+                "{\"type\":\"system\",\"subtype\":\"per_turn_effort_changed\",\"session_id\":\"s\",\"uuid\":\"u\"}")));
+            // live state: a session file never raises it
+            Assert.Empty(TranscriptParser.Parse("{\"type\":\"system\",\"subtype\":\"per_turn_effort_changed\"}"));
+        }
+
+        [Fact]
         public void Command_lifecycle_gives_what_became_of_a_sent_message()
         {
             var parser = new StreamJsonParser();

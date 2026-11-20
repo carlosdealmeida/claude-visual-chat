@@ -37,6 +37,17 @@ All notable changes to this project are written here. The format follows
   `PeerHoldItem` and the `Peer*` and `UnknownSession` strings. The message itself, once delivered, is still the card of
   0.9.x. The way the claude records the acknowledgment (two sessions, or a message injected through stdin) is not
   confirmed; the tests use lines written by hand in the format above, not a recording.
+- The word `ultrathink` in the reply box is painted in the extension's seven-color rainbow, with a shine that sweeps it
+  twice (1.4 s each) after it is written, only while the claude says the feature is available: `ultrathink_available` of a
+  `system/init` of the model in use, or `ultrathinkAvailable` of a `get_settings` answer (`applied`). It turns off after
+  `system/per_turn_effort_changed`, when the model changes and when the user picks one; not told, nothing is painted. Any
+  case counts, as a whole word, but not in a `/command`, in a path, a flag or a file name (`/ultrathink`, `ultrathink.md`),
+  in quotes, backticks, brackets or a tag, in a long paste, or in a text over 50,000 characters. The text is drawn again
+  under the box, which keeps its caret and selection; `ReduceMotion` leaves the shine out, and text being composed by an
+  input method is not painted. The claude raises the turn's effort itself: the view asks nothing and the model chip does
+  not change. New: `ChatConversation.UltrathinkAvailable`, `UltrathinkAvailable` on `Protocol.SessionStarted` and
+  `Protocol.SettingsApplied`, the event `Protocol.PerTurnEffortChanged`, and the resources `ClaudeChat.UltrathinkGradient`
+  and `ClaudeChat.UltrathinkShine` (the README has the light theme's values).
 
 ### Changed
 

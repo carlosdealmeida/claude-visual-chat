@@ -3798,6 +3798,76 @@ public class ChatConversationTests
         Assert.Equal(new[] { "on", "cooldown", "turbo", "off" }, changes);
     }
 
+    // ---- ultrathink (0.10.0) ----
+
+    private static SessionStarted Init(string model, bool? ultrathink) =>
+        new SessionStarted("s", model, null, null, null) { UltrathinkAvailable = ultrathink };
+
+    [Fact]
+    public void Ultrathink_is_available_from_an_init_of_the_current_model_only()
+    {
+        var c = new ChatConversation();
+        var changes = new List<bool>();
+        c.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ChatConversation.UltrathinkAvailable)) changes.Add(c.UltrathinkAvailable); };
+        Assert.False(c.UltrathinkAvailable); // not told: off
+
+        c.Apply(Init("claude-opus-5-5", true)); // no model yet: taken
+        Assert.True(c.UltrathinkAvailable);
+        c.Apply(Init("claude-opus-5-5", null)); // an init that does not say leaves it
+        Assert.True(c.UltrathinkAvailable);
+        c.Apply(Init("claude-opus-5-5[1m]", false)); // the same model with its context suffix
+        Assert.False(c.UltrathinkAvailable);
+        c.Apply(Init("CLAUDE-OPUS-5-5", true));
+        Assert.True(c.UltrathinkAvailable);
+
+        // an init of another model: not taken, and the new model turns it off
+        c.Apply(Init("claude-sonnet-5-5", true));
+        Assert.Equal("claude-sonnet-5-5", c.Model);
+        Assert.False(c.UltrathinkAvailable);
+        c.Apply(Init("claude-sonnet-5-5", true)); // now it is the model of the session
+        Assert.True(c.UltrathinkAvailable);
+
+        // the settings reply is always taken; without the field it is off
+        c.Apply(new SettingsApplied(null, null, false));
+        Assert.False(c.UltrathinkAvailable);
+        c.Apply(new SettingsApplied(null, null, false) { UltrathinkAvailable = true });
+        Assert.True(c.UltrathinkAvailable);
+        Assert.Equal(new[] { true, false, true, false, true, false, true }, changes);
+    }
+
+    [Fact]
+    public void A_per_turn_effort_change_or_a_new_model_turns_it_off()
+    {
+        var c = new ChatConversation();
+        c.Apply(Init("claude-opus-5-5", true));
+        c.Apply(new PerTurnEffortChanged());
+        Assert.False(c.UltrathinkAvailable);
+
+        // a stream line does the same
+        c.Apply(Init("claude-opus-5-5", true));
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"per_turn_effort_changed\"}");
+        Assert.False(c.UltrathinkAvailable);
+
+        // the user picks a model: off until the claude tells again
+        c.Apply(Init("claude-opus-5-5", true));
+        c.SetModel("sonnet");
+        Assert.False(c.UltrathinkAvailable);
+
+        // the claude reports another model in its settings: what the reply says
+        c.Apply(Init("claude-opus-5-5", true));
+        c.Apply(new SettingsApplied("claude-sonnet-5-5", null, false));
+        Assert.False(c.UltrathinkAvailable);
+        c.Apply(new SettingsApplied("claude-opus-5-5", null, false) { UltrathinkAvailable = true });
+        Assert.True(c.UltrathinkAvailable);
+
+        // nothing asks for an effort: the claude raises the turn itself
+        var asked = 0;
+        c.EffortRequested += (_, _) => asked++;
+        c.Apply(new PerTurnEffortChanged());
+        Assert.Equal(0, asked);
+        Assert.Null(c.RequestedEffort);
+    }
+
     // ---- live output of a running command (0.8.0) ----
 
     /// <summary>A Bash (or PowerShell) call <paramref name="toolUseId"/> that runs as the task <paramref name="taskId"/>, as the claude tells.</summary>

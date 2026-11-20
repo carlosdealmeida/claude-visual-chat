@@ -24,7 +24,19 @@ namespace ClaudeVisualChat.Protocol
 
         /// <summary>The fast mode (<c>fast_mode_state</c>): <c>on</c>, <c>cooldown</c> or <c>off</c>; null when the line has none.</summary>
         public string? FastModeState { get; init; }
+
+        /// <summary>
+        /// Whether the word <c>ultrathink</c> in a prompt raises the turn's effort, for the model of this line (<c>ultrathink_available</c>);
+        /// null when the line does not say.
+        /// </summary>
+        public bool? UltrathinkAvailable { get; init; }
     }
+
+    /// <summary>
+    /// The effort of the turn changed by itself (<c>system/per_turn_effort_changed</c>): a prompt with <c>ultrathink</c> raised it. Live
+    /// only: a session file never raises it.
+    /// </summary>
+    public sealed record PerTurnEffortChanged() : ClaudeEvent;
 
     public sealed record StatusChanged(string? Status, string? PermissionMode) : ClaudeEvent;
 
@@ -217,7 +229,11 @@ namespace ClaudeVisualChat.Protocol
     public sealed record ModelsAvailable(IReadOnlyList<ChatModel> Models) : ClaudeEvent;
 
     /// <summary>The settings in force (from <c>get_settings</c>). <paramref name="HasEffort"/> is false when <c>effort</c> is absent.</summary>
-    public sealed record SettingsApplied(string? Model, string? Effort, bool HasEffort) : ClaudeEvent;
+    public sealed record SettingsApplied(string? Model, string? Effort, bool HasEffort) : ClaudeEvent
+    {
+        /// <summary>Whether the word <c>ultrathink</c> in a prompt raises the turn's effort (<c>ultrathinkAvailable</c>); null when the reply does not say.</summary>
+        public bool? UltrathinkAvailable { get; init; }
+    }
 
     /// <summary>A reply used the prompt cache. <paramref name="Ttl"/> is null when the line does not say how long it lives.</summary>
     public sealed record PromptCacheUsed(TimeSpan? Ttl, DateTimeOffset? At) : ClaudeEvent;

@@ -68,6 +68,14 @@ namespace ClaudeVisualChat.Protocol
             return p != null && p.Value.ValueKind == JsonValueKind.True;
         }
 
+        /// <summary>True or false as the property says; null when it is missing or not a boolean.</summary>
+        public static bool? OptionalBool(JsonElement el, string name)
+        {
+            var p = Prop(el, name);
+            if (p == null) return null;
+            return p.Value.ValueKind == JsonValueKind.True ? true : p.Value.ValueKind == JsonValueKind.False ? false : (bool?)null;
+        }
+
         public static long? Long(JsonElement el, string name)
         {
             var p = Prop(el, name);

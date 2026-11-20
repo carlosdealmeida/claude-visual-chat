@@ -48,6 +48,8 @@ namespace ClaudeVisualChat.Controls;
 /// its × or a change of the text. The long pastes (<see cref="LongPastes"/>) still in a message go with it as inline pastes.
 /// The up and down arrows recall the prompts of the conversation (the ones waiting in line too) when the caret is at the start or the end of
 /// the text; Ctrl+J breaks the line; Shift+Tab asks for the next of the modes offered. All of these in both layouts.
+/// While the claude offers it (<see cref="ChatConversation.UltrathinkAvailable"/>), the word <c>ultrathink</c> is painted in a rainbow
+/// (<see cref="UltrathinkMirror"/>).
 /// The microphone (<see cref="IChatDictation"/>): a tap starts the listening, which locks the box and puts what is heard at the
 /// caret as it comes, a space on each side of the words; a second tap stops it and keeps what was heard. It sends nothing, and
 /// nothing is sent while it listens. It ends with the caret after the words and, only if the box had the keyboard when the finger
@@ -173,7 +175,9 @@ internal partial class ChatComposer : UserControl
             UpdateSend();
             UpdateBusy(); // with text, the square sends; empty while Claude works, it stops
             UpdateHint();
+            UpdateUltrathink();
         };
+        Ultrathink.Box = Input;
         SendButton.Click += OnSendClick;
         TouchSend.Click += OnSendClick;
         StopButton.Click += OnStopClick;
@@ -453,6 +457,9 @@ internal partial class ChatComposer : UserControl
             case nameof(ChatConversation.PaletteCommands):
                 UpdateHint(); // the command's hint may have come, or gone
                 break;
+            case nameof(ChatConversation.UltrathinkAvailable):
+                UpdateUltrathink();
+                break;
             case nameof(ChatConversation.FastModeState):
             case nameof(ChatConversation.Effort): // the tooltip names it
                 UpdateFastMode();
@@ -501,6 +508,7 @@ internal partial class ChatComposer : UserControl
         RebuildModes();
         UpdateHint();
         UpdateFastMode();
+        UpdateUltrathink();
     }
 
     /// <summary>
@@ -533,6 +541,32 @@ internal partial class ChatComposer : UserControl
         if (hint == null) return;
         inlines.Add(new Avalonia.Controls.Documents.Run(text) { Foreground = Avalonia.Media.Brushes.Transparent });
         inlines.Add(new Avalonia.Controls.Documents.Run(hint));
+    }
+
+    /// <summary>
+    /// The words <c>ultrathink</c> the box paints (<see cref="UltrathinkMirror"/>): while the conversation says the claude offers it, the
+    /// ones <see cref="UltrathinkKeyword.Find"/> finds outside the long pastes the box remembers; none otherwise. The claude raises the
+    /// turn's effort by itself: nothing is asked, and the model chip stays as it is.
+    /// </summary>
+    private void UpdateUltrathink()
+    {
+        var text = Input.Text ?? "";
+        var conversation = _tracked;
+        if (conversation == null || !conversation.UltrathinkAvailable || text.IndexOf(UltrathinkKeyword.Word, StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            Ultrathink.Words = Array.Empty<(int, int)>();
+            return;
+        }
+        var masked = new List<(int Start, int Length)>();
+        if (_pastes.TryGetValue(conversation, out var pastes))
+        {
+            foreach (var paste in pastes.Remembered)
+            {
+                for (var at = text.IndexOf(paste, StringComparison.Ordinal); at >= 0; at = text.IndexOf(paste, at + paste.Length, StringComparison.Ordinal))
+                    masked.Add((at, paste.Length));
+            }
+        }
+        Ultrathink.Words = UltrathinkKeyword.Find(text, masked);
     }
 
     /// <summary>The hint to show after <paramref name="text"/>: it is <c>/name </c> and nothing more, and the command has one.</summary>
@@ -926,7 +960,7 @@ internal partial class ChatComposer : UserControl
         var head = LongPastes.Truncate(pasted, InvisibleCharacters.PasteLimit);
         var (clean, removed) = InvisibleCharacters.Clean(head);
         Input.SelectedText = clean + pasted.Substring(head.Length);
-        if (conversation != null) _pastes.GetOrCreateValue(conversation).Remember(clean);
+        if (conversation != null && _pastes.GetOrCreateValue(conversation).Remember(clean)) UpdateUltrathink(); // the paste is not painted
         if (removed > 0) ShowNotice(removed, InvisibleNoticeKind.Pasted);
     }
 

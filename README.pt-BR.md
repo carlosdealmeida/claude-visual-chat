@@ -242,6 +242,27 @@ As teclas da caixa, como na extensão 2.1.310:
 - **Colagens longas.** A caixa lembra os textos longos colados nela (mais de 800 caracteres ou mais de duas quebras de
   linha) e o `MessageSubmittedEventArgs.InlinePastes` lista os que ainda estão na mensagem. O
   `StdinMessages.UserMessage(e)` os escreve como `inline_pastes`, só quando há algum.
+- **`ultrathink`.** A palavra é pintada num arco-íris, com um brilho que passa por ela duas vezes depois de escrita, só
+  enquanto o claude diz que o recurso está disponível (`ChatConversation.UltrathinkAvailable`, do `ultrathink_available` do
+  `system/init` do modelo em uso ou do `ultrathinkAvailable` de uma resposta do `get_settings`, que o seu app repassa pelo
+  `AppendLine`; desligado depois de `system/per_turn_effort_changed` e quando o modelo muda). Não é pintada num `/comando`,
+  num caminho, num nome de arquivo, entre aspas, entre colchetes ou numa colagem longa. O claude sobe o esforço do turno
+  sozinho; a view não pede nada. O `ReduceMotion` tira o brilho. As cores são `ClaudeChat.UltrathinkGradient` (um
+  `LinearGradientBrush` horizontal de sete paradas) e `ClaudeChat.UltrathinkShine` (uma `Color`), com os valores do tema
+  escuro; para um tema claro, os da extensão são:
+
+  ```xml
+  <LinearGradientBrush x:Key="ClaudeChat.UltrathinkGradient" StartPoint="0%,0%" EndPoint="100%,0%">
+    <GradientStop Offset="0" Color="#C8322D" />
+    <GradientStop Offset="0.1667" Color="#CD5F1E" />
+    <GradientStop Offset="0.3333" Color="#A57800" />
+    <GradientStop Offset="0.5" Color="#2D823C" />
+    <GradientStop Offset="0.6667" Color="#2864B9" />
+    <GradientStop Offset="0.8333" Color="#5A41AA" />
+    <GradientStop Offset="1" Color="#A53C82" />
+  </LinearGradientBrush>
+  <Color x:Key="ClaudeChat.UltrathinkShine">#73FFFFFF</Color>
+  ```
 - No layout de desktop, o placeholder da caixa ociosa é "Peça ao Claude para editar…" (`ChatStrings.InputPlaceholder`);
   com o Claude trabalhando, "Pôr outra mensagem na fila…". O layout de toque mantém "Digite / para ver os comandos".
 - **Um chat estreito.** No layout de desktop, a barra embaixo do texto é uma linha enquanto as peças cabem. Quando não
@@ -691,7 +712,7 @@ As chaves, todas com o prefixo `ClaudeChat.`:
 | Grupo | Chaves |
 | --- | --- |
 | Cores do tema (mudam com o tema do VS Code) | `Background`, `Surface`, `Border`, `BorderStrong`, `Foreground`, `ForegroundMuted`, `Accent`, `AccentFill`, `AccentForeground`, `FocusBorder`, `Warning`, `Error`, `Success`, `InputBackground`, `InputBorder`, `InputActiveBorder`, `PermissionActiveBorder`, `InputPlaceholder`, `HoverBackground`, `OptionBorder`, `TimelineLine`, `Dot`, `ToolBackground`, `CodeBackground`, `CodeForeground`, `CodeBlockBackground`, `PillBackground`, `PillHoverBackground`, `DisabledForeground` (a linha de data) |
-| Cores próprias da extensão | `DotSucceeded`, `DotFailed`, `DotRejected` (sem uso desde a 0.6.0), `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground` |
+| Cores próprias da extensão | `DotSucceeded`, `DotFailed`, `DotRejected` (sem uso desde a 0.6.0), `SendBackground`, `SendForeground`, `FocusRing`, `Spinner`, `PlanCommentHighlight`, `SecondaryButtonBackground`, `UltrathinkGradient` e `UltrathinkShine` (a palavra `ultrathink` na caixa de resposta; os valores do claro estão em [A caixa de resposta](#a-caixa-de-resposta)) |
 | Sombras da caixa de resposta e das caixas de ferramenta (`BoxShadows`) | `ComposerShadow`, `ComposerFocusShadow`, `ComposerFocusShadowAcceptEdits`, `ComposerFocusShadowPlan`, `ComposerFocusShadowAuto`, `ToolContentFocusShadow` (o foco de uma caixa de ferramenta) |
 | Diff | `DiffBackground`, `DiffForeground`, `DiffRemoved`, `DiffAdded`, `DiffRemovedText`, `DiffAddedText`, `DiffHatch`, `DiffGuide`, `DiffCurrentLine`, `DiffSign`, `DiffShadow`, `DiffFade`, `DiffExpandHover`, `DiffExpandPillHoverBorder`, `DiffViewShadow` |
 | Fontes | `FontFamily` (`Segoe UI, Segoe WPC, Inter, sans-serif`), `MonoFontFamily` (`Consolas, Courier New, monospace`) |

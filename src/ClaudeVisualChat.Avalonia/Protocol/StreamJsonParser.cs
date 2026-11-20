@@ -84,8 +84,12 @@ namespace ClaudeVisualChat.Protocol
                         {
                             TerminalCommands = JsonHelpers.Strings(root, "terminal_slash_commands"),
                             FastModeState = JsonHelpers.Str(root, "fast_mode_state"),
+                            UltrathinkAvailable = JsonHelpers.OptionalBool(root, "ultrathink_available"),
                         },
                     };
+                case "per_turn_effort_changed":
+                    // live state: a session file never has it, so the history reader (ReadNotice) leaves it out
+                    return new ClaudeEvent[] { new PerTurnEffortChanged() };
                 case "status":
                     return new ClaudeEvent[]
                     {
