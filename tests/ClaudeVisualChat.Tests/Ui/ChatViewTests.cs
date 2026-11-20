@@ -1127,14 +1127,19 @@ public class ChatViewTests
         Assert.True(content.Focusable);
         Assert.NotNull(content.Cursor);
         Assert.NotNull(content.OpacityMask);
-        Assert.Equal(10 * text.FontSize + 8, content.MaxHeight, 3);
+        var clip = 10 * Convert.ToDouble(Resource(view, "ClaudeChat.FontSize")) + 8; // 10em of the content font (13 px), with the 4 + 4 padding
+        Assert.Equal(138, clip, 3);
+        Assert.Equal(clip, content.MaxHeight, 3);
+        var mask = Assert.IsType<LinearGradientBrush>(content.OpacityMask);
+        Assert.Equal(clip, mask.EndPoint.Point.Y, 3);
+        Assert.Equal((clip - 10) / clip, mask.GradientStops[1].Offset, 3); // the fade is the last 10 px
         Assert.True(content.Bounds.Height <= content.MaxHeight + 0.5);
 
         ClickTop(window, content);
         content = Contents(view, tool)[1];
         Assert.True(tool.IsOutputExpanded);
         Assert.Null(content.OpacityMask);
-        Assert.True(content.Bounds.Height > 10 * text.FontSize + 8);
+        Assert.True(content.Bounds.Height > clip);
 
         content.Focus();
         UiHelpers.Press(window, Key.Enter);

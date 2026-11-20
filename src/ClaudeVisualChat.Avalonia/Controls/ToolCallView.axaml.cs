@@ -988,7 +988,7 @@ internal partial class ToolCallView : UserControl
         if (error)
         {
             content.Classes.Add("error");
-            if (expandable && !whole) content.Classes.Add("clipped");
+            if (expandable && !whole) ClipAtTenLines(content);
         }
         if (!expandable || !interactive) return content; // with a line above, that opens and cuts it
 
@@ -1016,6 +1016,34 @@ internal partial class ToolCallView : UserControl
             Toggle(item, input);
         };
         return content;
+    }
+
+    /// <summary>Most lines of an error before it fades: 10em of the row content's font (the chat's own, not the text block's .85em).</summary>
+    private const double ErrorClipEm = 10;
+
+    /// <summary>Fade at the end of a clipped error, in px.</summary>
+    private const double ErrorFadePx = 10;
+
+    /// <summary>The padding of a row's content (4 above and 4 below).</summary>
+    private const double ContentPadding = 8;
+
+    /// <summary>Stops a long error at ten times the chat's font size (plus the padding), fading the last 10 px.</summary>
+    private void ClipAtTenLines(Border content)
+    {
+        var fontSize = this.TryFindResource("ClaudeChat.FontSize", out var found) && found is double size ? size : 13;
+        var height = ErrorClipEm * fontSize + ContentPadding;
+        content.MaxHeight = height;
+        content.OpacityMask = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Absolute),
+            EndPoint = new RelativePoint(0, height, RelativeUnit.Absolute),
+            GradientStops =
+            {
+                new GradientStop(Colors.Black, 0),
+                new GradientStop(Colors.Black, (height - ErrorFadePx) / height),
+                new GradientStop(Colors.Transparent, 1),
+            },
+        };
     }
 
     private static void Toggle(ToolCallItem item, bool input)
