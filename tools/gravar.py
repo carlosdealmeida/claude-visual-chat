@@ -538,6 +538,17 @@ def conferir(espera, eventos):
     if nome == "pedido":
         return any(e.get("type") == "control_request" and
                    (e.get("request") or {}).get("tool_name") == arg for e in eventos)
+    if nome == "motivo":
+        return any(e.get("type") == "control_request" and
+                   (e.get("request") or {}).get("subtype") == "can_use_tool" and
+                   (e.get("request") or {}).get("decision_reason_type") == arg and
+                   bool((e.get("request") or {}).get("decision_reason"))
+                   for e in eventos)
+    if nome == "pedido_sem_sugestao":
+        return any(e.get("type") == "control_request" and
+                   (e.get("request") or {}).get("subtype") == "can_use_tool" and
+                   not (e.get("request") or {}).get("permission_suggestions")
+                   for e in eventos)
     if nome == "resultado_ok":
         return any(nomes.get(b.get("tool_use_id")) == arg and not b.get("is_error")
                    for _, b in _tool_results(eventos))

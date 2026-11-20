@@ -424,3 +424,26 @@ if __name__ == "__main__":
                 falhas += 1
                 print("FAIL", nome, repr(e))
     sys.exit(1 if falhas else 0)
+
+
+def _pedido(**extra):
+    req = {"subtype": "can_use_tool", "tool_name": "Write", "input": {}}
+    req.update(extra)
+    return {"type": "control_request", "request_id": "r", "request": req}
+
+
+def test_motivo_passa_com_o_tipo_e_o_texto():
+    ev = [_pedido(decision_reason_type="hook", decision_reason="Asked by the hook.")]
+    assert gravar.conferir("motivo:hook", ev)
+    assert not gravar.conferir("motivo:safetyCheck", ev)
+
+
+def test_motivo_falha_sem_texto():
+    assert not gravar.conferir("motivo:hook", [_pedido(decision_reason_type="hook")])
+    assert not gravar.conferir("motivo:hook", [_pedido(decision_reason_type="hook", decision_reason="")])
+
+
+def test_pedido_sem_sugestao():
+    assert gravar.conferir("pedido_sem_sugestao", [_pedido()])
+    assert gravar.conferir("pedido_sem_sugestao", [_pedido(permission_suggestions=[])])
+    assert not gravar.conferir("pedido_sem_sugestao", [_pedido(permission_suggestions=[{"type": "addRules"}])])

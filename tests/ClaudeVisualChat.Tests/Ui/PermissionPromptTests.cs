@@ -140,6 +140,24 @@ public class PermissionPromptTests
     }
 
     [AvaloniaFact]
+    public void A_recorded_request_without_suggestions_offers_no_option_2()
+    {
+        // the recording of a hook that asks: claude 2.1.329 sent that request without permission_suggestions
+        var lines = FixtureFiles.StreamLines("hook-ask");
+        var asks = System.Array.FindIndex(lines, l => l.Contains("\"can_use_tool\""));
+        Assert.True(asks >= 0);
+        Assert.DoesNotContain("permission_suggestions", lines[asks]);
+        var c = new ChatConversation();
+        for (var i = 0; i <= asks; i++) c.AppendLine(lines[i]);
+        var ui = Open(c);
+
+        Assert.Null(ui.Prompt.GetVisualDescendants().OfType<Button>().SingleOrDefault(b => b.Name == "AlwaysButton" && b.IsEffectivelyVisible));
+        Assert.Equal(new[] { "1", "2" }, ui.Numbers);
+        Assert.Equal(new[] { "Yes", "No" }, ui.Options.Select(b => b.GetVisualDescendants().OfType<TextBlock>().First(t => !t.Classes.Contains("ClaudeChatOptionNumber")).Text).ToArray());
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void Option_two_exists_only_with_suggestions()
     {
         var c = new ChatConversation();
