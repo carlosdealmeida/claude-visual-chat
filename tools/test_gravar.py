@@ -413,19 +413,6 @@ def test_resposta_allow_always_leva_as_sugestoes():
                                                  "updatedPermissions": sug}
 
 
-if __name__ == "__main__":
-    falhas = 0
-    for nome, fn in sorted(globals().items()):
-        if nome.startswith("test_") and callable(fn):
-            try:
-                fn()
-                print("ok  ", nome)
-            except Exception as e:  # noqa: BLE001
-                falhas += 1
-                print("FAIL", nome, repr(e))
-    sys.exit(1 if falhas else 0)
-
-
 def _pedido(**extra):
     req = {"subtype": "can_use_tool", "tool_name": "Write", "input": {}}
     req.update(extra)
@@ -447,3 +434,16 @@ def test_pedido_sem_sugestao():
     assert gravar.conferir("pedido_sem_sugestao", [_pedido()])
     assert gravar.conferir("pedido_sem_sugestao", [_pedido(permission_suggestions=[])])
     assert not gravar.conferir("pedido_sem_sugestao", [_pedido(permission_suggestions=[{"type": "addRules"}])])
+
+
+if __name__ == "__main__":
+    falhas = 0
+    for nome, fn in sorted(globals().items()):
+        if nome.startswith("test_") and callable(fn):
+            try:
+                fn()
+                print("ok  ", nome)
+            except Exception as e:  # noqa: BLE001
+                falhas += 1
+                print("FAIL", nome, repr(e))
+    sys.exit(1 if falhas else 0)
