@@ -2949,8 +2949,8 @@ public class ChatViewTests
     private static Border? LiveBox(Visual root, ToolCallItem tool) =>
         ViewOf(root, tool).GetVisualDescendants().OfType<Border>().SingleOrDefault(b => b.Classes.Contains("ClaudeChatLiveOutput"));
 
-    private static ToggleButton LiveHeader(Border box) =>
-        box.GetVisualDescendants().OfType<ToggleButton>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputHeader"));
+    private static TextBlock LiveLabel(Border box) =>
+        box.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatToolLabel"));
 
     private static Border LiveFrame(Border box) =>
         box.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputFrame"));
@@ -2964,7 +2964,7 @@ public class ChatViewTests
     private static double TopIn(Visual child, Visual ancestor) => child.TranslatePoint(default, ancestor)!.Value.Y;
 
     [AvaloniaFact]
-    public void The_live_output_box_shows_under_a_running_command_once_there_is_text()
+    public void Live_output_is_an_out_row_under_the_command_card()
     {
         var host = new LiveHost();
         var (view, window) = Open(host.C);
@@ -2974,48 +2974,75 @@ public class ChatViewTests
         host.Prints("line 1\nline 2");
         var box = LiveBox(view, host.Tool)!;
         Assert.NotNull(box);
-        var header = LiveHeader(box);
-        var chevron = header.GetVisualDescendants().OfType<Path>().Single();
-        var label = header.GetVisualDescendants().OfType<TextBlock>().Single();
+        // a second tool body under the command's, with one row labelled OUT and nothing that folds
+        Assert.Contains("ClaudeChatToolBody", box.Classes);
+        Assert.Empty(box.GetVisualDescendants().OfType<ToggleButton>());
+        var bodies = ViewOf(view, host.Tool).GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ClaudeChatToolBody")).ToList();
+        Assert.Equal(2, bodies.Count);
+        var card = bodies[0];
+        Assert.Same(box, bodies[1]);
+        Assert.Single(box.GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("ClaudeChatToolRow"));
+        var label = LiveLabel(box);
         var frame = LiveFrame(box);
         var text = LiveText(box);
-        Assert.Equal("Output", label.Text);
+        Assert.Equal("OUT", label.Text);
         Assert.Equal("line 1\nline 2", text.Text);
 
-        // under the command's card, as wide as it, 8 px under it
-        var card = ViewOf(view, host.Tool).GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatToolBody"));
+        // under the card, as wide as it, 8 px under it; a 0.5 px border of the input's, the tool's background, 5 px corners
         Assert.True(TopIn(box, view) >= card.TranslatePoint(new Point(0, card.Bounds.Height), view)!.Value.Y - 0.5, "under the card");
         Assert.Equal(card.Bounds.Width, box.Bounds.Width, 1);
         Assert.Equal(new Thickness(0, 0, 0, 8), box.Margin);
-        // the header 12 px from the top: a 16 px arrow in the secondary color, turned while open, 2 px, "Output" in the primary color
-        Assert.Equal(12, TopIn(header, box), 1);
-        Assert.Equal(new Size(16, 16), chevron.Bounds.Size);
-        Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), chevron.Stroke);
-        Assert.True(header.IsChecked);
-        Assert.True(chevron.RenderTransform!.Value.M12 > 0.5, "turned 90°");
-        Assert.Equal(2, label.TranslatePoint(default, header)!.Value.X - chevron.TranslatePoint(new Point(16, 0), header)!.Value.X, 1);
-        Assert.Same(Resource(view, "ClaudeChat.Foreground"), label.Foreground);
-        // the text 8 px under the header, in the editor's font at .85, wrapping, in a 0.5 px frame of the input's border
-        Assert.Equal(8, TopIn(frame, box) - (TopIn(header, box) + header.Bounds.Height), 1);
+        Assert.Equal(new Thickness(0.5), box.BorderThickness);
+        Assert.Same(Resource(view, "ClaudeChat.InputBorder"), box.BorderBrush);
+        Assert.Same(Resource(view, "ClaudeChat.ToolBackground"), box.Background);
+        Assert.Equal(new CornerRadius(5), box.CornerRadius);
+        // the label: secondary color at half opacity, the editor's font at .85, 4,4,8,4 inside
+        Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), label.Foreground);
+        Assert.Equal(0.5, label.Opacity, 2);
+        Assert.Equal(Resource(view, "ClaudeChat.MonoFontFamily"), label.FontFamily);
+        Assert.Equal(11.05, label.FontSize, 2);
+        Assert.Equal(new Thickness(4, 4, 8, 4), label.Margin);
+        // the text: the editor's font at .85, wrapping, on the code background, 240 px at most, scrolling down
         Assert.Equal(Resource(view, "ClaudeChat.MonoFontFamily"), text.FontFamily);
         Assert.Equal(11.05, text.FontSize, 2);
         Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
-        Assert.Equal(new Thickness(0.5), frame.BorderThickness);
-        Assert.Same(Resource(view, "ClaudeChat.InputBorder"), frame.BorderBrush);
-        Assert.Same(Resource(view, "ClaudeChat.ToolBackground"), frame.Background);
-        Assert.Equal(new CornerRadius(5), frame.CornerRadius);
-        Assert.Equal(new Thickness(8), frame.Padding);
+        Assert.Same(Resource(view, "ClaudeChat.CodeBackground"), frame.Background);
         Assert.Equal(240, frame.MaxHeight);
         var scroller = frame.GetVisualDescendants().OfType<ScrollViewer>().Single();
         Assert.Equal(ScrollBarVisibility.Auto, scroller.VerticalScrollBarVisibility);
         Assert.Equal(ScrollBarVisibility.Disabled, scroller.HorizontalScrollBarVisibility);
         Assert.Equal("Command output", AutomationProperties.GetName(text));
+        Assert.True(text.Focusable, "takes the focus");
         Assert.Null(LiveEnd(box));                              // the whole output: no line about its end
 
         // a long word breaks inside the box instead of running out of it
         host.Prints(new string('x', 2000));
         Assert.True(text.Bounds.Width <= frame.Bounds.Width, text.Bounds.ToString());
         Assert.True(text.Bounds.Height > 3 * 11.05, "several lines");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Live_output_text_scrolls_at_240_and_keeps_to_the_end()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints(string.Join("\n", Enumerable.Range(1, 80).Select(i => "line " + i)));
+        var frame = LiveFrame(LiveBox(view, host.Tool)!);
+        var scroller = frame.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        Assert.Equal(240, frame.Bounds.Height, 1);
+        Assert.True(scroller.Extent.Height > scroller.Viewport.Height, "it scrolls");
+        Assert.True(UiHelpers.AtEnd(scroller), "at the end from the start");
+
+        scroller.Offset = new Vector(0, 40);                    // up to read: it stays there
+        UiHelpers.Pump();
+        host.Prints(string.Join("\n", Enumerable.Range(1, 100).Select(i => "line " + i)));
+        Assert.Equal(40, scroller.Offset.Y, 1);
+
+        scroller.Offset = new Vector(0, scroller.Extent.Height - scroller.Viewport.Height - 3); // within 4 px of the end: follows again
+        UiHelpers.Pump();
+        host.Prints(string.Join("\n", Enumerable.Range(1, 120).Select(i => "line " + i)));
+        Assert.True(UiHelpers.AtEnd(scroller), "follows again");
         window.Close();
     }
 
@@ -3069,37 +3096,6 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
-    public void The_header_folds_and_unfolds_the_text()
-    {
-        var host = new LiveHost();
-        var (view, window) = Open(host.C);
-        host.Prints("ne 0\nline 1", 9_000, truncated: true);
-        var box = LiveBox(view, host.Tool)!;
-        var header = LiveHeader(box);
-        var chevron = header.GetVisualDescendants().OfType<Path>().Single();
-
-        UiHelpers.Click(window, header);
-        Assert.False(header.IsChecked);
-        Assert.False(LiveFrame(box).IsEffectivelyVisible);     // folded: only the header
-        Assert.Null(LiveEnd(box));
-        Assert.True(chevron.RenderTransform == null || Math.Abs(chevron.RenderTransform.Value.M12) < 0.01, "not turned");
-
-        host.Prints("ne 0\nline 1\nline 2", 9_000, truncated: true); // more output leaves it folded
-        Assert.Same(box, LiveBox(view, host.Tool));
-        Assert.False(LiveFrame(box).IsEffectivelyVisible);
-        view.Strings = ChatStrings.PortugueseBrazil;            // and so does a redraw
-        UiHelpers.Pump();
-        Assert.False(LiveFrame(LiveBox(view, host.Tool)!).IsEffectivelyVisible);
-
-        UiHelpers.Click(window, LiveHeader(LiveBox(view, host.Tool)!));
-        box = LiveBox(view, host.Tool)!;
-        Assert.True(LiveFrame(box).IsEffectivelyVisible);
-        Assert.Equal("line 1\nline 2", LiveText(box).Text);
-        Assert.NotNull(LiveEnd(box));
-        window.Close();
-    }
-
-    [AvaloniaFact]
     public void A_truncated_output_says_how_much_there_is()
     {
         var host = new LiveHost();
@@ -3109,14 +3105,26 @@ public class ChatViewTests
         var end = LiveEnd(box)!;
         Assert.NotNull(end);
         Assert.Equal("Showing the end of 1.5MB of output.", end.Text);
+
+        host.Prints("the whole of it", 15, truncated: false);  // the claude has it all again: no line
+        Assert.Null(LiveEnd(box));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Live_output_says_where_the_cut_end_starts()
+    {
+        var host = new LiveHost();
+        var (view, window) = Open(host.C);
+        host.Prints("the end of it", 2048, truncated: true);
+        var box = LiveBox(view, host.Tool)!;
+        var end = LiveEnd(box)!;
+        Assert.Equal("Showing the end of 2KB of output.", end.Text);
         // 4 px under the text, in the secondary color at .85
         var frame = LiveFrame(box);
         Assert.Equal(4, TopIn(end, box) - (TopIn(frame, box) + frame.Bounds.Height), 1);
         Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), end.Foreground);
         Assert.Equal(11.05, end.FontSize, 2);
-
-        host.Prints("the whole of it", 15, truncated: false);  // the claude has it all again: no line
-        Assert.Null(LiveEnd(box));
         window.Close();
     }
 
@@ -3230,30 +3238,25 @@ public class ChatViewTests
         view.Strings = ChatStrings.PortugueseBrazil;
         UiHelpers.Pump();
         var box = LiveBox(view, host.Tool)!;
-        Assert.Equal("Saída", LiveHeader(box).GetVisualDescendants().OfType<TextBlock>().Single().Text);
+        Assert.Equal("OUT", LiveLabel(box).Text);
         Assert.Equal("Mostrando o fim de 1.5MB de saída.", LiveEnd(box)!.Text);
         Assert.Equal("Saída do comando", AutomationProperties.GetName(LiveText(box)));
         window.Close();
     }
 
     [AvaloniaFact]
-    public void In_touch_the_header_is_44_pixels_tall()
+    public void In_touch_the_live_output_body_takes_the_styles_of_the_command_cards_body()
     {
         var host = new LiveHost();
         var view = UiHelpers.TouchView(host.C);
         var window = UiHelpers.ShowPhone(view);
         host.Prints("line 1\nline 2");
         var box = LiveBox(view, host.Tool)!;
-        var header = LiveHeader(box);
-        Assert.Equal(44, header.Bounds.Height, 1);
-        // the box takes the frame and the corners of the call's block
-        var frame = LiveFrame(box);
-        Assert.Same(Resource(view, "ClaudeChat.Border"), frame.BorderBrush);
-        Assert.Equal(new Thickness(1), frame.BorderThickness);
-        Assert.Equal(new CornerRadius(12), frame.CornerRadius);
-
-        UiHelpers.Click(window, header);                        // a tap folds it
-        Assert.False(LiveFrame(box).IsEffectivelyVisible);
+        var card = ViewOf(view, host.Tool).GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatToolBody"));
+        Assert.NotSame(card, box);
+        Assert.Equal(card.CornerRadius, box.CornerRadius);
+        Assert.Same(card.BorderBrush, box.BorderBrush);
+        Assert.Same(card.Background, box.Background);
         window.Close();
     }
 

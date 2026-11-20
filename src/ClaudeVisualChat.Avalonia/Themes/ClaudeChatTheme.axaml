@@ -1362,27 +1362,17 @@
     <Setter Property="ClipToBounds" Value="True" />
     <Setter Property="Margin" Value="0,8" />
   </Style>
-  <!-- what a running command has printed so far, under its card: as wide as it, 8 px under it; the header 12 px from the top (the
-       arrow, 2 px, "Output" in the primary color), the text 8 px under it in a 0.5 px frame of the input's border, on the tool's
-       background, 5 px corners, 8 px inside, scrolling past 240 px; the line about the end 4 px under it, .85em, muted -->
-  <Style Selector="Border.ClaudeChatLiveOutput">
-    <Setter Property="Padding" Value="0,12,0,0" />
+  <!-- what a running command has printed so far, under its card: a second box like the card's, 8 px under it, a 0.5 px border; its
+       one OUT row with the label's right padding at 8; the text on the code background, scrolling past 240 px; the line about the
+       end 4 px under it, .85em, muted -->
+  <Style Selector="Border.ClaudeChatToolBody.ClaudeChatLiveOutput">
+    <Setter Property="BorderThickness" Value="0.5" />
     <Setter Property="Margin" Value="0,0,0,8" />
   </Style>
-  <Style Selector="TextBlock.ClaudeChatLiveOutputHeaderText">
-    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Foreground}" />
-    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
-    <Setter Property="Margin" Value="2,0,0,0" />
-    <Setter Property="VerticalAlignment" Value="Center" />
-  </Style>
   <Style Selector="Border.ClaudeChatLiveOutputFrame">
-    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
-    <Setter Property="BorderThickness" Value="0.5" />
-    <Setter Property="CornerRadius" Value="5" />
-    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ToolBackground}" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.CodeBackground}" />
     <Setter Property="ClipToBounds" Value="True" />
-    <Setter Property="Padding" Value="8" />
-    <Setter Property="Margin" Value="0,8,0,0" />
+    <Setter Property="Padding" Value="4" />
     <Setter Property="MaxHeight" Value="240" />
   </Style>
   <!-- the editor's font at .85em, wrapping anywhere a line is too long (a long word too) -->
@@ -1398,6 +1388,7 @@
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.SmallLineHeight}" />
     <Setter Property="TextWrapping" Value="Wrap" />
     <Setter Property="Margin" Value="0,4,0,0" />
+    <Setter Property="Padding" Value="4,0,4,4" />
   </Style>
   <!-- a row of the box (IN, OUT), 4 px inside, a line between rows -->
   <Style Selector="Border.ClaudeChatToolRow">
@@ -1415,6 +1406,10 @@
     <Setter Property="Opacity" Value="0.5" />
     <Setter Property="Margin" Value="4,4,7,4" />
     <Setter Property="RenderTransform" Value="translate(0px,3px)" />
+  </Style>
+  <!-- the label of the live output's row: 8 px on the right -->
+  <Style Selector="Border.ClaudeChatLiveOutput TextBlock.ClaudeChatToolLabel">
+    <Setter Property="Margin" Value="4,4,8,4" />
   </Style>
   <!-- what goes in a row: the editor's font at .85em, without wrapping, 60 px at most with a fade -->
   <Style Selector="Border.ClaudeChatToolContent">

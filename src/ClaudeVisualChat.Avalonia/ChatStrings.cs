@@ -649,7 +649,7 @@ public sealed record ChatStrings
     /// <summary>Under a command that runs in the background.</summary>
     public string RunInBackground { get; init; } = "Run in background";
 
-    /// <summary>The header of the box under a running command with what it has printed so far; a click folds and unfolds the box.</summary>
+    /// <summary>Not used any more: the output of a running command is an OUT row under its card, with no header. Kept for hosts that read it.</summary>
     public string LiveOutputHeader { get; init; } = "Output";
 
     /// <summary>The name of that box's text for a screen reader.</summary>

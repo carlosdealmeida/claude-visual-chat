@@ -763,14 +763,10 @@ public class DetachTests
         var m = new Mounted(c);
         ToolCallView Row() => m.View.GetVisualDescendants().OfType<ToolCallView>().Single();
         Border? Box() => Row().GetVisualDescendants().OfType<Border>().SingleOrDefault(b => b.Classes.Contains("ClaudeChatLiveOutput"));
-        bool Open() => Box()!.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputFrame")).IsVisible;
         UiHelpers.Pump();
         Assert.Equal(1, asked);
         Assert.Equal("a\nb", tool.LiveOutput);
         Assert.True(Row().IsAskingForOutput);
-        var header = Box()!.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputHeader"));
-        UiHelpers.Click(m.Window, header);
-        Assert.False(Open());
 
         // out of the window nothing ticks and nothing is asked
         var row = Row();
@@ -780,23 +776,19 @@ public class DetachTests
         UiHelpers.Pump();
         Assert.Equal(1, asked);
 
-        // back: the list draws the row anew; it asks at once (the conversation lets one through a second after the last), and its box,
-        // whose fold is the view's, starts open with the text there is
+        // back: the list draws the row anew; it asks at once (the conversation lets one through a second after the last), and its box
+        // starts with the text there is
         m.In();
         Assert.True(Row().IsAskingForOutput);
         Assert.False(row.IsAskingForOutput);
         Assert.Equal(2, asked);
-        Assert.True(Open());
+        Assert.NotNull(Box());
         Assert.Equal("a\nb", Box()!.GetVisualDescendants().OfType<SelectableTextBlock>().Single().Text);
 
-        // a list that reuses a folded box's view for another running command: its box starts open
-        header = Box()!.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => b.Classes.Contains("ClaudeChatLiveOutputHeader"));
-        UiHelpers.Click(m.Window, header);
-        Assert.False(Open());
+        // a list that reuses the view for another running command: its box shows that command's text
         var other = new ToolCallItem { Name = "Bash", Summary = "ls", Status = ToolStatus.Running, LiveOutput = "x" };
         Row().DataContext = other;
         UiHelpers.Pump();
-        Assert.True(Open());
         Assert.Equal("x", Box()!.GetVisualDescendants().OfType<SelectableTextBlock>().Single().Text);
         m.Window.Close();
     }

@@ -14,9 +14,17 @@ All notable changes to this project are written here. The format follows
   and in Portuguese.
 - The usage dialog's cost line is now "Estimated cost" ("Custo estimado"), as in the extension
   (`ChatStrings.UsageTotalCost`, same property name).
+- What a running command has printed so far is now an OUT row in a second tool body under the command's card, as in the
+  extension 2.1.329, in place of the "Output" box with a header and an arrow that folded. The row has the label and the look
+  of the card's OUT rows; its text scrolls past 240 px and follows the end within 4 px of it, and the line about the cut end
+  ("Showing the end of ... of output.") sits under the text. `ChatStrings.LiveOutputHeader` stays, no longer used. The touch
+  layout takes the card body's styles.
 
 ### Fixed
 
+- A failed read of a running command's output no longer stops the asking at once: the first and the second failure leave the
+  next request to go out a second later, and the third stops it for that command, with the last text kept. A success in
+  between does not take a failure off the count. An answer with no `output` still stops it at once.
 - A Windows path in a reply keeps the backslash that comes before an underscore or an asterisk: `C:\src\__init__.py`,
   `C:\a\_b` and `\\srv\share\_x` show letter for letter. The Markdown engine takes only `\_`, `\*` and `\\` as escapes, so
   the backslash was dropped. This goes beyond the extension, whose webview follows CommonMark and gets this case wrong,

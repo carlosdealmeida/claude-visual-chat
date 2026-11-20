@@ -3942,7 +3942,7 @@ public class ChatConversationTests
     }
 
     [Fact]
-    public void An_error_answer_stops_the_asking_and_touches_nothing_else()
+    public void The_third_error_answer_stops_the_asking_and_touches_nothing_else()
     {
         var now = At(10, 0);
         var c = new ChatConversation { Clock = () => now };
@@ -3951,14 +3951,67 @@ public class ChatConversationTests
         c.InvokeCommand("context", ""); // the context panel is open, and has no data
         var mode = c.PermissionMode;
 
-        Assert.True(c.RequestTaskOutput(item));
-        AnswerError(c, "r1");
+        for (var i = 1; i <= 3; i++)
+        {
+            Assert.True(c.RequestTaskOutput(item));
+            AnswerError(c, "r" + i);
+            now = now.AddSeconds(1);
+        }
 
         Assert.Null(c.ContextError);
         Assert.Equal(mode, c.PermissionMode);
         Assert.Null(item.LiveOutput);
         now = now.AddSeconds(5);
         Assert.False(c.RequestTaskOutput(item));
+    }
+
+    [Fact]
+    public void Two_failed_reads_keep_asking_and_the_third_stops()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var item = RunningBash(c, "t1", "k1");
+        var asked = AskedFor(c);
+
+        Assert.True(c.RequestTaskOutput(item));
+        Answer(c, "r1", "line 1\n", 7, false);
+        for (var i = 2; i <= 3; i++)
+        {
+            now = now.AddSeconds(1);
+            Assert.True(c.RequestTaskOutput(item)); // after the first and the second failure the next request still goes out
+            AnswerError(c, "r" + i);
+        }
+        now = now.AddSeconds(1);
+        Assert.True(c.RequestTaskOutput(item));
+        AnswerError(c, "r4");
+        now = now.AddSeconds(5);
+        Assert.False(c.RequestTaskOutput(item)); // the third failure stops it
+        Assert.Equal("line 1\n", item.LiveOutput); // and the last text stays
+        Assert.Equal(4, asked.Count);
+    }
+
+    [Fact]
+    public void A_success_between_failures_does_not_reset_the_count()
+    {
+        var now = At(10, 0);
+        var c = new ChatConversation { Clock = () => now };
+        var item = RunningBash(c, "t1", "k1");
+        AskedFor(c);
+
+        Assert.True(c.RequestTaskOutput(item));
+        AnswerError(c, "r1");
+        now = now.AddSeconds(1);
+        Assert.True(c.RequestTaskOutput(item));
+        Answer(c, "r2", "ok\n", 3, false);
+        now = now.AddSeconds(1);
+        Assert.True(c.RequestTaskOutput(item));
+        AnswerError(c, "r3");
+        now = now.AddSeconds(1);
+        Assert.True(c.RequestTaskOutput(item));
+        AnswerError(c, "r4"); // the third failure, a success between
+        now = now.AddSeconds(5);
+        Assert.False(c.RequestTaskOutput(item));
+        Assert.Equal("ok\n", item.LiveOutput);
     }
 
     [Fact]

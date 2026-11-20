@@ -2496,8 +2496,11 @@ public sealed class ChatConversation : ChatObservableObject
 
         public string ToolUseId { get; }
 
-        /// <summary>The host sent no request for it, or the claude gave no output: it is not asked about again.</summary>
+        /// <summary>The host sent no request for it, the claude gave no output, or its reads failed three times: it is not asked about again.</summary>
         public bool HasNoOutput { get; set; }
+
+        /// <summary>How many of its reads were answered with an error; a success in between does not take one off.</summary>
+        public int FailedReads { get; set; }
 
         /// <summary>The request sent for it that has no answer yet; null when none.</summary>
         public string? PendingRequestId { get; set; }
@@ -2508,6 +2511,9 @@ public sealed class ChatConversation : ChatObservableObject
         /// <summary>It is no longer asked about: an answer about it is dropped.</summary>
         public bool IsForgotten { get; set; }
     }
+
+    /// <summary>The error answers to its output requests after which a command is not asked about again.</summary>
+    private const int MaxFailedReads = 3;
 
     /// <summary>Whether the host is asked for the output of the running commands (it listens to <see cref="TaskOutputRequested"/>).</summary>
     internal bool CanRequestTaskOutput => _taskOutputRequested != null;
@@ -2590,8 +2596,9 @@ public sealed class ChatConversation : ChatObservableObject
         e.IsBackgrounded == true || e.Status == "completed" || e.Status == "failed" || e.Status == "killed";
 
     /// <summary>
-    /// The answer to an output request, which only this takes (true): an error, or one without an <c>output</c> text, stops the asking
-    /// for its command; a text that is empty once prepared (<see cref="LiveOutputText.Prepare"/>) keeps the output there was; any other
+    /// The answer to an output request, which only this takes (true): one without an <c>output</c> text stops the asking for its
+    /// command at once, and so does the third error answer (the first and the second leave the next request to go out; a success
+    /// between them takes none off, and the last text stays); a text that is empty once prepared (<see cref="LiveOutputText.Prepare"/>) keeps the output there was; any other
     /// becomes the call's <see cref="ToolCallItem.LiveOutput"/>. An answer about a command forgotten since is dropped. False for an
     /// answer to any other request.
     /// </summary>
@@ -2603,7 +2610,12 @@ public sealed class ChatConversation : ChatObservableObject
         if (task.IsForgotten || !_tools.TryGetValue(task.ToolUseId, out var call) || call.Status != ToolStatus.Running) return true;
         var body = e.Response is { ValueKind: JsonValueKind.Object } response ? response : (JsonElement?)null;
         var output = body == null ? null : JsonHelpers.Str(body.Value, "output");
-        if (e.IsError || output == null)
+        if (e.IsError)
+        {
+            if (++task.FailedReads >= MaxFailedReads) task.HasNoOutput = true;
+            return true;
+        }
+        if (output == null)
         {
             task.HasNoOutput = true;
             return true;

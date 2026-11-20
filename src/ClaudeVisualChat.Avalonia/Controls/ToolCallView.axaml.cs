@@ -150,13 +150,9 @@ internal partial class ToolCallView : UserControl
     private readonly List<Visual> _containers = new List<Visual>();
     private Border? _liveBox; // the box with what the running command printed, while it is in the tree
     private ToolCallItem? _liveBoxFor; // the call the box was built for: a row given to another call builds its own
-    private ToggleButton? _liveHeader;
-    private TextBlock? _liveHeaderText;
-    private Border? _liveFrame;
     private SelectableTextBlock? _liveText;
     private TextBlock? _liveEnd;
     private bool _liveFollowsEnd = true; // the box's text was at its end (or the person brought it back there)
-    private ToolCallItem? _liveFoldedFor; // the call whose box the person folded: the view's own state, and a new command opens again
 
     public ToolCallView()
     {
@@ -1144,9 +1140,9 @@ internal partial class ToolCallView : UserControl
     }
 
     /// <summary>
-    /// The box under the card of a running command, while its <see cref="ToolCallItem.LiveOutput"/> has text: it is built when the text
-    /// first comes and kept while it changes (so the person's scrolling and the focus stay), and leaves the tree when the text goes or
-    /// the call stops running.
+    /// The body under the card of a running command, while its <see cref="ToolCallItem.LiveOutput"/> has text: it is built when the
+    /// text first comes and kept while it changes (so the person's scrolling and the focus stay), and leaves the tree when the text
+    /// goes or the call stops running.
     /// </summary>
     private void UpdateLiveOutput()
     {
@@ -1160,56 +1156,32 @@ internal partial class ToolCallView : UserControl
         if (_liveBox == null) BuildLiveBox();
 
         var strings = Strings;
-        var open = !ReferenceEquals(_liveFoldedFor, item);
-        _liveHeader!.IsChecked = open;
-        _liveHeaderText!.Text = strings.LiveOutputHeader;
-        _liveFrame!.IsVisible = open;
         _liveText!.Text = output;
         AutomationProperties.SetName(_liveText, strings.LiveOutputLabel);
         // the claude kept only the end: how much there is (an answer that did not say leaves the line out, rather than "0 bytes")
         var cut = item!.LiveOutputTruncated && item.LiveOutputBytes > 0;
         _liveEnd!.Text = cut ? strings.FormatLiveOutputEnd(item.LiveOutputBytes) : "";
-        _liveEnd.IsVisible = open && cut;
+        _liveEnd.IsVisible = cut;
     }
 
-    /// <summary>The box leaves the tree, with its scrolling: the next text builds a new one.</summary>
+    /// <summary>The body leaves the tree, with its scrolling: the next text builds a new one.</summary>
     private void DropLiveBox()
     {
         if (_liveBox == null) return;
         LiveOutputSlot.Children.Clear();
         _liveBox = null;
         _liveBoxFor = null;
-        _liveHeader = null;
-        _liveHeaderText = null;
-        _liveFrame = null;
         _liveText = null;
         _liveEnd = null;
     }
 
     /// <summary>
-    /// The box: 12 px from its top a header (a 16 px arrow, turned while open, and "Output"), then, 8 px under it, the text in a thin
-    /// frame that scrolls past 240 px, and the line about the end 4 px under that. The styles give the measures.
+    /// The body: a second tool body under the card, with one OUT row (built like the card's rows) whose text scrolls past 240 px, and
+    /// the line about the end under it. The styles give the measures.
     /// </summary>
     private void BuildLiveBox()
     {
-        var chevron = new Path();
-        chevron.Classes.Add("ClaudeChatChevron");
-        var label = new TextBlock();
-        label.Classes.Add("ClaudeChatLiveOutputHeaderText");
-        var header = new ToggleButton
-        {
-            Content = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { chevron, label } },
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
-        };
-        header.Classes.Add("ClaudeChatDisclosure");
-        header.Classes.Add("ClaudeChatLiveOutputHeader");
-        header.Click += (_, _) =>
-        {
-            _liveFoldedFor = header.IsChecked == true ? null : _item;
-            UpdateLiveOutput();
-        };
-
-        var text = new SelectableTextBlock();
+        var text = new SelectableTextBlock { Focusable = true };
         text.Classes.Add("ClaudeChatLiveOutputText");
         var scroller = new ScrollViewer
         {
@@ -1224,13 +1196,10 @@ internal partial class ToolCallView : UserControl
         var end = new TextBlock();
         end.Classes.Add("ClaudeChatLiveOutputEnd");
 
-        var box = new Border { Child = new StackPanel { Children = { header, frame, end } } };
+        var box = ToolBody(Rows(new List<(string, Control, bool)> { (Strings.ToolOutput, new StackPanel { Children = { frame, end } }, false) }));
         box.Classes.Add("ClaudeChatLiveOutput");
         _liveBox = box;
         _liveBoxFor = _item;
-        _liveHeader = header;
-        _liveHeaderText = label;
-        _liveFrame = frame;
         _liveText = text;
         _liveEnd = end;
         _liveFollowsEnd = true;
@@ -1238,7 +1207,7 @@ internal partial class ToolCallView : UserControl
     }
 
     /// <summary>
-    /// The text grew (or the box opened): it goes to its end while it followed it. The person scrolled: it follows again only once
+    /// The text grew: it goes to its end while it followed it. The person scrolled: it follows again only once
     /// they are within <see cref="FollowEndWithin"/> of the end.
     /// </summary>
     private void OnLiveScrollChanged(object? sender, ScrollChangedEventArgs e)
