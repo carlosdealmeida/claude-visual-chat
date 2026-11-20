@@ -1707,6 +1707,31 @@ public class PermissionPromptTests
         Assert.True(frameBottom <= ui.View.Bounds.Height + 0.5, $"the card ends at {frameBottom} in a view of {ui.View.Bounds.Height}");
     }
 
+    /// <summary>
+    /// Asserts that nothing the block <paramref name="name"/> draws reaches below the top of the answers: each visible part of it
+    /// ends above them, or is clipped by a part of the block that does. The block's own negative margin is by design (the ask
+    /// reason's 1 px lines sit over the edge of what is next to them, as the extension's margin of -1 px), and lands in the 8 px
+    /// over the first option, never on it.
+    /// </summary>
+    private static void NothingOverTheAnswers(Opened ui, string name)
+    {
+        var block = Named<Border>(ui, name);
+        var answers = Top(Named<StackPanel>(ui, "Answers"), ui) + System.Math.Max(0, -block.Margin.Bottom);
+        Assert.True(answers <= Top(ui.Options[0], ui));
+        foreach (var visual in new Visual[] { block }.Concat(block.GetVisualDescendants()))
+        {
+            if (!visual.IsEffectivelyVisible || visual.Bounds.Height <= 0) continue;
+            var bottom = visual.TranslatePoint(new Point(0, visual.Bounds.Height), ui.Prompt)!.Value.Y;
+            for (var clip = visual; clip != null; clip = clip.GetVisualParent())
+            {
+                if (clip.ClipToBounds) bottom = System.Math.Min(bottom, clip.TranslatePoint(new Point(0, clip.Bounds.Height), ui.Prompt)!.Value.Y);
+                if (ReferenceEquals(clip, block)) break;
+            }
+            Assert.True(bottom <= answers + 0.5,
+                $"{name}: a {visual.GetType().Name} {(visual as Control)?.Name} draws down to {bottom}, over the answers at {answers}");
+        }
+    }
+
     [AvaloniaFact]
     public void The_card_never_cuts_its_buttons_title_or_reply_field_in_a_low_view()
     {
@@ -1717,6 +1742,7 @@ public class PermissionPromptTests
         UiHelpers.Pump();
 
         CardWhole(ui);
+        NothingOverTheAnswers(ui, "HookReasonPanel");                               // squeezed past its minimum, it is clipped
         Assert.True(ui.Frame.Bounds.Height <= 0.7 * ui.View.Bounds.Height + 0.5, $"the card is {ui.Frame.Bounds.Height} high");
         // what gave way scrolls inside: the command in the block of the title (the hook's reason gave way first, to make room)
         var block = Named<ScrollViewer>(ui, "TitleScroller");
@@ -1749,6 +1775,7 @@ public class PermissionPromptTests
         c.DismissPermission("r2");
         UiHelpers.Pump();
         CardWhole(ui);
+        NothingOverTheAnswers(ui, "AskReasonPanel");
         ui.Window.Close();
     }
 

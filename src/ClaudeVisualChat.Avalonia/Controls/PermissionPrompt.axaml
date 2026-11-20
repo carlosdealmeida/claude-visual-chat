@@ -84,8 +84,9 @@
 
           <!-- why the claude asks (a safety check, a compound command, a claude.ai connector): the primary color at .99 of the chat's
                font, 6.75 of it and 4 px high at most (the code sets both), then it scrolls; a 1 px line above and below, clear, in
-               the widget's border where there is more to scroll to; the keyboard stops on it only while it scrolls -->
-          <Border Name="AskReasonPanel" Classes="ClaudeChatPermissionReason" controls:ShrinkPanel.GivesWay="2" IsVisible="False">
+               the widget's border where there is more to scroll to; the keyboard stops on it only while it scrolls. Squeezed in a low
+               view it is clipped, as the extension's (overflow: hidden), so nothing of it is drawn over the answers -->
+          <Border Name="AskReasonPanel" Classes="ClaudeChatPermissionReason" controls:ShrinkPanel.GivesWay="2" ClipToBounds="True" IsVisible="False">
             <Grid RowDefinitions="Auto,*,Auto">
               <Border Name="AskReasonTopLine" Classes="ClaudeChatPermissionReasonLine" />
               <ScrollViewer Name="AskReasonScroller" Grid.Row="1" Classes="ClaudeChatPermissionReasonScroller"
@@ -97,8 +98,8 @@
           </Border>
 
           <!-- what a PreToolUse hook said when it asked: a 2 px bar of the secondary color, "A hook says:", and its text, which
-               scrolls past 6.75 of its font and is no stop for Tab -->
-          <Border Name="HookReasonPanel" Classes="ClaudeChatPermissionHook" controls:ShrinkPanel.GivesWay="2" IsVisible="False">
+               scrolls past 6.75 of its font and is no stop for Tab; clipped when squeezed, as the one above -->
+          <Border Name="HookReasonPanel" Classes="ClaudeChatPermissionHook" controls:ShrinkPanel.GivesWay="2" ClipToBounds="True" IsVisible="False">
             <DockPanel>
               <TextBlock Name="HookReasonLabel" Classes="ClaudeChatPermissionHookLabel" DockPanel.Dock="Top" />
               <ScrollViewer Name="HookReasonScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
