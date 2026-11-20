@@ -23,8 +23,7 @@ public sealed class ChatConversation : ChatObservableObject
     private const string TaskNotificationPrefix = TaskNotificationText.Prefix;
     private const string AgentTaskType = "local_agent";
     private const string RejectedResultPrefix = "User rejected";
-    private const string RejectedTextPrefix = "The user doesn't want to proceed";
-    private const string RejectionReasonLead = "The user provided the following reason for the rejection: ";
+    private const string RejectedTextPrefix = ToolErrorText.RefusalPrefix;
     private const string DefaultModelValue = "default";
     private const string ExitPlanModeTool = "ExitPlanMode";
     private const string AutoMode = "auto";
@@ -1914,10 +1913,7 @@ public sealed class ChatConversation : ChatObservableObject
         var text = result.Text;
         if (text.StartsWith(RejectedTextPrefix, StringComparison.Ordinal))
         {
-            var lead = text.IndexOf(RejectionReasonLead, StringComparison.Ordinal);
-            if (lead < 0) return null;
-            var typed = text.Substring(lead + RejectionReasonLead.Length).Trim();
-            return typed.Length == 0 ? null : typed;
+            return ToolErrorText.TypedReasonOf(text);
         }
         if (result.NonExecutionKind != "permission-rule" && result.NonExecutionKind != "user-rejected") return null;
         return text.Trim().Length == 0 ? null : text;

@@ -9,7 +9,7 @@ namespace ClaudeVisualChat.Tests
         public static readonly string[] Scenarios =
         {
             "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model",
-            "image", "commands", "effort", "plan", "plan-auto", "plan-feedback", "queued", "hook-blocked", "queued-compact",
+            "image", "commands", "effort", "plan", "plan-auto", "plan-feedback", "queued", "hook-blocked", "queued-compact", "error-long", "error-wrapped", "denied-long",
         };
 
         public static string Directory =>

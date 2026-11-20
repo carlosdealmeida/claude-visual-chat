@@ -70,7 +70,7 @@ internal partial class ToolCallView : UserControl
     private const double ScrollBarRoom = 12;
 
     /// <summary>Most characters of the reason a user gave for refusing a call (what the claude gets back is cut there too).</summary>
-    private const int MaxReasonChars = 4000;
+    private const int MaxReasonChars = ToolErrorText.MaxChars;
 
     /// <summary>Most characters of a diff line or a to-do shown.</summary>
     internal const int MaxLineChars = 400;
@@ -608,6 +608,12 @@ internal partial class ToolCallView : UserControl
 
             var subtitle = Subtitle(item, strings);
             var result = item.FullResultText ?? item.ResultText;
+            // a failed or refused call shows its reason whole and cleaned (null: the claude's standard sentence, nothing to say)
+            var isError = failed || refused;
+            if (isError && result != null) result = ToolErrorText.Clean(name, result);
+            // what the user typed when they refused goes on a line of its own, unless it is too long for one or the claude wrapped it
+            var reasonLine = refused && !string.IsNullOrEmpty(item.RejectionReason) && item.RejectionReason!.Length <= MaxReasonChars
+                && (item.FullResultText ?? item.ResultText ?? "").IndexOf("<tool_use_error>", StringComparison.Ordinal) < 0;
             // Claude in Chrome: what worked says so in a line (a computer action also shows its screenshot, a read its text); an
             // error and a script show the generic body, with the input as JSON
             var chrome = ToolPresentation.ChromeAction(name);
@@ -637,7 +643,7 @@ internal partial class ToolCallView : UserControl
             if (opensOutput && item.IsOutputExpanded)
                 Body.Children.Add(ToolBody(TextRow(item, result!, input: false, strings, interactive: false)));
             // what the user typed when they refused: for a command, it stands for the output
-            if (refused && TellsReason(name) && !string.IsNullOrEmpty(item.RejectionReason))
+            if (reasonLine)
                 Body.Children.Add(ReasonLine(item.RejectionReason!, strings));
 
             // a diff or a list stands for the output, unless the call failed; a refused edit, write or command ran nothing, and
@@ -649,7 +655,7 @@ internal partial class ToolCallView : UserControl
             // a skill's row has no body at all: neither its arguments nor what it answered
             // an artifact's line and a notebook's box say it all, with no IN or OUT
             var showOutput = name != PlanTool && name != SkillTool && !IsAgentTool(name) && !chromeDone && artifact == null && name != NotebookTool
-                && (failed || (!hasDiff && !hasTodos && !quiet && !(refused && TellsReason(name))));
+                && (failed || (refused && !reasonLine) || (!hasDiff && !hasTodos && !quiet && !reasonLine));
             var output = showOutput && !string.IsNullOrEmpty(result);
 
             // the box of an edit or a write goes in a panel under 500 px, like the extension's; the phone keeps it
@@ -677,7 +683,7 @@ internal partial class ToolCallView : UserControl
             // a Chrome call that failed, or ran a script: the input as JSON, then what came back
             if (chrome != null && (failed || chrome == "javascript_tool") && InputJson(item.Input) is { Length: > 0 } json)
                 rows.Add((strings.ToolInput, TextRow(item, json, input: true, strings), false));
-            if (output) rows.Add((strings.ToolOutput, TextRow(item, result!, input: false, strings), false));
+            if (output) rows.Add((strings.ToolOutput, TextRow(item, result!, input: false, strings, error: isError), false));
             else if (chromeOut != null) rows.Add((strings.ToolOutput, TextRow(item, chromeOut, input: false, strings), false));
             if (rows.Count > 0) Body.Children.Add(ToolBody(Rows(rows)));
             if (IsCommand(name) && RunsInBackground(item.Input))
@@ -944,17 +950,21 @@ internal partial class ToolCallView : UserControl
     /// <paramref name="interactive"/> is false: a Glob's output, opened and cut from its line); the state is in the item, because
     /// the list recycles its rows.
     /// </summary>
-    private Border TextRow(ToolCallItem item, string text, bool input, ChatStrings strings, bool interactive = true)
+    private Border TextRow(ToolCallItem item, string text, bool input, ChatStrings strings, bool interactive = true, bool error = false)
     {
         var expandable = IsExpandable(text);
         var whole = expandable && (input ? item.IsInputExpanded : item.IsOutputExpanded);
 
         TextBlock block = input ? new TextBlock() : new SelectableTextBlock();
-        block.Text = Shown(text, whole);
-        block.TextWrapping = TextWrapping.NoWrap;
+        block.Text = error ? text : Shown(text, whole); // an error is short already (cut at 2000): the frame cuts it at ten lines
+        block.TextWrapping = error ? TextWrapping.Wrap : TextWrapping.NoWrap;
         block.Classes.Add("ClaudeChatToolText");
         Control shown = block;
-        if (!input)
+        if (error)
+        {
+            block.Classes.Add("ClaudeChatToolError");
+        }
+        else if (!input)
         {
             block.Classes.Add("ClaudeChatOutput");
             // the bar is drawn over the text: a line wider than the row gets room under it, so the bar does not cover the click
@@ -975,6 +985,11 @@ internal partial class ToolCallView : UserControl
         var content = new Border { Child = new StackPanel { Children = { shown } } };
         content.Classes.Add("ClaudeChatToolContent");
         if (whole) content.Classes.Add("whole");
+        if (error)
+        {
+            content.Classes.Add("error");
+            if (expandable && !whole) content.Classes.Add("clipped");
+        }
         if (!expandable || !interactive) return content; // with a line above, that opens and cuts it
 
         content.Classes.Add("expandable");
@@ -1331,9 +1346,6 @@ internal partial class ToolCallView : UserControl
         input.ValueKind == JsonValueKind.Object && input.TryGetProperty("content", out var content) && content.ValueKind != JsonValueKind.String
             ? content
             : (JsonElement?)null;
-
-    /// <summary>The tools whose refusal says what the user typed on a line of its own: Edit, Write and the commands.</summary>
-    private static bool TellsReason(string toolName) => toolName == "Edit" || toolName == "Write" || IsCommand(toolName);
 
     /// <summary>A command started with <c>run_in_background: true</c>.</summary>
     private static bool RunsInBackground(JsonElement input) =>

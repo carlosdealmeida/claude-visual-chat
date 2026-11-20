@@ -1428,6 +1428,22 @@
     <Setter Property="MaxHeight" Value="Infinity" />
     <Setter Property="OpacityMask" Value="{x:Null}" />
   </Style>
+  <!-- an error: the text wraps and shows whole; a long one stops at ten lines of its font (10 x 11.05 + 4 + 4 of padding) with the last
+       10 px faded, and opens in place -->
+  <Style Selector="Border.ClaudeChatToolContent.error">
+    <Setter Property="MaxHeight" Value="Infinity" />
+    <Setter Property="OpacityMask" Value="{x:Null}" />
+  </Style>
+  <Style Selector="Border.ClaudeChatToolContent.error.clipped">
+    <Setter Property="MaxHeight" Value="118.5" />
+    <Setter Property="OpacityMask">
+      <LinearGradientBrush StartPoint="0,0" EndPoint="0,118.5">
+        <GradientStop Offset="0" Color="Black" />
+        <GradientStop Offset="0.9156" Color="Black" />
+        <GradientStop Offset="1" Color="Transparent" />
+      </LinearGradientBrush>
+    </Setter>
+  </Style>
   <!-- a long text takes clicks and the keyboard (the cursor tells it; nothing else shows on the content); the keyboard's focus
        is a thin line inside, which takes no room -->
   <Style Selector="Border.ClaudeChatToolContent.expandable:focus-visible">

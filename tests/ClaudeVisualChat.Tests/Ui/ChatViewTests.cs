@@ -781,7 +781,7 @@ public class ChatViewTests
         var error = "error: " + string.Join(" ", Enumerable.Range(1, 80).Select(i => "word" + i));
         var c = new ChatConversation();
         c.Apply(new AssistantBlock("m1", null, new ToolUseBlock("t1", "Bash", J("{\"command\":\"" + new string('x', 300) + "\"}"))));
-        c.Apply(new UserBlock(null, new ToolResultBlock("t1", error, true), null, false, false));
+        c.Apply(new UserBlock(null, new ToolResultBlock("t1", error, false), null, false, false));
         var (view, window) = Open(c);
         var tool = c.Items.OfType<ToolCallItem>().Single();
 
@@ -1086,12 +1086,117 @@ public class ChatViewTests
 
         var contents = Contents(view, tool);
         Assert.DoesNotContain(contents[0].GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("ClaudeChatToolResult")); // the command (IN) has none
-        var result = Assert.Single(contents[1].GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("ClaudeChatToolResult"));
-        Assert.Same(Resource(view, "ClaudeChat.CodeBlockBackground"), result.Background);
-        var text = result.GetVisualDescendants().OfType<SelectableTextBlock>().Single();
-        Assert.Equal(TextWrapping.NoWrap, text.TextWrapping);
+        Assert.DoesNotContain(contents[1].GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("ClaudeChatToolResult")); // the error has none either
+        var text = contents[1].GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
         Assert.NotSame(Resource(view, "ClaudeChat.Error"), text.Foreground);
         Assert.Equal(ToolStatus.Failed, tool.Status); // the red dot says it failed, not the text
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_short_error_wraps_whole_and_takes_no_focus()
+    {
+        var (c, tool) = Answered("Exit code 2\nthe file could not be parsed", error: true);
+        var (view, window) = Open(c);
+
+        var content = Contents(view, tool)[1];
+        Assert.False(content.Focusable);
+        Assert.Null(content.Cursor);
+        Assert.DoesNotContain("expandable", content.Classes);
+        Assert.Equal(double.PositiveInfinity, content.MaxHeight);
+        Assert.Null(content.OpacityMask);
+        Assert.Equal("Exit code 2\nthe file could not be parsed", ResultOf(view, tool));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_long_error_stops_at_ten_lines_fades_and_opens_in_place()
+    {
+        var c = new ChatConversation();
+        c.LoadTranscript(FixtureFiles.TranscriptLines("error-long"));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        Assert.Equal(ToolStatus.Failed, tool.Status);
+        var (view, window) = Open(c);
+
+        var content = Contents(view, tool)[1];
+        var text = content.GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
+        Assert.Contains("error line 20", text.Text); // the whole text up to the cap is there; the frame cuts it at ten lines
+        Assert.EndsWith("…", text.Text);
+        Assert.True(content.Focusable);
+        Assert.NotNull(content.Cursor);
+        Assert.NotNull(content.OpacityMask);
+        Assert.Equal(10 * text.FontSize + 8, content.MaxHeight, 3);
+        Assert.True(content.Bounds.Height <= content.MaxHeight + 0.5);
+
+        ClickTop(window, content);
+        content = Contents(view, tool)[1];
+        Assert.True(tool.IsOutputExpanded);
+        Assert.Null(content.OpacityMask);
+        Assert.True(content.Bounds.Height > 10 * text.FontSize + 8);
+
+        content.Focus();
+        UiHelpers.Press(window, Key.Enter);
+        Assert.False(tool.IsOutputExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_wrapped_error_shows_its_text_without_the_wrapper()
+    {
+        var c = new ChatConversation();
+        c.LoadTranscript(FixtureFiles.TranscriptLines("error-wrapped"));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        var (view, window) = Open(c);
+
+        var texts = UiHelpers.Texts(ViewOf(view, tool));
+        Assert.Contains(texts, t => t.StartsWith("String to replace not found in file.", StringComparison.Ordinal));
+        Assert.DoesNotContain(texts, t => t.Contains("tool_use_error"));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_refusal_reason_shows_for_any_tool()
+    {
+        var c = Refusing("Read", new { file_path = "a.txt" }, StandardRefusal + " The user provided the following reason for the rejection: Not that file.");
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        Assert.Equal("Not that file.", tool.RejectionReason);
+        var (view, window) = Open(c);
+
+        var texts = UiHelpers.Texts(ViewOf(view, tool));
+        Assert.Contains("Reason: Not that file.", texts);
+        Assert.DoesNotContain("OUT", texts);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_reason_over_2000_goes_to_the_error_row()
+    {
+        var reason = new string('r', 2100);
+        var c = Refusing("Read", new { file_path = "a.txt" }, StandardRefusal + " The user provided the following reason for the rejection: " + reason);
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        var (view, window) = Open(c);
+
+        var texts = UiHelpers.Texts(ViewOf(view, tool));
+        Assert.DoesNotContain(texts, t => t.StartsWith("Reason:", StringComparison.Ordinal));
+        Assert.Contains("OUT", texts);
+        Assert.Equal(new string('r', 2000) + "…", ResultOf(view, tool));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_long_typed_reason_of_four_lines_shows_on_the_reason_line()
+    {
+        var c = new ChatConversation();
+        c.LoadTranscript(FixtureFiles.TranscriptLines("denied-long"));
+        var tool = c.Items.OfType<ToolCallItem>().Single();
+        Assert.Equal(ToolStatus.Rejected, tool.Status);
+        Assert.Equal(4, tool.RejectionReason!.Split('\n').Length);
+        var (view, window) = Open(c);
+
+        var line = ViewOf(view, tool).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Inlines?.Text?.StartsWith("Reason:", StringComparison.Ordinal) == true);
+        Assert.Contains("checksum step", line.Inlines!.Text!);
         window.Close();
     }
 
@@ -1167,7 +1272,7 @@ public class ChatViewTests
             Assert.Same(Resource(view, "ClaudeChat.DotFailed"), VisibleDot(view, tool).Fill);
             if (tool.Name == "Edit") Assert.Contains("Edit failed", texts);
             if (tool.Name == "Bash") Assert.DoesNotContain(texts, t => t.StartsWith("The user", StringComparison.Ordinal)); // only the dot
-            if (tool.Name == "Grep") Assert.Contains(texts, t => t.StartsWith("The user doesn't want to proceed", StringComparison.Ordinal)); // the raw text
+            if (tool.Name == "Grep") Assert.DoesNotContain(texts, t => t.StartsWith("The user", StringComparison.Ordinal)); // the standard sentence says nothing
             window.Close();
         }
     }

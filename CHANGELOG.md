@@ -22,6 +22,12 @@ All notable changes to this project are written here. The format follows
 
 ### Fixed
 
+- A failed or refused tool call shows its whole reason, cleaned. The correction note, the `<tool_use_error>` wrapper (when it
+  wraps the whole text and has no tag inside), the retry guidance, the refusal sentence before a typed reason, terminal codes
+  (commands only) and invisible characters go, and the text stops at 2000 characters. The text wraps at any point on no code
+  background; a long one stops at ten lines with a fade, takes focus, and opens in place with a click, Enter or Space. A refusal
+  that is only the claude's standard sentence shows no row. The reason line ("Reason:") now works for every tool, not only
+  Edit, Write and commands, up to 2000 characters (it was 4000); a longer reason goes to the error row.
 - A failed read of a running command's output no longer stops the asking at once: the first and the second failure leave the
   next request to go out a second later, and the third stops it for that command, with the last text kept. A success in
   between does not take a failure off the count. An answer with no `output` still stops it at once.
