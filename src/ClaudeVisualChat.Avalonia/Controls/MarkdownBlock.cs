@@ -239,7 +239,7 @@ public class MarkdownBlock : ContentControl
         tables = false;
         try
         {
-            var control = Engine.Transform(text);
+            var control = Engine.Transform(WindowsPathEscapes.Keep(text));
             tables = SettleTables(control);
             SettleInsights(control);
             if (activate != null) SettlePaths(control, activate);

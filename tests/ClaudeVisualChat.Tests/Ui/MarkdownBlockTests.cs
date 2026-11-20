@@ -70,6 +70,64 @@ public class MarkdownBlockTests
     private static string Shown(MarkdownBlock block) =>
         string.Join(" ", block.GetVisualDescendants().OfType<CTextBlock>().Select(t => t.Text));
 
+    private static string ShownOf(string markdown)
+    {
+        var block = new MarkdownBlock { Markdown = markdown };
+        var window = UiHelpers.Show(block);
+        var shown = Shown(block);
+        window.Close();
+        return shown;
+    }
+
+    [AvaloniaTheory]
+    [InlineData(@"C:\a\_b", @"C:\a\_b")]
+    [InlineData(@"C:\src\__init__.py", @"C:\src\__init__.py")]
+    public void A_windows_path_keeps_the_backslash_before_an_underscore(string markdown, string shown)
+    {
+        Assert.Equal(shown, ShownOf(markdown));
+    }
+
+    [AvaloniaFact]
+    public void A_windows_path_keeps_the_backslash_before_an_asterisk()
+    {
+        Assert.Equal(@"C:\x\*y*", ShownOf(@"C:\x\*y*"));
+    }
+
+    [AvaloniaFact]
+    public void A_path_in_bold_or_in_a_list_keeps_it_too()
+    {
+        Assert.Equal(@"C:\a\_b", ShownOf(@"**C:\a\_b**"));
+        Assert.EndsWith(@" C:\a\_b", ShownOf(@"- C:\a\_b")); // after the bullet
+    }
+
+    [AvaloniaFact]
+    public void A_server_path_keeps_it_too()
+    {
+        Assert.Equal(@"\\srv\share\_x", ShownOf(@"\\srv\share\_x"));
+    }
+
+    [AvaloniaFact]
+    public void An_escape_outside_a_path_still_escapes()
+    {
+        Assert.Equal("snake_case", ShownOf(@"snake\_case"));
+    }
+
+    [AvaloniaFact]
+    public void Code_keeps_every_backslash_as_before()
+    {
+        Assert.Equal(@"C:\a\_b", ShownOf(@"`C:\a\_b`"));
+    }
+
+    [AvaloniaTheory]
+    [InlineData("**「テスト」**です")]
+    [InlineData("**中文，**测试")]
+    [InlineData("前文**（括号）**后文")]
+    [InlineData("**강조**입니다")]
+    public void Bold_in_chinese_japanese_and_korean_next_to_punctuation(string markdown)
+    {
+        Assert.DoesNotContain("*", ShownOf(markdown));
+    }
+
     [AvaloniaFact]
     public void Renders_at_most_every_interval()
     {

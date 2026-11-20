@@ -15,6 +15,14 @@ All notable changes to this project are written here. The format follows
 - The usage dialog's cost line is now "Estimated cost" ("Custo estimado"), as in the extension
   (`ChatStrings.UsageTotalCost`, same property name).
 
+### Fixed
+
+- A Windows path in a reply keeps the backslash that comes before an underscore or an asterisk: `C:\src\__init__.py`,
+  `C:\a\_b` and `\\srv\share\_x` show letter for letter. The Markdown engine takes only `\_`, `\*` and `\\` as escapes, so
+  the backslash was dropped. This goes beyond the extension, whose webview follows CommonMark and gets this case wrong,
+  because Claude Code's own terminal fixed it in 2.1.326. Only a path (a drive letter and a backslash, or `\\` and a server
+  name) outside code is touched; `snake\_case` still shows `snake_case`, and code keeps every backslash as before.
+
 ## [0.9.1] - 2026-11-19
 
 ### Fixed
