@@ -548,11 +548,11 @@ public class UsagePanelTests
         UiHelpers.Pump();
         texts = UiHelpers.Texts(ui.Usage);
         Assert.DoesNotContain("Plan limits aren't available for this login method.", texts);
-        Assert.Equal(new[] { "Total cost", "$0.08", "Total duration (API)", "3.1 s", "Total duration (wall)", "4.2 s" }, texts.SkipWhile(t => t != "Total cost").ToArray());
+        Assert.Equal(new[] { "Estimated cost", "$0.08", "Total duration (API)", "3.1 s", "Total duration (wall)", "4.2 s" }, texts.SkipWhile(t => t != "Estimated cost").ToArray());
 
         ui.View.Strings = ChatStrings.PortugueseBrazil;
         UiHelpers.Pump();
-        Assert.Contains("Custo total", UiHelpers.Texts(ui.Usage));
+        Assert.Contains("Custo estimado", UiHelpers.Texts(ui.Usage));
         Assert.Contains("CONTA", UiHelpers.Texts(ui.Usage));
         ui.Window.Close();
     }

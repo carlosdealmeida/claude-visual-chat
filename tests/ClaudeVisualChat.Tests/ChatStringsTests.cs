@@ -70,7 +70,10 @@ public class ChatStringsTests
         Assert.Equal("Só há 1 resposta do assistente para copiar", Pt.FormatCopyOnly(1));
         Assert.Equal("Usage: /copy [N] where N is 1 (latest), 2, 3, … Got: {0}", En.FormatCopyUsage("{0}"));
         Assert.Equal("Uso: /copy [N], onde N é 1 (a mais recente), 2, 3, … Recebido: x", Pt.FormatCopyUsage("x"));
-        Assert.Equal("Copy Claude's last response to clipboard (or /copy N for the Nth-latest)", En.CommandCopyDescription);
+        Assert.Equal("Copy the last response to clipboard (/copy 2 for the one before)", En.CommandCopyDescription);
+        Assert.Equal("Copiar a última resposta (/copy 2 para a anterior)", Pt.CommandCopyDescription);
+        Assert.Equal("View and control this session from claude.ai/code", En.CommandRemoteControlDescription);
+        Assert.Equal("Ver e controlar esta sessão pelo claude.ai/code", Pt.CommandRemoteControlDescription);
         Assert.Equal("No assistant message to copy", En.CopyNothing);
         Assert.Equal("Could not copy to clipboard", En.CopyFailed);
         Assert.Equal("Copying once the reply finishes", En.CopyWaiting);
@@ -597,8 +600,8 @@ public class ChatStringsTests
     [Fact]
     public void The_chip_and_main_card_texts_of_0_6_0_in_both_languages()
     {
-        Assert.Equal("View and manage everything running in the background", En.CommandTasksDescription);
-        Assert.Equal("Ver e gerenciar tudo que está rodando em segundo plano", Pt.CommandTasksDescription);
+        Assert.Equal("View and manage this session's background work", En.CommandTasksDescription);
+        Assert.Equal("Ver e gerenciar o trabalho em segundo plano desta sessão", Pt.CommandTasksDescription);
         Assert.Equal("An agent is waiting for your permission · Click to open the agent map", En.AgentsChipWaitingTip);
         Assert.Equal("Agents are working · Click to open the agent map", En.AgentsChipRunningTip);
         Assert.Equal("An agent failed · Click to open the agent map", En.AgentsChipFailedTip);

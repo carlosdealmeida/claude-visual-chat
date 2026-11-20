@@ -305,10 +305,10 @@ public sealed record ChatStrings
         FocusAgentsCombined = "{0} somados",
         CommandContextDescription = "Mostrar o uso do contexto",
         CommandUsageDescription = "Mostrar os limites de uso do plano",
-        CommandRemoteControlDescription = "Ligar ou desligar o Remote Control",
+        CommandRemoteControlDescription = "Ver e controlar esta sessão pelo claude.ai/code",
         CommandChromeDescription = "Conectar ou desconectar o navegador",
-        CommandCopyDescription = "Copiar a última resposta do Claude (ou /copy N para a N-ésima mais recente)",
-        CommandTasksDescription = "Ver e gerenciar tudo que está rodando em segundo plano",
+        CommandCopyDescription = "Copiar a última resposta (/copy 2 para a anterior)",
+        CommandTasksDescription = "Ver e gerenciar o trabalho em segundo plano desta sessão",
         AgentsChipWaitingTip = "Um agente está aguardando sua permissão · Clique para abrir o mapa de agentes",
         AgentsChipRunningTip = "Os agentes estão trabalhando · Clique para abrir o mapa de agentes",
         AgentsChipFailedTip = "Um agente falhou · Clique para abrir o mapa de agentes",
@@ -429,7 +429,7 @@ public sealed record ChatStrings
         UsageBarWeeklyModel = "Semanal {0}",
         UsageResetsIn = "Renova em {0}",
         UsageResetsSoon = "Renova em breve",
-        UsageTotalCost = "Custo total",
+        UsageTotalCost = "Custo estimado",
         UsageTotalApiDuration = "Duração total (API)",
         UsageNoPlanLimits = "Os limites do plano não estão disponíveis para este tipo de login.",
         UsageTotalWallDuration = "Duração total (relógio)",
@@ -1382,16 +1382,16 @@ public sealed record ChatStrings
     public string CommandUsageDescription { get; init; } = "Show plan usage limits";
 
     /// <summary>What the Remote Control command does, in the menu.</summary>
-    public string CommandRemoteControlDescription { get; init; } = "Turn Remote Control on or off";
+    public string CommandRemoteControlDescription { get; init; } = "View and control this session from claude.ai/code";
 
     /// <summary>What the browser command does, in the menu.</summary>
     public string CommandChromeDescription { get; init; } = "Connect or disconnect the browser";
 
     /// <summary>What the copy command does, in the menu.</summary>
-    public string CommandCopyDescription { get; init; } = "Copy Claude's last response to clipboard (or /copy N for the Nth-latest)";
+    public string CommandCopyDescription { get; init; } = "Copy the last response to clipboard (/copy 2 for the one before)";
 
     /// <summary>What the tasks command (and its alias, <c>/bashes</c>) does, in the menu.</summary>
-    public string CommandTasksDescription { get; init; } = "View and manage everything running in the background";
+    public string CommandTasksDescription { get; init; } = "View and manage this session's background work";
 
     /// <summary>The "N agents" chip's tooltip while an agent at work waits for a permission.</summary>
     public string AgentsChipWaitingTip { get; init; } = "An agent is waiting for your permission · Click to open the agent map";
@@ -1818,7 +1818,7 @@ public sealed record ChatStrings
     public string UsageResetsSoon { get; init; } = "Resets soon";
 
     /// <summary>The session's cost, for a login without a plan.</summary>
-    public string UsageTotalCost { get; init; } = "Total cost";
+    public string UsageTotalCost { get; init; } = "Estimated cost";
 
     /// <summary>The time the session spent on the API, for a login without a plan.</summary>
     public string UsageTotalApiDuration { get; init; } = "Total duration (API)";

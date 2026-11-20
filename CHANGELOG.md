@@ -3,6 +3,18 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - Unreleased
+
+### Changed
+
+- The palette's descriptions of three commands now say what the extension says: `/copy` is "Copy the last response to
+  clipboard (/copy 2 for the one before)", `/tasks` is "View and manage this session's background work" and
+  `/remote-control` is "View and control this session from claude.ai/code". Only the texts of
+  `ChatStrings.CommandCopyDescription`, `CommandTasksDescription` and `CommandRemoteControlDescription` change, in English
+  and in Portuguese.
+- The usage dialog's cost line is now "Estimated cost" ("Custo estimado"), as in the extension
+  (`ChatStrings.UsageTotalCost`, same property name).
+
 ## [0.9.1] - 2026-11-19
 
 ### Fixed

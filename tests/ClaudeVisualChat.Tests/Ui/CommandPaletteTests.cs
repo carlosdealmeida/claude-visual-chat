@@ -122,11 +122,12 @@ public class CommandPaletteTests
         Assert.Equal(new[] { "Context", "Model", "Settings", "Slash Commands" }, Headers(ui));
         Assert.Equal(new[] { "Attach file…", "Bookmarks", "Account & usage…", "Focus view" }, ui.Labels.Where(l => !l.StartsWith("/", StringComparison.Ordinal)));
         Assert.Equal(new[] { "/bashes", "/chrome", "/compact", "/context", "/copy", "/hello", "/help", "/rc", "/remote-control", "/tasks", "/usage" }, ui.Commands);
-        Assert.Equal("View and manage everything running in the background", ToolTip.GetTip(Row(ui, "/tasks")));
-        Assert.Equal("View and manage everything running in the background", ToolTip.GetTip(Row(ui, "/bashes")));
+        Assert.Equal("View and manage this session's background work", ToolTip.GetTip(Row(ui, "/tasks")));
+        Assert.Equal("View and manage this session's background work", ToolTip.GetTip(Row(ui, "/bashes")));
         Assert.Equal("Show context usage", ToolTip.GetTip(Row(ui, "/context")));
+        Assert.Equal("View and control this session from claude.ai/code", ToolTip.GetTip(Row(ui, "/remote-control")));
         Assert.Equal("Say hello", ToolTip.GetTip(Row(ui, "/hello")));
-        Assert.Equal("Copy Claude's last response to clipboard (or /copy N for the Nth-latest)", ToolTip.GetTip(Row(ui, "/copy")));
+        Assert.Equal("Copy the last response to clipboard (/copy 2 for the one before)", ToolTip.GetTip(Row(ui, "/copy")));
         UiHelpers.Type(ui.Window, "hel");
         Assert.Equal("/hello", ui.Labels[0]);
         Assert.Equal(new[] { "/hello", "/help" }, ui.Labels);
@@ -205,10 +206,10 @@ public class CommandPaletteTests
 
         // the arrows move the mark, round the ends; Enter with no row marked sends what was typed
         ui.Slash("he");
-        Assert.Equal(new[] { "/hello", "/help", "/bashes", "/chrome", "/compact", "/copy", "/tasks" }, ui.Commands); // "the" in their descriptions, in alphabetical order
+        Assert.Equal(new[] { "/hello", "/help", "/bashes", "/chrome", "/compact", "/copy" }, ui.Commands); // "the" in their descriptions, in alphabetical order
         Assert.Equal("/hello", ui.Active);
         ui.Press(Key.Up);
-        Assert.Equal("/tasks", ui.Active);
+        Assert.Equal("/copy", ui.Active);
         ui.Press(Key.Down);
         Assert.Equal("/hello", ui.Active);
         ui.Press(Key.Down);
