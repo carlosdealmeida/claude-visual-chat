@@ -100,6 +100,15 @@ public class MarkdownBlockTests
         Assert.EndsWith(@" C:\a\_b", ShownOf(@"- C:\a\_b")); // after the bullet
     }
 
+    [AvaloniaTheory]
+    [InlineData(@"**C:\a\_b**:", @"C:\a\_b:")]
+    [InlineData(@"(**C:\a\_b**)", @"(C:\a\_b)")]
+    [InlineData(@"**C:\a\_b**, ok", @"C:\a\_b, ok")]
+    public void A_bold_path_followed_by_punctuation_has_no_raw_asterisk(string markdown, string shown)
+    {
+        Assert.Equal(shown, ShownOf(markdown));
+    }
+
     [AvaloniaFact]
     public void A_server_path_keeps_it_too()
     {

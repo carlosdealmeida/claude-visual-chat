@@ -39,6 +39,15 @@ public class WindowsPathEscapesTests
         Assert.Equal(@"**C:\a\\\_b**", WindowsPathEscapes.Keep(@"**C:\a\_b**"));
     }
 
+    [Theory]
+    [InlineData(@"**C:\a\_b**:", @"**C:\a\\\_b**:")]
+    [InlineData(@"(**C:\a\_b**)", @"(**C:\a\\\_b**)")]
+    [InlineData(@"**C:\a\_b**.", @"**C:\a\\\_b**.")]
+    public void Punctuation_after_the_closing_delimiters_leaves_them_alone(string markdown, string kept)
+    {
+        Assert.Equal(kept, WindowsPathEscapes.Keep(markdown));
+    }
+
     [Fact]
     public void Text_after_a_closed_fence_is_still_looked_at()
     {

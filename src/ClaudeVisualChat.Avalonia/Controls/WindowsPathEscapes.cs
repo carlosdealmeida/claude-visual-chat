@@ -5,7 +5,8 @@ namespace ClaudeVisualChat.Controls;
 
 /// <summary>
 /// The Markdown engine takes only <c>\_</c>, <c>\*</c> and <c>\\</c> as escapes, so in <c>C:\a\_b</c> the backslash before
-/// the underscore would vanish. <see cref="Keep"/> doubles that backslash inside a Windows path, outside code.
+/// the underscore would vanish. <see cref="Keep"/> doubles that backslash inside a Windows path, outside code, and
+/// escapes the path's own underscores and asterisks so that they are not read as emphasis.
 /// </summary>
 internal static class WindowsPathEscapes
 {
@@ -63,9 +64,12 @@ internal static class WindowsPathEscapes
         var last = run.Length;
         var opening = 0;
         while (path.Index - opening > 0 && slice[path.Index - opening - 1] is '*' or '_') opening++;
-        var tail = 0;
-        while (tail < opening && last - tail > 0 && run[last - tail - 1] is '*' or '_') tail++;
-        last -= tail;
+        if (opening > 0)
+        {
+            // the closer of that emphasis, wherever the run puts it: punctuation may follow it, as in a bold path then a colon
+            var closer = run.LastIndexOf(slice.Substring(path.Index - opening, opening), System.StringComparison.Ordinal);
+            if (closer > 0 && run[closer - 1] != (char)92) last = closer;
+        }
 
         var found = false;
         for (var i = 1; i < last; i++)
