@@ -935,7 +935,7 @@ O exemplo toca uma gravação numa janela do tamanho de um celular:
 - Fica fora desta versão, como a extensão 2.1.310 os tem: o LaTeX (a extensão o desenha com KaTeX, e esta versão não traz
   dependência nova); o cartão "Session paused" e o do modo automático cobrado, que precisam do `request_user_dialog`,
   recusado pela máquina do Kairós; a sugestão de tornar o modo automático o padrão (precisa do `auto_default_nudge`); as
-  sugestões de prompt (precisam do `--prompt-suggestions`, que a máquina não passa); o sufixo "Ultracode" do chip do
+  sugestões de prompt (precisam do `--prompt-suggestions`, que a máquina não passa); o Code Mode (o `claude -p` não o roda); o sufixo "Ultracode" do chip do
   modelo (precisa do `get_settings`, que a máquina corta); e um texto de "Por quê?" para cada
   categoria da troca de modelo (há um texto genérico). O mapa de agentes não tem a linha de cauda para um agente vivo fora
   de qualquer dobra: o mapa o lista. O CHANGELOG (em inglês) lista o que fica de fora em "Waiting".

@@ -924,7 +924,8 @@ The sample plays a recording in a phone-sized window: `dotnet run --project samp
 - Left out of this release, as the extension 2.1.310 has them: LaTeX (the extension draws it with KaTeX, and this release
   takes no new dependency); the "Session paused" card and the billed auto-mode card, which need the `request_user_dialog`
   that the Kairos machine refuses; the suggestion to make auto mode the default (it needs `auto_default_nudge`); prompt
-  suggestions (they need `--prompt-suggestions`, which the machine does not pass); the "Ultracode" suffix of the model chip
+  suggestions (they need `--prompt-suggestions`, which the machine does not pass); Code Mode (`claude -p` does not run it);
+  the "Ultracode" suffix of the model chip
   (it needs `get_settings`, which the machine cuts); and a "Why?" text for each category of the model switch (there is one
   generic text). The CHANGELOG lists these under "Waiting". The Agent map has no tail row for a live agent outside any
   fold: the map lists it.
