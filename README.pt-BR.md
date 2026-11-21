@@ -113,9 +113,9 @@ comando. Ponha em `e.RequestId` o id que você manda, dentro do tratador: a resp
 comando por esse id e vira o `ToolCallItem.LiveOutput` da chamada. A resposta tem de chegar ao `AppendLine` depois que o
 tratador retornou: uma resposta dada dentro do tratador (um dublê de teste, um relay no mesmo processo) chega antes de o
 pedido ser conhecido; assim ela se perde e esse comando não é mais perguntado. Um `claude` que não conhece o pedido
-responde com erro, e esse comando não é mais perguntado. Sem tratador nada é pedido. O evento vem de um timer, não de
-algo que a pessoa fez; por isso um tratador que pode falhar (um pipe para um `claude` que já saiu) trata a sua própria
-exceção.
+responde com erro; a terceira resposta de erro para a pergunta sobre esse comando (uma resposta sem `output` para na
+hora). Sem tratador nada é pedido. O evento vem de um timer, não de algo que a pessoa fez; por isso um tratador que pode
+falhar (um pipe para um `claude` que já saiu) trata a sua própria exceção.
 
 Um `/model x` ou `/effort x` digitado também muda o claude, mas o chip só acompanha depois do próximo `system/init` ou
 de uma resposta do `GetSettings`; por isso envie o `GetSettings` depois deles.
@@ -932,13 +932,14 @@ O exemplo toca uma gravação numa janela do tamanho de um celular:
 - Alguns botões da extensão não estão aqui, porque dependem de recursos do host: na ficha de um agente, a transcrição
   dele e o "Stop agent". O microfone existe no layout de toque, quando o seu app entrega à view o ditado dele (veja
   [Ditado](#ditado)); o layout desktop não tem.
-- Fica fora desta versão, como a extensão 2.1.310 os tem: o LaTeX (a extensão o desenha com KaTeX, e esta versão não traz
-  dependência nova); o cartão "Session paused" e o do modo automático cobrado, que precisam do `request_user_dialog`,
-  recusado pela máquina do Kairós; a sugestão de tornar o modo automático o padrão (precisa do `auto_default_nudge`); as
-  sugestões de prompt (precisam do `--prompt-suggestions`, que a máquina não passa); o Code Mode (o `claude -p` não o roda); o sufixo "Ultracode" do chip do
-  modelo (precisa do `get_settings`, que a máquina corta); e um texto de "Por quê?" para cada
-  categoria da troca de modelo (há um texto genérico). O mapa de agentes não tem a linha de cauda para um agente vivo fora
-  de qualquer dobra: o mapa o lista. O CHANGELOG (em inglês) lista o que fica de fora em "Waiting".
+- Fica fora desta versão, como a extensão 2.1.310 os tem: o LaTeX (a extensão o desenha com KaTeX, e esta versão não
+  traz dependência nova); o cartão "Session paused" e o do modo automático cobrado, que precisam do
+  `request_user_dialog`, recusado pela máquina do Kairós; a sugestão de tornar o modo automático o padrão (precisa do
+  `auto_default_nudge`); as sugestões de prompt (precisam do `--prompt-suggestions`, que a máquina não passa); o Code
+  Mode (o `claude -p` não o roda); o sufixo "Ultracode" do chip do modelo (precisa do `get_settings`, que a máquina
+  corta); e um texto de "Por quê?" para cada categoria da troca de modelo (há um texto genérico). O mapa de agentes não
+  tem a linha de cauda para um agente vivo fora de qualquer dobra: o mapa o lista. O CHANGELOG (em inglês) lista o que
+  fica de fora em "Waiting".
 
 ## App de exemplo
 

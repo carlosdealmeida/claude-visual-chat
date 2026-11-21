@@ -113,9 +113,9 @@ conversation.TaskOutputRequested += (_, e) =>
 command by that id, and becomes the call's `ToolCallItem.LiveOutput`. The answer must reach `AppendLine` after the
 handler has returned: an answer given inside the handler (a test double, an in-process relay) comes before the request
 is known, so it is lost and that command is not asked about again. A `claude` that does not know the request answers
-with an error, and that command is not asked about again. Without a handler nothing is asked. The event comes from a
-timer, not from something the person did, so a handler that may fail (a pipe to a `claude` that has exited) catches its
-own exception.
+with an error; the third error answer stops the asking for that command (an answer without `output` stops it at once).
+Without a handler nothing is asked. The event comes from a timer, not from something the person did, so a handler that
+may fail (a pipe to a `claude` that has exited) catches its own exception.
 
 On Windows, a `claude` installed with npm is `claude.cmd`: start it with `cmd /c claude ...`, or give its full path.
 
@@ -921,14 +921,13 @@ The sample plays a recording in a phone-sized window: `dotnet run --project samp
 - Some buttons of the extension are not here, because they need features of the host: on an agent's card, its
   transcript and "Stop agent". The microphone is there in the touch layout, once your app gives the view its speech to
   text (see [Dictation](#dictation)); the desktop layout has none.
-- Left out of this release, as the extension 2.1.310 has them: LaTeX (the extension draws it with KaTeX, and this release
-  takes no new dependency); the "Session paused" card and the billed auto-mode card, which need the `request_user_dialog`
-  that the Kairos machine refuses; the suggestion to make auto mode the default (it needs `auto_default_nudge`); prompt
-  suggestions (they need `--prompt-suggestions`, which the machine does not pass); Code Mode (`claude -p` does not run it);
-  the "Ultracode" suffix of the model chip
-  (it needs `get_settings`, which the machine cuts); and a "Why?" text for each category of the model switch (there is one
-  generic text). The CHANGELOG lists these under "Waiting". The Agent map has no tail row for a live agent outside any
-  fold: the map lists it.
+- Left out of this release, as the extension 2.1.310 has them: LaTeX (the extension draws it with KaTeX, and this
+  release takes no new dependency); the "Session paused" card and the billed auto-mode card, which need the
+  `request_user_dialog` that the Kairos machine refuses; the suggestion to make auto mode the default (it needs
+  `auto_default_nudge`); prompt suggestions (they need `--prompt-suggestions`, which the machine does not pass); Code
+  Mode (`claude -p` does not run it); the "Ultracode" suffix of the model chip (it needs `get_settings`, which the
+  machine cuts); and a "Why?" text for each category of the model switch (there is one generic text). The CHANGELOG
+  lists these under "Waiting". The Agent map has no tail row for a live agent outside any fold: the map lists it.
 
 ## Sample app
 

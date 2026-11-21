@@ -69,8 +69,9 @@ All notable changes to this project are written here. The format follows
 - The desktop permission card fits a low view without cutting its buttons, its title or the reply field, as the extension
   2.1.328 does. The card is 70 % of the view high at most (a detached window does the same sums with its own height), and
   its parts give way from the top down: the block of the title (the title, what the tool will do and its description) down
-  to 4.5 of its font, or to its title and 1.8 of its font more; with a reason, after it; then why the claude asks and what a
-  hook said (this one down to 3 of the chat's font). Inside the block, a command's or a skill's description gives way first,
+  to 4.5 of its font, or to its title and 1.8 of its font more (when the claude gives a reason for asking, this block gives
+  way before the reasons; when only a hook has spoken, the hook gives way before this block); then why the claude asks and
+  what a hook said (this one down to 3 of the chat's font). Inside the block, a command's or a skill's description gives way first,
   down to a line and a half, then the command, the diff or the input, down to 5.25 of its font; the block scrolls when even
   that is too high, with a line of the widget's border where there is more above or below, and then takes the keyboard (↑ and
   ↓ scroll it) with the accessible name `ChatStrings.PermissionRequestDetails` ("Details of the request"). The answers, the
@@ -93,6 +94,13 @@ All notable changes to this project are written here. The format follows
   the backslash was dropped. This goes beyond the extension, whose webview follows CommonMark and gets this case wrong,
   because Claude Code's own terminal fixed it in 2.1.326. Only a path (a drive letter and a backslash, or `\\` and a server
   name) outside code is touched; `snake\_case` still shows `snake_case`, and code keeps every backslash as before.
+
+### Waiting
+
+What stays out of 0.10.0, and why. Each item is waiting for something the component does not have:
+
+- **Code Mode.** `claude -p` refuses it ("for now it only works in the interactive terminal"), so the component cannot
+  start it.
 
 ## [0.9.1] - 2026-11-19
 
