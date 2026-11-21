@@ -29,6 +29,27 @@ namespace ClaudeVisualChat.Tests.Protocol
             Assert.Null(reported.Conflict);
         }
 
+        [Fact]
+        public void A_reply_with_only_commands_or_only_applied_reports_no_auth_conflict()
+        {
+            var parser = new StreamJsonParser();
+            var onlyCommands = parser.Parse("{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"r-1\",\"response\":{\"commands\":[]}}}");
+            Assert.Empty(onlyCommands.OfType<AuthConflictReported>());
+            Assert.Single(onlyCommands.OfType<CommandsAvailable>());
+
+            var onlyApplied = parser.Parse("{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"r-2\",\"response\":{\"applied\":{\"model\":\"m\"}}}}");
+            Assert.Empty(onlyApplied.OfType<AuthConflictReported>());
+        }
+
+        [Fact]
+        public void An_initialize_reply_with_commands_and_an_account_still_reports()
+        {
+            var events = new StreamJsonParser().Parse(
+                "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"i\",\"response\":{\"commands\":[],\"account\":{}}}}");
+
+            Assert.Null(Assert.Single(events.OfType<AuthConflictReported>()).Conflict);
+        }
+
         private static SettingsApplied Settings(string applied)
         {
             var events = new System.Collections.Generic.List<ClaudeEvent>();

@@ -109,6 +109,15 @@ public class MarkdownBlockTests
         Assert.Equal(shown, ShownOf(markdown));
     }
 
+    [AvaloniaTheory]
+    [InlineData(@"**Saved to C:\proj\_build\out.txt**", @"Saved to C:\proj\_build\out.txt")]
+    [InlineData(@"**Saved to C:\proj\_build\out.txt**.", @"Saved to C:\proj\_build\out.txt.")]
+    [InlineData(@"*see C:\a\_b*", @"see C:\a\_b")]
+    public void Emphasis_opened_before_a_path_and_closed_at_its_end_has_no_raw_markup(string markdown, string shown)
+    {
+        Assert.Equal(shown, ShownOf(markdown));
+    }
+
     [AvaloniaFact]
     public void A_server_path_keeps_it_too()
     {

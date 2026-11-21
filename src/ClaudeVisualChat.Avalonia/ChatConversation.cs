@@ -315,7 +315,7 @@ public sealed class ChatConversation : ChatObservableObject
     /// with it; the claude's answer comes back through <see cref="AppendLine"/> and becomes the call's <see cref="ToolCallItem.LiveOutput"/>.
     /// The answer must reach <see cref="AppendLine"/> after the handler has returned: the request is known only then, so an answer
     /// given inside the handler (a test double, an in-process relay) is taken for a line of no request, and the command is not asked
-    /// about again. An error answer (a claude that does not know the request) stops the asking for that command. Nothing is asked
+    /// about again. The third error answer (a claude that does not know the request) stops the asking for that command, and so does an answer without <c>output</c> at once. Nothing is asked
     /// while the host does not listen to this event. The event comes from the view's timer, not from something the person did, so a
     /// handler that may fail (a pipe to a claude that has exited) catches its own exception.
     /// </summary>
@@ -2248,7 +2248,6 @@ public sealed class ChatConversation : ChatObservableObject
 
     // ---- the queue ----
 
-    /// <summary>What the claude says of a message sent with its uuid: it takes held ones, or ran one at once.</summary>
     /// <summary>
     /// The notice of a message from another session that is held: the first hold says "Held" and the next of the same message "Still
     /// holding"; a release says so only for a message shown as held (or one that names no uuid); a drop says why.
@@ -2277,6 +2276,7 @@ public sealed class ChatConversation : ChatObservableObject
         }
     }
 
+    /// <summary>What the claude says of a message sent with its uuid: it takes held ones, or ran one at once.</summary>
     private void OnCommandLifecycle(CommandLifecycle e)
     {
         _claudeTellsLifecycle = true;

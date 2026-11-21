@@ -720,7 +720,7 @@ internal partial class PermissionPrompt : UserControl
 
     /// <summary>
     /// The parts that show: folded, only the title; open, the title and each part that has something to say. The block of the title
-    /// gives way after the reason when there is one, as the extension's (GivesWay 3), and before the reasons otherwise.
+    /// gives way (GivesWay 3) before the reasons when the claude gives a reason for asking, as the extension's does; with only a hook's reason the hook gives way (2) before the title block (1).
     /// </summary>
     private void UpdateParts()
     {

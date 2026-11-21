@@ -1448,7 +1448,8 @@
     <Setter Property="MaxHeight" Value="Infinity" />
     <Setter Property="OpacityMask" Value="{x:Null}" />
   </Style>
-  <!-- an error: the text wraps and shows whole; a long one stops at ten lines of its font (10 x 11.05 + 4 + 4 of padding) with the last
+  <!-- an error: the text wraps and shows whole; a long one stops at ten lines of the chat's font (the cap comes from ClaudeChat.FontSize in code,
+       ToolCallView.ClipAtTenLines, plus the padding) with the last
        10 px faded, and opens in place -->
   <Style Selector="Border.ClaudeChatToolContent.error">
     <Setter Property="MaxHeight" Value="Infinity" />

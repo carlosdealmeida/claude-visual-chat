@@ -27,7 +27,7 @@ namespace ClaudeVisualChat.Controls;
 /// that scrolls sideways); "Run in background" under a command started so; for a subagent, its items behind an arrow. The dot
 /// of a running call blinks only while the conversation works. Every text in the box is cut at 60 px with a fade; a long one
 /// (<see cref="ExpandableChars"/>, <see cref="ExpandableLines"/>) opens whole in place with a click, Enter or Space, and a
-/// huge one stops at <see cref="MaxExpandedChars"/>, so a huge result never slows the list. A refused command, edit or write
+/// huge one stops at <see cref="MaxExpandedChars"/>, so a huge result never slows the list. A refused tool call (any tool)
 /// says what the user typed on a line of its own. An edit reads its net change ("Added 2 lines", "Removed 1 line", "Modified"), a
 /// write its lines ("Write succeeded" for a content that is not a text); a click on the diff, Enter or Space opens the Diff View over
 /// the whole view. In a desktop panel narrower than <see cref="ClaudeChatView.NarrowWidth"/> the box of an edit or a write goes,
@@ -42,8 +42,8 @@ namespace ClaudeVisualChat.Controls;
 /// The command's row (IN) of a Bash or PowerShell call has a button at its top right, shown while the pointer is over the row (always
 /// in the touch layout), that copies the whole command through <see cref="ChatClipboard"/>; for 2 s after a copy its icon is a check.
 /// While such a command runs and the host listens to <see cref="ChatConversation.TaskOutputRequested"/>, the row asks for what it has
-/// printed when it comes on screen and then once a second while it is on screen; what comes back shows in a box under its card,
-/// "Output" with an arrow that folds it, the text scrolling at 240 px and following its end unless the person scrolled up, and a line
+/// printed when it comes on screen and then once a second while it is on screen; what comes back shows in a second box under
+/// its card with one OUT row, the text scrolling at 240 px and following its end unless the person scrolled up, and a line
 /// that says how much there is when the claude kept only its end. The box goes with the result, or when the call stops running.
 /// A Glob or a Grep that worked reads only a line under its name ("Found 3 files", "12 lines of output"), with no box; with output, a
 /// click, Enter or Space on the line opens the whole output under it. A Web Fetch that worked has only "Fetched from" and its url in the

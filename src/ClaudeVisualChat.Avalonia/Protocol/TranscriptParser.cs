@@ -295,7 +295,10 @@ namespace ClaudeVisualChat.Protocol
             if (JsonHelpers.Arr(body, "commands") is { } commands)
             {
                 events.Add(new CommandsAvailable(ReadCommands(commands)));
-                events.Add(new AuthConflictReported(ReadAuthConflict(JsonHelpers.Obj(body, "auth_conflict"))));
+                // only an initialize reply (commands with models or account) says whether a conflict exists; another reply that
+                // carries commands (reload_plugins) must not clear or raise it
+                if (body.TryGetProperty("models", out _) || body.TryGetProperty("account", out _))
+                    events.Add(new AuthConflictReported(ReadAuthConflict(JsonHelpers.Obj(body, "auth_conflict"))));
             }
             if (JsonHelpers.Arr(body, "models") is { } models)
                 events.Add(new ModelsAvailable(ReadModels(models)));

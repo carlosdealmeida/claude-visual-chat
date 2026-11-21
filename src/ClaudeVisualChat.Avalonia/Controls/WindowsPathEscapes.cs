@@ -53,6 +53,27 @@ internal static class WindowsPathEscapes
         return changed;
     }
 
+    // the start of the delimiter sequence that ends the run, ignoring punctuation after it; -1 when the run does not end so
+    private static int TrailingDelimiters(string run)
+    {
+        var end = run.Length;
+        while (end > 0 && run[end - 1] is '.' or ',' or ';' or ':' or '!' or '?' or ')' or ']' or '"' or '\'') end--;
+        if (end == 0 || run[end - 1] is not ('*' or '_')) return -1;
+        var begin = end - 1;
+        while (begin > 0 && run[begin - 1] == run[end - 1]) begin--;
+        return begin;
+    }
+
+    // how many times the sequence stands in the text, not counting one that is escaped
+    private static int CountOpeners(string text, string seq)
+    {
+        var count = 0;
+        for (var i = text.IndexOf(seq, System.StringComparison.Ordinal); i >= 0;
+             i = text.IndexOf(seq, i + seq.Length, System.StringComparison.Ordinal))
+            if (i == 0 || text[i - 1] != (char)92) count++;
+        return count;
+    }
+
     /// <summary>
     /// Null when the path has no backslash before an underscore or an asterisk. Otherwise the path with each of those
     /// backslashes doubled and each underscore and asterisk escaped, so the engine shows the path letter for letter. The
@@ -69,6 +90,20 @@ internal static class WindowsPathEscapes
             // the closer of that emphasis, wherever the run puts it: punctuation may follow it, as in a bold path then a colon
             var closer = run.LastIndexOf(slice.Substring(path.Index - opening, opening), System.StringComparison.Ordinal);
             if (closer > 0 && run[closer - 1] != (char)92) last = closer;
+        }
+        else
+        {
+            // emphasis opened earlier on the line and closed at the end of the run: **Saved to C:\_b**
+            var closing = TrailingDelimiters(run);
+            if (closing > 0 && run[closing - 1] != (char)92)
+            {
+                var ender = run[closing];
+                var seqEnd = closing;
+                while (seqEnd < run.Length && run[seqEnd] == ender) seqEnd++;
+                var seq = run.Substring(closing, seqEnd - closing);
+                var lineStart = slice.LastIndexOf((char)10, System.Math.Max(path.Index - 1, 0)) + 1;
+                if (path.Index > 0 && CountOpeners(slice.Substring(lineStart, path.Index - lineStart), seq) % 2 == 1) last = closing;
+            }
         }
 
         var found = false;

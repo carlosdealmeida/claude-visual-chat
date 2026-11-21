@@ -10,8 +10,8 @@
     <Border Name="Frame" Classes="ClaudeChatPermission">
       <Grid>
         <!-- the card's parts, from the top down. On the desktop the card is 70 % of the view high at most (the code sets it from the
-             view's height): where its parts come to more, the block of the title gives way first (after the reason, when there is
-             one), then the reasons; the answers, the field and "Esc to cancel" never. How far each gives way is the code's -->
+             view's height): where its parts come to more, the block of the title gives way first when the claude gives a reason for asking (before the reasons), but after the hook's reason
+             when that is the only one; the answers, the field and "Esc to cancel" never. How far each gives way is the code's -->
         <controls:ShrinkPanel Name="Parts">
           <!-- a plan's comments, over the title: "Comments (N)" and the list, which scrolls; each comment its passage, its words and a × -->
           <StackPanel Name="CommentsPanel" Classes="ClaudeChatPlanComments" IsVisible="False">

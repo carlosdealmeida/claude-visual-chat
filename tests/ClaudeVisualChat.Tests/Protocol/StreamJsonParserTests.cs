@@ -764,7 +764,6 @@ namespace ClaudeVisualChat.Tests.Protocol
                 "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}")));
             Assert.False(plain.IsSynthetic);
         }
-    
 
         [Fact]
         public void A_peer_message_hold_line_is_read()
@@ -785,5 +784,5 @@ namespace ClaudeVisualChat.Tests.Protocol
             // without a state it says nothing
             Assert.Empty(parser.Parse("{\"type\":\"system\",\"subtype\":\"peer_message_hold\",\"from\":\"sess-a\"}"));
         }
-}
+    }
 }
