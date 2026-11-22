@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -917,6 +918,85 @@ public class ChatConversationTests
 
         Assert.Equal(ToolPresentation.MaxKeptResultChars, item.FullResultText!.Length);
         Assert.True(item.FullResultText.IndexOf('\u001b') < 0); // (xunit's DoesNotContain(string) is culture-aware, and ESC is ignorable)
+    }
+
+    [Theory]
+    [InlineData("Bash")]
+    [InlineData("PowerShell")]
+    [InlineData("TaskOutput")]
+    public void A_commands_result_keeps_what_the_terminal_hid_as_symbols(string tool)
+    {
+        var c = new ChatConversation();
+        var item = StartTool(c, "t1", tool);
+
+        c.Apply(ToolResult("t1", "\u001b[32mgreen\u001b[0m \u001b[38;2;255;0;0mred\u001b[0m bell\u0007 z\u200Bw\r\n"));
+
+        Assert.Equal("green \u241B[38;2;255;0;0mred bell\u2407 z\\u{200B}w\n", item.FullResultText);
+    }
+
+    [Fact]
+    public void Another_tools_result_is_kept_as_it_came()
+    {
+        var c = new ChatConversation();
+        var item = StartTool(c, "t1", "Read");
+
+        c.Apply(ToolResult("t1", "\u001b[31mx"));
+
+        Assert.Equal("\u001b[31mx", item.FullResultText);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("x")]
+    [InlineData("xxx")]
+    [InlineData("xxxxxxx")]
+    public void The_cap_never_cuts_a_symbol(string before)
+    {
+        // each U+200B is 8 characters once shown (\u{200B}): the text before it moves the cap inside one, but for no text at all
+        var c = new ChatConversation();
+        var item = StartTool(c, "t1", "Bash");
+        var clock = Stopwatch.StartNew();
+
+        c.Apply(ToolResult("t1", before + new string('\u200B', 500_000)));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), clock.Elapsed.ToString());
+        var kept = item.FullResultText!;
+        Assert.True(kept.Length <= ToolPresentation.MaxKeptResultChars, kept.Length.ToString());
+        Assert.True(kept.Length > ToolPresentation.MaxKeptResultChars - 10, kept.Length.ToString());
+        Assert.EndsWith("}", kept);
+        Assert.StartsWith(before + "\\u{200B}", kept);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("x")]
+    public void The_cap_never_cuts_a_surrogate_pair(string before)
+    {
+        // an emoji is two UTF-16 units: one character before them puts the cap between the two of a pair
+        var c = new ChatConversation();
+        var item = StartTool(c, "t1", "Bash");
+        var emoji = string.Concat(Enumerable.Repeat("\U0001F600", 300_000));
+
+        c.Apply(ToolResult("t1", before + emoji));
+
+        var kept = item.FullResultText!;
+        Assert.True(kept.Length <= ToolPresentation.MaxKeptResultChars, kept.Length.ToString());
+        Assert.True(kept.Length >= ToolPresentation.MaxKeptResultChars - 1, kept.Length.ToString());
+        Assert.False(char.IsHighSurrogate(kept[kept.Length - 1]), "the kept text ends on half a character");
+        Assert.EndsWith("\U0001F600", kept);
+    }
+
+    [Fact]
+    public void A_result_full_of_escapes_is_treated_in_time()
+    {
+        var c = new ChatConversation();
+        var item = StartTool(c, "t1", "Bash");
+        var clock = Stopwatch.StartNew();
+
+        c.Apply(ToolResult("t1", new string('\u001b', 500_000)));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), clock.Elapsed.ToString());
+        Assert.Equal(new string('\u241B', ToolPresentation.MaxKeptResultChars), item.FullResultText);
     }
 
     [Fact]

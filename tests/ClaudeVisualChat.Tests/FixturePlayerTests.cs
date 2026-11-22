@@ -209,4 +209,49 @@ public class FixturePlayerTests
         Assert.Equal(Kinds(Direct(scenario)), Kinds(played));
         Assert.Empty(played.PendingPermissions);
     }
+
+    [Fact]
+    public void The_bash_ansi_recording_shows_no_raw_control_character()
+    {
+        var bash = Direct("bash-ansi").Items.OfType<ToolCallItem>().Single(t => t.Name == "Bash");
+        var kept = bash.FullResultText!;
+        var raw = ToolResultOf(FixtureFiles.StreamLines("bash-ansi"), bash.ToolUseId);
+        // what the recording printed, but for the plain colors: each ESC, BEL and U+200B left in it shows as a symbol
+        var hidden = CommandOutputText.WithoutSimpleColors(raw);
+
+        Assert.True(kept.IndexOf('\u001b') < 0 && kept.IndexOf('\u0007') < 0 && kept.IndexOf('\u200B') < 0, kept);
+        Assert.Contains("green", kept, StringComparison.Ordinal);
+        Assert.True(Count(hidden, "\u001b") > 0 && Count(hidden, "\u0007") > 0 && Count(hidden, "\u200B") > 0, "the recording printed them");
+        Assert.Equal(Count(hidden, "\u001b"), Count(kept, "\u241B"));
+        Assert.Equal(Count(hidden, "\u0007"), Count(kept, "\u2407"));
+        Assert.Equal(Count(hidden, "\u200B"), Count(kept, "\\u{200B}"));
+    }
+
+    /// <summary>The text of the tool result for <paramref name="toolUseId"/> in the recording's lines.</summary>
+    private static string ToolResultOf(IEnumerable<string> lines, string toolUseId)
+    {
+        foreach (var line in lines)
+        {
+            using var doc = JsonDocument.Parse(line);
+            var root = doc.RootElement;
+            if (root.GetProperty("type").GetString() != "user" || !root.TryGetProperty("message", out var message)
+                || message.GetProperty("content").ValueKind != JsonValueKind.Array) continue;
+            foreach (var block in message.GetProperty("content").EnumerateArray())
+            {
+                if (block.GetProperty("type").GetString() != "tool_result" || block.GetProperty("tool_use_id").GetString() != toolUseId) continue;
+                var content = block.GetProperty("content");
+                return content.ValueKind == JsonValueKind.String
+                    ? content.GetString()!
+                    : string.Concat(content.EnumerateArray().Where(p => p.GetProperty("type").GetString() == "text").Select(p => p.GetProperty("text").GetString()));
+            }
+        }
+        throw new InvalidOperationException("no result for " + toolUseId);
+    }
+
+    private static int Count(string text, string part)
+    {
+        var count = 0;
+        for (var i = text.IndexOf(part, StringComparison.Ordinal); i >= 0; i = text.IndexOf(part, i + part.Length, StringComparison.Ordinal)) count++;
+        return count;
+    }
 }

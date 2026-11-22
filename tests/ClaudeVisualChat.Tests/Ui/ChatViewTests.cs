@@ -13,6 +13,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
 using Xunit;
@@ -2979,12 +2980,29 @@ public class ChatViewTests
     [AvaloniaTheory]
     [InlineData("Bash")]
     [InlineData("PowerShell")]
-    public void Bash_output_shows_without_ansi_codes(string name)
+    public void Bash_output_shows_without_its_plain_colors_and_with_the_other_codes_as_symbols(string name)
     {
         var (c, tool) = Command(name, "ls", "\u001b[32mgreen\u001b[0m \u001b]0;title\u0007plain \u009b1;31mred\u001b(B end");
         var (view, window) = Open(c);
-        Assert.Equal("green plain red end", ResultOf(view, tool));
-        Assert.Equal("green plain red end", tool.FullResultText);
+        const string shown = "green \u241B]0;title\u2407plain \\u{9B}1;31mred\u241B(B end";
+        Assert.Equal(shown, ResultOf(view, tool));
+        Assert.Equal(shown, tool.FullResultText);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_lone_carriage_return_in_a_result_draws_no_missing_glyph()
+    {
+        var (c, tool) = Command("Bash", "ls", "a\rb");
+        var (view, window) = Open(c);
+        Assert.Equal("a\rb", tool.FullResultText); // the item keeps it
+        var block = ViewOf(view, tool).GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        var glyphs = block.TextLayout.TextLines
+            .SelectMany(l => l.TextRuns).OfType<ShapedTextRun>()
+            .SelectMany(r => r.GlyphRun.GlyphInfos).ToList();
+        Assert.NotEmpty(glyphs);
+        // Avalonia 11.0.10 breaks the line there, as at a line feed; a character the font lacks would be glyph 0, its box
+        Assert.DoesNotContain(glyphs, g => g.GlyphIndex == 0);
         window.Close();
     }
 

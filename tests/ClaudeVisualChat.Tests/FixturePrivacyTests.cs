@@ -78,7 +78,7 @@ namespace ClaudeVisualChat.Tests
                 new[]
                 {
                     "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model",
-                    "image", "commands", "effort", "plan", "plan-auto", "plan-feedback", "queued", "hook-blocked", "queued-compact", "error-long", "error-wrapped", "denied-long", "hook-ask", "seguranca",
+                    "image", "commands", "effort", "plan", "plan-auto", "plan-feedback", "queued", "hook-blocked", "queued-compact", "error-long", "error-wrapped", "denied-long", "hook-ask", "seguranca", "bash-ansi",
                 },
                 FixtureFiles.Scenarios);
             foreach (var scenario in FixtureFiles.Scenarios)

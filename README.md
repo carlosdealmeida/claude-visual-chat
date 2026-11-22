@@ -525,12 +525,19 @@ may want to know:
   1.5MB of output." under the text when the claude kept only the end. The row asks once a second while it is on screen,
   and stops asking for that command after the third read that fails; the box goes when the result arrives or the call
   stops running. With no handler there is no box.
+- **A command's output and a tool's error show what a terminal would hide,** as the extension shows them. In the result of
+  Bash, PowerShell and TaskOutput the plain color codes go; ESC shows as `␛`, the other control characters as their
+  picture (a bell as `␇`), and the formatting and hidden characters as their code (`\u{200B}`). An emoji keeps its joiners
+  and selectors, but a zero width non-joiner between letters (Persian text) shows as `\u{200C}` and a variation selector
+  after a letter as `\u{FE0F}`. The error of any call shows the same symbols, with each carriage return as a line break.
+  What a running command has printed so far still loses all its terminal codes, and shows only its bidirectional
+  controls, as `‮`.
 - **A click on a diff in the list opens the Diff View** over the whole view, side by side, under the file's path. Esc, its
   x and `CloseTopLayer()` close it (it is a layer, right under the image preview), and it opens in a read-only view too.
   On a view 500 px wide or less (the desktop layout only) the box of an Edit or a Write is left out, as in the extension;
   the touch layout keeps it.
 - **`ToolCallItem` carries more:** `FullResultText` (the whole result, at most `ToolPresentation.MaxKeptResultChars`
-  characters, without terminal codes for commands), `RejectionReason` (what the person typed when refusing the call),
+  characters; for a command, as its row shows it), `RejectionReason` (what the person typed when refusing the call),
   `IsOutputExpanded` and `IsInputExpanded` (whether a box is open whole) and `ResultImages`. A refused call shows a red dot
   and, for an Edit, a Write or a command, a "Reason:" line; there is no "Rejected" label any more.
 - **A screenshot of Claude in Chrome** (the `computer` action) shows as a thumbnail, which opens the image preview, only

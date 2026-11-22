@@ -12,6 +12,18 @@ All notable changes to this project are written here. The format follows
   before ↑ moves up again; the keyboard's repeat of a held ↓ counts nothing. The count starts over when the keyboard leaves
   the field another way (the mouse, Tab) and when the request changes. ↑ on the first answer still goes round to
   the field, and from outside the answers either arrow goes to the first.
+- A command's output and a tool's error show control sequences and hidden characters as symbols, as the extension does,
+  instead of taking them out. In the result of Bash, PowerShell and TaskOutput only the plain color codes go (an `ESC [`,
+  up to three color codes and `m`); any other escape sequence keeps its text with ESC as `␛`, the other control
+  characters show as their picture (a bell as `␇`) and the formatting and default ignorable characters as their code
+  (`\u{200B}`); a text printed in UTF-16 loses the NUL after each of its characters; and a run of carriage returns
+  before a line feed is that line feed, while another carriage return stays. An emoji keeps its joiners, selectors and
+  skin tones, but a zero width non-joiner between letters (Persian text) now shows as `\u{200C}` and a variation
+  selector after a letter as `\u{FE0F}`. `ToolCallItem.FullResultText` carries this text, so a host that reads it gets
+  the symbols too; the cap at `ToolPresentation.MaxKeptResultChars` counts it and never cuts a symbol or a surrogate
+  pair in two. The error of any tool shows the same symbols, with each carriage return as a line break (the error of a
+  TaskOutput now loses its plain color codes as those of Bash and PowerShell do; before, their text stayed). What a running
+  command has printed so far still loses every terminal code, and now shows its bidirectional controls as `‮`.
 
 ### Fixed
 

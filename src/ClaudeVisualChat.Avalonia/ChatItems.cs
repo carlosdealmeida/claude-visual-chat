@@ -293,8 +293,9 @@ public sealed class ToolCallItem : ChatItem
     }
 
     /// <summary>
-    /// The whole result, up to <see cref="ToolPresentation.MaxKeptResultChars"/> characters; for Bash, PowerShell and
-    /// TaskOutput without its ANSI escape sequences. Null until the result arrives.
+    /// The whole result, up to <see cref="ToolPresentation.MaxKeptResultChars"/> characters; for Bash, PowerShell and TaskOutput
+    /// without the plain color codes, and with the other control sequences and hidden characters shown as symbols. Null until the
+    /// result arrives.
     /// </summary>
     public string? FullResultText
     {

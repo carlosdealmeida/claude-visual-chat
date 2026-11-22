@@ -48,18 +48,46 @@ public class ToolErrorTextTests
     }
 
     [Fact]
-    public void A_command_loses_its_ansi_codes_and_every_tool_loses_control_and_format_characters()
+    public void A_command_loses_its_ansi_codes_and_every_tool_shows_control_and_format_characters()
     {
-        Assert.Equal("red\ttab\nnext", ToolErrorText.Clean("Bash", "\u001b[31mred\u001b[0m\ttab\r\nnext​\u0007  "));
+        Assert.Equal("red\ttab\nnext\\u{200B}\u2407", ToolErrorText.Clean("Bash", "\u001b[31mred\u001b[0m\ttab\r\nnext\u200B\u0007  "));
         Assert.Equal("a\nb", ToolErrorText.Clean("PowerShell", "a\r\nb"));
-        Assert.Equal("ab", ToolErrorText.Clean("Read", "a‮b"));
+        Assert.Equal("a\\u{202E}b", ToolErrorText.Clean("Read", "a\u202Eb"));
     }
 
     [Fact]
     public void Ansi_is_kept_for_a_tool_that_is_not_a_command()
     {
-        // the ESC is a control character and goes; the rest of the code stays as text
-        Assert.Equal("[31mred[0m", ToolErrorText.Clean("Read", "\u001b[31mred\u001b[0m"));
+        // the ESC shows as its symbol; the rest of the code stays as text
+        Assert.Equal("\u241B[31mred\u241B[0m", ToolErrorText.Clean("Read", "\u001b[31mred\u001b[0m"));
+    }
+
+    [Fact]
+    public void An_error_shows_hidden_characters_as_symbols()
+    {
+        Assert.Equal("a\\u{200B}b\u2407", ToolErrorText.Clean("Read", "a\u200Bb\u0007"));
+    }
+
+    [Fact]
+    public void An_error_keeps_an_emoji_family_whole()
+    {
+        const string family = "x \U0001F468\u200D\U0001F469\u200D\U0001F467 y";
+        Assert.Equal(family, ToolErrorText.Clean("Read", family));
+    }
+
+    [Fact]
+    public void A_command_error_loses_its_plain_colors_and_another_tools_shows_the_escape()
+    {
+        const string colored = "\u001b[31mboom\u001b[0m";
+        Assert.Equal("boom", ToolErrorText.Clean("Bash", colored));
+        Assert.Equal("boom", ToolErrorText.Clean("TaskOutput", colored));
+        Assert.Equal("\u241B[31mboom\u241B[0m", ToolErrorText.Clean("Read", colored));
+    }
+
+    [Fact]
+    public void A_lone_carriage_return_is_a_line_break()
+    {
+        Assert.Equal("a\nb\nc", ToolErrorText.Clean("Bash", "a\rb\r\nc"));
     }
 
     [Fact]

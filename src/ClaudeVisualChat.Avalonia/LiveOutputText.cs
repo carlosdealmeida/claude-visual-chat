@@ -16,8 +16,9 @@ internal static class LiveOutputText
     /// The text of <paramref name="output"/>. When the claude kept only its end (<paramref name="truncated"/>), its first line is a piece:
     /// it goes up to its line break, or, when that break is the text's last character or there is none, only the broken characters
     /// (U+FFFD) of its start go. Then the terminal codes go; each line loses its final carriage return and keeps what follows its last
-    /// other one (a progress bar drawn over itself); and over <see cref="MaxChars"/> characters, the text keeps its end, from the first
-    /// line break within its last <see cref="MaxChars"/> characters.
+    /// other one (a progress bar drawn over itself); each bidirectional control shows as its code (<see cref="CommandOutputText.BidiAsText"/>);
+    /// and over <see cref="MaxChars"/> characters, the text keeps its end, from the first line break within its last
+    /// <see cref="MaxChars"/> characters.
     /// </summary>
     internal static string Prepare(string output, bool truncated)
     {
@@ -29,6 +30,7 @@ internal static class LiveOutputText
         }
         text = AnsiText.Strip(text);
         if (text.IndexOf('\r') >= 0) text = Overwritten(text);
+        text = CommandOutputText.BidiAsText(text);
         if (text.Length > MaxChars)
         {
             var start = text.Length - MaxChars;

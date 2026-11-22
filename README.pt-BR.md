@@ -532,12 +532,19 @@ Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt
   "Mostrando o fim de 1.5MB de saída." sob o texto quando o claude guardou só o fim. A linha pergunta uma vez por segundo
   enquanto está na tela, e deixa de perguntar por aquele comando depois da terceira leitura que falha; a caixa some quando
   o resultado chega ou a chamada para de rodar. Sem tratador não há caixa.
+- **A saída de um comando e o erro de uma ferramenta mostram o que um terminal esconderia,** como a extensão mostra. No
+  resultado de Bash, PowerShell e TaskOutput os códigos de cor simples somem; o ESC aparece como `␛`, os outros caracteres
+  de controle como a figura deles (o sino como `␇`), e os caracteres de formatação e invisíveis como o código deles
+  (`\u{200B}`). Um emoji mantém as suas junções e os seus seletores, mas o caractere de não junção de largura zero (ZWNJ)
+  entre letras (texto persa) aparece como `\u{200C}` e um seletor de variação depois de uma letra como `\u{FE0F}`. O erro de qualquer chamada mostra os
+  mesmos símbolos, com cada retorno de carro como quebra de linha. O que um comando em execução já imprimiu continua sem
+  nenhum código de terminal, e mostra só os seus controles bidirecionais, como `‮`.
 - **Um clique num diff da lista abre o Diff View** sobre a view inteira, lado a lado, com o caminho do arquivo no título.
   O Esc, o x dele e `CloseTopLayer()` o fecham (é uma camada, logo abaixo da prévia de imagem), e ele abre também numa view
   somente leitura. Numa view de 500 px de largura ou menos (só o layout desktop) a caixa de um Edit ou de um Write some,
   como na extensão; o layout de toque a mantém.
 - **`ToolCallItem` traz mais:** `FullResultText` (o resultado inteiro, no máximo `ToolPresentation.MaxKeptResultChars`
-  caracteres, sem os códigos de terminal nos comandos), `RejectionReason` (o que a pessoa escreveu ao recusar a chamada),
+  caracteres; num comando, como a linha dele o mostra), `RejectionReason` (o que a pessoa escreveu ao recusar a chamada),
   `IsOutputExpanded` e `IsInputExpanded` (se uma caixa está aberta por inteiro) e `ResultImages`. Uma chamada recusada
   mostra a bolinha vermelha e, num Edit, num Write ou num comando, uma linha "Motivo:"; não há mais o rótulo "Recusado".
 - **Uma captura de tela do Claude in Chrome** (a ação `computer`) aparece como miniatura, que abre a prévia de imagem,

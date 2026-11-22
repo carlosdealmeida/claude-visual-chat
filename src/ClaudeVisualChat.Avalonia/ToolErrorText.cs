@@ -1,15 +1,13 @@
 using System;
-using System.Globalization;
-using System.Text;
 using System.Text.RegularExpressions;
 using ClaudeVisualChat.Controls;
-using ClaudeVisualChat.Protocol;
 
 namespace ClaudeVisualChat;
 
 /// <summary>
 /// The text of a failed or refused tool call, made ready to show whole: without the notes and wrappers the claude puts around it,
-/// without terminal codes and invisible characters, and cut at <see cref="MaxChars"/>.
+/// without the plain color codes of a command's output, with each carriage return as a line break and what cannot be seen shown as a
+/// symbol (<see cref="CommandOutputText.Symbols"/>), and cut at <see cref="MaxChars"/>.
 /// </summary>
 internal static class ToolErrorText
 {
@@ -68,30 +66,9 @@ internal static class ToolErrorText
         var guidance = text.IndexOf(RetryGuidance, StringComparison.Ordinal);
         if (guidance >= 0) text = text.Substring(0, guidance);
 
-        if (toolName == "Bash" || toolName == "PowerShell") text = AnsiText.Strip(text);
-        text = Plain(text.Replace("\r\n", "\n")).Trim();
+        if (toolName == "Bash" || toolName == "PowerShell" || toolName == "TaskOutput") text = CommandOutputText.WithoutSimpleColors(text);
+        text = CommandOutputText.Symbols(text.Replace("\r\n", "\n").Replace('\r', '\n'), keepCarriageReturn: false).Trim();
 
         return ChatText.Clip(text, MaxChars);
-    }
-
-    /// <summary>The text without control and formatting characters, but for the line feed and the tab.</summary>
-    private static string Plain(string text)
-    {
-        var result = new StringBuilder(text.Length);
-        for (var i = 0; i < text.Length; i++)
-        {
-            var c = text[i];
-            if (c == '\n' || c == '\t') { result.Append(c); continue; }
-            if (char.IsControl(c)) continue;
-            if (!char.IsSurrogate(c) && CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.Format) continue;
-            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
-            {
-                if (CharUnicodeInfo.GetUnicodeCategory(text, i) == UnicodeCategory.Format) { i++; continue; }
-                result.Append(c).Append(text[++i]);
-                continue;
-            }
-            result.Append(c);
-        }
-        return result.ToString();
     }
 }

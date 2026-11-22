@@ -39,6 +39,12 @@ public class LiveOutputTextTests
     }
 
     [Fact]
+    public void Bidi_marks_show_as_text_and_nothing_else_changes()
+    {
+        Assert.Equal("a\\u202Eb\u200Bc", LiveOutputText.Prepare("a\u202Eb\u200Bc", false));
+    }
+
+    [Fact]
     public void A_very_long_output_keeps_its_end()
     {
         var lines = Enumerable.Range(0, 3000).Select(_ => new string('x', 99)).ToList();
