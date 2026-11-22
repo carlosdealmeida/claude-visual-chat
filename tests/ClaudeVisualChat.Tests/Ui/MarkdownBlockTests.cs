@@ -87,6 +87,40 @@ public class MarkdownBlockTests
         Assert.Equal(shown, ShownOf(markdown));
     }
 
+    /// <summary>The words the Markdown struck through: the text of each strikethrough span.</summary>
+    private static List<string> StruckOf(string markdown)
+    {
+        var block = new MarkdownBlock { Markdown = markdown };
+        var window = UiHelpers.Show(block);
+        var struck = new List<string>();
+        foreach (var text in block.GetVisualDescendants().OfType<CTextBlock>()) CollectStruck(text.Content, false, struck);
+        window.Close();
+        return struck;
+    }
+
+    private static void CollectStruck(IEnumerable<CInline> inlines, bool inside, List<string> struck)
+    {
+        foreach (var inline in inlines)
+        {
+            if (inline is CRun run && inside && !string.IsNullOrEmpty(run.Text)) struck.Add(run.Text);
+            else if (inline is CSpan span) CollectStruck(span.Content, inside || span is CStrikethrough, struck);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_single_tilde_strikes_nothing()
+    {
+        Assert.Equal("sizes 3~5 and 7~10", ShownOf("sizes 3~5 and 7~10"));
+        Assert.Empty(StruckOf("sizes 3~5 and 7~10"));
+    }
+
+    [AvaloniaFact]
+    public void Two_tildes_strike()
+    {
+        Assert.Equal("gone stays", ShownOf("~~gone~~ stays"));
+        Assert.Equal(new[] { "gone" }, StruckOf("~~gone~~ stays"));
+    }
+
     [AvaloniaFact]
     public void A_windows_path_keeps_the_backslash_before_an_asterisk()
     {

@@ -164,6 +164,31 @@ public class PlanDocumentTests
         ui.Window.Close();
     }
 
+    /// <summary>The words of the plan's text blocks that carry a strikethrough decoration.</summary>
+    private static List<string> StruckInPlan(Opened ui) =>
+        ui.Document.GetVisualDescendants().OfType<PlanTextBlock>()
+            .SelectMany(b => b.Inlines!.OfType<Avalonia.Controls.Documents.Run>())
+            .Where(r => r.TextDecorations != null && r.TextDecorations.Any(d => d.Location == Avalonia.Media.TextDecorationLocation.Strikethrough))
+            .Select(r => r.Text ?? "").ToList();
+
+    [AvaloniaFact]
+    public void A_single_tilde_in_a_plan_strikes_nothing()
+    {
+        var ui = new Opened(Planning("r1", "Sizes 3~5 and 7~10"));
+        Assert.Contains(ui.Document.GetVisualDescendants().OfType<PlanTextBlock>(), b => b.Words == "Sizes 3~5 and 7~10");
+        Assert.Empty(StruckInPlan(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Two_tildes_in_a_plan_strike()
+    {
+        var ui = new Opened(Planning("r1", "~~gone~~ stays"));
+        Assert.Contains(ui.Document.GetVisualDescendants().OfType<PlanTextBlock>(), b => b.Words == "gone stays");
+        Assert.Equal(new[] { "gone" }, StruckInPlan(ui));
+        ui.Window.Close();
+    }
+
     [AvaloniaFact]
     public void The_document_takes_the_editor_measures()
     {
