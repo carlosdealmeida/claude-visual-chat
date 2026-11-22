@@ -125,7 +125,7 @@ def test_higieniza_context_usage():
             "categories": [{"name": "Messages", "tokens": 10, "color": "blue", "kind": "messages",
                             "isDeferred": False}],
             "totalTokens": 100, "maxTokens": 200000, "rawMaxTokens": 200000, "percentage": 0.5,
-            "gridRows": [[1, 2]], "mcp_tools": [{"name": "mcp__x"}], "memoryFiles": [HOME + r".md"],
+            "gridRows": [[1, 2]], "mcp_tools": [{"name": "mcp__x"}], "memoryFiles": [HOME + r"\a.md"],
         }}}
     out = gravar.higienizar_stream(resp, trocas())
     assert out["response"]["response"] == {
@@ -290,6 +290,59 @@ def test_claude_folder_slug_is_replaced():
     out = gravar.higienizar_stream(obj, trocas())
     assert out["outputFile"] == r"C:\Users\demo\AppData\Local\Temp\claude\C--demo-app\s\t.output"
     assert out["other"] == "C--Users-demo-AppData-Roaming"
+
+
+HASH = "0123456789abcdef"
+
+
+def test_claude_project_hash_folder_is_replaced_in_every_spelling():
+    # Claude Code 2.1.330 names the project's temp folder with a hash of the real working folder.
+    obj = {"one": r"C:\Users\alice\AppData\Local\Temp\claude\%s\s\tasks\t.output" % HASH,
+           "two": "C:\\\\Users\\\\alice\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\%s\\\\s" % HASH,
+           "slash": "C:/Users/alice/AppData/Local/Temp/claude/%s/s" % HASH.upper(),
+           "end": r"written to C:\Users\alice\AppData\Local\Temp\claude\%s" % HASH,
+           "other": r"C:\x\claude\%s\s and C:\Temp\claude\%s0\s" % (HASH, HASH)}
+    out = gravar.higienizar_stream(obj, trocas())
+    assert out["one"] == r"C:\Users\demo\AppData\Local\Temp\claude\C--demo-app\s\tasks\t.output"
+    assert out["two"] == "C:\\\\Users\\\\demo\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--demo-app\\\\s"
+    assert out["slash"] == "C:/Users/demo/AppData/Local/Temp/claude/C--demo-app/s"
+    assert out["end"] == r"written to C:\Users\demo\AppData\Local\Temp\claude\C--demo-app"
+    assert out["other"] == obj["other"]  # not the Temp\claude folder, or not a 16-hex name
+    hist = gravar.higienizar_transcript(
+        {"type": "user", "message": {"content": obj["one"]}}, trocas())
+    assert hist["message"]["content"] == out["one"]
+
+
+def test_claude_project_hash_folder_split_across_deltas_is_replaced():
+    texto = json.dumps({"file": r"C:\Users\alice\AppData\Local\Temp\claude\%s\s\t.output" % HASH})
+    partes = _cortar(texto, "Temp", "claude", HASH[:5], HASH[9:])
+    objs = [{"type": "stream_event", "parent_tool_use_id": None,
+             "event": {"type": "message_start", "message": {"id": "m1"}}}]
+    objs += [_delta(None, 0, "partial_json", "input_json_delta", p) for p in partes]
+    out = gravar.higienizar_stream_linhas(objs, trocas())
+    juntos = "".join(o["event"]["delta"]["partial_json"] for o in out if "delta" in o["event"])
+    assert json.loads(juntos) == {"file": r"C:\Users\demo\AppData\Local\Temp\claude\C--demo-app\s\t.output"}
+
+
+def test_re_higienizar_replaces_the_claude_project_hash_folder():
+    import tempfile
+    caminho_hash = r"C:\Users\demo\AppData\Local\Temp\claude\%s\s\tasks\t.output" % HASH
+    limpo = r"C:\Users\demo\AppData\Local\Temp\claude\C--demo-app\s\tasks\t.output"
+    with tempfile.TemporaryDirectory() as pasta:
+        stream = os.path.join(pasta, "stop-task.stream.ndjson")
+        hist = os.path.join(pasta, "stop-task.transcript.jsonl")
+        with open(stream, "w", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps({"type": "system", "subtype": "task_notification",
+                                "output_file": caminho_hash}) + "\n")
+        with open(hist, "w", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps({"type": "user", "message": {"content": "see " + caminho_hash}}) + "\n")
+        gravar.re_higienizar(pasta)
+        with open(stream, encoding="utf-8") as f:
+            linha_stream = json.loads(f.read())
+        with open(hist, encoding="utf-8") as f:
+            linha_hist = json.loads(f.read())
+    assert linha_stream["output_file"] == limpo
+    assert linha_hist["message"]["content"] == "see " + limpo
 
 
 def test_username_uses_word_boundary():
@@ -466,6 +519,128 @@ def test_ambiente_adds_variables_to_the_child_environment_only():
     assert env["ANTHROPIC_API_KEY"] == "sk-ant-fake" and env["PATH"] == "x"
     assert base["ANTHROPIC_API_KEY"] == "real"
     assert gravar.ambiente_do_cenario({}, base) == base
+
+
+def test_comando_uses_haiku_by_default():
+    comando = gravar.comando_do_cenario("C:/x/claude.exe", {"id": "edit"})
+    assert comando[0] == "C:/x/claude.exe"
+    assert comando[comando.index("--model") + 1] == "haiku"
+    assert comando[-1] == "--strict-mcp-config"  # no extra arguments
+    for opcao in ("-p", "--input-format", "--output-format", "--verbose", "--include-partial-messages",
+                  "--permission-prompt-tool", "--setting-sources", "--strict-mcp-config"):
+        assert opcao in comando
+
+
+def test_comando_takes_the_scenario_model_and_its_extra_arguments():
+    comando = gravar.comando_do_cenario("claude", {"modelo_cli": "sonnet", "argumentos": ["--advisor", "opus"]})
+    assert comando[comando.index("--model") + 1] == "sonnet"
+    assert comando.count("--model") == 1
+    assert comando[-2:] == ["--advisor", "opus"]
+    assert comando[:-2] == gravar.comando_do_cenario("claude", {"modelo_cli": "sonnet"})
+
+
+def test_encrypted_content_is_cut_in_the_stream_and_in_the_transcript():
+    resultado = {"type": "advisor_tool_result", "tool_use_id": "srv1",
+                 "content": {"type": "advisor_redacted_result", "encrypted_content": "QUJD" * 500}}
+    linha = {"type": "assistant", "message": {"content": [
+        {"type": "server_tool_use", "id": "srv1", "name": "advisor", "input": {}}, resultado,
+        {"type": "text", "text": "see " + PASTA, "nested": [{"encrypted_content": {"deep": "x"}}]}]}}
+    out = gravar.higienizar_stream(linha, trocas())
+    blocos = out["message"]["content"]
+    assert blocos[1]["content"] == {"type": "advisor_redacted_result", "encrypted_content": "redacted"}
+    assert blocos[2]["nested"] == [{"encrypted_content": "redacted"}]
+    assert blocos[2]["text"] == r"see C:\demo\app"
+    assert resultado["content"]["encrypted_content"] == "QUJD" * 500  # the line read is left as it was
+    evento = {"type": "stream_event", "event": {"type": "content_block_start", "index": 1,
+                                                 "content_block": resultado}}
+    out = gravar.higienizar_stream_linhas([evento], trocas())
+    assert out[0]["event"]["content_block"]["content"]["encrypted_content"] == "redacted"
+    hist = gravar.higienizar_transcript(dict(linha, uuid="u1", cwd=PASTA), trocas())
+    assert hist["message"]["content"][1]["content"]["encrypted_content"] == "redacted"
+    assert "QUJD" not in json.dumps(hist)
+
+
+def _advisor_blocos(*blocos):
+    return {"type": "assistant", "message": {"content": list(blocos)}}
+
+
+def test_expectation_advisor():
+    uso = {"type": "server_tool_use", "id": "srv1", "name": "advisor", "input": {}}
+    resultado = {"type": "advisor_tool_result", "tool_use_id": "srv1", "content": {"type": "advisor_result"}}
+    assert gravar.conferir("advisor", [_advisor_blocos(uso, resultado)])
+    assert gravar.conferir("advisor", [_advisor_blocos(uso), _advisor_blocos(resultado)])
+    assert not gravar.conferir("advisor", [_advisor_blocos(uso)])
+    assert not gravar.conferir("advisor", [_advisor_blocos(resultado)])
+    outro = dict(uso, name="web_search")
+    assert not gravar.conferir("advisor", [_advisor_blocos(outro, resultado)])
+    assert not gravar.conferir("advisor", [])
+
+
+def _tarefas(*tarefas):
+    return {"type": "system", "subtype": "background_tasks_changed", "tasks": list(tarefas)}
+
+
+def test_expectation_background_task():
+    wf = {"task_id": "w1", "task_type": "local_workflow", "description": "wf"}
+    sh = {"task_id": "b1", "task_type": "local_bash", "description": "sh"}
+    assert gravar.conferir("tarefa:local_workflow", [_tarefas(wf), _tarefas()])
+    assert gravar.conferir("tarefa:local_workflow", [_tarefas(sh, wf), _tarefas(wf), _tarefas()])
+    assert not gravar.conferir("tarefa:local_workflow", [_tarefas(wf)])  # never ended
+    assert not gravar.conferir("tarefa:local_workflow", [_tarefas(), _tarefas(wf)])  # empty only before
+    assert not gravar.conferir("tarefa:local_workflow", [_tarefas(sh), _tarefas()])
+    assert gravar.conferir("tarefa:local_bash", [_tarefas(sh), _tarefas()])
+    assert not gravar.conferir("tarefa:local_workflow", [])
+
+
+def _resposta_controle(request_id, subtipo="success"):
+    return {"type": "control_response", "response": {"subtype": subtipo, "request_id": request_id, "response": {}}}
+
+
+def _notificacao(status):
+    return {"type": "system", "subtype": "task_notification", "task_id": "b1", "status": status,
+            "output_file": "x", "summary": "s"}
+
+
+def test_expectation_stopped_task():
+    assert gravar.conferir("tarefa_parada", [_resposta_controle("stop-1"), _notificacao("stopped")])
+    assert not gravar.conferir("tarefa_parada", [_resposta_controle("stop-1")])
+    assert not gravar.conferir("tarefa_parada", [_notificacao("stopped")])
+    assert not gravar.conferir("tarefa_parada", [_resposta_controle("stop-1"), _notificacao("completed")])
+    assert not gravar.conferir("tarefa_parada", [_resposta_controle("stop-1", "error"), _notificacao("stopped")])
+    assert not gravar.conferir("tarefa_parada", [_resposta_controle("mode-1"), _notificacao("stopped")])
+
+
+def test_stop_step_sends_stop_task_with_the_first_listed_task_id():
+    eventos = [_tarefas(),
+               _tarefas({"task_id": "b7", "task_type": "local_bash"}, {"task_id": "b8", "task_type": "local_bash"})]
+    enviados, prazos = [], []
+    g = gravar.Gravacao({"id": "stop-task", "passos": [{"parar_tarefa_apos_s": 0}]}, "C:/x")
+
+    def esperar(predicado, prazo=gravar.PRAZO_S):
+        prazos.append(prazo)
+        return next((e for e in eventos if predicado(e)), None)
+
+    def enviar(obj):
+        enviados.append(obj)
+        if obj.get("type") == "control_request":
+            eventos.append(_resposta_controle(obj["request_id"]))
+
+    g._esperar = esperar
+    g.enviar = enviar
+    g._parar_tarefa(3, {"parar_tarefa_apos_s": 0})
+    assert enviados == [{"type": "control_request", "request_id": "stop-3",
+                         "request": {"subtype": "stop_task", "task_id": "b7"}}]
+    assert prazos[0] == 60
+    assert g.erros_resposta == []
+
+
+def test_stop_step_without_a_task_sends_nothing():
+    enviados = []
+    g = gravar.Gravacao({"id": "stop-task", "passos": []}, "C:/x")
+    g._esperar = lambda predicado, prazo=gravar.PRAZO_S: None
+    g.enviar = enviados.append
+    g._parar_tarefa(0, {"parar_tarefa_apos_s": 0})
+    assert enviados == []
 
 
 if __name__ == "__main__":

@@ -95,13 +95,20 @@ def montar_trocas(pasta, home, usuario):
     return pares
 
 
+# Claude Code 2.1.330 names the project's folder under `%TEMP%\claude` with 16 hex digits made from the
+# real working folder (older versions used the folder's slug, which the path replacements catch). Any
+# such name becomes the slug of the demo folder, in each spelling of the separator.
+_PASTA_DO_PROJETO = re.compile(
+    r"(?P<antes>(?P<sep>\\\\|\\|/)temp(?P=sep)claude(?P=sep))[0-9a-f]{16}(?![0-9a-z])", re.IGNORECASE)
+
+
 def _trocar_texto(texto, troca):
     for origem, destino, palavra in troca:
         padrao = re.escape(origem)
         if palavra:
             padrao = r"\b" + padrao + r"\b"
         texto = re.sub(padrao, lambda _m, d=destino: d, texto, flags=re.IGNORECASE)
-    return texto
+    return _PASTA_DO_PROJETO.sub(lambda m: m.group("antes") + _slug(DEMO_PASTA), texto)
 
 
 def _trocar(valor, troca):
@@ -153,7 +160,28 @@ def _higienizar_contexto(interno):
     return novo
 
 
+CIFRADO = "redacted"
+
+
+def _sem_cifrado(valor):
+    """A copy where every `encrypted_content` field, at any depth, is `redacted`.
+
+    The advisor's result comes back as an opaque encrypted blob: nothing the chat reads, and
+    nothing to publish.
+    """
+    if isinstance(valor, list):
+        return [_sem_cifrado(v) for v in valor]
+    if isinstance(valor, dict):
+        return {k: CIFRADO if k == "encrypted_content" else _sem_cifrado(v) for k, v in valor.items()}
+    return valor
+
+
 def higienizar_stream(obj, troca):
+    limpo = _higienizar_stream(obj, troca)
+    return None if limpo is None else _sem_cifrado(limpo)
+
+
+def _higienizar_stream(obj, troca):
     if not isinstance(obj, dict):
         return None
     tipo = obj.get("type")
@@ -237,6 +265,11 @@ def higienizar_stream_linhas(objs, troca):
 
 
 def higienizar_transcript(obj, troca):
+    limpo = _higienizar_transcript(obj, troca)
+    return None if limpo is None else _sem_cifrado(limpo)
+
+
+def _higienizar_transcript(obj, troca):
     if not isinstance(obj, dict):
         return None
     if obj.get("type") == "attachment":
@@ -423,6 +456,17 @@ class Gravacao:
             log("control_response %s: success" % request_id)
         return ev
 
+    def _parar_tarefa(self, i, passo):
+        """Wait for the first listed background task, let it run the step's seconds, then stop it."""
+        ev = self._esperar(lambda e: e.get("type") == "system" and
+                           e.get("subtype") == "background_tasks_changed" and
+                           isinstance(e.get("tasks"), list) and bool(e["tasks"]), 60)
+        if ev is None:
+            log("nenhuma tarefa em segundo plano para parar")
+            return
+        time.sleep(passo["parar_tarefa_apos_s"])
+        self._controle("stop-%d" % i, {"subtype": "stop_task", "task_id": ev["tasks"][0].get("task_id")})
+
     def _mensagem(self, conteudo):
         self.enviar({"type": "user", "message": {"role": "user", "content": conteudo},
                      "parent_tool_use_id": None, "session_id": "default"})
@@ -487,6 +531,8 @@ class Gravacao:
                 self._controle("mode-%d" % i, {"subtype": "set_permission_mode", "mode": passo["modo"]})
             elif "modelo" in passo:
                 self._controle("model-%d" % i, {"subtype": "set_model", "model": passo["modelo"]})
+            elif "parar_tarefa_apos_s" in passo:
+                self._parar_tarefa(i, passo)
         try:
             self.proc.stdin.close()
         except OSError:
@@ -598,6 +644,23 @@ def conferir(espera, eventos):
     if nome == "result_success":
         resultados = [e for e in eventos if e.get("type") == "result"]
         return bool(resultados) and resultados[-1].get("subtype") == "success"
+    if nome == "advisor":
+        blocos = [b for e in eventos for b in _blocos(e)]
+        return (any(b.get("type") == "server_tool_use" and b.get("name") == "advisor" for b in blocos) and
+                any(b.get("type") == "advisor_tool_result" for b in blocos))
+    if nome == "tarefa":
+        listas = [e.get("tasks") for e in eventos if e.get("type") == "system" and
+                  e.get("subtype") == "background_tasks_changed" and isinstance(e.get("tasks"), list)]
+        for i, tarefas in enumerate(listas):
+            if any(isinstance(t, dict) and t.get("task_type") == arg for t in tarefas):
+                return any(not depois for depois in listas[i + 1:])
+        return False
+    if nome == "tarefa_parada":
+        return (any(e.get("type") == "control_response" and isinstance(e.get("response"), dict) and
+                    str(e["response"].get("request_id", "")).startswith("stop-") and
+                    e["response"].get("subtype") == "success" for e in eventos) and
+                any(e.get("type") == "system" and e.get("subtype") == "task_notification" and
+                    e.get("status") == "stopped" for e in eventos))
     raise ValueError("espera desconhecida: " + espera)
 
 
@@ -607,6 +670,14 @@ def localizar_transcript(session_id):
     base = os.path.join(os.path.expanduser("~"), ".claude", "projects", "*", session_id + ".jsonl")
     achados = glob.glob(base)
     return achados[0] if achados else None
+
+
+def comando_do_cenario(executavel, cenario):
+    """The claude command line of a scenario: its `modelo_cli` (default haiku), then its `argumentos`."""
+    return [executavel, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
+            "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio",
+            "--model", cenario.get("modelo_cli", "haiku"), "--setting-sources", "project",
+            "--strict-mcp-config"] + list(cenario.get("argumentos", []))
 
 
 def gravar_cenario(cenario, saida, claude=None):
@@ -621,9 +692,7 @@ def gravar_cenario(cenario, saida, claude=None):
         os.makedirs(os.path.dirname(destino), exist_ok=True)
         with open(destino, "w", encoding="utf-8", newline="\n") as f:
             f.write(conteudo)
-    comando = [executavel, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
-               "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio",
-               "--model", "haiku", "--setting-sources", "project", "--strict-mcp-config"]
+    comando = comando_do_cenario(executavel, cenario)
     log("[%s] gravando em %s" % (cid, pasta))
     g = Gravacao(cenario, pasta)
     g.executar(comando)

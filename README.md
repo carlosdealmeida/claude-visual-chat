@@ -1013,6 +1013,16 @@ only when the file exists. Read the files before you commit all the same. A reco
 text the model writes from its whole context, and that context includes your own instructions to the claude: read the
 summary before you commit the recording. The recorder's own tests: `python -I tools/test_gravar.py`.
 
+A scenario can also set `modelo_cli`, the model it runs with (`haiku` when absent), and `argumentos`, extra arguments
+added at the end of the `claude` command line (the `advisor` scenario passes `["--advisor", "opus", "--max-turns", "3"]`
+and costs about 20 cents, as the advisor runs on opus). The step `{"parar_tarefa_apos_s": N}` waits up to 60 s for the
+first background task listed in `system/background_tasks_changed`, lets it run N seconds and stops it with a
+`stop_task` control request (id `stop-<step>`). Three expectations check those recordings: `advisor` (a
+`server_tool_use` block named `advisor` and an `advisor_tool_result` block), `tarefa:<task_type>` (a background task of
+that type, such as `local_workflow`, and after it an empty task list) and `tarefa_parada` (a successful answer to a
+`stop-` request and a `task_notification` with status `stopped`). Every `encrypted_content` field, at any depth, in the
+stream and in the history, is written as `redacted`: the advisor's result is an opaque blob.
+
 ## Building
 
 ```sh

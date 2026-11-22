@@ -87,7 +87,8 @@ public class ChatViewTests
             UiHelpers.ItemList(view).ScrollIntoView(first);
             UiHelpers.Pump();
 
-            Assert.Contains(first.Summary, UiHelpers.Texts(view));
+            // as the row shows it: a summary that fits is unchanged, a long one (a Workflow script) is clipped like the row's
+            Assert.Contains(ChatText.ClipLines(first.Summary, ToolCallView.BoxLines, ToolCallView.MaxLineChars), UiHelpers.Texts(view));
         }
         else
         {

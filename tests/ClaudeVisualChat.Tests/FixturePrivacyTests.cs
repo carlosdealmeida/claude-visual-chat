@@ -26,6 +26,13 @@ namespace ClaudeVisualChat.Tests
         private static readonly Regex OtherUserFolder =
             new Regex(@"(users[\\/-]+|home[\\/]+)(?!demo\b)\w", RegexOptions.IgnoreCase);
 
+        /// <summary>
+        /// The project folder Claude Code 2.1.330 makes under <c>Temp\claude</c>: 16 hex digits derived from the
+        /// recorder's real working folder. The recordings write it as demo's slug, <c>C--demo-app</c>.
+        /// </summary>
+        private static readonly Regex ProjectHashFolder =
+            new Regex(@"temp(\\+|/)claude(\\+|/)[0-9a-f]{16}(?![0-9a-z])", RegexOptions.IgnoreCase);
+
         private static IEnumerable<string> ForbiddenWords()
         {
             var words = new List<string>(Forbidden);
@@ -68,7 +75,26 @@ namespace ClaudeVisualChat.Tests
 
                 var match = OtherUserFolder.Match(text);
                 Assert.False(match.Success, Path.GetFileName(file) + " has a user folder other than 'demo'");
+                var hash = ProjectHashFolder.Match(text);
+                Assert.False(hash.Success, Path.GetFileName(file) + " has the project folder '" + hash.Value + "'");
             }
+        }
+
+        [Fact]
+        public void The_project_folder_pattern_finds_a_hash_and_spares_the_slug()
+        {
+            foreach (var text in new[]
+                     {
+                         @"Temp\\claude\\0123456789abcdef\\s", @"Temp\claude\0123456789abcdef\s",
+                         "Temp/claude/FEDCBA9876543210/s", @"Temp\\claude\\0123456789abcdef",
+                     })
+                Assert.True(ProjectHashFolder.IsMatch(text), text);
+            foreach (var text in new[]
+                     {
+                         @"Temp\\claude\\C--demo-app\\s", @"Temp\\claude\\0123456789abcdef0\\s",
+                         @"Temp\\claude\\0123456789abcde\\s", @"Temp\\other\\0123456789abcdef\\s",
+                     })
+                Assert.False(ProjectHashFolder.IsMatch(text), text);
         }
 
         [Fact]
@@ -78,7 +104,7 @@ namespace ClaudeVisualChat.Tests
                 new[]
                 {
                     "edit", "bash", "subagent", "error", "denied", "interrupted", "mode-and-model",
-                    "image", "commands", "effort", "plan", "plan-auto", "plan-feedback", "queued", "hook-blocked", "queued-compact", "error-long", "error-wrapped", "denied-long", "hook-ask", "seguranca", "bash-ansi",
+                    "image", "commands", "effort", "plan", "plan-auto", "plan-feedback", "queued", "hook-blocked", "queued-compact", "error-long", "error-wrapped", "denied-long", "hook-ask", "seguranca", "bash-ansi", "advisor", "workflow", "stop-task",
                 },
                 FixtureFiles.Scenarios);
             foreach (var scenario in FixtureFiles.Scenarios)

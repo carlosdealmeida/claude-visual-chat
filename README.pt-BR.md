@@ -1028,6 +1028,16 @@ gravação com o resumo de uma compactação traz um texto que o modelo escreve 
 contexto inclui as suas próprias instruções para o claude: leia o resumo antes de fazer o commit da gravação. Os testes do
 próprio gravador: `python -I tools/test_gravar.py`.
 
+Um cenário também pode definir `modelo_cli`, o modelo com que roda (`haiku` quando ausente), e `argumentos`, argumentos
+extras postos no fim da linha de comando do `claude` (o cenário `advisor` passa `["--advisor", "opus", "--max-turns",
+"3"]` e custa cerca de 20 centavos de dólar, porque o advisor roda no opus). O passo `{"parar_tarefa_apos_s": N}` espera
+até 60 s pela primeira tarefa em segundo plano listada em `system/background_tasks_changed`, deixa-a rodar N segundos e
+a para com o pedido de controle `stop_task` (id `stop-<passo>`). Três esperas conferem essas gravações: `advisor` (um
+bloco `server_tool_use` de nome `advisor` e um bloco `advisor_tool_result`), `tarefa:<task_type>` (uma tarefa em
+segundo plano desse tipo, como `local_workflow`, e depois dela uma lista de tarefas vazia) e `tarefa_parada` (uma
+resposta de sucesso a um pedido `stop-` e um `task_notification` com status `stopped`). Todo campo `encrypted_content`,
+em qualquer profundidade, no stream e no histórico, é gravado como `redacted`: o resultado do advisor é um bloco opaco.
+
 ## Compilar
 
 ```sh
