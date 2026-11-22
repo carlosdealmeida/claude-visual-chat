@@ -531,7 +531,7 @@ may want to know:
   and selectors, but a zero width non-joiner between letters (Persian text) shows as `\u{200C}` and a variation selector
   after a letter as `\u{FE0F}`. The error of any call shows the same symbols, with each carriage return as a line break.
   What a running command has printed so far still loses all its terminal codes, and shows only its bidirectional
-  controls, as `‮`.
+  controls, as `\u202E`.
 - **A click on a diff in the list opens the Diff View** over the whole view, side by side, under the file's path. Esc, its
   x and `CloseTopLayer()` close it (it is a layer, right under the image preview), and it opens in a read-only view too.
   On a view 500 px wide or less (the desktop layout only) the box of an Edit or a Write is left out, as in the extension;

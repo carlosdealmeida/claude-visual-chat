@@ -23,7 +23,7 @@ All notable changes to this project are written here. The format follows
   the symbols too; the cap at `ToolPresentation.MaxKeptResultChars` counts it and never cuts a symbol or a surrogate
   pair in two. The error of any tool shows the same symbols, with each carriage return as a line break (the error of a
   TaskOutput now loses its plain color codes as those of Bash and PowerShell do; before, their text stayed). What a running
-  command has printed so far still loses every terminal code, and now shows its bidirectional controls as `‮`.
+  command has printed so far still loses every terminal code, and now shows its bidirectional controls as `\u202E`.
 
 ### Fixed
 

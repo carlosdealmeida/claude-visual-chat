@@ -538,7 +538,7 @@ Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt
   (`\u{200B}`). Um emoji mantém as suas junções e os seus seletores, mas o caractere de não junção de largura zero (ZWNJ)
   entre letras (texto persa) aparece como `\u{200C}` e um seletor de variação depois de uma letra como `\u{FE0F}`. O erro de qualquer chamada mostra os
   mesmos símbolos, com cada retorno de carro como quebra de linha. O que um comando em execução já imprimiu continua sem
-  nenhum código de terminal, e mostra só os seus controles bidirecionais, como `‮`.
+  nenhum código de terminal, e mostra só os seus controles bidirecionais, como `\u202E`.
 - **Um clique num diff da lista abre o Diff View** sobre a view inteira, lado a lado, com o caminho do arquivo no título.
   O Esc, o x dele e `CloseTopLayer()` o fecham (é uma camada, logo abaixo da prévia de imagem), e ele abre também numa view
   somente leitura. Numa view de 500 px de largura ou menos (só o layout desktop) a caixa de um Edit ou de um Write some,
