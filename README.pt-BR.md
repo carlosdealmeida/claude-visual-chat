@@ -509,7 +509,8 @@ Três coisas que o host precisa saber:
 
 O documento fecha quando o plano é aprovado e fica depois de um "Não". O Esc, o x e `CloseTopLayer()` o fecham, uma camada
 por vez; só um Esc com o cartão por cima é "Não". Selecione um trecho para comentá-lo: os comentários esperam no cartão
-("Continuar planejando") até a pessoa mandá-los como retorno. A linha do plano na lista o abre de novo.
+("Continuar planejando") até a pessoa mandá-los como retorno. Enquanto a caixa de comentário tem um rascunho, nenhuma
+outra seleção toma a caixa: o trecho fica preso até o comentário ser enviado, cancelado ou fechado com Esc. A linha do plano na lista o abre de novo.
 
 ## Chamadas de ferramenta
 

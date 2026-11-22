@@ -164,6 +164,23 @@ internal sealed class PlanDocumentPanel : Border
     }
 
     /// <summary>
+    /// True while the comment box holds a draft on a passage: no other selection is offered "Add Comment", and the passage the box
+    /// writes about is not changed.
+    /// </summary>
+    internal bool IsCommentHeld
+    {
+        get => _commentHeld;
+        set
+        {
+            if (_commentHeld == value) return;
+            _commentHeld = value;
+            if (_attached) UpdateAddComment();
+        }
+    }
+
+    private bool _commentHeld;
+
+    /// <summary>
     /// True while the view only shows the conversation: a plan that comes does not open the document by itself (it cannot be
     /// answered there), the one that did closes, and the document has no banner and takes no comments.
     /// </summary>
@@ -406,7 +423,7 @@ internal sealed class PlanDocumentPanel : Border
     private void UpdateAddComment()
     {
         _offer = null;
-        if (CanComment)
+        if (CanComment && !_commentHeld)
         {
             for (var i = 0; i < _blocks.Count; i++)
             {
@@ -438,7 +455,7 @@ internal sealed class PlanDocumentPanel : Border
     private void RequestComment()
     {
         var offer = _offer;
-        if (offer == null || !CanComment) return;
+        if (offer == null || !CanComment || _commentHeld) return;
         _pending = offer;
         _addComment.IsVisible = false;
         CommentRequested?.Invoke(this, new PlanCommentRequest(offer.Plan, offer.Quote, offer.Selection));

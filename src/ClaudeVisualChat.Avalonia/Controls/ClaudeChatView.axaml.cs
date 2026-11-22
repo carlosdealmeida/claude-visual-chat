@@ -344,6 +344,7 @@ public partial class ClaudeChatView : UserControl
         {
             if (e.Property == BoundsProperty) PlanComment.Area = ChatArea.Bounds;
         };
+        PlanComment.DraftChanged += (_, _) => PlanDocument.IsCommentHeld = PlanComment.HasDraft;
         PlanComment.Submitted += (_, text) => PlanDocument.AddComment(text);
         PlanComment.Closed += (_, cancelled) =>
         {

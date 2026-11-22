@@ -56,6 +56,10 @@ internal sealed class PlanCommentBox : Panel
         _field.AcceptsReturn = true;
         _field.TextWrapping = Avalonia.Media.TextWrapping.Wrap;
         _field.AddHandler(KeyDownEvent, OnFieldKeyDown, RoutingStrategies.Tunnel);
+        _field.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == TextBox.TextProperty) NotifyDraft();
+        };
         _cancel.Content = _cancelText;
         _cancel.Classes.Add("ClaudeChatButton");
         _cancel.Classes.Add("ClaudeChatPlanCommentCancel");
@@ -81,6 +85,9 @@ internal sealed class PlanCommentBox : Panel
     /// <summary>Raised when the box closes, whatever closed it; the argument is true when no comment was added.</summary>
     internal event EventHandler<bool>? Closed;
 
+    /// <summary>Raised when <see cref="HasDraft"/> changes.</summary>
+    internal event EventHandler? DraftChanged;
+
     /// <summary>The conversation whose plan under review the box writes about.</summary>
     internal ChatConversation? Conversation
     {
@@ -100,6 +107,9 @@ internal sealed class PlanCommentBox : Panel
     /// <summary>The keyboard was in the box when it last closed.</summary>
     internal bool HadKeyboard { get; private set; }
 
+    /// <summary>True while the box is open with a comment begun (text that is not only white space): its passage is held.</summary>
+    internal bool HasDraft => IsVisible && !string.IsNullOrWhiteSpace(_field.Text);
+
     /// <summary>The plan the open box writes about.</summary>
     internal PlanReview? Plan => _plan;
 
@@ -109,10 +119,14 @@ internal sealed class PlanCommentBox : Panel
     /// <summary>The field.</summary>
     internal TextBox Field => _field;
 
-    /// <summary>Opens the box under the passage of <paramref name="request"/>, its field empty and with the keyboard.</summary>
-    internal void Open(PlanCommentRequest request)
+    /// <summary>
+    /// Opens the box under the passage of <paramref name="request"/>, its field empty and with the keyboard; false, and nothing
+    /// changes, while the box holds a draft.
+    /// </summary>
+    internal bool Open(PlanCommentRequest request)
     {
         if (request == null) throw new ArgumentNullException(nameof(request));
+        if (HasDraft) return false;
         _plan = request.Plan;
         _selection = request.Selection;
         _quote.Text = PlanReview.Clip(request.Quote, MaxQuoteLength);
@@ -120,6 +134,8 @@ internal sealed class PlanCommentBox : Panel
         IsVisible = true;
         InvalidateArrange();
         _field.Focus(NavigationMethod.Tab);
+        NotifyDraft();
+        return true;
     }
 
     /// <summary>Closes the box without a comment; false when it was not open.</summary>
@@ -251,7 +267,18 @@ internal sealed class PlanCommentBox : Panel
         IsVisible = false;
         _field.Text = "";
         _plan = null;
+        NotifyDraft();
         Closed?.Invoke(this, cancelled);
+    }
+
+    private bool _hadDraft;
+
+    private void NotifyDraft()
+    {
+        var has = HasDraft;
+        if (has == _hadDraft) return;
+        _hadDraft = has;
+        DraftChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void Label()

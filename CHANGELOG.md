@@ -12,6 +12,9 @@ All notable changes to this project are written here. The format follows
   This holds in the reply box, the command palette's filter, the plan's comment box, the permission card and its field,
   "What went wrong?" and the view's panels. A key counts as the input method's when it comes as `Key.ImeProcessed`, or
   from a text box that shows text being composed; it is left unhandled, for the input method.
+- A plan comment being written keeps its passage: while the comment box holds a draft (text that is not only white space),
+  no other selection of the plan document is offered "Add Comment" and none can take the box. Sending, cancelling or Esc
+  frees the passage; an empty box still changes passage as before.
 
 ## [0.10.0] - 2026-11-21
 

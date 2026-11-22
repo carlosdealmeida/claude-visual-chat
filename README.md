@@ -503,7 +503,8 @@ things to know:
 
 The document closes when the plan is approved and stays after a "No". Esc, its x and `CloseTopLayer()` close it, one
 layer at a time; only an Esc with the card on top is "No". Select a passage to comment on it: the comments wait in the
-card ("Continue planning") until the person sends them as feedback. The row of the plan in the list opens it again.
+card ("Continue planning") until the person sends them as feedback. While the comment box holds a draft, no other
+selection takes the box: the passage is kept until the comment is sent, cancelled or escaped. The row of the plan in the list opens it again.
 
 ## Tool calls
 

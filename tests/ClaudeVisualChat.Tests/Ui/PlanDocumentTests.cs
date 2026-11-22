@@ -607,6 +607,76 @@ public class PlanDocumentTests
     }
 
     [AvaloniaFact]
+    public void A_draft_holds_its_passage()
+    {
+        var ui = new Opened(Planning());
+        var read = ui.Document.Blocks.First(b => b.Words.StartsWith("Read ", StringComparison.Ordinal));
+        Select(ui.Window, read, 0, 4);                                                     // the box opens under it: the heading above stays free
+        ClickAddComment(ui);
+        UiHelpers.Type(ui.Window, "x");
+        var box = CommentBox(ui);
+        Select(ui.Window, Block(ui, "Intro line."), 0, 5);
+        Assert.NotNull(Block(ui, "Intro line.").SelectedRange);
+        Assert.Null(AddCommentButton(ui));
+        Assert.Equal("Read", box.QuoteText);
+        Assert.Equal("x", box.Field.Text);
+        Assert.True(box.IsOpen);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_blank_draft_lets_another_passage_take_the_box()
+    {
+        var ui = new Opened(Planning());
+        var read = ui.Document.Blocks.First(b => b.Words.StartsWith("Read ", StringComparison.Ordinal));
+        Select(ui.Window, read, 0, 4);
+        ClickAddComment(ui);
+        UiHelpers.Type(ui.Window, "   ");
+        Select(ui.Window, Block(ui, "Intro line."), 0, 5);
+        Assert.NotNull(AddCommentButton(ui));
+        ClickAddComment(ui);
+        Assert.Equal("Intro", CommentBox(ui).QuoteText);
+        ui.Window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("send")]
+    [InlineData("cancel")]
+    [InlineData("escape")]
+    public void Sending_cancelling_or_escaping_frees_the_passage(string how)
+    {
+        var ui = new Opened(Planning());
+        Select(ui.Window, Block(ui, "Intro line."), 0, 5);
+        ClickAddComment(ui);
+        UiHelpers.Type(ui.Window, "x");
+        var box = CommentBox(ui);
+        if (how == "send") UiHelpers.Press(ui.Window, Key.Enter);
+        else if (how == "cancel") UiHelpers.Click(ui.Window, UiHelpers.ButtonWithText(box, ui.Strings.PlanCommentCancel));
+        else UiHelpers.Press(ui.Window, Key.Escape);
+        Assert.False(box.IsOpen);
+        Select(ui.Window, ui.Document.Blocks.First(b => b.Words.StartsWith("Read ", StringComparison.Ordinal)), 0, 4);
+        Assert.NotNull(AddCommentButton(ui));
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Opening_over_a_draft_is_refused()
+    {
+        var ui = new Opened(Planning());
+        var intro = Block(ui, "Intro line.");
+        Select(ui.Window, intro, 0, 5);
+        ClickAddComment(ui);
+        UiHelpers.Type(ui.Window, "x");
+        var box = CommentBox(ui);
+        var plan = ui.Conversation.CurrentPlan!;
+        Assert.True(box.HasDraft);
+        Assert.False(box.Open(new PlanCommentRequest(plan, "line", new Rect(0, 0, 10, 10))));
+        Assert.Equal("Intro", box.QuoteText);
+        Assert.Equal("x", box.Field.Text);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_plan_that_takes_no_comments_offers_none()
     {
         // a history: the plan opened again from its row is only to read
