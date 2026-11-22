@@ -5,6 +5,13 @@ All notable changes to this project are written here. The format follows
 
 ## [0.11.0] - Unreleased
 
+### Added
+
+- `ClaudeChatView.PinPrompt` (true by default): false lets the prompt of the turn scroll away with its turn instead of
+  staying pinned at the top of the list. The band, its height limit and the click that goes to the start of the turn
+  go with it; the spacing of the turn header does not change. Turning it off with a conversation open hides the pinned
+  prompt at once, without scrolling the list.
+
 ### Changed
 
 - On the desktop permission card, ↓ stops at the last item, the field, instead of going round to the first answer. Each ↓

@@ -2329,6 +2329,65 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
+    public void With_pin_prompt_off_the_prompt_scrolls_away()
+    {
+        var (c, _, _) = TwoLongTurns();
+        var view = new ClaudeChatView { Conversation = c, PinPrompt = false };
+        var window = UiHelpers.Show(view);
+        var sticky = Sticky(view);
+
+        ScrollRowTo(view, c.Items[20], 0); // in the middle of the first reply: it would be pinned
+        Assert.False(sticky.IsVisible);
+        Assert.DoesNotContain("First question", UiHelpers.Texts(sticky));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Turning_pin_prompt_off_hides_the_pinned_prompt_at_once_and_on_pins_it_again()
+    {
+        var (c, first, _) = TwoLongTurns();
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        var scroller = UiHelpers.Scroller(view);
+        var sticky = Sticky(view);
+        ScrollRowTo(view, c.Items[20], 0);
+        Assert.True(sticky.IsVisible);
+        var offset = scroller.Offset.Y;
+
+        view.PinPrompt = false;
+        UiHelpers.Pump();
+        Assert.False(sticky.IsVisible);
+        Assert.Equal(offset, scroller.Offset.Y, 0.5); // the list stays where it was
+
+        view.PinPrompt = true;
+        UiHelpers.Pump();
+        Assert.True(sticky.IsVisible);
+        Assert.Same(first, sticky.Item);
+        Assert.Equal(offset, scroller.Offset.Y, 0.5);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_turn_header_keeps_its_spacing_with_pin_prompt_off()
+    {
+        Thickness Margin(bool pin)
+        {
+            var (c, _, _) = TwoLongTurns();
+            var view = new ClaudeChatView { Conversation = c, PinPrompt = pin };
+            var window = UiHelpers.Show(view);
+            UiHelpers.Pump();
+            var list = UiHelpers.ItemList(view);
+            list.ScrollIntoView(c.Items[0]);
+            UiHelpers.Pump();
+            var margin = list.ContainerFromItem(c.Items[0])!.Margin;
+            window.Close();
+            return margin;
+        }
+
+        Assert.Equal(Margin(true), Margin(false));
+    }
+
+    [AvaloniaFact]
     public void The_pinned_prompt_waits_for_the_bubble_not_for_the_date_line_and_time()
     {
         var (c, first, _) = TwoLongTurns();

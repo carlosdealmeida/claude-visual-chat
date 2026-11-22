@@ -628,7 +628,8 @@ uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O q
   view somente leitura. O polegar para baixo abre "O que deu errado?", uma camada do `CloseTopLayer()`; aí o `Details` é
   o que a pessoa escreveu. O `Positive` é null quando a pessoa desfaz a avaliação.
 - **Propriedades da view** para as configurações da extensão que o seu app lê e repassa: `ScrollToEndOnSend` (true:
-  mandar uma mensagem traz a lista de volta ao fim), `ShowTimestamps` (true: os horários e as linhas de data),
+  mandar uma mensagem traz a lista de volta ao fim), `PinPrompt` (true: o prompt do turno fica fixado no topo; false:
+  ele rola embora com o turno), `ShowTimestamps` (true: os horários e as linhas de data),
   `UseCtrlEnterToSend` (false: só Ctrl ou Cmd+Enter envia; veja [A caixa de resposta](#a-caixa-de-resposta)),
   `SpinnerVerbs` e `SpinnerVerbsReplace` (verbos seus para a linha de trabalho, somados aos dela ou sozinhos) e
   `ReduceMotion` (false; o Avalonia 11.0 não sabe perguntar ao sistema, então o seu app a liga quando o usuário quer

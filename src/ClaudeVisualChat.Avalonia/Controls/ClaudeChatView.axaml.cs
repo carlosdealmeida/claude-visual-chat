@@ -133,6 +133,13 @@ public partial class ClaudeChatView : UserControl
         AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(UseCtrlEnterToSend), false);
 
     /// <summary>
+    /// True (the default) to keep the prompt of the turn pinned at the top of the list while its reply scrolls under it. False lets the
+    /// prompt scroll away with its turn.
+    /// </summary>
+    public static readonly StyledProperty<bool> PinPromptProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(PinPrompt), true);
+
+    /// <summary>
     /// True (the default) to show when each message was sent, its time over it (the whole date and time in its tooltip), with a date
     /// line before the first one and wherever the day changes. False hides the times and the date lines. Inherited by everything
     /// inside the view. The extension's <c>showMessageTimestamps</c>.
@@ -486,6 +493,13 @@ public partial class ClaudeChatView : UserControl
         set => SetValue(UseCtrlEnterToSendProperty, value);
     }
 
+    /// <summary>Keeps the prompt of the turn pinned at the top (see <see cref="PinPromptProperty"/>). True by default.</summary>
+    public bool PinPrompt
+    {
+        get => GetValue(PinPromptProperty);
+        set => SetValue(PinPromptProperty, value);
+    }
+
     /// <summary>Shows the messages' times and the date lines between days (see <see cref="ShowTimestampsProperty"/>). True by default.</summary>
     public bool ShowTimestamps
     {
@@ -649,6 +663,10 @@ public partial class ClaudeChatView : UserControl
         else if (change.Property == UseCtrlEnterToSendProperty)
         {
             Composer.UseCtrlEnterToSend = UseCtrlEnterToSend;
+        }
+        else if (change.Property == PinPromptProperty)
+        {
+            UpdateSticky();
         }
         else if (change.Property == SpinnerVerbsProperty || change.Property == SpinnerVerbsReplaceProperty)
         {
@@ -1393,7 +1411,7 @@ public partial class ClaudeChatView : UserControl
     {
         if (!_attached) return;
         var items = ItemList.ItemsSource as IList;
-        if (items == null || items.Count == 0)
+        if (!PinPrompt || items == null || items.Count == 0)
         {
             Sticky.Hide();
             return;

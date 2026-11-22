@@ -877,6 +877,21 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_pin_prompt_api_exists()
+    {
+        var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
+        foreach (var name in new[] { "PinPrompt" })
+        {
+            var property = view.GetProperty(name);
+            Assert.Equal(typeof(bool), property?.PropertyType);
+            Assert.True(property!.SetMethod!.IsPublic);
+            var field = view.GetField(name + "Property");
+            Assert.Equal(typeof(Avalonia.StyledProperty<bool>), field?.FieldType);
+            Assert.True(((Avalonia.StyledProperty<bool>)field!.GetValue(null)!).GetDefaultValue(view));
+        }
+    }
+
+    [Fact]
     public void The_external_message_api()
     {
         var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
