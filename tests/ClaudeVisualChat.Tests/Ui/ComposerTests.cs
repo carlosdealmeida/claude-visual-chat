@@ -147,6 +147,55 @@ public class ComposerTests
     }
 
     [AvaloniaFact]
+    public void With_escape_stops_claude_off_esc_in_the_box_stops_nothing_and_goes_on_to_the_app()
+    {
+        var ui = Open();
+        ui.View.EscapeStopsClaude = false;
+        ui.Type("go");
+        UiHelpers.Press(ui.Window, Key.Enter);
+        Assert.True(ui.Conversation.IsBusy);
+        ui.Input.Focus();
+
+        ui.Unhandled.Clear();
+        UiHelpers.Press(ui.Window, Key.Escape);
+
+        Assert.Equal(0, ui.Stops);
+        Assert.Contains(Key.Escape, ui.Unhandled);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_stop_button_stops_with_escape_stops_claude_off()
+    {
+        var ui = Open();
+        ui.View.EscapeStopsClaude = false;
+        ui.Type("go");
+        UiHelpers.Press(ui.Window, Key.Enter);
+
+        UiHelpers.Click(ui.Window, UiHelpers.ButtonWithText(ui.Composer, "Stop"));
+
+        Assert.Equal(1, ui.Stops);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Esc_still_closes_the_palette_with_escape_stops_claude_off()
+    {
+        var ui = Open();
+        ui.View.EscapeStopsClaude = false;
+        ui.Type("/");
+        Assert.True(ui.Composer.HasOpenPopup);
+
+        ui.Unhandled.Clear();
+        UiHelpers.Press(ui.Window, Key.Escape);
+
+        Assert.False(ui.Composer.HasOpenPopup);
+        Assert.DoesNotContain(Key.Escape, ui.Unhandled);
+        Assert.Equal(0, ui.Stops);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void Picking_plan_asks_for_plan_mode()
     {
         var ui = Open();

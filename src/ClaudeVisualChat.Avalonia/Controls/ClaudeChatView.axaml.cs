@@ -140,6 +140,13 @@ public partial class ClaudeChatView : UserControl
         AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(PinPrompt), true);
 
     /// <summary>
+    /// True (the default) to stop Claude with Esc in the reply box. False leaves the key alone there: it stops nothing and goes on to
+    /// the host app (the Stop button still stops; Esc still closes the palette, the panels and refuses a permission request).
+    /// </summary>
+    public static readonly StyledProperty<bool> EscapeStopsClaudeProperty =
+        AvaloniaProperty.Register<ClaudeChatView, bool>(nameof(EscapeStopsClaude), true);
+
+    /// <summary>
     /// True (the default) to show when each message was sent, its time over it (the whole date and time in its tooltip), with a date
     /// line before the first one and wherever the day changes. False hides the times and the date lines. Inherited by everything
     /// inside the view. The extension's <c>showMessageTimestamps</c>.
@@ -500,6 +507,13 @@ public partial class ClaudeChatView : UserControl
         set => SetValue(PinPromptProperty, value);
     }
 
+    /// <summary>Lets Esc in the reply box stop Claude (see <see cref="EscapeStopsClaudeProperty"/>). True by default.</summary>
+    public bool EscapeStopsClaude
+    {
+        get => GetValue(EscapeStopsClaudeProperty);
+        set => SetValue(EscapeStopsClaudeProperty, value);
+    }
+
     /// <summary>Shows the messages' times and the date lines between days (see <see cref="ShowTimestampsProperty"/>). True by default.</summary>
     public bool ShowTimestamps
     {
@@ -663,6 +677,10 @@ public partial class ClaudeChatView : UserControl
         else if (change.Property == UseCtrlEnterToSendProperty)
         {
             Composer.UseCtrlEnterToSend = UseCtrlEnterToSend;
+        }
+        else if (change.Property == EscapeStopsClaudeProperty)
+        {
+            Composer.EscapeStopsClaude = EscapeStopsClaude;
         }
         else if (change.Property == PinPromptProperty)
         {

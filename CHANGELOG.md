@@ -11,6 +11,9 @@ All notable changes to this project are written here. The format follows
   staying pinned at the top of the list. The band, its height limit and the click that goes to the start of the turn
   go with it; the spacing of the turn header does not change. Turning it off with a conversation open hides the pinned
   prompt at once, without scrolling the list.
+- `ClaudeChatView.EscapeStopsClaude` (true by default): false leaves Esc in the reply box to the app: it does not stop
+  Claude and is not marked as handled. The Stop button still stops, and Esc still closes the command palette, the plan's
+  comment box, the plan and the panels, and refuses a permission request.
 
 ### Changed
 

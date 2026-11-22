@@ -293,6 +293,12 @@ internal partial class ChatComposer : UserControl
 
     private bool _useCtrlEnterToSend;
 
+    /// <summary>
+    /// True (the default) for Esc in the box to stop Claude while it works; false leaves the key unhandled there, for the app. The Stop
+    /// button is not affected, nor is the Esc that closes the palette.
+    /// </summary>
+    internal bool EscapeStopsClaude { get; set; } = true;
+
     /// <summary>Ctrl or Cmd with Enter is the send key: where Enter breaks the line (the touch layout, or the option).</summary>
     private bool CtrlEnterSends => IsTouch || _useCtrlEnterToSend;
 
@@ -652,7 +658,7 @@ internal partial class ChatComposer : UserControl
             if (Recall(e.Key == Key.Up)) e.Handled = true;
             else GoToEdgeIfStuck(e.Key == Key.Up);
         }
-        else if (e.Key == Key.Escape && _tracked != null && _tracked.IsBusy)
+        else if (e.Key == Key.Escape && EscapeStopsClaude && _tracked != null && _tracked.IsBusy)
         {
             e.Handled = true; // only when it stops something; otherwise the Esc is the app's
             _tracked.Stop();

@@ -877,10 +877,10 @@ public class PublicApiTests
     }
 
     [Fact]
-    public void The_pin_prompt_api_exists()
+    public void The_pin_prompt_and_escape_stops_claude_api_exists()
     {
         var view = typeof(ClaudeVisualChat.Controls.ClaudeChatView);
-        foreach (var name in new[] { "PinPrompt" })
+        foreach (var name in new[] { "PinPrompt", "EscapeStopsClaude" })
         {
             var property = view.GetProperty(name);
             Assert.Equal(typeof(bool), property?.PropertyType);

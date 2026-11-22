@@ -622,7 +622,8 @@ a star and verbs. Nothing to set up for those. What your app may want to know:
   `Positive` is null when the person takes the rating back.
 - **Settings of the view** for the extension's settings your app reads and passes on: `ScrollToEndOnSend` (true: sending
   brings the list back to its end), `PinPrompt` (true: the prompt of the turn stays pinned at the top; false: it scrolls
-  away with its turn), `ShowTimestamps` (true: the times and the date lines), `UseCtrlEnterToSend` (false:
+  away with its turn), `EscapeStopsClaude` (true: Esc in the reply box stops Claude;
+  false: it goes on to your app), `ShowTimestamps` (true: the times and the date lines), `UseCtrlEnterToSend` (false:
   only Ctrl or Cmd+Enter sends; see [The reply box](#the-reply-box)), `SpinnerVerbs` and `SpinnerVerbsReplace` (verbs
   of your own for the working line, added to its own or alone) and `ReduceMotion` (false; Avalonia 11.0 cannot ask the
   system, so your app sets it when the user wants less motion).
