@@ -532,6 +532,10 @@ may want to know:
   after a letter as `\u{FE0F}`. The error of any call shows the same symbols, with each carriage return as a line break.
   What a running command has printed so far still loses all its terminal codes, and shows only its bidirectional
   controls, as `\u202E`.
+- **A short command or output that its row cuts opens in place.** A text in the box past 250 characters or 3 lines opens
+  whole with a click, Enter or Space. A shorter one does too, but only while it is wider or taller than its row. It then
+  opens wrapped, with no sideways scroll. One that fits takes no keyboard, and the row checks again when it changes
+  size. Both use `IsInputExpanded` and `IsOutputExpanded`.
 - **A click on a diff in the list opens the Diff View** over the whole view, side by side, under the file's path. Esc, its
   x and `CloseTopLayer()` close it (it is a layer, right under the image preview), and it opens in a read-only view too.
   On a view 500 px wide or less (the desktop layout only) the box of an Edit or a Write is left out, as in the extension;

@@ -590,7 +590,10 @@ internal partial class ToolCallView : UserControl
 
     private void UpdateBody()
     {
-        var focused = FocusedContent();
+        // a short text drawn again that has not been measured yet still waits for the focus it had
+        var focused = FocusedContent() ?? _awaitingFocus?.Content.Tag as string;
+        _awaitingFocus = null;
+        _shortCells.Clear();
         _generation++;
         Body.Children.Clear();
         _agentLine = null;
@@ -701,7 +704,9 @@ internal partial class ToolCallView : UserControl
         }
         Body.IsVisible = Body.Children.Count > 0;
         UpdateCopyState();
-        if (focused != null) Refocus(focused);
+        // a short text is a stop only once it is laid out: its first measure gives it the focus back if its row still cuts it
+        if (focused != null && !Refocus(focused))
+            _awaitingFocus = _shortCells.FirstOrDefault(cell => Equals(cell.Content.Tag, focused));
     }
 
     // ---- Claude in Chrome ----
@@ -947,17 +952,20 @@ internal partial class ToolCallView : UserControl
     /// What goes in a row of the box: the editor's font at .85em, no wrapping, 4 px inside, at most 60 px with a fade. An
     /// <paramref name="input"/> is the command or the file written; the rest is the call's output, a string on the code
     /// background that scrolls sideways. A long one takes clicks, Enter and Space and opens whole in place (unless
-    /// <paramref name="interactive"/> is false: a Glob's output, opened and cut from its line); the state is in the item, because
+    /// <paramref name="interactive"/> is false: a Glob's output, opened and cut from its line); a short one does too while its row
+    /// cuts it (see <see cref="UpdateCut"/>), and opens wrapped, without the sideways scroll. The state is in the item, because
     /// the list recycles its rows.
     /// </summary>
     private Border TextRow(ToolCallItem item, string text, bool input, ChatStrings strings, bool interactive = true, bool error = false)
     {
         var expandable = IsExpandable(text);
-        var whole = expandable && (input ? item.IsInputExpanded : item.IsOutputExpanded);
+        var opensShort = interactive && !error && !expandable; // a short text, which opens only once its row cuts it
+        var whole = (expandable || opensShort) && (input ? item.IsInputExpanded : item.IsOutputExpanded);
+        var wrapped = opensShort && whole;
 
         TextBlock block = input ? new TextBlock() : new SelectableTextBlock();
         block.Text = error ? text : Shown(text, whole); // an error is short already (cut at 2000): the frame cuts it at ten lines
-        block.TextWrapping = error ? TextWrapping.Wrap : TextWrapping.NoWrap;
+        block.TextWrapping = error || wrapped ? TextWrapping.Wrap : TextWrapping.NoWrap;
         block.Classes.Add("ClaudeChatToolText");
         Control shown = block;
         if (error)
@@ -971,7 +979,8 @@ internal partial class ToolCallView : UserControl
             var room = new Border { Height = ScrollBarRoom, IsVisible = false };
             var scroller = new ScrollViewer
             {
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                // a short output opened wraps in the row's width: nothing is left to scroll to
+                HorizontalScrollBarVisibility = wrapped ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 Content = new StackPanel { Children = { block, room } },
             };
@@ -990,32 +999,129 @@ internal partial class ToolCallView : UserControl
             content.Classes.Add("error");
             if (expandable && !whole) ClipAtTenLines(content);
         }
-        if (!expandable || !interactive) return content; // with a line above, that opens and cuts it
+        if (!interactive || (!expandable && !opensShort)) return content; // with a line above, that opens and cuts it
 
-        content.Classes.Add("expandable");
-        content.Background = Brushes.Transparent; // the whole row takes the click, not only the letters
         content.Tag = input ? InputKey : OutputKey;
-        content.Focusable = true;
-        content.Cursor = new Cursor(StandardCursorType.Hand);
-        AutomationProperties.SetName(content, whole ? strings.ToolCutText : strings.ToolShowFullText);
+        // a short text closed is a stop only while its row cuts it, which the row knows once it is laid out
+        ShortCell? cut = null;
+        if (opensShort && !whole)
+        {
+            cut = new ShortCell(content, block, strings);
+            _shortCells.Add(cut);
+            content.SizeChanged += (_, _) => UpdateCut(cut);
+            // the text's own size changes with its font, which may leave the row's as it was: measured once this layout is over
+            block.SizeChanged += (_, _) => Dispatcher.UIThread.Post(() => UpdateCut(cut));
+        }
+        else
+        {
+            SetStop(content, true, whole ? strings.ToolCutText : strings.ToolShowFullText);
+        }
         // the second click of a double click selects a word of the text: only the first one toggles
         var clicks = 1;
         content.AddHandler(InputElement.PointerPressedEvent, (_, e) => clicks = e.ClickCount, Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        // a click while some of a short output is selected ends that selection and opens nothing (a press on the text takes it
+        // away itself; one on the row around it leaves it to the click)
+        var selected = false;
+        if (opensShort)
+            content.AddHandler(InputElement.PointerPressedEvent, (_, _) => selected = HasSelection(block), Avalonia.Interactivity.RoutingStrategies.Tunnel, true);
         content.GotFocus += (_, e) => _focusMethod = e.NavigationMethod;
         content.Tapped += (_, e) =>
         {
             // a drag on the scroll bar is not a click on the text
             if (clicks > 1 || e.Source is Visual source && source.FindAncestorOfType<ScrollBar>(true) != null) return;
+            if (cut != null && !cut.IsStop) return; // a short text that fits
+            if (opensShort && (selected || HasSelection(block)))
+            {
+                if (selected && block is SelectableTextBlock selectable) selectable.SelectionEnd = selectable.SelectionStart;
+                return;
+            }
             e.Handled = true;
             Toggle(item, input);
         };
         content.KeyDown += (_, e) =>
         {
             if ((e.Key != Key.Enter && e.Key != Key.Space) || e.KeyModifiers != KeyModifiers.None) return;
+            if (cut != null && !cut.IsStop) return;
             e.Handled = true;
             Toggle(item, input);
         };
         return content;
+    }
+
+    /// <summary>Makes a row's content a stop that opens and cuts its text (classes, focus, the hand, its name), or a plain text again.</summary>
+    private static void SetStop(Border content, bool stop, string name)
+    {
+        content.Classes.Set("expandable", stop);
+        content.Focusable = stop;
+        if (stop)
+        {
+            content.Background = Brushes.Transparent; // the whole row takes the click, not only the letters
+            content.Cursor = new Cursor(StandardCursorType.Hand);
+            AutomationProperties.SetName(content, name);
+        }
+        else
+        {
+            content.ClearValue(Border.BackgroundProperty);
+            content.ClearValue(CursorProperty);
+            content.ClearValue(AutomationProperties.NameProperty);
+        }
+    }
+
+    private static bool HasSelection(TextBlock block) =>
+        block is SelectableTextBlock selectable && selectable.SelectionStart != selectable.SelectionEnd;
+
+    /// <summary>A short text closed, which is a stop only while its row cuts it.</summary>
+    private sealed class ShortCell
+    {
+        public ShortCell(Border content, TextBlock block, ChatStrings strings)
+        {
+            Content = content;
+            Block = block;
+            Strings = strings;
+        }
+
+        public Border Content { get; }
+        public TextBlock Block { get; }
+        public ChatStrings Strings { get; }
+        public bool Measured { get; set; }
+        public bool IsStop => Content.Classes.Contains("expandable");
+    }
+
+    /// <summary>The short texts of the body, closed: what <see cref="UpdateCut"/> measures (a cell of an earlier body is no longer here).</summary>
+    private readonly List<ShortCell> _shortCells = new List<ShortCell>();
+
+    /// <summary>The short text that had the focus before a redraw, waiting for its first measure to know whether it takes it back.</summary>
+    private ShortCell? _awaitingFocus;
+
+    /// <summary>
+    /// Measures a short text after a layout: it is cut when the width it wants passes the row's by more than half a pixel, or its
+    /// height passes the row's (the text measured is the one the row shows: the output already with its symbols). Only a change
+    /// touches the content, so a measure that finds what it found before lays nothing out again: the stop's class, focus, hand and
+    /// name change no size on the desktop, and the finger's height it takes in the touch layout only makes a cut row taller.
+    /// A row that comes to fit while it has the focus lets it go, as a content that leaves the body does.
+    /// </summary>
+    private void UpdateCut(ShortCell cell)
+    {
+        if (!_shortCells.Contains(cell)) return;
+        var content = cell.Content;
+        var room = content.Bounds.Size.Deflate(content.Padding);
+        if (room.Width <= 0) return; // not laid out yet
+        var layout = cell.Block.TextLayout;
+        var cut = layout.Width > room.Width + 0.5 || layout.Height > room.Height + 0.5;
+        var first = !cell.Measured;
+        cell.Measured = true;
+        var changed = cut != cell.IsStop;
+        var focused = content.IsFocused;
+        if (changed) SetStop(content, cut, cell.Strings.ToolShowFullText);
+        if (first && ReferenceEquals(_awaitingFocus, cell))
+        {
+            _awaitingFocus = null;
+            if (cut) content.Focus(_focusMethod); // drawn again under the keyboard, it keeps it
+        }
+        else if (changed && !cut && focused)
+        {
+            TopLevel.GetTopLevel(this)?.FocusManager?.ClearFocus();
+        }
     }
 
     /// <summary>Most lines of an error before it fades: 10em of the row content's font (the chat's own, not the text block's .85em).</summary>
@@ -1293,17 +1399,18 @@ internal partial class ToolCallView : UserControl
         return null;
     }
 
-    /// <summary>The box was drawn again under the keyboard (or the finger): the same part keeps the focus.</summary>
-    private void Refocus(string key)
+    /// <summary>The box was drawn again under the keyboard (or the finger): the same part keeps the focus. False when no part takes it now.</summary>
+    private bool Refocus(string key)
     {
         foreach (var content in Body.GetVisualDescendants().OfType<Control>())
         {
             if (Equals(content.Tag, key) && content.Focusable)
             {
                 content.Focus(_focusMethod);
-                return;
+                return true;
             }
         }
+        return false;
     }
 
     /// <summary>The line under the name: what an edit changed, how long a written file is.</summary>

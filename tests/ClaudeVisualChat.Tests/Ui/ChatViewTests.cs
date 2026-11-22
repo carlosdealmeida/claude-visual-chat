@@ -961,16 +961,17 @@ public class ChatViewTests
     }
 
     [AvaloniaTheory]
-    [InlineData("a\nb\nc", false)]
-    [InlineData("a\nb\nc\nd", true)]
-    [InlineData("one line of forty characters, give or take", false)]
-    [InlineData("250", false)]
-    [InlineData("251", true)]
-    public void Only_a_text_past_250_characters_or_3_lines_is_clickable(string text, bool clickable)
+    [InlineData("a\nb\nc", false, false)]
+    [InlineData("a\nb\nc\nd", true, true)]
+    [InlineData("one line of forty characters, give or take", false, false)]
+    [InlineData("250", false, true)] // short, but wider than its row: it opens wrapped (0.11.0)
+    [InlineData("251", true, true)]
+    public void Only_a_text_past_250_characters_or_3_lines_is_long_and_a_short_one_is_clickable_when_cut(string text, bool isLong, bool clickable)
     {
         if (text == "250") text = new string('x', ToolCallView.ExpandableChars);
         if (text == "251") text = new string('x', ToolCallView.ExpandableChars + 1);
         Assert.Equal(3, ToolCallView.ExpandableLines);
+        Assert.Equal(isLong, ToolCallView.IsExpandable(text));
         var (c, tool) = Answered(text);
         var (view, window) = Open(c);
 
@@ -980,7 +981,12 @@ public class ChatViewTests
         Assert.Equal(clickable, !string.IsNullOrEmpty(AutomationProperties.GetName(content)));
         ClickTop(window, content);
         Assert.Equal(clickable, tool.IsOutputExpanded);
-        Assert.False(Contents(view, tool)[0].Focusable); // the short command (IN) is never one
+        if (clickable)
+        {
+            var open = Contents(view, tool)[1].GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+            Assert.Equal(isLong ? TextWrapping.NoWrap : TextWrapping.Wrap, open.TextWrapping); // a long text opens whole, a short one wrapped
+        }
+        Assert.False(Contents(view, tool)[0].Focusable); // the short command (IN) that fits is not one
         window.Close();
     }
 
@@ -1076,6 +1082,301 @@ public class ChatViewTests
         whole.IsOutputExpanded = true;
         (view, window) = Open(c2);
         Assert.Equal(Lines(2000), ResultOf(view, whole));
+        window.Close();
+    }
+
+    // ---- a short text cut by its row (0.11.0) ----
+
+    /// <summary>The view in a window 400 px wide: a line of 200 characters does not fit in a row.</summary>
+    private static (ClaudeChatView View, Window Window) OpenNarrow(ChatConversation conversation)
+    {
+        var view = new ClaudeChatView { Conversation = conversation };
+        return (view, UiHelpers.Show(view, 400));
+    }
+
+    /// <summary>The text block of a row's content (the command's, or the output's).</summary>
+    private static TextBlock TextOf(Border content) => content.GetVisualDescendants().OfType<TextBlock>().First();
+
+    /// <summary>The room inside a row's content, without its padding.</summary>
+    private static Size RoomOf(Border content) => content.Bounds.Size.Deflate(content.Padding);
+
+    private static readonly string WideCommand = "echo " + new string('a', 195);
+
+    private static readonly string WideOutput = string.Join(" ", Enumerable.Repeat("word", 40));
+
+    [AvaloniaFact]
+    public void A_short_command_wider_than_its_row_takes_the_keyboard_and_opens_in_place()
+    {
+        var (c, tool) = Answered("ok", command: WideCommand);
+        var (view, window) = OpenNarrow(c);
+        Assert.False(ToolCallView.IsExpandable(WideCommand)); // (the premise: a short text)
+
+        var cell = Contents(view, tool)[0];
+        Assert.True(TextOf(cell).TextLayout.Width > RoomOf(cell).Width + 0.5, "the command is wider than its row");
+        Assert.Contains("expandable", cell.Classes);
+        Assert.True(cell.Focusable);
+        Assert.NotNull(cell.Cursor);
+        Assert.Equal(ChatStrings.English.ToolShowFullText, AutomationProperties.GetName(cell));
+        Assert.Equal(TextWrapping.NoWrap, TextOf(cell).TextWrapping);
+        Assert.True(cell.Focus());
+
+        UiHelpers.Press(window, Key.Enter);
+
+        Assert.True(tool.IsInputExpanded);
+        cell = Contents(view, tool)[0];
+        Assert.Same(cell, UiHelpers.Focused(window)); // drawn again, it keeps the keyboard
+        Assert.Contains("whole", cell.Classes);
+        Assert.Contains("expandable", cell.Classes);
+        Assert.Equal(ChatStrings.English.ToolCutText, AutomationProperties.GetName(cell));
+        var text = TextOf(cell);
+        Assert.Equal(WideCommand, text.Text);
+        Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
+        Assert.True(text.TextLayout.Width <= RoomOf(cell).Width + 0.5, $"{text.TextLayout.Width} px of text in {RoomOf(cell).Width} px");
+        Assert.True(text.TextLayout.Height <= RoomOf(cell).Height + 0.5, "the whole command shows");
+        Assert.True(text.TextLayout.TextLines.Count > 1);
+
+        UiHelpers.Press(window, Key.Enter);
+
+        Assert.False(tool.IsInputExpanded);
+        cell = Contents(view, tool)[0];
+        Assert.Same(cell, UiHelpers.Focused(window));
+        Assert.DoesNotContain("whole", cell.Classes);
+        Assert.Contains("expandable", cell.Classes);
+        Assert.Equal(TextWrapping.NoWrap, TextOf(cell).TextWrapping);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Space_and_a_click_open_it_too()
+    {
+        var (c, tool) = Answered("ok", command: WideCommand);
+        var (view, window) = OpenNarrow(c);
+        Assert.True(Contents(view, tool)[0].Focus());
+
+        UiHelpers.Press(window, Key.Space);
+        Assert.True(tool.IsInputExpanded);
+        UiHelpers.Press(window, Key.Space);
+        Assert.False(tool.IsInputExpanded);
+
+        ClickTop(window, Contents(view, tool)[0]);
+        Assert.True(tool.IsInputExpanded);
+        System.Threading.Thread.Sleep(600); // a click after the double-click time is a first click again
+        ClickTop(window, Contents(view, tool)[0]);
+        Assert.False(tool.IsInputExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_short_command_that_fits_takes_no_keyboard()
+    {
+        var (c, tool) = Answered("ok", command: "ls -la");
+        var (view, window) = OpenNarrow(c);
+
+        var cell = Contents(view, tool)[0];
+        Assert.False(cell.Focusable);
+        Assert.Null(cell.Cursor);
+        Assert.DoesNotContain("expandable", cell.Classes);
+        Assert.True(string.IsNullOrEmpty(AutomationProperties.GetName(cell)));
+        ClickTop(window, cell);
+        Assert.False(tool.IsInputExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_short_output_wider_than_its_row_opens_wrapped()
+    {
+        var (c, tool) = Answered(WideOutput);
+        var (view, window) = OpenNarrow(c);
+        Assert.False(ToolCallView.IsExpandable(WideOutput));
+        var cell = Contents(view, tool)[1];
+        var scroller = cell.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        Assert.True(scroller.Extent.Width > scroller.Viewport.Width + 0.5, "closed, it scrolls sideways");
+        Assert.True(cell.Focusable);
+        Assert.Contains("expandable", cell.Classes);
+
+        ClickTop(window, cell);
+
+        Assert.True(tool.IsOutputExpanded);
+        cell = Contents(view, tool)[1];
+        Assert.Contains("whole", cell.Classes);
+        Assert.True(cell.Focusable);
+        Assert.Equal(ChatStrings.English.ToolCutText, AutomationProperties.GetName(cell));
+        Assert.Equal(WideOutput, ResultOf(view, tool));
+        var text = cell.GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
+        scroller = cell.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        Assert.Equal(ScrollBarVisibility.Disabled, scroller.HorizontalScrollBarVisibility); // no bar to the side
+        Assert.True(scroller.Extent.Width <= scroller.Viewport.Width + 0.5, $"{scroller.Extent.Width} px in {scroller.Viewport.Width} px");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_short_output_taller_than_its_row_opens_too()
+    {
+        // one line for the count of lines, five drawn: a lone carriage return breaks the line where it is drawn
+        var output = "one\rtwo\rthree\rfour\rfive";
+        var (c, tool) = Answered(output);
+        var (view, window) = Open(c);
+        Assert.False(ToolCallView.IsExpandable(output));
+        var cell = Contents(view, tool)[1];
+        var text = cell.GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        Assert.True(text.TextLayout.Width <= RoomOf(cell).Width, "as wide as the row allows");
+        Assert.True(text.TextLayout.Height > RoomOf(cell).Height + 0.5, $"{text.TextLayout.Height} px of text in {RoomOf(cell).Height} px");
+        Assert.True(cell.Focusable);
+        Assert.Contains("expandable", cell.Classes);
+
+        ClickTop(window, cell);
+
+        Assert.True(tool.IsOutputExpanded);
+        cell = Contents(view, tool)[1];
+        Assert.True(cell.GetVisualDescendants().OfType<SelectableTextBlock>().Single().TextLayout.Height <= RoomOf(cell).Height + 0.5, "the whole output shows");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_short_output_with_symbols_that_fits_takes_no_keyboard()
+    {
+        var (c, tool) = Answered("ok \u001b[2J");
+        var (view, window) = OpenNarrow(c);
+        Assert.Equal("ok ␛[2J", ResultOf(view, tool)); // (the premise: what the terminal hides shows as a symbol)
+
+        var cell = Contents(view, tool)[1];
+        Assert.False(cell.Focusable);
+        Assert.Null(cell.Cursor);
+        Assert.DoesNotContain("expandable", cell.Classes);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Three_lines_that_fit_take_no_keyboard()
+    {
+        var (c, tool) = Answered("a\nb\nc", command: "ls\npwd\nwhoami");
+        var (view, window) = OpenNarrow(c);
+
+        foreach (var cell in Contents(view, tool))
+        {
+            Assert.False(cell.Focusable);
+            Assert.DoesNotContain("expandable", cell.Classes);
+        }
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_copy_button_does_not_open_the_command()
+    {
+        var (c, tool) = Answered("ok", command: WideCommand);
+        var (view, window) = OpenNarrow(c);
+        Assert.True(Contents(view, tool)[0].Focusable); // (the premise: the command is cut, and opens)
+        var copy = ViewOf(view, tool).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("ClaudeChatCopyCode"));
+
+        UiHelpers.Click(window, copy);
+
+        Assert.False(tool.IsInputExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_click_with_text_selected_does_not_open()
+    {
+        var (c, tool) = Answered(WideOutput);
+        var (view, window) = OpenNarrow(c);
+        var text = Contents(view, tool)[1].GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        text.SelectionStart = 0;
+        text.SelectionEnd = 4;
+
+        ClickTop(window, Contents(view, tool)[1]); // the click takes the selection away, on the text or on the row around it
+
+        Assert.False(tool.IsOutputExpanded);
+        Assert.Equal(text.SelectionStart, text.SelectionEnd);
+        System.Threading.Thread.Sleep(600);
+        ClickTop(window, Contents(view, tool)[1]); // with nothing selected, a click opens it
+        Assert.True(tool.IsOutputExpanded);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Dragging_over_a_short_output_to_select_does_not_open()
+    {
+        var (c, tool) = Answered(WideOutput);
+        var (view, window) = OpenNarrow(c);
+        var cell = Contents(view, tool)[1];
+        Assert.True(cell.Focusable); // (the premise: the output is cut, and opens)
+        var from = cell.TranslatePoint(new Point(20, 8), window)!.Value;
+        var to = from + new Point(40, 0);
+
+        window.MouseMove(from, RawInputModifiers.None);
+        window.MouseDown(from, MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(to, RawInputModifiers.LeftMouseButton);
+        window.MouseUp(to, MouseButton.Left, RawInputModifiers.None);
+        UiHelpers.Pump();
+
+        Assert.False(tool.IsOutputExpanded);
+        var text = Contents(view, tool)[1].GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        Assert.True(text.SelectionEnd > text.SelectionStart, "the drag selected a piece of the output");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Widening_the_view_until_it_fits_takes_the_stop_away_and_an_open_row_stays_open()
+    {
+        var command = "echo " + new string('a', 75);
+        var output = string.Join(" ", Enumerable.Repeat("word", 16));
+        var (c, tool) = Answered(output, command: command);
+        tool.IsOutputExpanded = true;
+        var (view, window) = OpenNarrow(c);
+        var cell = Contents(view, tool)[0];
+        Assert.True(cell.Focusable);                                // cut at 400 px
+        Assert.Contains("whole", Contents(view, tool)[1].Classes); // and the output open
+        Assert.True(cell.Focus(NavigationMethod.Tab));
+
+        window.Width = 1000;
+        UiHelpers.Pump();
+
+        cell = Contents(view, tool)[0];
+        Assert.True(TextOf(cell).TextLayout.Width <= RoomOf(cell).Width + 0.5, "the command fits");
+        Assert.False(cell.Focusable);
+        Assert.Null(cell.Cursor);
+        Assert.DoesNotContain("expandable", cell.Classes);
+        Assert.True(string.IsNullOrEmpty(AutomationProperties.GetName(cell)));
+        Assert.Null(UiHelpers.Focused(window)); // the focus goes, as it goes when the content that had it leaves
+        var open = Contents(view, tool)[1];
+        Assert.True(tool.IsOutputExpanded);
+        Assert.Contains("whole", open.Classes);
+        Assert.True(open.Focusable);
+        Assert.Equal(ChatStrings.English.ToolCutText, AutomationProperties.GetName(open));
+
+        ClickTop(window, open); // cut again, the output fits: no stop
+        Assert.False(tool.IsOutputExpanded);
+        Assert.False(Contents(view, tool)[1].Focusable);
+
+        window.Width = 400; // narrow again: the stop comes back
+        UiHelpers.Pump();
+        Assert.True(Contents(view, tool)[0].Focusable);
+        Assert.True(Contents(view, tool)[1].Focusable);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_long_text_opens_as_before()
+    {
+        var (c, tool) = Answered(Lines(20));
+        var (view, window) = OpenNarrow(c);
+        var cell = Contents(view, tool)[1];
+        Assert.True(cell.Focusable);
+        Assert.Contains("expandable", cell.Classes);
+        Assert.Equal(ChatStrings.English.ToolShowFullText, AutomationProperties.GetName(cell));
+
+        ClickTop(window, cell);
+
+        Assert.True(tool.IsOutputExpanded);
+        cell = Contents(view, tool)[1];
+        Assert.Contains("whole", cell.Classes);
+        Assert.Equal(Lines(20), ResultOf(view, tool));
+        Assert.Equal(TextWrapping.NoWrap, cell.GetVisualDescendants().OfType<SelectableTextBlock>().Single().TextWrapping); // whole, not wrapped
+        Assert.Equal(ScrollBarVisibility.Auto, cell.GetVisualDescendants().OfType<ScrollViewer>().Single().HorizontalScrollBarVisibility);
+        Assert.True(cell.Focus());
+        UiHelpers.Press(window, Key.Enter);
+        Assert.False(tool.IsOutputExpanded);
         window.Close();
     }
 

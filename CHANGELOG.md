@@ -37,6 +37,13 @@ All notable changes to this project are written here. The format follows
   frees the passage; an empty box still changes passage as before.
 - With two answers on the desktop permission card, 4 goes to the field as 3 does. With three answers, 4 is still the field
   and 5 does nothing.
+- A short command or output in a tool call's box (up to 250 characters and 3 lines) that its row cuts, because it is wider
+  or taller than the row shows, can now be opened. It takes the keyboard, shows a hand cursor and is announced as "Press
+  Enter to show the full text". A click, Enter or Space opens it in place, wrapped (an output loses its sideways scroll),
+  and the same again cuts it. The open state stays in the item, so a recycled row shows it. The row measures again when it
+  changes size: a text that comes to fit takes no keyboard, and one that is open stays open. Clicking the copy button,
+  the second click of a double click, a click while some of the output is selected and a drag to select do not open it.
+  A short text that fits behaves as before, as does a long one.
 
 ## [0.10.0] - 2026-11-21
 

@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using ClaudeVisualChat.Controls;
 using ClaudeVisualChat.Protocol;
@@ -206,6 +207,56 @@ public class RowReuseTests
             Assert.Contains(s.Content!, other.Items.Cast<object>());
             Assert.Same(s.Content, s.Child!.DataContext);
         }
+    }
+
+    [AvaloniaFact]
+    public void A_recycled_row_shows_the_other_calls_open_state()
+    {
+        // commands of 200 characters: short texts that a phone's row cuts; one call in three is open
+        var c = new ChatConversation();
+        for (var i = 0; i < 30; i++)
+        {
+            c.Items.Add(new UserMessageItem("Question " + i));
+            c.Items.Add(new ToolCallItem
+            {
+                Name = "Bash",
+                Status = ToolStatus.Succeeded,
+                ToolUseId = "t" + i,
+                Input = J("{\"command\":\"echo " + i + " " + new string('a', 190) + "\"}"),
+                ResultText = "ok",
+                IsInputExpanded = i % 3 == 0,
+            });
+        }
+        var view = UiHelpers.TouchView(c);
+        UiHelpers.ShowPhone(view);
+        var scroller = UiHelpers.Scroller(view);
+        var rows = new HashSet<Control>();
+        var checkedOpen = 0;
+        var checkedCut = 0;
+        for (var pass = 0; pass < 2; pass++)
+        {
+            for (var y = 0.0; y <= 4000; y += 90)
+            {
+                scroller.Offset = new Vector(0, pass == 0 ? y : 4000 - y);
+                UiHelpers.Pump();
+                foreach (var shown in Shown(view).Where(s => s.Content is ToolCallItem))
+                {
+                    var tool = (ToolCallItem)shown.Content!;
+                    rows.Add(shown.Child!);
+                    var cell = shown.Child!.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("ClaudeChatToolContent"));
+                    var text = cell.GetVisualDescendants().OfType<TextBlock>().First();
+                    Assert.StartsWith("echo " + tool.ToolUseId!.Substring(1) + " ", text.Text);
+                    Assert.Equal(tool.IsInputExpanded, cell.Classes.Contains("whole"));
+                    Assert.Equal(tool.IsInputExpanded ? TextWrapping.Wrap : TextWrapping.NoWrap, text.TextWrapping);
+                    Assert.True(cell.Focusable); // open, or cut by the row
+                    Assert.Contains("expandable", cell.Classes);
+                    if (tool.IsInputExpanded) checkedOpen++;
+                    else checkedCut++;
+                }
+            }
+        }
+        Assert.True(rows.Count < 30, "the rows were reused: " + rows.Count); // (the premise: fewer rows than calls)
+        Assert.True(checkedOpen > 0 && checkedCut > 0);
     }
 
     // ---- the row of a running command (0.8.0) ----

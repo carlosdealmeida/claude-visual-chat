@@ -1455,8 +1455,8 @@
     <Setter Property="MaxHeight" Value="Infinity" />
     <Setter Property="OpacityMask" Value="{x:Null}" />
   </Style>
-  <!-- a long text takes clicks and the keyboard (the cursor tells it; nothing else shows on the content); the keyboard's focus
-       is a thin line inside, which takes no room -->
+  <!-- a long text takes clicks and the keyboard (the cursor tells it; nothing else shows on the content), and so does a short one
+       while its row cuts it (ToolCallView.UpdateCut), which opens wrapped; the keyboard's focus is a thin line inside, which takes no room -->
   <Style Selector="Border.ClaudeChatToolContent.expandable:focus-visible">
     <Setter Property="BoxShadow" Value="{DynamicResource ClaudeChat.ToolContentFocusShadow}" />
   </Style>

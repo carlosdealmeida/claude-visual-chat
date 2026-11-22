@@ -539,6 +539,10 @@ Grep e as ferramentas da web com uma linha que abre a saída, Agent com o prompt
   entre letras (texto persa) aparece como `\u{200C}` e um seletor de variação depois de uma letra como `\u{FE0F}`. O erro de qualquer chamada mostra os
   mesmos símbolos, com cada retorno de carro como quebra de linha. O que um comando em execução já imprimiu continua sem
   nenhum código de terminal, e mostra só os seus controles bidirecionais, como `\u202E`.
+- **Um comando ou uma saída curta que a linha corta abre no lugar.** Um texto da caixa com mais de 250 caracteres ou 3
+  linhas abre inteiro com um clique, Enter ou Espaço. Um mais curto também abre, mas só enquanto é mais largo ou mais alto
+  que a sua linha. Ele abre então com quebra de linha, sem rolagem lateral. O que cabe não recebe o teclado, e a linha
+  mede de novo quando muda de tamanho. Os dois usam `IsInputExpanded` e `IsOutputExpanded`.
 - **Um clique num diff da lista abre o Diff View** sobre a view inteira, lado a lado, com o caminho do arquivo no título.
   O Esc, o x dele e `CloseTopLayer()` o fecham (é uma camada, logo abaixo da prévia de imagem), e ele abre também numa view
   somente leitura. Numa view de 500 px de largura ou menos (só o layout desktop) a caixa de um Edit ou de um Write some,
