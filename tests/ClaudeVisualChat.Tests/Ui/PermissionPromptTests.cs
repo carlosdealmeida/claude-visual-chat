@@ -1327,16 +1327,203 @@ public class PermissionPromptTests
         Assert.True(ui.Option(No).IsFocused);
         UiHelpers.Press(ui.Window, Key.Down);
         Assert.True(ui.DenyField!.IsFocused);
-        UiHelpers.Press(ui.Window, Key.Down);                                    // round to the first
-        Assert.True(ui.Option("Yes").IsFocused);
         UiHelpers.Press(ui.Window, Key.Up);
-        Assert.True(ui.DenyField!.IsFocused);
+        Assert.True(ui.Option(No).IsFocused);
         UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(ui.Option(YesAlways).IsFocused);
+        UiHelpers.Press(ui.Window, Key.Down);
         Assert.True(ui.Option(No).IsFocused);
         Assert.Empty(ui.Answers);
 
         UiHelpers.Press(ui.Window, Key.Enter);                                   // Enter takes the focused option
         Assert.Equal(PermissionDecision.Deny, Assert.Single(ui.Answers).Decision);
+        ui.Window.Close();
+    }
+
+    /// <summary>Puts the keyboard on the field of "No" with ↓ from option 1, as the user does.</summary>
+    private static void DownToTheField(Opened ui)
+    {
+        ui.Option("Yes").Focus(NavigationMethod.Tab);
+        for (var i = 0; i < ui.Options.Count; i++) UiHelpers.Press(ui.Window, Key.Down);
+        Assert.True(ui.DenyField!.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public void Down_stops_at_the_field()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", Suggestions));
+        var ui = Open(c);
+        Assert.True(ui.Option("Yes").IsFocused);
+
+        UiHelpers.Press(ui.Window, Key.Down);
+        UiHelpers.Press(ui.Window, Key.Down);
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Press(ui.Window, Key.Down);                                    // the last item: no way round to the first
+        Assert.True(ui.DenyField!.IsFocused);
+        Assert.Empty(ui.Answers);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Each_down_past_the_end_takes_an_up_to_undo()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", Suggestions));
+        var ui = Open(c);
+        DownToTheField(ui);
+
+        UiHelpers.Press(ui.Window, Key.Down);
+        UiHelpers.Press(ui.Window, Key.Down);
+        UiHelpers.Press(ui.Window, Key.Up);                                      // undoes the second ↓
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Press(ui.Window, Key.Up);                                      // and the first
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(ui.Option(No).IsFocused);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_held_down_past_the_end_counts_nothing()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", Suggestions));
+        var ui = Open(c);
+        Assert.True(ui.Option("Yes").IsFocused);
+
+        // held from option 1: the repeats walk down to the field, then stop there without counting
+        for (var i = 0; i < 5; i++) UiHelpers.KeyDown(ui.Window, Key.Down);
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.KeyUp(ui.Window, Key.Down);
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(ui.Option(No).IsFocused);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_count_stops_at_twice_the_items()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", Suggestions));                            // three options and the field: four items
+        var ui = Open(c);
+        DownToTheField(ui);
+
+        for (var i = 0; i < 20; i++) UiHelpers.Press(ui.Window, Key.Down);
+        for (var i = 0; i < 8; i++)
+        {
+            UiHelpers.Press(ui.Window, Key.Up);
+            Assert.True(ui.DenyField!.IsFocused, "↑ number " + (i + 1) + " left the field");
+        }
+        UiHelpers.Press(ui.Window, Key.Up);                                      // the ninth
+        Assert.True(ui.Option(No).IsFocused);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_count_starts_over_when_the_focus_moves_another_way()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", Suggestions));
+        c.Apply(Bash("r2", "npm run build", Suggestions));
+        var ui = Open(c);
+        DownToTheField(ui);
+
+        // past the end, then to option 1 by Tab and back to the field by ↓: the first ↑ goes up
+        UiHelpers.Press(ui.Window, Key.Down);
+        UiHelpers.Press(ui.Window, Key.Down);
+        for (var i = 0; i < 3; i++) UiHelpers.Press(ui.Window, Key.Tab, RawInputModifiers.Shift);
+        Assert.True(ui.Option("Yes").IsFocused);
+        for (var i = 0; i < 3; i++) UiHelpers.Press(ui.Window, Key.Down);
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(ui.Option(No).IsFocused);
+
+        // past the end, then the request is replaced by another: on the new card, from the field, the first ↑ goes up
+        UiHelpers.Press(ui.Window, Key.Down);
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Press(ui.Window, Key.Down);
+        UiHelpers.Press(ui.Window, Key.Down);
+        c.Apply(new PermissionCancelled("r1"));
+        UiHelpers.Pump();
+        Assert.Equal("r2", ui.Prompt.Request!.RequestId);
+        DownToTheField(ui);
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(ui.Option(No).IsFocused);
+        Assert.Empty(ui.Answers);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Up_on_the_first_item_goes_round_to_the_field()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", Suggestions));
+        var ui = Open(c);
+        Assert.True(ui.Option("Yes").IsFocused);
+
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(ui.DenyField!.IsFocused);
+        UiHelpers.Press(ui.Window, Key.Up);
+        Assert.True(ui.Option(No).IsFocused);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Four_reaches_the_field_when_there_are_two_options()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test"));                                         // no suggestion: "Yes" and "No"
+        var ui = Open(c);
+        Assert.Equal(2, ui.Options.Count);
+
+        UiHelpers.Press(ui.Window, Key.D3);
+        Assert.True(ui.DenyField!.IsFocused);
+        ui.Option("Yes").Focus(NavigationMethod.Tab);
+        UiHelpers.Press(ui.Window, Key.D4);
+        Assert.True(ui.DenyField!.IsFocused);
+        Assert.True(string.IsNullOrEmpty(ui.DenyField!.Text));                   // a handled key types no "4"
+        Assert.Empty(ui.Answers);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void With_three_options_four_is_the_field_and_five_is_nothing()
+    {
+        var c = new ChatConversation();
+        c.Apply(Bash("r1", "npm test", Suggestions));
+        var ui = Open(c);
+        Assert.Equal(3, ui.Options.Count);
+
+        UiHelpers.Press(ui.Window, Key.D5);
+        Assert.True(ui.Option("Yes").IsFocused);
+        UiHelpers.Press(ui.Window, Key.D4);
+        Assert.True(ui.DenyField!.IsFocused);
+        Assert.True(string.IsNullOrEmpty(ui.DenyField!.Text));
+        Assert.Empty(ui.Answers);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_focus_stays_in_the_detail_when_the_card_arms()
+    {
+        var clock = new ManualClock();
+        var c = new ChatConversation();
+        c.Apply(Request("r1", "Bash", LongCommand(60)));
+        var ui = Open(c, clock: clock, height: 320);
+        UiHelpers.Pump();
+        var scroller = Named<ScrollViewer>(ui, "TitleScroller");
+        Assert.True(scroller.Focusable);
+
+        scroller.Focus(NavigationMethod.Tab);
+        UiHelpers.Pump();
+        Assert.Same(scroller, UiHelpers.Focused(ui.Window));
+        clock.Advance(500);
+        ui.Prompt.Tick();
+        UiHelpers.Pump();
+        Assert.False(ui.Prompt.IsTicking);                                       // armed
+        Assert.Same(scroller, UiHelpers.Focused(ui.Window));
         ui.Window.Close();
     }
 

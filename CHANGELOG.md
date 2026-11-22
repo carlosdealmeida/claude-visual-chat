@@ -5,6 +5,14 @@ All notable changes to this project are written here. The format follows
 
 ## [0.11.0] - Unreleased
 
+### Changed
+
+- On the desktop permission card, ↓ stops at the last item, the field, instead of going round to the first answer. Each ↓
+  pressed there past the end counts, up to twice the number of items (the answers and the field), and takes an ↑ to undo
+  before ↑ moves up again; the keyboard's repeat of a held ↓ counts nothing. The count starts over when the keyboard leaves
+  the field another way (the mouse, Tab) and when the request changes. ↑ on the first answer still goes round to
+  the field, and from outside the answers either arrow goes to the first.
+
 ### Fixed
 
 - No key acts while an input method composes (Japanese, Chinese, Korean…): the Enter that picks a word sends nothing, the
@@ -15,6 +23,8 @@ All notable changes to this project are written here. The format follows
 - A plan comment being written keeps its passage: while the comment box holds a draft (text that is not only white space),
   no other selection of the plan document is offered "Add Comment" and none can take the box. Sending, cancelling or Esc
   frees the passage; an empty box still changes passage as before.
+- With two answers on the desktop permission card, 4 goes to the field as 3 does. With three answers, 4 is still the field
+  and 5 does nothing.
 
 ## [0.10.0] - 2026-11-21
 

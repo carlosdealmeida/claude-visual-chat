@@ -142,6 +142,15 @@ internal partial class PermissionPrompt : UserControl
     /// <summary>The answer key that went down in the prompt and has not come up yet (the 11.0 events tell no repeat).</summary>
     private Key? _heldKey;
 
+    /// <summary>The arrow that went down on the desktop's card and has not come up yet: it arriving again is the keyboard's repeat.</summary>
+    private Key? _heldArrow;
+
+    /// <summary>
+    /// The ↓ pressed on the last item (the field) that no ↑ has undone yet: while above zero, ↑ takes one off and the keyboard stays
+    /// (see <see cref="Move"/>). It starts over when the keyboard leaves the field, and with each request.
+    /// </summary>
+    private int _pastEnd;
+
     /// <summary>The plan on screen whose comments the card lists (listened to only in the window).</summary>
     private PlanReview? _watchedPlan;
 
@@ -212,6 +221,8 @@ internal partial class PermissionPrompt : UserControl
             control.GotFocus += (_, _) => UpdateSelected();
             control.LostFocus += (_, _) => UpdateSelected();
         }
+        // the count past the end is the field's: the keyboard leaving it any way (↑, the mouse, Tab, an answer) undoes it
+        DenyBox.LostFocus += (_, _) => _pastEnd = 0;
         IsVisible = false;
         Refresh();
     }
@@ -392,6 +403,7 @@ internal partial class PermissionPrompt : UserControl
         _topLevel?.RemoveHandler(KeyUpEvent, _anyKeyUp);
         _topLevel = null;
         _heldKey = null;
+        _heldArrow = null;
         // back in a window, the request comes on screen again: the pause starts over and the view hears of it
         _request = null;
         Track(null); // the conversation outlives the view: let go of its events
@@ -410,6 +422,7 @@ internal partial class PermissionPrompt : UserControl
     private void OnAnyKeyUp(object? sender, KeyEventArgs e)
     {
         if (_heldKey == e.Key) _heldKey = null;
+        if (_heldArrow == e.Key) _heldArrow = null;
     }
 
     /// <summary>
@@ -476,7 +489,7 @@ internal partial class PermissionPrompt : UserControl
                 else scroll.LineUp();
                 return;
             }
-            Move(e.Key == Key.Down ? 1 : -1);
+            Move(e.Key);
             return;
         }
         if (e.Key == Key.Escape)
@@ -491,10 +504,12 @@ internal partial class PermissionPrompt : UserControl
         var digit = OptionOf(e.Key);
         if (digit == 0 || _request!.DefaultToNo) return; // "No" first: the digits answer nothing
         var options = VisibleOptions();
-        if (digit > options.Count + 1) return;
+        // the digit after the last option is the field; with two options, so is 4 (the field's number with three)
+        var field = digit == options.Count + 1 || (options.Count == 2 && digit == 4);
+        if (digit > options.Count && !field) return;
         e.Handled = true; // a handled key types no character
         if (!Settled) return; // too soon: the user has not seen this request yet
-        if (digit == options.Count + 1) DenyBox.Focus(NavigationMethod.Tab); // the digit after the last option: the field
+        if (field) DenyBox.Focus(NavigationMethod.Tab);
         else Activate(options[digit - 1]);
     }
 
@@ -584,13 +599,36 @@ internal partial class PermissionPrompt : UserControl
         return null;
     }
 
-    /// <summary>↑/↓ on the desktop's card: round the options and the field.</summary>
-    private void Move(int step)
+    /// <summary>
+    /// ↑/↓ on the desktop's card, through the options and then the field. From outside them, either arrow goes to the first. ↓ stops
+    /// at the field: each press there that is no repeat counts, up to twice the items, and while the count is above zero ↑ takes one
+    /// off and the keyboard stays; with none, ↑ goes up one, and from the first round to the field. A repeat is the same arrow
+    /// arriving again before it came up (<see cref="OnAnyKeyUp"/>): ↓'s counts nothing at the field, and moves like a press elsewhere.
+    /// </summary>
+    private void Move(Key arrow)
     {
+        var repeat = _heldArrow == arrow;
+        _heldArrow = arrow;
         var stops = new List<Control>(VisibleOptions()) { DenyBox };
         var at = stops.FindIndex(c => c.IsKeyboardFocusWithin);
-        var next = at < 0 ? 0 : (at + step + stops.Count) % stops.Count;
-        stops[next].Focus(NavigationMethod.Tab);
+        var last = stops.Count - 1;
+        if (at < 0)
+        {
+            stops[0].Focus(NavigationMethod.Tab);
+            return;
+        }
+        if (arrow == Key.Down)
+        {
+            if (at < last) stops[at + 1].Focus(NavigationMethod.Tab);
+            else if (!repeat) _pastEnd = Math.Min(_pastEnd + 1, 2 * stops.Count);
+            return;
+        }
+        if (_pastEnd > 0)
+        {
+            _pastEnd--;
+            return;
+        }
+        stops[at == 0 ? last : at - 1].Focus(NavigationMethod.Tab);
     }
 
     private void Track(ChatConversation? conversation)
@@ -653,6 +691,7 @@ internal partial class PermissionPrompt : UserControl
             if (request != null) _lastRequest = request;
             _shownAt = Clock.Now;
             _waiting = request != null && TypedJustNow();
+            _pastEnd = 0; // the ↓ past the end were the last card's
             ResetDenyField();
             DetailsButton.IsChecked = false;
             WatchComments();
@@ -1351,11 +1390,11 @@ internal partial class PermissionPrompt : UserControl
             }
             return;
         }
-        // the desktop: Enter and Esc both send "No" with the text; ↑/↓ go on round the options
+        // the desktop: Enter and Esc both send "No" with the text; ↑/↓ go on through the options (↓ stops here)
         if (e.Key == Key.Up || e.Key == Key.Down)
         {
             e.Handled = true;
-            Move(e.Key == Key.Down ? 1 : -1);
+            Move(e.Key);
         }
         else if (e.Key == Key.Enter || (e.Key == Key.Escape && !PanelOpen))
         {

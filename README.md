@@ -465,7 +465,10 @@ history and the like) are skipped.
 
 On the desktop, the permission request asks as the extension 2.1.310 does: a title that names the tool and what it works
 on, the command, the diff or the input under it, and the answers numbered in the order they are shown (the digit after
-the last one goes to the field; "No" refuses at once with what is written in it). Option 2 names the rule and where it is
+the last one goes to the field, and so does 4 when there are two; "No" refuses at once with what is written in it). ↑ and ↓
+move through the answers and then the field; ↓ stops at the field, and each ↓ pressed there past the end takes an ↑ to undo
+before ↑ goes up again (a held ↓ counts nothing, and the count starts over when the keyboard leaves the field or the
+request changes), while ↑ on the first answer goes round to the field. Option 2 names the rule and where it is
 kept ("Yes, allow npm for this project (just you)"), and, when the claude also offers a mode change with it, what that
 does ("Yes, allow touch a.txt for this project (just you), and all edits for this session"; `AllowAlwaysAndAllEdits`,
 `AllowAlwaysAndNormalMode` and `AllowAlwaysAndMode` in `ChatStrings`). The answers stay off for 500 ms after the card
