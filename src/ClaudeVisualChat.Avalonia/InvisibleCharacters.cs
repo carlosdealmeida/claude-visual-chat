@@ -227,7 +227,7 @@ internal static class InvisibleCharacters
     private static bool IsEmojiPart(int cp) => IsPictographic(cp) || cp == 0xFE0F || (cp >= 0x1F3FB && cp <= 0x1F3FF);
 
     /// <summary>An approximation of Extended_Pictographic: the blocks of the emoji.</summary>
-    private static bool IsPictographic(int cp) =>
+    internal static bool IsPictographic(int cp) =>
         cp == 0x00A9 || cp == 0x00AE || cp == 0x203C || cp == 0x2049 || cp == 0x2122 || cp == 0x2139
         || (cp >= 0x2194 && cp <= 0x21AA) || (cp >= 0x231A && cp <= 0x23FF) || cp == 0x24C2
         || (cp >= 0x25AA && cp <= 0x25FE) || (cp >= 0x2600 && cp <= 0x27BF) || cp == 0x2934 || cp == 0x2935
