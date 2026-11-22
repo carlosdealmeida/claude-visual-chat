@@ -131,6 +131,14 @@ public class CommandOutputTextTests
     }
 
     [Fact]
+    public void A_run_of_carriage_returns_before_a_line_break_is_one_line_break()
+    {
+        Assert.Equal("a\nb", CommandOutputText.Result("a\r\r\nb"));
+        Assert.Equal("a\nb", CommandOutputText.Result("a\r\r\r\nb"));
+        Assert.Equal("a\r\rb", CommandOutputText.Result("a\r\rb"));
+    }
+
+    [Fact]
     public void A_lone_surrogate_stays()
     {
         Assert.Equal("a\uD800b", CommandOutputText.Symbols("a\uD800b", true));
@@ -170,7 +178,7 @@ public class CommandOutputTextTests
         "a\u200Bb", "\u202Eabc", "a\u00ADb", "a\uFEFFb", "a\u2028b", "\U000E0001", Persian, "a\uFE0F",
         Family, RedHeart, ThumbsUpMediumSkin, BrazilFlag, KeycapOne, ScotlandFlag, SmileAsText,
         "\U0001F468\u200Dx",
-        "a\tb\r\nc\rd\n", "a\rb",
+        "a\tb\r\nc\rd\n", "a\rb", "a\r\r\nb", "a\r\r\r\nb", "a\r\rb",
         "a\uD800b", "a\uDC00", "\uD83D",
         "a\u202Eb\u2066c\u061C",
     };

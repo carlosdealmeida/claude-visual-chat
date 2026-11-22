@@ -1,4 +1,3 @@
-using System;
 using System.Globalization;
 using System.Text;
 
@@ -29,14 +28,38 @@ internal static class CommandOutputText
     private static readonly string[] TagFlags = { "gbeng", "gbsct", "gbwls" };
 
     /// <summary>
-    /// The output of a command that ended without an error: <see cref="WithoutSimpleColors"/>, then each CR LF as a line feed, then
-    /// <see cref="Symbols"/> keeping the carriage returns.
+    /// The output of a command that ended without an error: <see cref="WithoutSimpleColors"/>, then each run of carriage returns
+    /// right before a line feed (CR LF, CR CR LF...) as that one line feed, then <see cref="Symbols"/> keeping the other carriage returns.
     /// </summary>
-    internal static string Result(string text)
+    internal static string Result(string text) =>
+        Symbols(WithoutCarriageReturnsBeforeLineFeeds(WithoutSimpleColors(text)), keepCarriageReturn: true);
+
+    /// <summary>The text without the runs of carriage returns that come right before a line feed; a carriage return elsewhere stays.</summary>
+    private static string WithoutCarriageReturnsBeforeLineFeeds(string text)
     {
-        var result = WithoutSimpleColors(text);
-        if (result.IndexOf("\r\n", StringComparison.Ordinal) >= 0) result = result.Replace("\r\n", "\n");
-        return Symbols(result, keepCarriageReturn: true);
+        var i = text.IndexOf('\r');
+        if (i < 0) return text;
+        StringBuilder? result = null;
+        var copied = 0;
+        while (i < text.Length)
+        {
+            if (text[i] != '\r')
+            {
+                i++;
+                continue;
+            }
+            var run = i;
+            while (i < text.Length && text[i] == '\r') i++;
+            if (i < text.Length && text[i] == '\n')
+            {
+                result ??= new StringBuilder(text.Length);
+                result.Append(text, copied, run - copied);
+                copied = i; // the line feed itself is copied with what follows it
+            }
+        }
+        if (result == null) return text;
+        result.Append(text, copied, text.Length - copied);
+        return result.ToString();
     }
 
     /// <summary>
