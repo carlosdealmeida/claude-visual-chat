@@ -220,6 +220,9 @@ As teclas da caixa, como na extensão 2.1.310:
   novo `default`, só entre os de `ClaudeChatView.AvailableModes`, e dispara o `PermissionModeRequested`. **Ctrl+Alt+F**
   alterna o [modo foco](#modo-foco). A view somente leitura não age por nenhum deles, e o Ctrl+J e o Shift+Tab não fazem nada com
   a paleta ou o menu de modelo abertos.
+- **Um método de entrada compondo** (japonês, chinês, coreano…) fica com as suas teclas: enquanto ele compõe, o Enter
+  não envia nada, as setas não trazem prompt e o Esc não interrompe nada, aqui e na paleta, na caixa de comentário do
+  plano, no cartão de permissão, no "O que deu errado?" e nos painéis.
 - `ClaudeChatView.UseCtrlEnterToSend` (false): o Enter envia. Em true, só Ctrl ou Cmd+Enter envia e o Enter quebra a
   linha (o layout de toque sempre quebra a linha no Enter e envia com Ctrl ou Cmd+Enter).
 

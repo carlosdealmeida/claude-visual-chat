@@ -400,6 +400,7 @@ internal partial class PermissionPrompt : UserControl
     /// <summary>Remembers an answer key going down in the prompt until it comes up.</summary>
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        if (ImeKeys.IsComposing(e)) return; // the input method's key is no answer key held down
         if (_request == null || e.KeyModifiers != KeyModifiers.None) return;
         var digit = !_folded && OptionOf(e.Key) != 0; // folded, the digits are the page's
         if (digit && InDenyField) return; // text in the field, free to repeat
@@ -451,6 +452,7 @@ internal partial class PermissionPrompt : UserControl
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (ImeKeys.IsComposing(e)) return; // the input method's key answers nothing
         // only plain keys: Ctrl+1 and the like belong to the app, and what is typed in the field is text; a folded card has no
         // answers, so the keys, Esc too, go on to the page
         if (e.Handled || _request == null || e.KeyModifiers != KeyModifiers.None || InDenyField || _folded)
@@ -1332,6 +1334,7 @@ internal partial class PermissionPrompt : UserControl
 
     private void OnDenyKeyDown(object? sender, KeyEventArgs e)
     {
+        if (ImeKeys.IsComposing(e)) return; // the input method's key: it refuses and moves nothing
         if (e.KeyModifiers != KeyModifiers.None) return;
         if (IsTouch)
         {

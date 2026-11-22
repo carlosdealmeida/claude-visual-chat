@@ -1004,6 +1004,7 @@ public partial class ClaudeChatView : UserControl
     /// </summary>
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        if (ImeKeys.IsComposing(e)) return; // the input method's key: it closes and toggles nothing, and goes on to it
         if (Prompt.IsHeld(e.Key)) e.Handled = true;
         // Ctrl+Alt+F, the extension's toggle of the Focus view, while the keyboard is in the view; nothing in a read-only one. On Windows
         // AltGr is Ctrl+Alt: a layout where AltGr+F types a character (the key's symbol says so) keeps it, and toggles nothing
@@ -1034,6 +1035,7 @@ public partial class ClaudeChatView : UserControl
     /// <summary>An Esc nothing under the view took: an open panel closes.</summary>
     private void OnKeyDownNotTaken(object? sender, KeyEventArgs e)
     {
+        if (ImeKeys.IsComposing(e)) return; // the input method's key: it closes and scrolls nothing
         if (IsPanelEsc(e)) ClosePanel(e);
         else if (Prompt.IsFolded && Prompt.IsKeyboardFocusWithin) ScrollConversation(e);
     }

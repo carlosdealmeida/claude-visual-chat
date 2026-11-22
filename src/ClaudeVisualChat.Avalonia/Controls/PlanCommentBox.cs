@@ -222,6 +222,7 @@ internal sealed class PlanCommentBox : Panel
 
     private void OnFieldKeyDown(object? sender, KeyEventArgs e)
     {
+        if (ImeKeys.IsComposing(e)) return; // the input method's key: it adds and cancels nothing
         if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None)
         {
             e.Handled = true;

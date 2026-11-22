@@ -215,6 +215,29 @@ internal static class UiHelpers
         return System.Enum.TryParse<PhysicalKey>(key.ToString(), out var physical) ? physical : PhysicalKey.None;
     }
 
+    /// <summary>
+    /// A key going down while an input method composes: the window's keyboard sends it as <see cref="Key.ImeProcessed"/>, with the key
+    /// that was pressed as its physical key.
+    /// </summary>
+    public static void ImeKey(Window window, PhysicalKey key, RawInputModifiers modifiers = RawInputModifiers.None)
+    {
+        window.KeyPress(Key.ImeProcessed, modifiers, key, null);
+        Pump();
+    }
+
+    /// <summary>
+    /// An input method composing <paramref name="preedit"/> in <paramref name="box"/>, which has the keyboard: the text shows in the
+    /// box's presenter and is not yet in its text. Null ends the composition.
+    /// </summary>
+    public static void Compose(TextBox box, string? preedit)
+    {
+        var request = new Avalonia.Input.TextInput.TextInputMethodClientRequestedEventArgs { RoutedEvent = InputElement.TextInputMethodClientRequestedEvent };
+        box.RaiseEvent(request);
+        var client = request.Client ?? throw new System.InvalidOperationException("the box offers no input method client");
+        client.SetPreeditText(preedit);
+        Pump();
+    }
+
     /// <summary>Text typed into the focused control.</summary>
     public static void Type(Window window, string text)
     {

@@ -5,6 +5,14 @@ All notable changes to this project are written here. The format follows
 
 ## [0.11.0] - Unreleased
 
+### Fixed
+
+- No key acts while an input method composes (Japanese, Chinese, Korean…): the Enter that picks a word sends nothing, the
+  arrows that walk its candidates recall no prompt and move round no option, and its Esc stops nothing and closes nothing.
+  This holds in the reply box, the command palette's filter, the plan's comment box, the permission card and its field,
+  "What went wrong?" and the view's panels. A key counts as the input method's when it comes as `Key.ImeProcessed`, or
+  from a text box that shows text being composed; it is left unhandled, for the input method.
+
 ## [0.10.0] - 2026-11-21
 
 ### Added

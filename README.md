@@ -215,6 +215,9 @@ The keys of the box, as in the extension 2.1.310:
   back, only among `ClaudeChatView.AvailableModes`, and raises `PermissionModeRequested`. **Ctrl+Alt+F** toggles the
   [Focus view](#the-focus-view). A read-only view acts on none of them, and Ctrl+J and Shift+Tab do nothing while the palette or the
   model menu is open.
+- **An input method composing** (Japanese, Chinese, Korean…) keeps its keys: while it composes, Enter sends nothing,
+  the arrows recall no prompt and Esc stops nothing, here and in the palette, the plan's comment box, the permission
+  card, "What went wrong?" and the panels.
 - `ClaudeChatView.UseCtrlEnterToSend` (false): Enter sends. Set to true, only Ctrl or Cmd+Enter sends and Enter breaks
   the line (the touch layout always breaks the line on Enter and sends on Ctrl or Cmd+Enter).
 

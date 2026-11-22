@@ -626,6 +626,7 @@ internal partial class ChatComposer : UserControl
     {
         // a hidden box (read-only, or an ancestor hidden) may keep the keyboard: its keys send and stop nothing
         if (!IsEffectivelyVisible || _viewIsReadOnly) return;
+        if (ImeKeys.IsComposing(e)) return; // the input method's key: it sends, recalls and stops nothing
         // the shortcuts come first: a key with a modifier used to return at once, and these all have one
         if (HandleShortcut(e)) return;
         if (e.Key == Key.Enter && IsSendChord(e.KeyModifiers))

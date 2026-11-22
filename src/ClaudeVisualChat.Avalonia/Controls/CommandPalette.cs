@@ -147,6 +147,7 @@ internal sealed class CommandPalette : ChatMenuPopup
         _filter.Classes.Add("ClaudeChatMenuFilter");
         _filter.AddHandler(KeyDownEvent, (_, e) =>
         {
+            if (ImeKeys.IsComposing(e)) return; // the input method's key: it runs and closes nothing
             if (e.KeyModifiers == KeyModifiers.None && HandleKey(e.Key)) e.Handled = true;
         }, RoutingStrategies.Tunnel);
         _filter.PropertyChanged += (_, e) =>

@@ -193,6 +193,7 @@ internal sealed class FeedbackDialog : Border
 
     private void OnFieldKeyDown(object? sender, KeyEventArgs e)
     {
+        if (ImeKeys.IsComposing(e)) return; // the input method's key: it sends nothing
         if (e.Key == Key.Enter && (e.KeyModifiers == KeyModifiers.Control || e.KeyModifiers == KeyModifiers.Meta))
         {
             e.Handled = true;
@@ -203,6 +204,7 @@ internal sealed class FeedbackDialog : Border
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (ImeKeys.IsComposing(e)) return; // the input method's Esc closes nothing
         if (e.Key != Key.Escape || e.KeyModifiers != KeyModifiers.None || !IsVisible) return;
         e.Handled = true;
         Hide();
