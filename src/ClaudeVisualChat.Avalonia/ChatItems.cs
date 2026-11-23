@@ -245,6 +245,9 @@ public sealed class AdvisorCallItem : ChatItem
 
     /// <summary>The call's id (<c>srvtoolu_…</c>).</summary>
     public string ToolUseId { get; }
+
+    /// <summary>The <c>uuid</c> of the claude's line that brought it (what a later line names to replace it); null until that line comes.</summary>
+    internal string? Uuid { get; set; }
 }
 
 /// <summary>
@@ -301,6 +304,9 @@ public sealed class AdvisorResultItem : ChatItem
 
     /// <summary>The line opens: the advisor was reached and said something readable.</summary>
     public bool CanExpand => Outcome != AdvisorOutcome.Unavailable && !string.IsNullOrWhiteSpace(Text);
+
+    /// <summary>The <c>uuid</c> of the claude's line that brought it (what a later line names to replace it); null until that line comes.</summary>
+    internal string? Uuid { get; set; }
 }
 
 /// <summary>State of a tool call.</summary>

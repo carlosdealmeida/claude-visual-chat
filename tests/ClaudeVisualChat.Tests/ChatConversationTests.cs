@@ -4749,6 +4749,80 @@ public class ChatConversationTests
         Assert.Equal(new[] { nameof(AdvisorCallItem), nameof(AdvisorResultItem) }, c.Items.Select(i => i.GetType().Name));
     }
 
+    private static List<string> AdvisorLines(ChatConversation c) =>
+        c.Items.Select(i => i switch
+        {
+            AdvisorCallItem call => "call:" + call.ToolUseId,
+            AdvisorResultItem result => "result:" + result.ToolUseId + ":" + result.Text,
+            _ => i.GetType().Name,
+        }).ToList();
+
+    [Fact]
+    public void A_reply_written_again_takes_its_advisor_lines_with_it()
+    {
+        // each advisor block comes in a line of its own; a later line that supersedes both takes them away
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new AdvisorUseBlock("srvtoolu_1")) { Uuid = "u1" });
+        c.Apply(new AssistantBlock("m1", null, Verdict("First thoughts.")) { Uuid = "u2" });
+        c.Apply(new AssistantBlock("m2", null, new AdvisorUseBlock("srvtoolu_2")) { Uuid = "u3", Supersedes = new[] { "u1", "u2" } });
+        c.Apply(new AssistantBlock("m2", null, new AdvisorResultBlock("srvtoolu_2", AdvisorOutcome.Reviewed) { Text = "Second." }) { Uuid = "u4" });
+        Assert.Equal(new[] { "call:srvtoolu_2", "result:srvtoolu_2:Second." }, AdvisorLines(c));
+
+        // the ids of the lines that left are forgotten: a rewrite that uses them again shows its pair
+        c.Apply(new AssistantBlock("m3", null, new AdvisorUseBlock("srvtoolu_1")) { Uuid = "u5", Supersedes = new[] { "u3", "u4" } });
+        c.Apply(new AssistantBlock("m3", null, Verdict("Third.")) { Uuid = "u6" });
+        Assert.Equal(new[] { "call:srvtoolu_1", "result:srvtoolu_1:Third." }, AdvisorLines(c));
+
+        // live, the line that follows a block's start gives the line its uuid
+        var live = new ChatConversation();
+        live.Apply(new BlockStarted("m1", 0, null, new AdvisorUseBlock("srvtoolu_1")));
+        live.Apply(new AssistantBlock("m1", null, new AdvisorUseBlock("srvtoolu_1")) { Uuid = "u1" });
+        live.Apply(new BlockStopped("m1", 0, null));
+        live.Apply(new BlockStarted("m1", 1, null, new AdvisorResultBlock("srvtoolu_1", AdvisorOutcome.Reviewed)));
+        live.Apply(new AssistantBlock("m1", null, new AdvisorResultBlock("srvtoolu_1", AdvisorOutcome.Reviewed)) { Uuid = "u2" });
+        live.Apply(new BlockStopped("m1", 1, null));
+        live.Apply(new AssistantBlock("m2", null, new TextContentBlock("again")) { Uuid = "u3", Supersedes = new[] { "u1", "u2" } });
+        Assert.Equal(new[] { "text:again" }, live.Items.Select(Describe));
+
+        // and from a session file
+        var loaded = new ChatConversation();
+        loaded.LoadTranscript(new[]
+        {
+            "{\"type\":\"user\",\"uuid\":\"p0\",\"message\":{\"role\":\"user\",\"content\":\"check\"}}",
+            "{\"type\":\"assistant\",\"uuid\":\"u1\",\"message\":{\"model\":\"m\",\"id\":\"m1\",\"content\":[{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_1\",\"name\":\"advisor\",\"input\":{}}]}}",
+            "{\"type\":\"assistant\",\"uuid\":\"u2\",\"message\":{\"model\":\"m\",\"id\":\"m1\",\"content\":[{\"type\":\"advisor_tool_result\",\"tool_use_id\":\"srvtoolu_1\",\"content\":{\"type\":\"advisor_redacted_result\",\"encrypted_content\":\"x\"}}]}}",
+            "{\"type\":\"assistant\",\"uuid\":\"u3\",\"supersedes\":[\"u1\",\"u2\"],\"message\":{\"model\":\"m\",\"id\":\"m2\",\"content\":[{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_2\",\"name\":\"advisor\",\"input\":{}}]}}",
+            "{\"type\":\"assistant\",\"uuid\":\"u4\",\"message\":{\"model\":\"m\",\"id\":\"m2\",\"content\":[{\"type\":\"advisor_tool_result\",\"tool_use_id\":\"srvtoolu_2\",\"content\":{\"type\":\"advisor_redacted_result\",\"encrypted_content\":\"x\"}}]}}",
+        });
+        Assert.Equal(new[] { nameof(UserMessageItem), "call:srvtoolu_2", "result:srvtoolu_2:" }, AdvisorLines(loaded));
+    }
+
+    [Fact]
+    public void An_abandoned_attempt_takes_its_advisor_lines_with_it()
+    {
+        var c = new ChatConversation();
+        c.Apply(new MessageStarted("m1", null));
+        c.Apply(new BlockStarted("m1", 0, null, new AdvisorUseBlock("srvtoolu_1")));
+        c.Apply(new BlockStopped("m1", 0, null));
+        c.Apply(new BlockStarted("m1", 1, null, new AdvisorResultBlock("srvtoolu_1", AdvisorOutcome.Reviewed)));
+        Assert.Equal(2, c.Items.Count);
+
+        // the claude drops the attempt before its lines came, and starts over
+        c.Apply(new MessageStarted("m2", null));
+        Assert.Empty(c.Items);
+        c.Apply(new BlockStarted("m2", 0, null, new AdvisorUseBlock("srvtoolu_2")));
+        c.Apply(new BlockDelta("m2", 0, null, DeltaKind.InputJson, ""));
+        c.Apply(new AssistantBlock("m2", null, new AdvisorUseBlock("srvtoolu_2")) { Uuid = "u1" });
+        c.Apply(new BlockStopped("m2", 0, null));
+        c.Apply(new BlockStarted("m2", 1, null, new AdvisorResultBlock("srvtoolu_2", AdvisorOutcome.Reviewed)));
+        c.Apply(new AssistantBlock("m2", null, new AdvisorResultBlock("srvtoolu_2", AdvisorOutcome.Reviewed)) { Uuid = "u2" });
+        c.Apply(new BlockStopped("m2", 1, null));
+
+        // the next message: the blocks that got their line stay
+        c.Apply(new MessageStarted("m3", null));
+        Assert.Equal(new[] { "call:srvtoolu_2", "result:srvtoolu_2:" }, AdvisorLines(c));
+    }
+
     [Fact]
     public void An_advisor_inside_a_subagent_goes_under_it()
     {

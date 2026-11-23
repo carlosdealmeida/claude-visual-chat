@@ -1713,28 +1713,39 @@ public sealed class ChatConversation : ChatObservableObject
                 if (IsAgentTool(tool.Name)) OnAgentCall(tool, e.ParentToolUseId, e.Timestamp);
                 break;
             case AdvisorUseBlock advisor:
-                ShowAdvisorCall(advisor, e.ParentToolUseId);
+                ShowAdvisorCall(advisor, e.ParentToolUseId, e.Uuid);
+                if (live != null) Complete(live); // its line came: no longer an attempt the claude may drop
                 break;
             case AdvisorResultBlock verdict:
-                ShowAdvisorResult(verdict, e.ParentToolUseId);
+                ShowAdvisorResult(verdict, e.ParentToolUseId, e.Uuid);
+                if (live != null) Complete(live);
                 break;
         }
     }
 
     /// <summary>
     /// The advisor's call takes one line per id: the start of its block in the stream, its assistant line and a line said again are the
-    /// same call. It is not a streamed block: its deltas and its stop change nothing.
+    /// same call; the line gives it its <c>uuid</c>. Returns the item when it is new, null when the call was already there. Its start
+    /// in the stream is followed as a block (so an attempt dropped before its line takes it away), but its deltas and stop change nothing.
     /// </summary>
-    private void ShowAdvisorCall(AdvisorUseBlock advisor, string? parentToolUseId)
+    private AdvisorCallItem? ShowAdvisorCall(AdvisorUseBlock advisor, string? parentToolUseId, string? uuid)
     {
-        if (advisor.Id.Length > 0 && _advisorCalls.ContainsKey(advisor.Id)) return;
-        var item = new AdvisorCallItem(advisor.Id);
+        if (advisor.Id.Length > 0 && _advisorCalls.TryGetValue(advisor.Id, out var known))
+        {
+            if (uuid != null) known.Uuid = uuid;
+            return null;
+        }
+        var item = new AdvisorCallItem(advisor.Id) { Uuid = uuid };
         if (advisor.Id.Length > 0) _advisorCalls[advisor.Id] = item;
         Place(item, parentToolUseId);
+        return item;
     }
 
-    /// <summary>The advisor's verdict, one line per id too: said again, it updates the line. It needs no call before it.</summary>
-    private void ShowAdvisorResult(AdvisorResultBlock verdict, string? parentToolUseId)
+    /// <summary>
+    /// The advisor's verdict, one line per id too: said again, it updates the line. It needs no call before it. Returns the item when it
+    /// is new, null when it updated the one there.
+    /// </summary>
+    private AdvisorResultItem? ShowAdvisorResult(AdvisorResultBlock verdict, string? parentToolUseId, string? uuid)
     {
         var id = verdict.ToolUseId;
         var known = _advisorResults.TryGetValue(id, out var found);
@@ -1742,9 +1753,11 @@ public sealed class ChatConversation : ChatObservableObject
         item.Outcome = verdict.Outcome;
         item.Text = verdict.Text;
         item.ErrorCode = verdict.ErrorCode;
-        if (known) return;
+        if (uuid != null) item.Uuid = uuid;
+        if (known) return null;
         if (id.Length > 0) _advisorResults[id] = item;
         Place(item, parentToolUseId);
+        return item;
     }
 
     private void Fill(ToolCallItem item, ToolUseBlock tool)
@@ -1780,10 +1793,13 @@ public sealed class ChatConversation : ChatObservableObject
                 _live.Add(new LiveBlock(e.MessageId, e.ParentToolUseId, e.Index, call) { Hidden = true });
                 return;
             case AdvisorUseBlock advisor:
-                ShowAdvisorCall(advisor, e.ParentToolUseId);
+                if (ShowAdvisorCall(advisor, e.ParentToolUseId, null) is { } advisorCall)
+                    _live.Add(new LiveBlock(e.MessageId, e.ParentToolUseId, e.Index, advisorCall));
                 return;
             case AdvisorResultBlock verdict:
-                ShowAdvisorResult(verdict, e.ParentToolUseId); // whole in its start: its line, when it comes, is the same
+                // whole in its start: its line, when it comes, is the same
+                if (ShowAdvisorResult(verdict, e.ParentToolUseId, null) is { } result)
+                    _live.Add(new LiveBlock(e.MessageId, e.ParentToolUseId, e.Index, result));
                 return;
             default:
                 return;
@@ -1854,6 +1870,8 @@ public sealed class ChatConversation : ChatObservableObject
                     return live;
                 case ToolUseBlock tool when live.Item is ToolCallItem call
                                             && (call.ToolUseId == tool.Id || call.ToolUseId.Length == 0 || tool.Id.Length == 0):
+                case AdvisorUseBlock advisor when live.Item is AdvisorCallItem advisorCall && advisorCall.ToolUseId == advisor.Id:
+                case AdvisorResultBlock verdict when live.Item is AdvisorResultItem advisorResult && advisorResult.ToolUseId == verdict.ToolUseId:
                     return live;
             }
         }
@@ -1942,6 +1960,8 @@ public sealed class ChatConversation : ChatObservableObject
         AssistantTextItem text => text.Uuid,
         ThinkingItem thought => thought.Uuid,
         ToolCallItem call => call.Uuid,
+        AdvisorCallItem advisorCall => advisorCall.Uuid,
+        AdvisorResultItem advisorResult => advisorResult.Uuid,
         _ => null,
     };
 
@@ -1966,6 +1986,13 @@ public sealed class ChatConversation : ChatObservableObject
     {
         _live.RemoveAll(live => ReferenceEquals(live.Item, item));
         StopStreaming(item);
+        // an advisor line that left is forgotten by its id: a rewrite that uses the id again shows its own
+        if (item is AdvisorCallItem advisorCall && _advisorCalls.TryGetValue(advisorCall.ToolUseId, out var knownCall)
+            && ReferenceEquals(knownCall, advisorCall))
+            _advisorCalls.Remove(advisorCall.ToolUseId);
+        if (item is AdvisorResultItem advisorResult && _advisorResults.TryGetValue(advisorResult.ToolUseId, out var knownResult)
+            && ReferenceEquals(knownResult, advisorResult))
+            _advisorResults.Remove(advisorResult.ToolUseId);
         if (!(item is ToolCallItem call)) return;
         if (_tools.TryGetValue(call.ToolUseId, out var known) && ReferenceEquals(known, call)) _tools.Remove(call.ToolUseId);
         _turnTools.Remove(call);
