@@ -674,8 +674,8 @@ a star and verbs. Nothing to set up for those. What your app may want to know:
 - **Who sent an `ExternalMessageItem`** comes from the line's `origin`: when it has one, the message is a card only if
   that `origin` is the sender the message claims (otherwise, `human` say, it stays the user's text); with none, the card
   reads "Sender not recorded", and a meta line with none stays out. The claude writes `origin` live only on the lines it
-  replays, and session files write it, so through a relay that does not replay them, such as the Kairos one, these cards
-  come only from a history.
+  replays, and session files write it, so through a relay that does not replay them these cards come only from a
+  history.
 - **Context lines under a prompt.** What the IDE sent along with a prompt (the output of a terminal, a browser tab, the
   browser's instructions, the code selected in the editor) shows as lines under the message, open to their content, and
   hidden in the Focus view. They are `UserMessageItem.Context`, a list of `MessageContext(Kind, Label, Content)` with the
@@ -974,7 +974,7 @@ The sample plays a recording in a phone-sized window: `dotnet run --project samp
   text (see [Dictation](#dictation)); the desktop layout has none.
 - Left out of this release, as the extension 2.1.310 has them: LaTeX (the extension draws it with KaTeX, and this
   release takes no new dependency); the "Session paused" card and the billed auto-mode card, which need the
-  `request_user_dialog` that the Kairos machine refuses; the suggestion to make auto mode the default (it needs
+  `request_user_dialog` that the host's machine refuses; the suggestion to make auto mode the default (it needs
   `auto_default_nudge`); prompt suggestions (they need `--prompt-suggestions`, which the machine does not pass); Code
   Mode (`claude -p` does not run it); the "Ultracode" suffix of the model chip (it needs `get_settings`, which the
   machine cuts); and a "Why?" text for each category of the model switch (there is one generic text). The CHANGELOG

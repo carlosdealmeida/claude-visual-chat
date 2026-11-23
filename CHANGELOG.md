@@ -536,7 +536,7 @@ What stays out of 0.10.0, and why. Each item is waiting for something the compon
   any other `origin`, such as `human`, leaves it the user's text. A message whose line has no `origin` is a card that
   reads "Sender not recorded", and a meta line with none (the agent message the CLI writes) stays out, as before. The
   claude writes `origin` live only on the lines it replays (session files write it), so through a relay that does not
-  replay them, such as the Kairos one, these cards come only from a history. `MessageOrigin` and `UserBlock.Origin`
+  replay them these cards come only from a history. `MessageOrigin` and `UserBlock.Origin`
   (`init`). A background agent that ends live adds a meta line with the first line of its summary.
 - New `ChatStrings` texts, in English and Portuguese: `CopyResponse`, `CopyResponseToClipboard`, `BookmarkResponse`,
   `RemoveBookmark`, `GoodResponse`, `BadResponse`, `FeedbackLearnHow`, `FeedbackThanks`, `FeedbackLearnHowShort`,
@@ -756,7 +756,7 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   approved with `auto`, the component asks for `acceptEdits`. It does not know the id of the request that failed (the
   host picks the ids), so an error of any other control request in that window, a failed `set_model` for instance, has
   the same effect. The worst case ends in `acceptEdits`, the more restrictive mode.
-- A refusal carries at most 4,000 characters (the limit of the Kairos relay): the typed text, the plan comments and the
+- A refusal carries at most 4,000 characters (the limit of the host's relay): the typed text, the plan comments and the
   quoted passages together. Over it, the quoted passages are shortened first, all to the same length and with an
   ellipsis, then the comments, then the typed text, and only as a last resort the whole message. This holds for the "No"
   of every permission card, and for the "Send" of the touch layout.
@@ -818,8 +818,8 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   unseen step may mark the wrong agent; the diff and the commands have no syntax highlighting, as in the extension
   2.1.310; and the fields of the Claude in Chrome input that the rows read (`query`, `urlPattern`, `pattern`,
   `onlyErrors`, `text`, `scroll_direction`, `ref`, `coordinate`, `duration`) come from the schema of the tool, not from a
-  recording of a real session, because none was made: a real session may show a summary or a thumbnail less. The Kairos
-  relay sends only text, so there a `computer` action reads "Action completed" with no thumbnail. The Claude in Chrome
+  recording of a real session, because none was made: a real session may show a summary or a thumbnail less. Through a
+  relay that sends only text, a `computer` action reads "Action completed" with no thumbnail. The Claude in Chrome
   rows have no "[Show Tab]" link.
 - A code block still open while a reply arrives is drawn as code up to its end, where it was plain text until its
   closing fence came.
@@ -872,7 +872,7 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
   panel, and the plan's comment box stays inside the chat area, so it does not cover the panel.
 - Where group 6 differs from the extension 2.1.310 on purpose:
   - Left out: LaTeX (the extension draws it with KaTeX, and this release takes no new dependency); the "Session paused"
-    card, which needs the `request_user_dialog` that the Kairos machine refuses; the suggestion to make auto mode the
+    card, which needs the `request_user_dialog` that the host's machine refuses; the suggestion to make auto mode the
     default, which needs `auto_default_nudge`; the "Why?" text by category, where there is one generic text; and the
     agent card's prompt, tool calls, "Open transcript" and "Stop agent".
   - The Agent map has no tail row for a live agent outside any fold (an agent started by a subagent, or a task with no
@@ -910,7 +910,7 @@ calls `StdinMessages.UserMessage`, styles the view or compares its texts:
 The appearance and behaviour are those of the Claude Code extension 2.1.310, measured and described, with these
 exceptions, each kept on purpose (the sections above say each one in its place):
 
-- **What the host cannot do.** The contract with the Kairos machine did not change: the answer to a permission request
+- **What the host cannot do.** The contract with the host's machine did not change: the answer to a permission request
   carries only the decision and, on a refusal, the message (4,000 characters at most); the modes are `plan`, `default`,
   `acceptEdits` and `auto`; an unknown local command is ignored. So "Yes, and manually approve edits" asks for the mode
   `default` through `PermissionModeRequested`, where the extension sends `updatedPermissions` with `setMode`; a refusal
@@ -928,7 +928,7 @@ exceptions, each kept on purpose (the sections above say each one in its place):
   told to have succeeded only when its input has a `content` that is not a text; a request that comes without `agent_id`
   belongs to the agent whose step asked, so one from an unseen step may mark the wrong agent; the diff and the commands have
   no syntax highlighting, as in the extension 2.1.310, so there is no tokenizer; the old tool rows are not pruned; the
-  Claude in Chrome rows read the fields of the tool's schema, have no "[Show Tab]" link, and on the Kairos relay a
+  Claude in Chrome rows read the fields of the tool's schema, have no "[Show Tab]" link, and on a text-only relay a
   `computer` action has no thumbnail; and the Focus view has no "Run in background" (the VS Code host's).
 - **The list and the reply box.** The row of actions sits at the end of the turn and copies the whole turn, where the
   extension has one under each assistant message, with no fade of 0.18 s; the scroll on send jumps at once, with no glide of
@@ -952,7 +952,7 @@ exceptions, each kept on purpose (the sections above say each one in its place):
 What stays out of 0.6.0, and why. Each item is waiting for something the component does not have:
 
 - **LaTeX.** The extension draws it with KaTeX; this release takes no new dependency, so a formula shows as its source.
-- **The "Session paused" card and the billed auto-mode card.** Both need `request_user_dialog`, which the Kairos machine
+- **The "Session paused" card and the billed auto-mode card.** Both need `request_user_dialog`, which the host's machine
   refuses.
 - **The suggestion to make auto mode the default.** It needs `auto_default_nudge`, which does not reach the component.
 - **Prompt suggestions.** They need `--prompt-suggestions`, which the machine does not pass to the claude.

@@ -2878,7 +2878,7 @@ public class ChatConversationTests
     public void A_model_asked_for_with_set_model_prints_nothing()
     {
         var c = new ChatConversation();
-        c.SetModel("opus");                                                             // the Kairós path
+        c.SetModel("opus");                                                             // the set_model path
         c.Apply(new SettingsApplied("opus", null, false));
         Assert.Empty(c.Items);
     }

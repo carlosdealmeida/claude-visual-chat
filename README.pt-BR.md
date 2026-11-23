@@ -684,8 +684,8 @@ uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O q
 - **Quem mandou um `ExternalMessageItem`** vem do `origin` da linha: quando há um, a mensagem só vira cartão se esse
   `origin` for o remetente que a mensagem diz (senão, `human` por exemplo, continua texto do usuário); sem nenhum, o
   cartão diz "Remetente não registrado", e uma linha meta sem `origin` fica de fora. Ao vivo, o claude só escreve o
-  `origin` nas linhas que repete, e os arquivos de sessão o gravam; por isso, por um relay que não as repete, como o do
-  Kairós, esses cartões só aparecem a partir de um histórico.
+  `origin` nas linhas que repete, e os arquivos de sessão o gravam; por isso, por um relay que não as repete, esses
+  cartões só aparecem a partir de um histórico.
 - **Linhas de contexto sob um prompt.** O que o IDE mandou junto com um prompt (a saída de um terminal, uma aba do
   navegador, as instruções do navegador, o código selecionado no editor) aparece como linhas sob a mensagem, abertas até o
   conteúdo, e escondidas no modo foco. São o `UserMessageItem.Context`, uma lista de `MessageContext(Kind, Label,
@@ -987,7 +987,7 @@ O exemplo toca uma gravação numa janela do tamanho de um celular:
   [Ditado](#ditado)); o layout desktop não tem.
 - Fica fora desta versão, como a extensão 2.1.310 os tem: o LaTeX (a extensão o desenha com KaTeX, e esta versão não
   traz dependência nova); o cartão "Session paused" e o do modo automático cobrado, que precisam do
-  `request_user_dialog`, recusado pela máquina do Kairós; a sugestão de tornar o modo automático o padrão (precisa do
+  `request_user_dialog`, recusado pela máquina do host; a sugestão de tornar o modo automático o padrão (precisa do
   `auto_default_nudge`); as sugestões de prompt (precisam do `--prompt-suggestions`, que a máquina não passa); o Code
   Mode (o `claude -p` não o roda); o sufixo "Ultracode" do chip do modelo (precisa do `get_settings`, que a máquina
   corta); e um texto de "Por quê?" para cada categoria da troca de modelo (há um texto genérico). O mapa de agentes não
