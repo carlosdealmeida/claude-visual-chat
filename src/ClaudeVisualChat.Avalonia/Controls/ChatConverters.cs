@@ -32,6 +32,12 @@ internal static class ChatConverters
     public static readonly IMultiValueConverter YouSaid =
         new StringsConverter<string>((text, strings) => strings.FormatYouSaid(text));
 
+    /// <summary>
+    /// (<see cref="AdvisorOutcome"/>, the error's code, <see cref="ChatStrings"/>) → the line of the advisor's verdict, "Advisor unavailable
+    /// (overloaded)".
+    /// </summary>
+    public static readonly IMultiValueConverter AdvisorResult = new AdvisorResultConverter();
+
     /// <summary>(<see cref="FocusFoldState"/>, <see cref="ChatStrings"/>) → a Focus fold's label: its live one, or its count.</summary>
     public static readonly IMultiValueConverter FocusLabel =
         new StringsConverter<FocusFoldState>((state, strings) => strings.FormatFocusLabel(state));
@@ -87,6 +93,17 @@ internal static class ChatConverters
             if (values.Count > 2 && values[2] is false) return null;
             var strings = values.Count > 1 ? values[1] as ChatStrings ?? ChatStrings.English : ChatStrings.English;
             return strings.FormatTime(time);
+        }
+    }
+
+    private sealed class AdvisorResultConverter : IMultiValueConverter
+    {
+        public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (values.Count < 1 || !(values[0] is AdvisorOutcome outcome)) return "";
+            var errorCode = values.Count > 1 ? values[1] as string : null;
+            var strings = values.Count > 2 ? values[2] as ChatStrings ?? ChatStrings.English : ChatStrings.English;
+            return strings.AdvisorResultLabel(outcome, errorCode);
         }
     }
 

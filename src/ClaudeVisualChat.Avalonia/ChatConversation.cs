@@ -38,6 +38,9 @@ public sealed class ChatConversation : ChatObservableObject
     private readonly HashSet<ToolCallItem> _nestedTools = new HashSet<ToolCallItem>();
     private readonly List<ToolCallItem> _turnTools = new List<ToolCallItem>();
     private readonly List<LiveBlock> _live = new List<LiveBlock>();
+    /// <summary>The advisor's lines by their call's id: each block comes twice in the stream (its start, then its line).</summary>
+    private readonly Dictionary<string, AdvisorCallItem> _advisorCalls = new Dictionary<string, AdvisorCallItem>(StringComparer.Ordinal);
+    private readonly Dictionary<string, AdvisorResultItem> _advisorResults = new Dictionary<string, AdvisorResultItem>(StringComparer.Ordinal);
     /// <summary>
     /// The main agent's message being streamed (its <c>message_start</c>); null when none is, or once the turn ended. Its blocks whose line
     /// has not come are an attempt the claude may abandon.
@@ -1167,6 +1170,8 @@ public sealed class ChatConversation : ChatObservableObject
         _nestedTools.Clear();
         _turnTools.Clear();
         _live.Clear();
+        _advisorCalls.Clear(); // the next session's ids are its own
+        _advisorResults.Clear();
         _streamingMessageId = null;
         ForgetCommandTasks();
         _taskOutputRequests.Clear(); // the next session's requests may reuse the ids
@@ -1707,7 +1712,39 @@ public sealed class ChatConversation : ChatObservableObject
                 }
                 if (IsAgentTool(tool.Name)) OnAgentCall(tool, e.ParentToolUseId, e.Timestamp);
                 break;
+            case AdvisorUseBlock advisor:
+                ShowAdvisorCall(advisor, e.ParentToolUseId);
+                break;
+            case AdvisorResultBlock verdict:
+                ShowAdvisorResult(verdict, e.ParentToolUseId);
+                break;
         }
+    }
+
+    /// <summary>
+    /// The advisor's call takes one line per id: the start of its block in the stream, its assistant line and a line said again are the
+    /// same call. It is not a streamed block: its deltas and its stop change nothing.
+    /// </summary>
+    private void ShowAdvisorCall(AdvisorUseBlock advisor, string? parentToolUseId)
+    {
+        if (advisor.Id.Length > 0 && _advisorCalls.ContainsKey(advisor.Id)) return;
+        var item = new AdvisorCallItem(advisor.Id);
+        if (advisor.Id.Length > 0) _advisorCalls[advisor.Id] = item;
+        Place(item, parentToolUseId);
+    }
+
+    /// <summary>The advisor's verdict, one line per id too: said again, it updates the line. It needs no call before it.</summary>
+    private void ShowAdvisorResult(AdvisorResultBlock verdict, string? parentToolUseId)
+    {
+        var id = verdict.ToolUseId;
+        var known = _advisorResults.TryGetValue(id, out var found);
+        var item = known ? found : new AdvisorResultItem(id);
+        item.Outcome = verdict.Outcome;
+        item.Text = verdict.Text;
+        item.ErrorCode = verdict.ErrorCode;
+        if (known) return;
+        if (id.Length > 0) _advisorResults[id] = item;
+        Place(item, parentToolUseId);
     }
 
     private void Fill(ToolCallItem item, ToolUseBlock tool)
@@ -1741,6 +1778,12 @@ public sealed class ChatConversation : ChatObservableObject
                     ToolUseId = tool.Id, Name = tool.Name, Input = tool.Input, Status = ToolStatus.Running,
                 };
                 _live.Add(new LiveBlock(e.MessageId, e.ParentToolUseId, e.Index, call) { Hidden = true });
+                return;
+            case AdvisorUseBlock advisor:
+                ShowAdvisorCall(advisor, e.ParentToolUseId);
+                return;
+            case AdvisorResultBlock verdict:
+                ShowAdvisorResult(verdict, e.ParentToolUseId); // whole in its start: its line, when it comes, is the same
                 return;
             default:
                 return;

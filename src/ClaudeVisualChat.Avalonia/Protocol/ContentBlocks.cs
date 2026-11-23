@@ -32,6 +32,22 @@ namespace ClaudeVisualChat.Protocol
     /// <summary>An image; <paramref name="Data"/> is base64 as it came, empty when the source is not base64.</summary>
     public sealed record ImageBlock(string MediaType, string Data) : ContentBlock;
 
+    /// <summary>Claude calls the advisor (<c>"type": "server_tool_use"</c> named <c>advisor</c>); <paramref name="Id"/> is the call's id.</summary>
+    public sealed record AdvisorUseBlock(string Id) : ContentBlock;
+
+    /// <summary>
+    /// The advisor's verdict (<c>"type": "advisor_tool_result"</c>), for the call <paramref name="ToolUseId"/>; the advisor is a tool of the
+    /// server, so it comes in the assistant's message, not in a user line.
+    /// </summary>
+    public sealed record AdvisorResultBlock(string ToolUseId, AdvisorOutcome Outcome) : ContentBlock
+    {
+        /// <summary>What the advisor said, in Markdown, when it came readable (<c>advisor_result</c>); null when it came redacted or failed.</summary>
+        public string? Text { get; init; }
+
+        /// <summary>Why the advisor was unavailable (<c>error_code</c>, such as <c>overloaded</c>); null otherwise or when not told.</summary>
+        public string? ErrorCode { get; init; }
+    }
+
     internal static class JsonHelpers
     {
         private static readonly JsonElement EmptyObject = Parse("{}");
@@ -152,6 +168,32 @@ namespace ClaudeVisualChat.Protocol
                     };
                 case "image":
                     return ReadImage(block);
+                case "server_tool_use":
+                    // the advisor is the one server tool shown; the others (a web search…) are not
+                    return JsonHelpers.Str(block, "name") == "advisor" ? new AdvisorUseBlock(JsonHelpers.Str(block, "id") ?? "") : null;
+                case "advisor_tool_result":
+                    return ReadAdvisorResult(block);
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>The verdict by the kind of its content; a kind not known, or no content, gives nothing.</summary>
+        private static AdvisorResultBlock? ReadAdvisorResult(JsonElement block)
+        {
+            var toolUseId = JsonHelpers.Str(block, "tool_use_id") ?? "";
+            var content = JsonHelpers.Obj(block, "content");
+            if (content == null) return null;
+            var c = content.Value;
+            switch (JsonHelpers.Str(c, "type"))
+            {
+                case "advisor_result":
+                    var outcome = JsonHelpers.Str(c, "stop_reason") == "refusal" ? AdvisorOutcome.Declined : AdvisorOutcome.Reviewed;
+                    return new AdvisorResultBlock(toolUseId, outcome) { Text = JsonHelpers.Str(c, "text") };
+                case "advisor_redacted_result":
+                    return new AdvisorResultBlock(toolUseId, AdvisorOutcome.Reviewed);
+                case "advisor_tool_result_error":
+                    return new AdvisorResultBlock(toolUseId, AdvisorOutcome.Unavailable) { ErrorCode = JsonHelpers.Str(c, "error_code") };
                 default:
                     return null;
             }

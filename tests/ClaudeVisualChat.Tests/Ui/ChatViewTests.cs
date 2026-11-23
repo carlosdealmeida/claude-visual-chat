@@ -1737,6 +1737,139 @@ public class ChatViewTests
         window.Close();
     }
 
+    // ---- the advisor ----
+
+    private static StackPanel AdvisorSummary(Visual row) =>
+        row.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Classes.Contains("ClaudeChatThinkingSummary"));
+
+    private static MarkdownBlock AdvisorText(Visual row) =>
+        row.GetVisualDescendants().OfType<MarkdownBlock>().Single(m => m.Classes.Contains("ClaudeChatAdvisorText"));
+
+    private static IEnumerable<string> BoldWords(Visual root)
+    {
+        var words = new List<string>();
+        void Collect(IEnumerable<ColorTextBlock.Avalonia.CInline> inlines, bool bold)
+        {
+            foreach (var inline in inlines)
+            {
+                if (inline is ColorTextBlock.Avalonia.CRun run && bold && !string.IsNullOrEmpty(run.Text)) words.Add(run.Text);
+                else if (inline is ColorTextBlock.Avalonia.CSpan span) Collect(span.Content, bold || span is ColorTextBlock.Avalonia.CBold);
+            }
+        }
+        foreach (var text in root.GetVisualDescendants().OfType<ColorTextBlock.Avalonia.CTextBlock>().Where(t => t.IsEffectivelyVisible))
+            Collect(text.Content, false);
+        return words;
+    }
+
+    [AvaloniaFact]
+    public void The_advisor_call_is_bold_and_its_result_reads_as_a_thought()
+    {
+        var c = new ChatConversation();
+        c.Items.Add(new AdvisorCallItem("srvtoolu_1"));
+        c.Items.Add(new AdvisorResultItem("srvtoolu_1"));
+        var (view, window) = Open(c);
+        var list = UiHelpers.ItemList(view);
+
+        var callRow = list.ContainerFromIndex(0)!.GetVisualDescendants().OfType<ChatTimelineRow>().First();
+        var name = callRow.GetVisualDescendants().OfType<TextBlock>().Single(t => t.IsEffectivelyVisible && t.Text == "Advisor");
+        Assert.Contains("ClaudeChatAdvisorCall", name.Classes);
+        Assert.Equal(FontWeight.Bold, name.FontWeight);
+        Assert.Equal(Resource(view, "ClaudeChat.LineHeight"), name.LineHeight);
+        Assert.Equal("Advisor", AutomationProperties.GetName(callRow));
+        // the dot is the neutral one, still: no state, no blinking
+        Assert.Same(Resource(view, "ClaudeChat.Dot"), callRow.GetVisualDescendants().OfType<Ellipse>().First().Fill);
+        Assert.DoesNotContain(callRow.Classes, k => k is "running" or "succeeded" or "failed" or "rejected");
+
+        var resultRow = list.ContainerFromIndex(1)!.GetVisualDescendants().OfType<ChatTimelineRow>().First();
+        Assert.Equal(new[] { "Advisor has reviewed the conversation" }, UiHelpers.Texts(resultRow));
+        Assert.Equal("Advisor has reviewed the conversation", AutomationProperties.GetName(resultRow));
+        var label = resultRow.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatThinkingLabel"));
+        Assert.Equal(FontStyle.Normal, label.FontStyle);
+        Assert.Same(Resource(view, "ClaudeChat.ForegroundMuted"), label.Foreground);
+        Assert.Equal(0.8, AdvisorSummary(resultRow).Opacity);
+        Assert.Same(Resource(view, "ClaudeChat.Dot"), resultRow.GetVisualDescendants().OfType<Ellipse>().First().Fill);
+        // nothing to open: no chevron, and the line takes neither the pointer nor the keyboard
+        Assert.DoesNotContain(resultRow.GetVisualDescendants().OfType<Path>(), p => p.IsEffectivelyVisible);
+        var toggle = resultRow.GetVisualDescendants().OfType<ToggleButton>().Single();
+        Assert.False(toggle.Focusable);
+        Assert.False(toggle.IsHitTestVisible);
+        Assert.False(AdvisorText(resultRow).IsEffectivelyVisible);
+
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal(new[] { "O Advisor revisou a conversa" }, UiHelpers.Texts(resultRow));
+        Assert.Equal("O Advisor revisou a conversa", AutomationProperties.GetName(resultRow));
+        Assert.Equal("Advisor", AutomationProperties.GetName(callRow));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_result_with_text_opens_its_markdown()
+    {
+        var c = new ChatConversation();
+        var result = new AdvisorResultItem("srvtoolu_1") { Text = "**ok**" };
+        c.Items.Add(result);
+        var (view, window) = Open(c);
+        var row = UiHelpers.ItemList(view).ContainerFromIndex(0)!.GetVisualDescendants().OfType<ChatTimelineRow>().First();
+
+        Assert.Contains(row.GetVisualDescendants().OfType<Path>(), p => p.IsEffectivelyVisible && p.Classes.Contains("ClaudeChatChevron"));
+        Assert.False(AdvisorText(row).IsEffectivelyVisible);
+        var toggle = row.GetVisualDescendants().OfType<ToggleButton>().Single();
+        Assert.True(toggle.Focusable);
+        Assert.True(toggle.IsHitTestVisible);
+
+        toggle.Focus();
+        UiHelpers.Press(window, Key.Enter);
+
+        Assert.True(result.IsExpanded);
+        var text = AdvisorText(row);
+        Assert.True(text.IsEffectivelyVisible);
+        Assert.Equal(4, text.Margin.Top);
+        Assert.Equal(new[] { "ok" }, BoldWords(text));
+        Assert.Equal(new[] { "Advisor has reviewed the conversation" }, UiHelpers.Texts(AdvisorSummary(row)));
+
+        UiHelpers.Press(window, Key.Enter);
+        Assert.False(result.IsExpanded);
+        Assert.False(AdvisorText(row).IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_declined_and_an_unavailable_result_say_so()
+    {
+        var c = new ChatConversation();
+        var declined = new AdvisorResultItem("srvtoolu_1") { Outcome = AdvisorOutcome.Declined, Text = "Not this one." };
+        var unavailable = new AdvisorResultItem("srvtoolu_2") { Outcome = AdvisorOutcome.Unavailable, ErrorCode = "overloaded", Text = "never shown" };
+        var bare = new AdvisorResultItem("srvtoolu_3") { Outcome = AdvisorOutcome.Unavailable };
+        c.Items.Add(declined);
+        c.Items.Add(unavailable);
+        c.Items.Add(bare);
+        var (view, window) = Open(c);
+        var list = UiHelpers.ItemList(view);
+        ChatTimelineRow Row(int i) => list.ContainerFromIndex(i)!.GetVisualDescendants().OfType<ChatTimelineRow>().First();
+
+        Assert.Equal(new[] { "Advisor declined to advise on this request" }, UiHelpers.Texts(Row(0)));
+        Assert.True(declined.CanExpand); // a refusal with its words opens to them
+        Assert.Contains(Row(0).GetVisualDescendants().OfType<Path>(), p => p.IsEffectivelyVisible);
+
+        Assert.Equal(new[] { "Advisor unavailable (overloaded)" }, UiHelpers.Texts(Row(1)));
+        Assert.Equal("Advisor unavailable (overloaded)", AutomationProperties.GetName(Row(1)));
+        Assert.Equal(new[] { "Advisor unavailable" }, UiHelpers.Texts(Row(2)));
+        // unavailable never opens, even with a text and the item told to
+        Assert.False(unavailable.CanExpand);
+        Assert.DoesNotContain(Row(1).GetVisualDescendants().OfType<Path>(), p => p.IsEffectivelyVisible);
+        Assert.False(Row(1).GetVisualDescendants().OfType<ToggleButton>().Single().Focusable);
+        unavailable.IsExpanded = true;
+        UiHelpers.Pump();
+        Assert.False(AdvisorText(Row(1)).IsEffectivelyVisible);
+
+        view.Strings = ChatStrings.PortugueseBrazil;
+        UiHelpers.Pump();
+        Assert.Equal(new[] { "O Advisor não quis opinar sobre este pedido" }, UiHelpers.Texts(Row(0)));
+        Assert.Equal(new[] { "Advisor indisponível (overloaded)" }, UiHelpers.Texts(Row(1)));
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Footer_formats()
     {

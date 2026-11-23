@@ -641,6 +641,14 @@ a star and verbs. Nothing to set up for those. What your app may want to know:
   printed in one line) and `ExternalMessageItem` (a message from another agent, another session or a channel, or a
   task's notice, where a `UserMessageItem` with the raw markup used to be). The view has a template for each; an app
   with templates of its own needs them too.
+- **The advisor's two lines.** When Claude calls the advisor (a `server_tool_use` named `advisor`), the timeline shows
+  "Advisor" in bold (`AdvisorCallItem`), then its verdict (`AdvisorResultItem`), drawn like a thought: "Advisor has
+  reviewed the conversation", "Advisor declined to advise on this request" or "Advisor unavailable (overloaded)"
+  (`AdvisorResultItem.Outcome`, an `AdvisorOutcome`, and `ErrorCode`). The verdict opens to what the advisor said, as
+  Markdown, only when that came readable (`CanExpand`); a redacted verdict, the usual one, has nothing to open, and an
+  unavailable one never opens. The advisor's text is not part of the reply that is copied, and in the Focus view both
+  lines are steps of their fold. The blocks are `Protocol.AdvisorUseBlock` and `Protocol.AdvisorResultBlock`; an app with
+  templates of its own needs templates for the two items too.
 - **Who sent an `ExternalMessageItem`** comes from the line's `origin`: when it has one, the message is a card only if
   that `origin` is the sender the message claims (otherwise, `human` say, it stays the user's text); with none, the card
   reads "Sender not recorded", and a meta line with none stays out. The claude writes `origin` live only on the lines it

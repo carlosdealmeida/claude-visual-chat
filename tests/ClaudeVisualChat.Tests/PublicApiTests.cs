@@ -1162,6 +1162,58 @@ public class PublicApiTests
     }
 
     [Fact]
+    public void The_advisor_api()
+    {
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        foreach (var name in new[]
+        {
+            "ClaudeVisualChat.AdvisorOutcome", "ClaudeVisualChat.AdvisorCallItem", "ClaudeVisualChat.AdvisorResultItem",
+            "ClaudeVisualChat.Protocol.AdvisorUseBlock", "ClaudeVisualChat.Protocol.AdvisorResultBlock",
+        })
+            Assert.Contains(name, names);
+        Assert.Equal(new[] { "Reviewed", "Declined", "Unavailable" }, System.Enum.GetNames(typeof(AdvisorOutcome)));
+
+        foreach (var item in new[] { typeof(AdvisorCallItem), typeof(AdvisorResultItem) })
+        {
+            Assert.True(item.IsSealed && typeof(ChatItem).IsAssignableFrom(item));
+            Assert.NotNull(item.GetConstructor(new[] { typeof(string) }));
+            Assert.Equal(typeof(string), item.GetProperty("ToolUseId")?.PropertyType);
+            Assert.Null(item.GetProperty("ToolUseId")!.SetMethod);
+        }
+        var result = typeof(AdvisorResultItem);
+        Assert.Equal(typeof(AdvisorOutcome), result.GetProperty("Outcome")?.PropertyType);
+        Assert.Equal(typeof(string), result.GetProperty("Text")?.PropertyType);
+        Assert.Equal(typeof(string), result.GetProperty("ErrorCode")?.PropertyType);
+        foreach (var name in new[] { "Outcome", "Text", "ErrorCode" })
+            Assert.False(result.GetProperty(name)!.SetMethod!.IsPublic); // the conversation tells them
+        Assert.Equal(typeof(bool), result.GetProperty("IsExpanded")?.PropertyType);
+        Assert.True(result.GetProperty("IsExpanded")!.SetMethod!.IsPublic);
+        Assert.Equal(typeof(bool), result.GetProperty("CanExpand")?.PropertyType);
+        Assert.Null(result.GetProperty("CanExpand")!.SetMethod);
+
+        var use = typeof(ClaudeVisualChat.Protocol.AdvisorUseBlock);
+        Assert.True(use.IsSealed && typeof(ClaudeVisualChat.Protocol.ContentBlock).IsAssignableFrom(use));
+        Assert.Equal(new[] { "Id" }, use.GetConstructors().Single().GetParameters().Select(p => p.Name).ToArray());
+        var verdict = typeof(ClaudeVisualChat.Protocol.AdvisorResultBlock);
+        Assert.True(verdict.IsSealed && typeof(ClaudeVisualChat.Protocol.ContentBlock).IsAssignableFrom(verdict));
+        Assert.Equal(new[] { "ToolUseId", "Outcome" },
+            verdict.GetConstructors().Single(c => c.GetParameters().Length == 2).GetParameters().Select(p => p.Name).ToArray());
+        foreach (var name in new[] { "Text", "ErrorCode" })
+        {
+            Assert.Equal(typeof(string), verdict.GetProperty(name)?.PropertyType);
+            Assert.Contains(verdict.GetProperty(name)!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+        }
+
+        foreach (var name in new[] { "AdvisorCall", "AdvisorReviewed", "AdvisorDeclined", "AdvisorUnavailable" })
+        {
+            var property = typeof(ChatStrings).GetProperty(name);
+            Assert.Equal(typeof(string), property?.PropertyType);
+            Assert.Contains(property!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+        }
+        Assert.False(typeof(ChatStrings).GetMethod("AdvisorResultLabel", BindingFlags.Instance | BindingFlags.NonPublic)!.IsPublic);
+    }
+
+    [Fact]
     public void The_ultrathink_api()
     {
         var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();

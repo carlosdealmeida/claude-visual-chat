@@ -10,6 +10,21 @@ namespace ClaudeVisualChat.Tests.Protocol
             "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"init-1\",\"response\":{\"commands\":[]," + extra + "\"models\":[]}}}";
 
         [Fact]
+        public void A_session_file_keeps_the_advisor_blocks()
+        {
+            var blocks = FixtureFiles.TranscriptLines("advisor").SelectMany(TranscriptParser.Parse)
+                .OfType<AssistantBlock>().Select(b => b.Block).ToList();
+
+            Assert.Equal(3, blocks.Count);
+            Assert.Equal(new AdvisorUseBlock("srvtoolu_01UsaBcWLXWZgtjtrmoWaNKX"), blocks[0]);
+            var result = Assert.IsType<AdvisorResultBlock>(blocks[1]);
+            Assert.Equal("srvtoolu_01UsaBcWLXWZgtjtrmoWaNKX", result.ToolUseId);
+            Assert.Equal(AdvisorOutcome.Reviewed, result.Outcome);
+            Assert.Null(result.Text); // a redacted verdict: nothing to read
+            Assert.Equal("done", Assert.IsType<TextContentBlock>(blocks[2]).Text);
+        }
+
+        [Fact]
         public void An_initialize_reply_reports_the_auth_conflict()
         {
             // a hand-built line: the recorder's machine has no login that both sets a token and a key

@@ -51,11 +51,12 @@ internal sealed class ChatTimelineRow : ContentControl
     protected override Type StyleKeyOverride => typeof(ChatTimelineRow);
 
     /// <summary>
-    /// Entries of the timeline: text, thinking, tool calls, the Focus view's folds of them and what a command printed (drawn without a
-    /// dot, the line passing by it); the rest (the user's message, notices) breaks a run.
+    /// Entries of the timeline: text, thinking, tool calls, the advisor's call and verdict, the Focus view's folds of them and what a
+    /// command printed (drawn without a dot, the line passing by it); the rest (the user's message, notices) breaks a run.
     /// </summary>
     internal static bool IsTimeline(object? item) =>
-        item is AssistantTextItem || item is ThinkingItem || item is ToolCallItem || item is FocusFoldItem || item is CommandOutputItem;
+        item is AssistantTextItem || item is ThinkingItem || item is ToolCallItem || item is AdvisorCallItem || item is AdvisorResultItem
+        || item is FocusFoldItem || item is CommandOutputItem;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {

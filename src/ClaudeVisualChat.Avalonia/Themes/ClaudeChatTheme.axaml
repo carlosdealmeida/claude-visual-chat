@@ -385,6 +385,55 @@
         </controls:ChatTimelineRow>
       </DataTemplate>
 
+      <!-- Claude calls the advisor: "Advisor" in bold, on the reply's line height; the dot the neutral one -->
+      <DataTemplate DataType="cvc:AdvisorCallItem">
+        <controls:ChatTimelineRow AutomationProperties.Name="{Binding $parent[controls:ClaudeChatView].Strings.AdvisorCall}">
+          <TextBlock Classes="ClaudeChatAdvisorCall" Text="{Binding $parent[controls:ClaudeChatView].Strings.AdvisorCall}" />
+        </controls:ChatTimelineRow>
+      </DataTemplate>
+
+      <!-- the advisor's verdict, drawn as a thought: its line, upright, and the arrow after it when what it said can be read; open, that
+           text as Markdown 4 px under it. Unavailable never opens -->
+      <DataTemplate DataType="cvc:AdvisorResultItem">
+        <controls:ChatTimelineRow>
+          <AutomationProperties.Name>
+            <MultiBinding Converter="{x:Static controls:ChatConverters.AdvisorResult}">
+              <Binding Path="Outcome" />
+              <Binding Path="ErrorCode" />
+              <Binding Path="$parent[controls:ClaudeChatView].Strings" />
+            </MultiBinding>
+          </AutomationProperties.Name>
+          <StackPanel>
+            <ToggleButton Classes="ClaudeChatDisclosure ClaudeChatAdvisorResult" HorizontalAlignment="Left"
+                          Classes.interactive="{Binding CanExpand}"
+                          IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                          IsHitTestVisible="{Binding CanExpand}"
+                          Focusable="{Binding CanExpand}">
+              <StackPanel Classes="ClaudeChatThinkingSummary" Orientation="Horizontal">
+                <TextBlock Classes="ClaudeChatThinkingLabel">
+                  <TextBlock.Text>
+                    <MultiBinding Converter="{x:Static controls:ChatConverters.AdvisorResult}">
+                      <Binding Path="Outcome" />
+                      <Binding Path="ErrorCode" />
+                      <Binding Path="$parent[controls:ClaudeChatView].Strings" />
+                    </MultiBinding>
+                  </TextBlock.Text>
+                </TextBlock>
+                <Path Classes="ClaudeChatChevron" IsVisible="{Binding CanExpand}" />
+              </StackPanel>
+            </ToggleButton>
+            <controls:MarkdownBlock Classes="ClaudeChatAdvisorText" Markdown="{Binding Text}">
+              <controls:MarkdownBlock.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                  <Binding Path="IsExpanded" />
+                  <Binding Path="CanExpand" />
+                </MultiBinding>
+              </controls:MarkdownBlock.IsVisible>
+            </controls:MarkdownBlock>
+          </StackPanel>
+        </controls:ChatTimelineRow>
+      </DataTemplate>
+
       <DataTemplate DataType="cvc:ToolCallItem">
         <controls:ToolCallView />
       </DataTemplate>
@@ -865,6 +914,20 @@
     <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
     <Setter Property="Margin" Value="0,4,0,0" />
     <Setter Property="RenderTransform" Value="translate(0px,1px)" />
+  </Style>
+
+  <!-- the advisor's call: "Advisor" in bold, on the reply's line height -->
+  <Style Selector="TextBlock.ClaudeChatAdvisorCall">
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <!-- its verdict: the line of a thought, at 80 %, and whole under the pointer when it opens; what it said 4 px under it -->
+  <Style Selector="ToggleButton.ClaudeChatAdvisorResult.interactive:pointerover StackPanel.ClaudeChatThinkingSummary">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="controls|MarkdownBlock.ClaudeChatAdvisorText">
+    <Setter Property="Margin" Value="0,4,0,0" />
   </Style>
 
   <!-- the Focus view's fold: its line sits like a thought's; the label in the secondary color, the count after a live label in bold at

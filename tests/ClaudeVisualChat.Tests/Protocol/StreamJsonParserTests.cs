@@ -95,6 +95,53 @@ namespace ClaudeVisualChat.Tests.Protocol
             Assert.Null(block.ParentToolUseId);
         }
 
+        /// <summary>The blocks of an assistant line that holds <paramref name="block"/> alone.</summary>
+        private static System.Collections.Generic.List<ContentBlock> BlocksOf(string block) =>
+            new StreamJsonParser().Parse("{\"type\":\"assistant\",\"parent_tool_use_id\":null,\"message\":{\"id\":\"m1\",\"content\":[" + block + "]}}")
+                .OfType<AssistantBlock>().Select(b => b.Block).ToList();
+
+        private static AdvisorResultBlock ResultOf(string content) =>
+            Assert.IsType<AdvisorResultBlock>(Assert.Single(BlocksOf(
+                "{\"type\":\"advisor_tool_result\",\"tool_use_id\":\"srvtoolu_1\",\"content\":" + content + "}")));
+
+        [Fact]
+        public void An_advisor_call_and_its_three_kinds_of_result_are_read()
+        {
+            Assert.Equal(new AdvisorUseBlock("srvtoolu_1"),
+                Assert.Single(BlocksOf("{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_1\",\"name\":\"advisor\",\"input\":{}}")));
+
+            var reviewed = ResultOf("{\"type\":\"advisor_result\",\"text\":\"Looks fine.\"}");
+            Assert.Equal("srvtoolu_1", reviewed.ToolUseId);
+            Assert.Equal(AdvisorOutcome.Reviewed, reviewed.Outcome);
+            Assert.Equal("Looks fine.", reviewed.Text);
+            Assert.Null(reviewed.ErrorCode);
+
+            var declined = ResultOf("{\"type\":\"advisor_result\",\"text\":\"\",\"stop_reason\":\"refusal\"}");
+            Assert.Equal(AdvisorOutcome.Declined, declined.Outcome);
+            Assert.Equal("", declined.Text);
+
+            var redacted = ResultOf("{\"type\":\"advisor_redacted_result\",\"encrypted_content\":\"redacted\"}");
+            Assert.Equal(AdvisorOutcome.Reviewed, redacted.Outcome);
+            Assert.Null(redacted.Text);
+
+            var error = ResultOf("{\"type\":\"advisor_tool_result_error\",\"error_code\":\"overloaded\"}");
+            Assert.Equal(AdvisorOutcome.Unavailable, error.Outcome);
+            Assert.Equal("overloaded", error.ErrorCode);
+            Assert.Null(error.Text);
+
+            // a kind of result not known, a result without content, and another server tool give no block
+            Assert.Empty(BlocksOf("{\"type\":\"advisor_tool_result\",\"tool_use_id\":\"srvtoolu_1\",\"content\":{\"type\":\"something_new\"}}"));
+            Assert.Empty(BlocksOf("{\"type\":\"advisor_tool_result\",\"tool_use_id\":\"srvtoolu_1\"}"));
+            Assert.Empty(BlocksOf("{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_2\",\"name\":\"web_search\",\"input\":{}}"));
+
+            // the start of a block in the stream reads the same blocks
+            var parser = new StreamJsonParser();
+            var started = Assert.IsType<BlockStarted>(Assert.Single(parser.Parse(
+                "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_start\",\"index\":1,\"content_block\":"
+                + "{\"type\":\"advisor_tool_result\",\"tool_use_id\":\"srvtoolu_1\",\"content\":{\"type\":\"advisor_redacted_result\",\"encrypted_content\":\"redacted\"}}}}")));
+            Assert.Equal(new AdvisorResultBlock("srvtoolu_1", AdvisorOutcome.Reviewed), started.Block);
+        }
+
         [Fact]
         public void Deltas_carry_message_id_from_message_start()
         {

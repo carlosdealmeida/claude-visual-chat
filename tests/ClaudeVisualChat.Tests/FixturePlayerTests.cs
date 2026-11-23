@@ -210,6 +210,31 @@ public class FixturePlayerTests
         Assert.Empty(played.PendingPermissions);
     }
 
+    [AvaloniaFact]
+    public void The_advisor_recording_shows_both_lines_live_and_from_the_session_file()
+    {
+        var played = new ChatConversation();
+        var player = new FixturePlayer(FixtureFiles.StreamLines("advisor"), played);
+        var task = player.PlayAsync(TimeSpan.Zero, TimeSpan.Zero, CancellationToken.None);
+        RunUntil(task, Long);
+        Assert.True(task.IsCompletedSuccessfully);
+
+        var loaded = new ChatConversation();
+        loaded.LoadTranscript(FixtureFiles.TranscriptLines("advisor"));
+
+        foreach (var conversation in new[] { played, loaded })
+        {
+            var lines = conversation.Items.Where(i => i is AdvisorCallItem || i is AdvisorResultItem || i is AssistantTextItem).ToList();
+            Assert.Equal(3, lines.Count);
+            Assert.Equal("srvtoolu_01UsaBcWLXWZgtjtrmoWaNKX", Assert.IsType<AdvisorCallItem>(lines[0]).ToolUseId);
+            var verdict = Assert.IsType<AdvisorResultItem>(lines[1]);
+            Assert.Equal("srvtoolu_01UsaBcWLXWZgtjtrmoWaNKX", verdict.ToolUseId);
+            Assert.Equal(AdvisorOutcome.Reviewed, verdict.Outcome);
+            Assert.False(verdict.CanExpand); // the verdict is redacted: reviewed, nothing to open
+            Assert.Equal("done", Assert.IsType<AssistantTextItem>(lines[2]).Text);
+        }
+    }
+
     [Fact]
     public void The_bash_ansi_recording_shows_no_raw_control_character()
     {

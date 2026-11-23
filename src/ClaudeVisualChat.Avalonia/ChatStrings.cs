@@ -545,6 +545,10 @@ public sealed record ChatStrings
         FeedbackSend = "Enviar avaliação",
         ShowMore = "Mostrar mais",
         ShowLess = "Mostrar menos",
+        AdvisorCall = "Advisor",
+        AdvisorReviewed = "O Advisor revisou a conversa",
+        AdvisorDeclined = "O Advisor não quis opinar sobre este pedido",
+        AdvisorUnavailable = "Advisor indisponível",
         ThousandsSeparator = ".",
         DecimalSeparator = ",",
     };
@@ -2164,9 +2168,29 @@ public sealed record ChatStrings
     /// <summary>The button under a long prompt shown whole, which folds it again.</summary>
     public string ShowLess { get; init; } = "Show less";
 
+    /// <summary>The line of the timeline where Claude calls the advisor, in bold; also what a screen reader says of it.</summary>
+    public string AdvisorCall { get; init; } = "Advisor";
+
+    /// <summary>The line of the advisor's verdict when it reviewed the conversation.</summary>
+    public string AdvisorReviewed { get; init; } = "Advisor has reviewed the conversation";
+
+    /// <summary>The line of the advisor's verdict when it declined to advise.</summary>
+    public string AdvisorDeclined { get; init; } = "Advisor declined to advise on this request";
+
+    /// <summary>The line of the advisor's verdict when it could not be reached; the error's code follows it in parentheses, when told.</summary>
+    public string AdvisorUnavailable { get; init; } = "Advisor unavailable";
+
     public string ThousandsSeparator { get; init; } = ",";
 
     public string DecimalSeparator { get; init; } = ".";
+
+    /// <summary>The line of the advisor's verdict: unavailable with a code reads "Advisor unavailable (overloaded)".</summary>
+    internal string AdvisorResultLabel(AdvisorOutcome outcome, string? errorCode) => outcome switch
+    {
+        AdvisorOutcome.Declined => AdvisorDeclined,
+        AdvisorOutcome.Unavailable => string.IsNullOrEmpty(errorCode) ? AdvisorUnavailable : AdvisorUnavailable + " (" + errorCode + ")",
+        _ => AdvisorReviewed,
+    };
 
     /// <summary>Text for a <see cref="NoticeItem"/>.</summary>
     internal string Notice(NoticeKind kind) => kind switch

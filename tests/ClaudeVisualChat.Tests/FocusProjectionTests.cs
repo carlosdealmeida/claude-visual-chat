@@ -113,6 +113,24 @@ public class FocusProjectionTests
         Shape(f.Rows, f.Items).Select(s => s.StartsWith("[", StringComparison.Ordinal) ? s.Substring(0, s.IndexOf(']') + 1) : s).ToList();
 
     [Fact]
+    public void The_advisors_two_lines_are_steps_of_the_run()
+    {
+        var call = new AdvisorCallItem("srvtoolu_1");
+        var result = new AdvisorResultItem("srvtoolu_1");
+        var f = Follow(false, new UserMessageItem("a"), Call("Read"), call, result, new AssistantTextItem { Text = "b" });
+
+        Assert.Equal(new[] { "0", "[1,2,3]", "4" }, Places(f));
+        Assert.Equal("1 tool call", En.FormatFocusLabel(f.Fold(1).State));
+
+        // alone, they are hidden steps; one that comes at the end joins the fold
+        var alone = Follow(false, new UserMessageItem("a"), new AdvisorCallItem("srvtoolu_2"));
+        alone.Items.Add(new AdvisorResultItem("srvtoolu_2"));
+        Assert.Equal(new[] { "0", "[1,2]" }, Places(alone));
+        Assert.Equal("2 hidden steps", En.FormatFocusLabel(alone.Fold(1).State));
+        Assert.Equal(Fresh(alone.Conversation), Shape(alone.Rows, alone.Items));
+    }
+
+    [Fact]
     public void A_run_of_tool_calls_folds_into_one_item_with_the_count_and_failures()
     {
         var prompt = new UserMessageItem("fix it");

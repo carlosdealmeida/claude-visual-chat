@@ -221,6 +221,88 @@ public sealed class ThinkingItem : ChatItem
     internal string? Uuid { get; set; }
 }
 
+/// <summary>What the advisor's verdict was (<see cref="AdvisorResultItem.Outcome"/>).</summary>
+public enum AdvisorOutcome
+{
+    /// <summary>It reviewed the conversation; what it said may be readable or redacted.</summary>
+    Reviewed,
+    /// <summary>It declined to advise on the request (a refusal).</summary>
+    Declined,
+    /// <summary>It could not be reached (an error, such as being overloaded).</summary>
+    Unavailable,
+}
+
+/// <summary>
+/// Claude called the advisor: a line of the timeline that reads "Advisor", in bold. <see cref="AdvisorResultItem"/> with the same id is
+/// its verdict, when it comes.
+/// </summary>
+public sealed class AdvisorCallItem : ChatItem
+{
+    public AdvisorCallItem(string toolUseId)
+    {
+        ToolUseId = toolUseId ?? "";
+    }
+
+    /// <summary>The call's id (<c>srvtoolu_…</c>).</summary>
+    public string ToolUseId { get; }
+}
+
+/// <summary>
+/// The advisor's verdict: a line like a thought's, "Advisor has reviewed the conversation" (or that it declined, or was unavailable), which
+/// opens to what it said when that came readable (<see cref="CanExpand"/>). It shows without its call when the call never came.
+/// </summary>
+public sealed class AdvisorResultItem : ChatItem
+{
+    private AdvisorOutcome _outcome;
+    private string? _text;
+    private string? _errorCode;
+    private bool _isExpanded;
+
+    public AdvisorResultItem(string toolUseId)
+    {
+        ToolUseId = toolUseId ?? "";
+    }
+
+    /// <summary>The id of the call it answers.</summary>
+    public string ToolUseId { get; }
+
+    public AdvisorOutcome Outcome
+    {
+        get => _outcome;
+        internal set
+        {
+            if (SetField(ref _outcome, value)) OnPropertyChanged(nameof(CanExpand));
+        }
+    }
+
+    /// <summary>What the advisor said, in Markdown; null or empty when there is nothing to open (a redacted verdict, an error).</summary>
+    public string? Text
+    {
+        get => _text;
+        internal set
+        {
+            if (SetField(ref _text, value)) OnPropertyChanged(nameof(CanExpand));
+        }
+    }
+
+    /// <summary>Why it was unavailable (<c>overloaded</c>…), shown after its line; null when not told.</summary>
+    public string? ErrorCode
+    {
+        get => _errorCode;
+        internal set => SetField(ref _errorCode, value);
+    }
+
+    /// <summary>Whether the line is open to <see cref="Text"/>; it lives here because the list recycles its rows.</summary>
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetField(ref _isExpanded, value);
+    }
+
+    /// <summary>The line opens: the advisor was reached and said something readable.</summary>
+    public bool CanExpand => Outcome != AdvisorOutcome.Unavailable && !string.IsNullOrWhiteSpace(Text);
+}
+
 /// <summary>State of a tool call.</summary>
 public enum ToolStatus
 {

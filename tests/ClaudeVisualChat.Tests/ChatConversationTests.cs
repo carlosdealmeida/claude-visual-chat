@@ -4654,4 +4654,125 @@ public class ChatConversationTests
         c.UserSettingsFileRequested -= handler;
         Assert.Equal(2, changes);
     }
+
+    // ---- the advisor ----
+
+    private static AdvisorResultBlock Verdict(string text) =>
+        new AdvisorResultBlock("srvtoolu_1", AdvisorOutcome.Reviewed) { Text = text };
+
+    [Fact]
+    public void An_advisor_call_and_its_result_are_two_lines()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("Let me ask the advisor.")));
+        c.Apply(new AssistantBlock("m1", null, new AdvisorUseBlock("srvtoolu_1")));
+        c.Apply(new AssistantBlock("m1", null, Verdict("Looks fine.")));
+
+        Assert.Equal(3, c.Items.Count);
+        Assert.Equal("Let me ask the advisor.", Assert.IsType<AssistantTextItem>(c.Items[0]).Text);
+        Assert.Equal("srvtoolu_1", Assert.IsType<AdvisorCallItem>(c.Items[1]).ToolUseId);
+        var result = Assert.IsType<AdvisorResultItem>(c.Items[2]);
+        Assert.Equal("srvtoolu_1", result.ToolUseId);
+        Assert.Equal(AdvisorOutcome.Reviewed, result.Outcome);
+        Assert.Equal("Looks fine.", result.Text);
+        Assert.Null(result.ErrorCode);
+        Assert.True(result.CanExpand);
+        Assert.False(result.IsExpanded);
+
+        // the recording: the call, the redacted verdict (nothing to open), then the reply
+        foreach (var played in new[] { Play("advisor"), Load("advisor") })
+        {
+            var kinds = played.Items.Where(i => !(i is UserMessageItem || i is TurnFooterItem)).Select(i => i.GetType().Name).ToList();
+            Assert.Equal(new[] { nameof(AdvisorCallItem), nameof(AdvisorResultItem), nameof(AssistantTextItem) }, kinds);
+            var verdict = played.Items.OfType<AdvisorResultItem>().Single();
+            Assert.Equal(AdvisorOutcome.Reviewed, verdict.Outcome);
+            Assert.Null(verdict.Text);
+            Assert.False(verdict.CanExpand);
+        }
+    }
+
+    [Fact]
+    public void The_call_stays_alone_when_no_result_comes()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new AdvisorUseBlock("srvtoolu_1")));
+        c.Apply(new UserBlock(null, new TextContentBlock("[Request interrupted by user]"), null, false, false));
+        c.Apply(new TurnCompleted("error_during_execution", true, null, null, null, null));
+
+        Assert.IsType<AdvisorCallItem>(c.Items[0]);
+        Assert.Empty(c.Items.OfType<AdvisorResultItem>());
+        Assert.Equal(NoticeKind.Interrupted, Assert.IsType<NoticeItem>(c.Items[1]).Kind);
+    }
+
+    [Fact]
+    public void A_result_without_its_call_shows_alone()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m1", null, new AdvisorResultBlock("srvtoolu_1", AdvisorOutcome.Unavailable) { ErrorCode = "overloaded" }));
+
+        var result = Assert.IsType<AdvisorResultItem>(Assert.Single(c.Items));
+        Assert.Equal(AdvisorOutcome.Unavailable, result.Outcome);
+        Assert.Equal("overloaded", result.ErrorCode);
+        Assert.False(result.CanExpand);
+    }
+
+    [Fact]
+    public void The_same_blocks_twice_add_nothing()
+    {
+        // the stream: each block starts (the result whole in its start), then its assistant line comes, then it stops
+        var live = Play("advisor");
+        Assert.Single(live.Items.OfType<AdvisorCallItem>());
+        Assert.Single(live.Items.OfType<AdvisorResultItem>());
+
+        var c = new ChatConversation();
+        c.Apply(new BlockStarted("m1", 0, null, new AdvisorUseBlock("srvtoolu_1")));
+        c.Apply(new BlockDelta("m1", 0, null, DeltaKind.InputJson, ""));
+        c.Apply(new AssistantBlock("m1", null, new AdvisorUseBlock("srvtoolu_1")));
+        c.Apply(new BlockStopped("m1", 0, null));
+        c.Apply(new BlockStarted("m1", 1, null, new AdvisorResultBlock("srvtoolu_1", AdvisorOutcome.Reviewed)));
+        var result = Assert.IsType<AdvisorResultItem>(c.Items[1]);
+        Assert.False(result.CanExpand);
+        c.Apply(new AssistantBlock("m1", null, Verdict("Second thoughts.")));
+        c.Apply(new AssistantBlock("m1", null, Verdict("Second thoughts."))); // a line said again
+        c.Apply(new BlockStopped("m1", 1, null));
+
+        Assert.Equal(2, c.Items.Count);
+        Assert.IsType<AdvisorCallItem>(c.Items[0]);
+        Assert.Same(result, c.Items[1]);
+        Assert.Equal("Second thoughts.", result.Text); // the result said again updates the one there
+        Assert.True(result.CanExpand);
+
+        // a new session forgets the ids: the same ones are new lines there
+        c.Clear();
+        c.Apply(new AssistantBlock("m1", null, new AdvisorUseBlock("srvtoolu_1")));
+        c.Apply(new AssistantBlock("m1", null, Verdict("Again.")));
+        Assert.Equal(new[] { nameof(AdvisorCallItem), nameof(AdvisorResultItem) }, c.Items.Select(i => i.GetType().Name));
+    }
+
+    [Fact]
+    public void An_advisor_inside_a_subagent_goes_under_it()
+    {
+        var c = new ChatConversation();
+        c.Apply(new AssistantBlock("m0", null, new ToolUseBlock("ta", "Agent", J("{\"description\":\"d\"}"))));
+        c.Apply(new AssistantBlock("m1", "ta", new AdvisorUseBlock("srvtoolu_1")));
+        c.Apply(new AssistantBlock("m1", "ta", Verdict("Fine.")));
+
+        var agent = Assert.IsType<ToolCallItem>(Assert.Single(c.Items));
+        Assert.Equal(new[] { nameof(AdvisorCallItem), nameof(AdvisorResultItem) }, agent.Children.Select(i => i.GetType().Name));
+    }
+
+    [Fact]
+    public void The_advisors_text_is_not_part_of_the_reply()
+    {
+        var c = new ChatConversation();
+        c.Apply(new UserBlock(null, new TextContentBlock("check this"), null, false, false));
+        c.Apply(new AssistantBlock("m1", null, new AdvisorUseBlock("srvtoolu_1")));
+        c.Apply(new AssistantBlock("m1", null, Verdict("Secret advice.")));
+        c.Apply(new AssistantBlock("m1", null, new TextContentBlock("All good.")));
+        c.Apply(new TurnCompleted("success", false, 1, null, null, null));
+
+        var footer = c.Items.Count - 1;
+        Assert.IsType<TurnFooterItem>(c.Items[footer]);
+        Assert.Equal("All good.", ChatTurns.AnswerText(c.Items, footer));
+    }
 }

@@ -113,8 +113,9 @@ internal sealed class FocusProjection : IReadOnlyList<object>, IList, INotifyCol
 
     // ---- what is folded ----
 
-    /// <summary>A step of a round, which a fold may stand for: a tool call or a thought.</summary>
-    private static bool IsStep(ChatItem item) => item is ToolCallItem || item is ThinkingItem;
+    /// <summary>A step of a round, which a fold may stand for: a tool call, a thought, or a line of the advisor.</summary>
+    private static bool IsStep(ChatItem item) =>
+        item is ToolCallItem || item is ThinkingItem || item is AdvisorCallItem || item is AdvisorResultItem;
 
     private static bool IsTodo(ChatItem item) => item is ToolCallItem { Name: TodoWrite };
 

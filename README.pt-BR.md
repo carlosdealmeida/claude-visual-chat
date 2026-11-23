@@ -649,6 +649,14 @@ uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O q
   comando imprimiu numa linha só) e `ExternalMessageItem` (uma mensagem de outro agente, de outra sessão ou de um canal,
   ou o aviso de uma tarefa, onde antes vinha um `UserMessageItem` com a marcação crua). A view tem um modelo para cada
   um; um app com modelos próprios também precisa deles.
+- **As duas linhas do advisor.** Quando o Claude chama o advisor (um `server_tool_use` de nome `advisor`), a linha do
+  tempo mostra "Advisor" em negrito (`AdvisorCallItem`) e depois o veredito dele (`AdvisorResultItem`), desenhado como
+  um pensamento: "O Advisor revisou a conversa", "O Advisor não quis opinar sobre este pedido" ou "Advisor indisponível
+  (overloaded)" (`AdvisorResultItem.Outcome`, um `AdvisorOutcome`, e `ErrorCode`). O veredito só abre para o que o
+  advisor disse, em Markdown, quando isso veio legível (`CanExpand`); um veredito ocultado, o caso comum, não tem nada a
+  abrir, e um indisponível nunca abre. O texto do advisor não faz parte da resposta copiada, e no modo foco as duas
+  linhas são passos da dobra delas. Os blocos são `Protocol.AdvisorUseBlock` e `Protocol.AdvisorResultBlock`; um app com
+  modelos próprios também precisa de modelos para os dois itens.
 - **Quem mandou um `ExternalMessageItem`** vem do `origin` da linha: quando há um, a mensagem só vira cartão se esse
   `origin` for o remetente que a mensagem diz (senão, `human` por exemplo, continua texto do usuário); sem nenhum, o
   cartão diz "Remetente não registrado", e uma linha meta sem `origin` fica de fora. Ao vivo, o claude só escreve o

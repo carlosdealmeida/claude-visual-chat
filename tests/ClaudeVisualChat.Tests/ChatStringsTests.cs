@@ -387,6 +387,7 @@ public class ChatStringsTests
         nameof(ChatStrings.ChromeToolTitle), nameof(ChatStrings.ArtifactToolTitle), nameof(ChatStrings.TaggedTokens), nameof(ChatStrings.ContextColumnTokens),
         nameof(ChatStrings.Claude), nameof(ChatStrings.ClaudeTool), nameof(ChatStrings.AnnounceReply),
         nameof(ChatStrings.AuthClaudeAi), nameof(ChatStrings.AuthBedrock), nameof(ChatStrings.AuthVertex), nameof(ChatStrings.AuthFoundry),
+        nameof(ChatStrings.AdvisorCall),
     };
 
     [Fact]
@@ -869,5 +870,24 @@ public class ChatStringsTests
         Assert.Equal(" A configuração \"crossSessionInbound\" decide quais mensagens ficam retidas.", Pt.PeerCauseOther);
         Assert.Equal("Open user settings file", En.PeerOpenSettings);
         Assert.Equal("Abrir o arquivo de settings de usuário", Pt.PeerOpenSettings);
+    }
+    [Fact]
+    public void The_advisor_texts_in_both_languages()
+    {
+        Assert.Equal("Advisor", En.AdvisorCall);
+        Assert.Equal("Advisor", Pt.AdvisorCall);
+        Assert.Equal("Advisor has reviewed the conversation", En.AdvisorReviewed);
+        Assert.Equal("O Advisor revisou a conversa", Pt.AdvisorReviewed);
+        Assert.Equal("Advisor declined to advise on this request", En.AdvisorDeclined);
+        Assert.Equal("O Advisor não quis opinar sobre este pedido", Pt.AdvisorDeclined);
+        Assert.Equal("Advisor unavailable", En.AdvisorUnavailable);
+        Assert.Equal("Advisor indisponível", Pt.AdvisorUnavailable);
+
+        Assert.Equal("Advisor has reviewed the conversation", En.AdvisorResultLabel(AdvisorOutcome.Reviewed, null));
+        Assert.Equal("Advisor declined to advise on this request", En.AdvisorResultLabel(AdvisorOutcome.Declined, "ignored"));
+        Assert.Equal("Advisor unavailable", En.AdvisorResultLabel(AdvisorOutcome.Unavailable, null));
+        Assert.Equal("Advisor unavailable", En.AdvisorResultLabel(AdvisorOutcome.Unavailable, ""));
+        Assert.Equal("Advisor unavailable (overloaded)", En.AdvisorResultLabel(AdvisorOutcome.Unavailable, "overloaded"));
+        Assert.Equal("Advisor indisponível (overloaded)", Pt.AdvisorResultLabel(AdvisorOutcome.Unavailable, "overloaded"));
     }
 }

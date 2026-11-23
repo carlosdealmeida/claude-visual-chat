@@ -14,6 +14,13 @@ All notable changes to this project are written here. The format follows
 - `ClaudeChatView.EscapeStopsClaude` (true by default): false leaves Esc in the reply box to the app: it does not stop
   Claude and is not marked as handled. The Stop button still stops, and Esc still closes the command palette, the plan's
   comment box, the plan and the panels, and refuses a permission request.
+- The advisor's call and its verdict are two lines of the timeline, live and from a session file, as in the extension:
+  "Advisor" in bold (`AdvisorCallItem`), then "Advisor has reviewed the conversation", "Advisor declined to advise on
+  this request" or "Advisor unavailable (code)" (`AdvisorResultItem`, `AdvisorOutcome`), drawn like a thought and open
+  to the advisor's text in Markdown when it came readable. Each block shows once however many times it comes; a verdict
+  without its call shows alone, and one inside a subagent goes under it. The advisor's text is not part of a copied
+  reply, and both lines are steps in the Focus view. The blocks are `Protocol.AdvisorUseBlock` and
+  `Protocol.AdvisorResultBlock`.
 
 ### Changed
 
