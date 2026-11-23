@@ -89,7 +89,7 @@ All notable changes to this project are written here. The format follows
 
 ### Waiting
 
-What stays out of 0.11.0, and why. Each item is waiting for something the component does not have:
+What stays out of 0.11.0, and why:
 
 - **The card for the first sessions and the home screen with task suggestions.** The claude hands them only to the
   extension, which it recognizes by its entry point: it keeps the count of sessions itself and asks a service to say

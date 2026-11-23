@@ -278,7 +278,10 @@ public sealed class AdvisorResultItem : ChatItem
         }
     }
 
-    /// <summary>What the advisor said, in Markdown; null or empty when there is nothing to open (a redacted verdict, an error).</summary>
+    /// <summary>
+    /// What the advisor said, in Markdown; null, empty or only white space when there is nothing to open (a redacted verdict, an
+    /// error).
+    /// </summary>
     public string? Text
     {
         get => _text;

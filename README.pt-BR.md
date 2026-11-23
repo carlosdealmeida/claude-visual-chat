@@ -497,7 +497,7 @@ No desktop, o pedido de permissão pergunta como a extensão 2.1.310: um título
 comando, o diff ou a entrada embaixo, e as respostas numeradas na ordem em que aparecem (o dígito depois do último vai
 para o campo, e o 4 também quando há duas; "Não" recusa na hora com o que estiver escrito nele). ↑ e ↓ passam pelas
 respostas e depois pelo campo; a ↓ para no campo, e cada ↓ apertada ali além do fim pede uma ↑ para desfazer antes de a ↑
-voltar a subir (uma ↓ segurada não conta, e a contagem recomeça quando o teclado sai do campo ou o pedido muda), enquanto a
+voltar a subir (uma ↓ segurada conta só o primeiro toque, não as repetições do teclado, e a contagem recomeça quando o teclado sai do campo ou o pedido muda), enquanto a
 ↑ na primeira resposta dá a volta para o campo. A opção 2 diz a regra e onde ela fica guardada (por
 exemplo, "este projeto (só você)") e, quando o claude oferece junto uma troca de modo, o que ela faz ("Sim, permitir
 touch a.txt para este projeto (só você), e todas as edições para esta sessão"; `AllowAlwaysAndAllEdits`,

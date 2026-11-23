@@ -78,6 +78,23 @@ public class ImeTests
 
     private static void ComposingEscape(Window window, Composing how) => ComposingKey(window, how, Key.Escape, PhysicalKey.Escape);
 
+    // ---- the two signs ----
+
+    [AvaloniaFact]
+    public void The_platform_saying_ime_processed_is_composing_on_its_own()
+    {
+        // a box with no text being composed, and a control that is no box: only the key says it is the input method's
+        var box = new TextBox { Text = "oi" };
+        var window = UiHelpers.Show(box);
+        Assert.True(string.IsNullOrEmpty(box.GetVisualDescendants().OfType<TextPresenter>().First().PreeditText));
+        foreach (var source in new object[] { box, new Border() })
+        {
+            Assert.True(ImeKeys.IsComposing(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.ImeProcessed, Source = source }));
+            Assert.False(ImeKeys.IsComposing(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter, Source = source }));
+        }
+        window.Close();
+    }
+
     // ---- the reply box ----
 
     [AvaloniaTheory]

@@ -31,7 +31,8 @@ internal interface IPromptClock
 /// <c>a.cs</c>?", "Do you want to proceed with <b>mcp__x__y</b>?", the last with the input folded under "Details"), what the tool
 /// will do (the command, the url, the edit's diff), the options and, always under them, the field of "No" with "Esc to cancel".
 /// The digits go to the visible options in order and the next one to the field; Enter takes the focused option, Esc and "No"
-/// refuse at once with what the field says, and ↑/↓ go round the options and the field. With <c>default_to_no</c> the keyboard
+/// refuse at once with what the field says, and ↑/↓ move through the options and the field: ↓ stops at the field, the last
+/// item, and ↑ on the first answer goes round to the field (<see cref="Move"/>). With <c>default_to_no</c> the keyboard
 /// starts on "No" and the digits answer nothing. When the user has text in the reply box and edited it less than
 /// <see cref="TypingPause"/> before, the card waits, and "Waiting for permission…" shows in its place. The request's own
 /// description is never shown (the extension does not). Between what the tool will do and the options, the card says why the
@@ -476,7 +477,8 @@ internal partial class PermissionPrompt : UserControl
 
     /// <summary>
     /// The desktop card's keys: the digits, Esc for "No", and ↑/↓ (Enter is the focused button's own), which scroll the block that
-    /// has the keyboard when it scrolls (the block of the title, why the claude asks), and go round the options otherwise.
+    /// has the keyboard when it scrolls (the block of the title, why the claude asks), and otherwise move through the options and
+    /// the field (<see cref="Move"/>: ↓ stops at the field, ↑ on the first answer goes round to it).
     /// </summary>
     private void OnCardKeyDown(KeyEventArgs e)
     {

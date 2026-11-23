@@ -576,17 +576,20 @@ public class AgentMapUiTests
     public void Trocar_de_conversa_com_o_mapa_aberto_solta_a_antiga()
     {
         var first = Play(Until("\"task_progress\""));
-        var own = Handlers(first);
+        first.AppendLine(Snapshot(("w1", "Ping the agents"), ("w2", "Review the diff")));
+        var w1 = first.BackgroundTasks.First();
+        var own = Handlers(first, w1);
         var o = new Opened(first);
         first.ShowAgents();
         UiHelpers.Pump();
         Assert.True(o.Map.IsTicking);
-        Assert.True(Handlers(first) > own);
+        Assert.True(Handlers(first, w1) > own);
+        DetailOfATaskThatLeft(first, o.Window, o.Map);
 
         var second = Play(Subagent);
         o.View.Conversation = second;
         UiHelpers.Pump();
-        Assert.Equal(own, Handlers(first)); // the map (and every control) let go of the old conversation's agents
+        Assert.Equal(own, Handlers(first, w1)); // the map (and every control) let go of the old conversation's agents and tasks
         Assert.False(o.Map.IsVisible); // the new one does not show its map
         Assert.False(o.Map.IsTicking);
 
@@ -594,7 +597,7 @@ public class AgentMapUiTests
         UiHelpers.Pump();
         Assert.True(o.Map.IsEffectivelyVisible);
         Assert.Contains("Read and summarize three text files", UiHelpers.Texts(o.Rows.Single()));
-        Assert.Equal(own, Handlers(first));
+        Assert.Equal(own, Handlers(first, w1));
         o.Window.Close();
     }
 
@@ -1030,23 +1033,51 @@ public class AgentMapUiTests
 
     // ---- out of the window ----
 
-    /// <summary>Handlers on the conversation's PropertyChanged, on its agents' list and on each agent.</summary>
-    private static int Handlers(ChatConversation c)
+    /// <summary>
+    /// Handlers on the conversation's PropertyChanged and HostHandlersChanged, on its agents' list and on each agent, on its tasks'
+    /// list and on each task, and on <paramref name="gone"/> (tasks that left the list, such as the open detail's).
+    /// </summary>
+    private static int Handlers(ChatConversation c, params BackgroundTaskInfo[] gone)
     {
         const System.Reflection.BindingFlags field = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         int Count(object target, Type type, string name) =>
             ((Delegate?)type.GetField(name, field)!.GetValue(target))?.GetInvocationList().Length ?? 0;
         var total = Count(c, typeof(ChatObservableObject), "PropertyChanged")
-                    + Count(c.Agents, typeof(System.Collections.ObjectModel.ObservableCollection<AgentInfo>), "CollectionChanged");
+                    + Count(c, typeof(ChatConversation), "HostHandlersChanged")
+                    + Count(c.Agents, typeof(System.Collections.ObjectModel.ObservableCollection<AgentInfo>), "CollectionChanged")
+                    + Count(c.BackgroundTasks, typeof(System.Collections.ObjectModel.ObservableCollection<BackgroundTaskInfo>), "CollectionChanged");
         foreach (var agent in c.Agents) total += Count(agent, typeof(ChatObservableObject), "PropertyChanged");
+        foreach (var task in c.BackgroundTasks.Concat(gone.Where(t => !c.BackgroundTasks.Contains(t))))
+            total += Count(task, typeof(ChatObservableObject), "PropertyChanged");
         return total;
+    }
+
+    /// <summary>
+    /// Lists the workflows w1 and w2 in <paramref name="c"/>, opens w1's detail in the shown map and makes w1 leave the list, so that
+    /// the map hears both lists, w2 and the detail's w1. Returns w1.
+    /// </summary>
+    private static BackgroundTaskInfo DetailOfATaskThatLeft(ChatConversation c, Window window, AgentMapPanel map)
+    {
+        var w1 = c.BackgroundTasks.Single(t => t.TaskId == "w1");
+        var row = map.GetVisualDescendants().OfType<Button>()
+            .First(b => b.IsEffectivelyVisible && b.Classes.Contains("task"));
+        UiHelpers.Click(window, row);
+        Assert.True(map.ShowsCard);
+        c.AppendLine(Snapshot(("w2", "Review the diff")));
+        UiHelpers.Pump();
+        Assert.True(map.ShowsCard);
+        Assert.DoesNotContain(w1, c.BackgroundTasks);
+        Assert.True(Handlers(c, w1) > Handlers(c)); // the detail still hears its task
+        return w1;
     }
 
     [AvaloniaFact]
     public void Modal_desmontado_para_o_relogio()
     {
         var c = Play(Until("\"task_progress\""));
-        var own = Handlers(c);
+        c.AppendLine(Snapshot(("w1", "Ping the agents"), ("w2", "Review the diff")));
+        var w1 = c.BackgroundTasks.First();
+        var own = Handlers(c, w1);
         var view = new ClaudeChatView { Conversation = c };
         var host = new ContentControl { Content = view };
         var window = UiHelpers.Show(host);
@@ -1054,12 +1085,13 @@ public class AgentMapUiTests
         UiHelpers.Pump();
         var map = view.GetVisualDescendants().OfType<AgentMapPanel>().Single();
         Assert.True(map.IsTicking);
-        Assert.True(Handlers(c) > own);
+        Assert.True(Handlers(c, w1) > own);
+        DetailOfATaskThatLeft(c, window, map);
 
         host.Content = new TextBlock { Text = "Tokens" };
         UiHelpers.Pump();
         Assert.False(map.IsTicking);
-        Assert.Equal(own, Handlers(c)); // every control let go, the map too
+        Assert.Equal(own, Handlers(c, w1)); // every control let go, the map too, of the lists, the tasks and the host
         Assert.True(map.IsVisible); // leaving drew nothing
 
         host.Content = view;
