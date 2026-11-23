@@ -21,6 +21,15 @@ All notable changes to this project are written here. The format follows
   without its call shows alone, and one inside a subagent goes under it. The advisor's text is not part of a copied
   reply, and both lines are steps in the Focus view. The blocks are `Protocol.AdvisorUseBlock` and
   `Protocol.AdvisorResultBlock`.
+- `ChatConversation.BackgroundTasks`: the workflows running in the background, as the claude's last
+  `system/background_tasks_changed` snapshot lists them (`Protocol.BackgroundTasksChanged`, `Protocol.BackgroundTaskEntry`),
+  in its order. Each is a `BackgroundTaskInfo` with its id, type, description, start (when its `task_started` line came,
+  whichever arrives first), end and `BackgroundTaskStatus`: running while the snapshot has it, then what its notification
+  said (finished, failed or stopped) or ended. A task that stays keeps its instance; one that leaves is taken out with its
+  end. Subagents and commands are not listed, a workflow makes no agent, and a new session or a cleared conversation
+  forgets them; a session file never fills the list.
+- `/workflows` ("View running workflows") opens the Agent map, as `/tasks` does, and sends nothing. It is one of
+  `ChatConversation.LocalCommands`, and the command palette lists it only once something is typed after the "/".
 
 ### Changed
 

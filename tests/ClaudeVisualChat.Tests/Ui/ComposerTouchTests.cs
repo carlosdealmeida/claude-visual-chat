@@ -779,7 +779,7 @@ public class ComposerTouchTests
         UiHelpers.Input(view).Focus();
         UiHelpers.Type(window, "/");                                      // …and by a "/" typed in the empty box
         rows = PaletteRows(palette);
-        Assert.Equal(6 + c.PaletteCommands.Count, rows.Count);                 // every group: the six actions, then the commands
+        Assert.Equal(6 + c.PaletteCommands.Count(x => x.Name != "workflows"), rows.Count); // every group: the six actions, then the commands (/workflows waits for a filter)
         Assert.All(rows, r => Assert.True(r.Bounds.Height >= 44, r.Bounds.Height.ToString()));
         UiHelpers.Type(window, "rev");                                    // filtered: the rows left are as tall
         rows = PaletteRows(palette);

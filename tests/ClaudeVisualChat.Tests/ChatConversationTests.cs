@@ -2047,9 +2047,9 @@ public class ChatConversationTests
     }
 
     [Fact]
-    public void Local_commands_are_context_usage_remote_control_rc_chrome_copy_tasks_and_bashes()
+    public void Local_commands_are_context_usage_remote_control_rc_chrome_copy_tasks_bashes_and_workflows()
     {
-        Assert.Equal(new[] { "context", "usage", "remote-control", "rc", "chrome", "copy", "tasks", "bashes" }, ChatConversation.LocalCommands);
+        Assert.Equal(new[] { "context", "usage", "remote-control", "rc", "chrome", "copy", "tasks", "bashes", "workflows" }, ChatConversation.LocalCommands);
         Assert.IsNotType<string[]>(ChatConversation.LocalCommands);
         Assert.Throws<NotSupportedException>(() => ((System.Collections.Generic.IList<string>)ChatConversation.LocalCommands)[0] = "x");
     }
@@ -2085,6 +2085,168 @@ public class ChatConversationTests
         typed.Submit("/tasks");
         Assert.Equal(ChatPanel.Agents, typed.ShownPanel);
         Assert.Equal(0, sent);
+    }
+
+    [Fact]
+    public void Slash_workflows_opens_the_agent_map_and_goes_nowhere_else()
+    {
+        Assert.Contains("workflows", new ChatConversation().PaletteCommands.Select(x => x.Name));
+
+        var c = new ChatConversation();
+        var invoked = new List<string>();
+        c.CommandInvoked += (_, e) => invoked.Add(e.Name);
+        c.InvokeCommand("workflows", "");
+        Assert.Equal(ChatPanel.Agents, c.ShownPanel);
+        Assert.Equal(new[] { "workflows" }, invoked);
+        Assert.Empty(c.Items);
+
+        // typed in the box: the same, and the text is not sent
+        var typed = new ChatConversation();
+        var sent = 0;
+        typed.MessageSubmitted += (_, _) => sent++;
+        Assert.True(typed.Submit("/workflows"));
+        Assert.Equal(ChatPanel.Agents, typed.ShownPanel);
+        Assert.Equal(0, sent);
+        Assert.Empty(typed.Items);
+    }
+
+    // ---- the background tasks ----
+
+    private const string WorkflowType = "local_workflow";
+
+    private static BackgroundTasksChanged Snapshot(params (string Id, string Type)[] tasks) =>
+        new BackgroundTasksChanged(tasks.Select(t => new BackgroundTaskEntry(t.Id, t.Type, "Run " + t.Id)).ToList());
+
+    private static BackgroundTasksChanged Workflows(params string[] ids) =>
+        Snapshot(ids.Select(id => (id, WorkflowType)).ToArray());
+
+    private static AgentTaskStarted WorkflowStarted(string id) =>
+        new AgentTaskStarted(id, "toolu_" + id, "Run " + id, null, false, 1, WorkflowType);
+
+    private static List<string> TaskIds(ChatConversation c) => c.BackgroundTasks.Select(t => t.TaskId).ToList();
+
+    [Fact]
+    public void The_background_tasks_are_the_last_snapshot()
+    {
+        var c = new ChatConversation();
+        Assert.Empty(c.BackgroundTasks);
+
+        c.Apply(Workflows("w1", "w2"));
+        Assert.Equal(new[] { "w1", "w2" }, TaskIds(c));
+        var w2 = c.BackgroundTasks[1];
+        Assert.Equal(WorkflowType, w2.TaskType);
+        Assert.Equal("Run w2", w2.Description);
+        Assert.Equal(BackgroundTaskStatus.Running, w2.Status);
+        Assert.Null(w2.EndedAt);
+        Assert.False(w2.IsStopping);
+        Assert.False(w2.StopFailed);
+
+        c.Apply(Workflows("w2"));
+        Assert.Same(w2, Assert.Single(c.BackgroundTasks));
+        Assert.Equal(BackgroundTaskStatus.Running, w2.Status);
+
+        // in the order of the snapshot, the task that stays still the same
+        c.Apply(Workflows("w3", "w2"));
+        Assert.Equal(new[] { "w3", "w2" }, TaskIds(c));
+        Assert.Same(w2, c.BackgroundTasks[1]);
+
+        c.Apply(Workflows());
+        Assert.Empty(c.BackgroundTasks);
+    }
+
+    [Fact]
+    public void Only_workflows_are_listed()
+    {
+        var c = new ChatConversation();
+        c.Apply(Snapshot(("b1", "local_bash"), ("a1", "local_agent")));
+        Assert.Empty(c.BackgroundTasks);
+
+        c.Apply(Snapshot(("b1", "local_bash"), ("w1", WorkflowType), ("a1", "local_agent"), ("m1", "monitor")));
+        Assert.Equal(new[] { "w1" }, TaskIds(c));
+    }
+
+    [Fact]
+    public void A_workflow_takes_its_start_from_task_started_whichever_comes_first()
+    {
+        var now = new DateTimeOffset(2026, 11, 22, 10, 0, 0, TimeSpan.Zero);
+        var c = new ChatConversation { Clock = () => now };
+
+        // the snapshot first: the start is filled when the task line comes
+        c.Apply(Workflows("w1"));
+        var w1 = Assert.Single(c.BackgroundTasks);
+        Assert.Null(w1.StartedAt);
+        now = now.AddSeconds(5);
+        var started = now;
+        c.Apply(WorkflowStarted("w1"));
+        Assert.Equal(started, w1.StartedAt);
+
+        // the task line first: the task is born with it
+        now = now.AddSeconds(5);
+        var second = now;
+        c.Apply(WorkflowStarted("w2"));
+        now = now.AddSeconds(5);
+        c.Apply(Workflows("w1", "w2"));
+        Assert.Equal(second, c.BackgroundTasks[1].StartedAt);
+        Assert.Equal(started, w1.StartedAt); // a snapshot that keeps it leaves the start alone
+    }
+
+    [Theory]
+    [InlineData("completed", BackgroundTaskStatus.Finished)]
+    [InlineData("failed", BackgroundTaskStatus.Failed)]
+    [InlineData("stopped", BackgroundTaskStatus.Stopped)]
+    [InlineData("killed", BackgroundTaskStatus.Stopped)]
+    [InlineData(null, BackgroundTaskStatus.Ended)]
+    public void A_task_that_left_the_snapshot_keeps_how_it_ended(string? notified, BackgroundTaskStatus expected)
+    {
+        var now = new DateTimeOffset(2026, 11, 22, 10, 0, 0, TimeSpan.Zero);
+        var c = new ChatConversation { Clock = () => now };
+        c.Apply(WorkflowStarted("w1"));
+        c.Apply(Workflows("w1"));
+        var w1 = Assert.Single(c.BackgroundTasks);
+        if (notified != null) c.Apply(new AgentTaskFinished("w1", "toolu_w1", notified, "done", null, null, null));
+        Assert.Equal(BackgroundTaskStatus.Running, w1.Status); // running while the snapshot has it
+        Assert.Null(w1.EndedAt);
+
+        now = now.AddMinutes(1);
+        c.Apply(Workflows());
+        Assert.Empty(c.BackgroundTasks);
+        Assert.Equal(expected, w1.Status);
+        Assert.Equal(now, w1.EndedAt);
+    }
+
+    [Fact]
+    public void A_workflow_makes_no_agent()
+    {
+        var c = new ChatConversation();
+        c.Apply(WorkflowStarted("w1"));
+        c.Apply(Workflows("w1"));
+        c.Apply(new AgentTaskProgress("w1", "toolu_w1", "Running", null, null, null));
+        c.Apply(new AgentTaskUpdated("w1", "completed"));
+        c.Apply(new AgentTaskFinished("w1", "toolu_w1", "completed", "done", null, null, null));
+        c.Apply(Workflows());
+        Assert.Empty(c.Agents);
+        Assert.Equal(0, c.RunningAgents);
+    }
+
+    [Fact]
+    public void A_new_session_forgets_the_background_tasks()
+    {
+        var c = new ChatConversation();
+        c.Apply(WorkflowStarted("w1"));
+        c.Apply(Workflows("w1"));
+        c.Apply(new AgentTaskFinished("w1", "toolu_w1", "completed", "done", null, null, null));
+        var old = Assert.Single(c.BackgroundTasks);
+
+        c.Clear();
+        Assert.Empty(c.BackgroundTasks);
+
+        // what was kept about the task went with it: its start and how it ended
+        c.Apply(Workflows("w1"));
+        var w1 = Assert.Single(c.BackgroundTasks);
+        Assert.NotSame(old, w1);
+        Assert.Null(w1.StartedAt);
+        c.Apply(Workflows());
+        Assert.Equal(BackgroundTaskStatus.Ended, w1.Status);
     }
 
     [Fact]

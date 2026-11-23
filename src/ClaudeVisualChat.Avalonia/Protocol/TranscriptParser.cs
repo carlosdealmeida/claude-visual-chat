@@ -630,9 +630,25 @@ namespace ClaudeVisualChat.Protocol
                 case "task_updated":
                 case "task_notification":
                     return ReadTask(subtype!, root);
+                case "background_tasks_changed":
+                    return JsonHelpers.Arr(root, "tasks") is { } tasks
+                        ? new ClaudeEvent[] { new BackgroundTasksChanged(ReadBackgroundTasks(tasks)) }
+                        : None;
                 default:
                     return None;
             }
+        }
+
+        /// <summary>The entries of a <c>background_tasks_changed</c> line, in its order; one without a <c>task_id</c> is skipped.</summary>
+        private static IReadOnlyList<BackgroundTaskEntry> ReadBackgroundTasks(JsonElement array)
+        {
+            var list = new List<BackgroundTaskEntry>();
+            foreach (var task in array.EnumerateArray())
+            {
+                if (JsonHelpers.Str(task, "task_id") is not { Length: > 0 } taskId) continue;
+                list.Add(new BackgroundTaskEntry(taskId, JsonHelpers.Str(task, "task_type") ?? "", JsonHelpers.Str(task, "description") ?? ""));
+            }
+            return list;
         }
 
         /// <summary>A <c>system/task_*</c> line; none without a <c>task_id</c>.</summary>

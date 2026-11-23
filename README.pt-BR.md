@@ -294,10 +294,12 @@ conversation.Commands = new[] { new ChatCommand("review", "Revisar um pull reque
 ```
 
 Um comando que não é local vai ao claude como o texto de uma mensagem, como qualquer outro. Os que a própria conversa
-trata (`ChatConversation.LocalCommands`: `context`, `usage`, `remote-control`, `rc`, `chrome`, `copy`, `tasks` e `bashes`) disparam o
-`CommandInvoked` e não mandam nada. O `/copy` e o `/copy N` não pedem nada ao seu app: a view copia a resposta para a
-área de transferência e diz isso numa linha embaixo. O `/tasks` e o `/bashes` também abrem o [Mapa de agentes](#mapa-de-agentes)
-sozinhos, e o seu app pode ignorar o `CommandInvoked` deles.
+trata (`ChatConversation.LocalCommands`: `context`, `usage`, `remote-control`, `rc`, `chrome`, `copy`, `tasks`, `bashes` e
+`workflows`) disparam o `CommandInvoked` e não mandam nada. O `/copy` e o `/copy N` não pedem nada ao seu app: a view copia a
+resposta para a área de transferência e diz isso numa linha embaixo. O `/tasks`, o `/bashes` e o `/workflows` também abrem o
+[Mapa de agentes](#mapa-de-agentes) sozinhos, e o seu app pode ignorar o `CommandInvoked` deles. Como na extensão, a paleta só
+lista o `/workflows` quando há algo digitado depois da "/". Os workflows em segundo plano ficam em
+`ChatConversation.BackgroundTasks` (`BackgroundTaskInfo`), como o último retrato do claude os lista.
 
 ```csharp
 conversation.CommandInvoked += (_, e) =>

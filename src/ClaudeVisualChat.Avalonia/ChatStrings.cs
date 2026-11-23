@@ -312,6 +312,7 @@ public sealed record ChatStrings
         CommandChromeDescription = "Conectar ou desconectar o navegador",
         CommandCopyDescription = "Copiar a última resposta (/copy 2 para a anterior)",
         CommandTasksDescription = "Ver e gerenciar o trabalho em segundo plano desta sessão",
+        CommandWorkflowsDescription = "Ver os workflows em execução",
         AgentsChipWaitingTip = "Um agente está aguardando sua permissão · Clique para abrir o mapa de agentes",
         AgentsChipRunningTip = "Os agentes estão trabalhando · Clique para abrir o mapa de agentes",
         AgentsChipFailedTip = "Um agente falhou · Clique para abrir o mapa de agentes",
@@ -1443,6 +1444,9 @@ public sealed record ChatStrings
 
     /// <summary>What the tasks command (and its alias, <c>/bashes</c>) does, in the menu.</summary>
     public string CommandTasksDescription { get; init; } = "View and manage this session's background work";
+
+    /// <summary>What the workflows command does, in the menu (listed only once something is typed after the "/").</summary>
+    public string CommandWorkflowsDescription { get; init; } = "View running workflows";
 
     /// <summary>The "N agents" chip's tooltip while an agent at work waits for a permission.</summary>
     public string AgentsChipWaitingTip { get; init; } = "An agent is waiting for your permission · Click to open the agent map";

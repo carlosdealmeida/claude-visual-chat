@@ -28,7 +28,7 @@ public sealed class ChatConversation : ChatObservableObject
     private const string ExitPlanModeTool = "ExitPlanMode";
     private const string AutoMode = "auto";
     private const string AcceptEditsMode = "acceptEdits";
-    private static readonly string[] LocalCommandNames = { "context", "usage", "remote-control", "rc", "chrome", "copy", "tasks", "bashes" };
+    private static readonly string[] LocalCommandNames = { "context", "usage", "remote-control", "rc", "chrome", "copy", "tasks", "bashes", "workflows" };
     private static readonly IReadOnlyList<string> LocalCommandList = new System.Collections.ObjectModel.ReadOnlyCollection<string>(LocalCommandNames);
 
     /// <summary>How many of the latest finished replies <c>/copy N</c> counts.</summary>
@@ -62,6 +62,12 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>The tasks whose end came live (<c>system/task_notification</c>): a replayed notice of the same task is not shown again as a card.</summary>
     private readonly HashSet<string> _tasksToldLive = new HashSet<string>(StringComparer.Ordinal);
+    /// <summary>The kinds of task <see cref="BackgroundTasks"/> lists: the workflows (shells and monitors may join them later).</summary>
+    private static readonly string[] ListedTaskTypes = { "local_workflow" };
+    /// <summary>When the <c>task_started</c> line of a listed kind came, for a task no snapshot has listed yet.</summary>
+    private readonly Dictionary<string, DateTimeOffset> _backgroundStarts = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+    /// <summary>How the notification of a listed task said it ended, for when it leaves the snapshot.</summary>
+    private readonly Dictionary<string, BackgroundTaskStatus> _backgroundEnds = new Dictionary<string, BackgroundTaskStatus>(StringComparer.Ordinal);
     /// <summary>An agent was added or its state changed since the agents were last looked at (see <see cref="Apply"/>).</summary>
     private bool _agentsChanged;
     /// <summary>How many times the agents' states were worked out; a test's way to see that a piece of text does not.</summary>
@@ -471,6 +477,14 @@ public sealed class ChatConversation : ChatObservableObject
     /// the call's result (or, in a session file, by the task notification).
     /// </summary>
     public ObservableCollection<AgentInfo> Agents { get; } = new ObservableCollection<AgentInfo>();
+
+    /// <summary>
+    /// The workflows running in the background, as the claude's last <c>system/background_tasks_changed</c> snapshot has them, in
+    /// its order (subagents are in <see cref="Agents"/>; commands are not listed). A task that stays in the snapshot keeps its
+    /// instance; one that leaves is taken out after it gets its <see cref="BackgroundTaskInfo.EndedAt"/> and its final
+    /// <see cref="BackgroundTaskInfo.Status"/>. A session file never fills it.
+    /// </summary>
+    public ObservableCollection<BackgroundTaskInfo> BackgroundTasks { get; } = new ObservableCollection<BackgroundTaskInfo>();
 
     /// <summary>How many of the <see cref="Agents"/> are <see cref="AgentStatus.Running"/>.</summary>
     public int RunningAgents
@@ -1087,6 +1101,9 @@ public sealed class ChatConversation : ChatObservableObject
                 _tasksToldLive.Add(finished.TaskId);
                 AddBackgroundTaskLine(finished);
                 break;
+            case BackgroundTasksChanged changed:
+                OnBackgroundTasksChanged(changed);
+                break;
         }
         UpdateStreaming();
         // the agents are looked at after what can change them (a task line, an Agent call or its result, a turn that ends), not at every piece of text
@@ -1165,6 +1182,9 @@ public sealed class ChatConversation : ChatObservableObject
         Agents.Clear();
         _agentsStoppedByHistory.Clear();
         _tasksToldLive.Clear();
+        if (BackgroundTasks.Count > 0) BackgroundTasks.Clear();
+        _backgroundStarts.Clear(); // the next session's tasks are its own
+        _backgroundEnds.Clear();
         if (PendingPermissions.Count > 0) PendingPermissions.Clear();
         _tools.Clear();
         _nestedTools.Clear();
@@ -1513,7 +1533,8 @@ public sealed class ChatConversation : ChatObservableObject
 
     /// <summary>
     /// Runs a local command: raises <see cref="CommandInvoked"/>, and <c>context</c>, <c>usage</c> and <c>tasks</c> (with its
-    /// alias <c>bashes</c>, which opens the Agent map) also show their panel. Nothing goes to the claude and no item is added.
+    /// alias <c>bashes</c>, and <c>workflows</c>, which open the Agent map too) also show their panel. Nothing goes to the claude
+    /// and no item is added.
     /// </summary>
     public void InvokeCommand(string name, string arguments)
     {
@@ -1530,7 +1551,7 @@ public sealed class ChatConversation : ChatObservableObject
             ShownPanel = ChatPanel.Usage;
         }
         else if (name == "copy") Copy(arguments);
-        else if (name == "tasks" || name == "bashes") ShowAgents();
+        else if (name == "tasks" || name == "bashes" || name == "workflows") ShowAgents();
         CommandInvoked?.Invoke(this, new CommandInvokedEventArgs(name, arguments));
     }
 
@@ -2488,7 +2509,8 @@ public sealed class ChatConversation : ChatObservableObject
 
     private void OnAgentTaskStarted(AgentTaskStarted e)
     {
-        // a command the agent runs (local_bash) is a task too, but no agent
+        OnBackgroundTaskStarted(e);
+        // a command the agent runs (local_bash) is a task too, but no agent; nor is a workflow
         if (e.TaskType == CommandTaskType) OnCommandTaskStarted(e);
         if (e.TaskType.Length > 0 && e.TaskType != AgentTaskType) return;
         var agent = FindAgent(e.ToolUseId, e.TaskId);
@@ -2534,6 +2556,8 @@ public sealed class ChatConversation : ChatObservableObject
     private void OnAgentTaskFinished(AgentTaskFinished e)
     {
         ForgetCommandTask(e.TaskId);
+        // a listed task stays in the list until the snapshot drops it: then it takes how its notification said it ended
+        if (FindBackgroundTask(e.TaskId) >= 0 || _backgroundStarts.ContainsKey(e.TaskId)) _backgroundEnds[e.TaskId] = BackgroundEnd(e.Status);
         var agent = FindAgent(e.ToolUseId, e.TaskId);
         if (agent == null) return;
         _agentsStoppedByHistory.Remove(agent);
@@ -2687,6 +2711,78 @@ public sealed class ChatConversation : ChatObservableObject
             }
         }
     }
+
+    // ---- the tasks in the background ----
+
+    /// <summary>The start of a task of a listed kind: the listed task takes it, or it waits for the snapshot that lists it.</summary>
+    private void OnBackgroundTaskStarted(AgentTaskStarted e)
+    {
+        if (Array.IndexOf(ListedTaskTypes, e.TaskType) < 0) return;
+        var at = FindBackgroundTask(e.TaskId);
+        if (at >= 0) BackgroundTasks[at].StartedAt ??= _clock();
+        else if (!_backgroundStarts.ContainsKey(e.TaskId)) _backgroundStarts[e.TaskId] = _clock();
+    }
+
+    /// <summary>
+    /// A new snapshot: the tasks of the listed kinds, in its order. The ones that left get their end and are taken out; the ones
+    /// that stay keep their instance; a new one takes the start its task line told, if it came first.
+    /// </summary>
+    private void OnBackgroundTasksChanged(BackgroundTasksChanged e)
+    {
+        var listed = new List<BackgroundTaskEntry>();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in e.Tasks)
+        {
+            if (Array.IndexOf(ListedTaskTypes, entry.TaskType) >= 0 && ids.Add(entry.TaskId)) listed.Add(entry);
+        }
+        for (var i = BackgroundTasks.Count - 1; i >= 0; i--)
+        {
+            var task = BackgroundTasks[i];
+            if (ids.Contains(task.TaskId)) continue;
+            task.EndedAt = _clock();
+            task.Status = _backgroundEnds.TryGetValue(task.TaskId, out var end) ? end : BackgroundTaskStatus.Ended;
+            _backgroundEnds.Remove(task.TaskId);
+            BackgroundTasks.RemoveAt(i);
+        }
+        // what is left is all in the snapshot: each goes to its place, after the ones already placed
+        for (var i = 0; i < listed.Count; i++)
+        {
+            var entry = listed[i];
+            var at = FindBackgroundTask(entry.TaskId);
+            if (at < 0)
+            {
+                var task = new BackgroundTaskInfo(entry.TaskId, entry.TaskType, entry.Description);
+                if (_backgroundStarts.TryGetValue(entry.TaskId, out var started))
+                {
+                    task.StartedAt = started;
+                    _backgroundStarts.Remove(entry.TaskId);
+                }
+                BackgroundTasks.Insert(i, task);
+                continue;
+            }
+            if (at != i) BackgroundTasks.Move(at, i);
+            if (entry.Description.Length > 0) BackgroundTasks[i].Description = entry.Description;
+        }
+    }
+
+    /// <summary>The index in <see cref="BackgroundTasks"/> of the task with that id; -1 when it is not listed.</summary>
+    private int FindBackgroundTask(string taskId)
+    {
+        for (var i = 0; i < BackgroundTasks.Count; i++)
+        {
+            if (BackgroundTasks[i].TaskId == taskId) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>What a task notification's status means for a listed task once it leaves the snapshot.</summary>
+    private static BackgroundTaskStatus BackgroundEnd(string status) => status switch
+    {
+        "completed" => BackgroundTaskStatus.Finished,
+        "failed" => BackgroundTaskStatus.Failed,
+        "stopped" or "killed" => BackgroundTaskStatus.Stopped,
+        _ => BackgroundTaskStatus.Ended,
+    };
 
     // ---- the output of a running command ----
 

@@ -109,8 +109,9 @@ internal abstract class ChatMenuPopup : Popup
 /// to show is not there, and a divider of 1 px opens each one after the first. The / button opens it with a filter field that takes
 /// the keyboard, and without a filter it lists the actions only; a "/" typed in the empty reply box opens it with every group, the slash
 /// commands in their place and without the field, filtered by what follows the "/" until a space or the "/" goes. The slash commands
-/// are in alphabetical order. A row matches by its name (exactly, then at its start, then anywhere) and then by its description; inside
-/// each of those the rows keep the order they come in (the slash commands alphabetically), inside its group. The arrows move the
+/// are in alphabetical order (<c>/workflows</c> only once there is a filter). A row matches by its name (exactly, then at its start,
+/// then anywhere) and then by its description; inside each of those the rows keep the order they come in (the slash commands
+/// alphabetically), inside its group. The arrows move the
 /// mark, Enter runs the marked row (a command is <see cref="ChatConversation.Submit"/> with <c>/name</c>), Tab puts <c>/name </c>
 /// in the reply box, Esc closes and gives the keyboard back to the box. A press on a row runs it; in the touch layout a tap does
 /// (the pointer let go where it was pressed), so that a finger that scrolls the list runs nothing. The touch layout has the same
@@ -120,6 +121,9 @@ internal sealed class CommandPalette : ChatMenuPopup
 {
     /// <summary>Where "View help docs" goes.</summary>
     internal const string HelpDocsUrl = "https://code.claude.com/docs/en/vs-code";
+
+    /// <summary>The command listed only once something is typed after the "/".</summary>
+    private const string WorkflowsCommand = "workflows";
 
     private static readonly StyledProperty<ChatLayout> LayoutProperty =
         ClaudeChatView.LayoutProperty.AddOwner<CommandPalette>();
@@ -370,6 +374,8 @@ internal sealed class CommandPalette : ChatMenuPopup
         var commands = _typed || query.Length > 0
             ? Rank(Alphabetical(_conversation?.PaletteCommands), query, strings)
             : new List<ChatCommand>();
+        // as in the extension, /workflows waits for a filter: a bare "/" does not list it
+        if (query.Length == 0) commands.RemoveAll(c => c.Name == WorkflowsCommand);
         var sections = new List<string>(PaletteSection.Order);
         foreach (var action in actions)
         {
@@ -647,6 +653,7 @@ internal sealed class CommandPalette : ChatMenuPopup
             "chrome" => strings.CommandChromeDescription,
             "copy" => strings.CommandCopyDescription,
             "tasks" or "bashes" => strings.CommandTasksDescription,
+            WorkflowsCommand => strings.CommandWorkflowsDescription,
             _ => "",
         };
     }

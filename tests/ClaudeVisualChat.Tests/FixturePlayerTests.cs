@@ -235,6 +235,65 @@ public class FixturePlayerTests
         }
     }
 
+    /// <summary>The recording fed live line by line, and the most tasks <see cref="ChatConversation.BackgroundTasks"/> held after any line.</summary>
+    private static (ChatConversation Conversation, int Most, List<BackgroundTaskInfo> Seen) Listed(string scenario)
+    {
+        var conversation = new ChatConversation();
+        var most = 0;
+        var seen = new List<BackgroundTaskInfo>();
+        foreach (var line in FixtureFiles.StreamLines(scenario))
+        {
+            conversation.AppendLine(line);
+            most = Math.Max(most, conversation.BackgroundTasks.Count);
+            foreach (var task in conversation.BackgroundTasks)
+            {
+                if (!seen.Contains(task)) seen.Add(task);
+            }
+        }
+        return (conversation, most, seen);
+    }
+
+    /// <summary>Whether the session file of the recording ever puts a task in <see cref="ChatConversation.BackgroundTasks"/>.</summary>
+    private static int ListedFromHistory(string scenario)
+    {
+        var loaded = new ChatConversation();
+        var changes = 0;
+        loaded.BackgroundTasks.CollectionChanged += (_, e) =>
+        {
+            if (e.NewItems != null) changes += e.NewItems.Count;
+        };
+        loaded.LoadTranscript(FixtureFiles.TranscriptLines(scenario));
+        Assert.Empty(loaded.BackgroundTasks);
+        return changes;
+    }
+
+    [Fact]
+    public void The_workflow_recording_lists_one_task_and_then_none()
+    {
+        var (live, most, seen) = Listed("workflow");
+        Assert.Equal(1, most);
+        Assert.Empty(live.BackgroundTasks);
+        var workflow = Assert.Single(seen);
+        Assert.Equal("wqiav2s4i", workflow.TaskId);
+        Assert.Equal("local_workflow", workflow.TaskType);
+        Assert.Equal("Spawn one agent that replies with the single word ok", workflow.Description);
+        Assert.NotNull(workflow.StartedAt);
+        Assert.NotNull(workflow.EndedAt);
+        Assert.Equal(BackgroundTaskStatus.Finished, workflow.Status); // its notification said completed
+        Assert.Empty(live.Agents);
+
+        Assert.Equal(0, ListedFromHistory("workflow"));
+    }
+
+    [Fact]
+    public void The_stopped_command_of_the_recording_is_not_listed()
+    {
+        var (live, most, _) = Listed("stop-task");
+        Assert.Equal(0, most); // a command in the background (local_bash) is not listed in this round
+        Assert.Empty(live.BackgroundTasks);
+        Assert.Equal(0, ListedFromHistory("stop-task"));
+    }
+
     [Fact]
     public void The_bash_ansi_recording_shows_no_raw_control_character()
     {

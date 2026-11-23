@@ -1235,4 +1235,46 @@ public class PublicApiTests
         Assert.False(Library.GetType("ClaudeVisualChat.UltrathinkKeyword")!.IsPublic);
         Assert.False(Library.GetType("ClaudeVisualChat.Controls.UltrathinkMirror")!.IsPublic);
     }
+
+    [Fact]
+    public void The_background_tasks_api()
+    {
+        var names = Library.GetExportedTypes().Select(t => t.FullName).ToHashSet();
+        foreach (var name in new[]
+        {
+            "ClaudeVisualChat.BackgroundTaskInfo", "ClaudeVisualChat.BackgroundTaskStatus",
+            "ClaudeVisualChat.Protocol.BackgroundTaskEntry", "ClaudeVisualChat.Protocol.BackgroundTasksChanged",
+        })
+            Assert.Contains(name, names);
+
+        var entry = typeof(ClaudeVisualChat.Protocol.BackgroundTaskEntry);
+        Assert.True(entry.IsSealed);
+        Assert.Equal(new[] { "TaskId", "TaskType", "Description" }, entry.GetConstructors().Single(c => c.GetParameters().Length == 3).GetParameters().Select(p => p.Name).ToArray());
+        var changed = typeof(ClaudeVisualChat.Protocol.BackgroundTasksChanged);
+        Assert.True(changed.IsSealed && typeof(ClaudeVisualChat.Protocol.ClaudeEvent).IsAssignableFrom(changed));
+        Assert.Equal(typeof(System.Collections.Generic.IReadOnlyList<ClaudeVisualChat.Protocol.BackgroundTaskEntry>), changed.GetProperty("Tasks")?.PropertyType);
+
+        Assert.Equal(new[] { "Running", "Finished", "Failed", "Stopped", "Ended" }, System.Enum.GetNames(typeof(BackgroundTaskStatus)));
+        var info = typeof(BackgroundTaskInfo);
+        Assert.True(info.IsSealed && typeof(ChatObservableObject).IsAssignableFrom(info));
+        Assert.Empty(info.GetConstructors()); // only the conversation makes them
+        foreach (var (name, type) in new[]
+        {
+            ("TaskId", typeof(string)), ("TaskType", typeof(string)), ("Description", typeof(string)),
+            ("StartedAt", typeof(System.DateTimeOffset?)), ("EndedAt", typeof(System.DateTimeOffset?)),
+            ("Status", typeof(BackgroundTaskStatus)), ("IsStopping", typeof(bool)), ("StopFailed", typeof(bool)),
+        })
+        {
+            var property = info.GetProperty(name);
+            Assert.Equal(type, property?.PropertyType);
+            Assert.True(property!.SetMethod?.IsPublic != true, name); // the conversation tells them
+        }
+        Assert.Equal(typeof(System.Collections.ObjectModel.ObservableCollection<BackgroundTaskInfo>), typeof(ChatConversation).GetProperty("BackgroundTasks")?.PropertyType);
+        Assert.Null(typeof(ChatConversation).GetProperty("BackgroundTasks")!.SetMethod);
+
+        Assert.Contains("workflows", ChatConversation.LocalCommands);
+        var description = typeof(ChatStrings).GetProperty("CommandWorkflowsDescription");
+        Assert.Equal(typeof(string), description?.PropertyType);
+        Assert.Contains(description!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+    }
 }

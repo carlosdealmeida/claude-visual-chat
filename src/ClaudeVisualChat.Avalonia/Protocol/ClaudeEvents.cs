@@ -318,4 +318,16 @@ namespace ClaudeVisualChat.Protocol
     public sealed record AgentTaskFinished(
         string TaskId, string ToolUseId, string Status, string? Summary, long? Tokens, int? ToolUses, long? DurationMs)
         : ClaudeEvent;
+
+    /// <summary>
+    /// One task of a <see cref="BackgroundTasksChanged"/> snapshot. <paramref name="TaskType"/> is <c>local_workflow</c> for a
+    /// workflow (<c>local_agent</c>, <c>local_bash</c>…); it and <paramref name="Description"/> are empty when the entry does not say.
+    /// </summary>
+    public sealed record BackgroundTaskEntry(string TaskId, string TaskType, string Description);
+
+    /// <summary>
+    /// The tasks running in the background, as a whole (<c>system/background_tasks_changed</c>): each line replaces the one
+    /// before, and an empty list means none runs. A session file never has it.
+    /// </summary>
+    public sealed record BackgroundTasksChanged(IReadOnlyList<BackgroundTaskEntry> Tasks) : ClaudeEvent;
 }

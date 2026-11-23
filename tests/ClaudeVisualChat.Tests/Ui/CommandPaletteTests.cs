@@ -781,6 +781,31 @@ public class CommandPaletteTests
     }
 
     [AvaloniaFact]
+    public void Workflows_is_listed_only_when_filtering()
+    {
+        var ui = Open();
+        ui.Type("/");
+        Assert.DoesNotContain("/workflows", ui.Commands); // every command but this one, as in the extension
+        Assert.Contains("/tasks", ui.Commands);
+        UiHelpers.Type(ui.Window, "w");
+        Assert.Contains("/workflows", ui.Commands);
+        Assert.Equal("View running workflows", ToolTip.GetTip(Row(ui, "/workflows")));
+        ui.Press(Key.Escape);
+
+        // from the button, once something is typed in the field
+        ui.Input.Clear();
+        UiHelpers.Click(ui.Window, ui.SlashButton);
+        Assert.DoesNotContain("/workflows", ui.Commands);
+        UiHelpers.Type(ui.Window, "work");
+        Assert.Equal("/workflows", ui.Commands[0]);
+        ui.Press(Key.Enter);
+        Assert.Equal(new[] { "workflows" }, ui.Invoked);
+        Assert.Equal(ChatPanel.Agents, ui.Conversation.ShownPanel);
+        Assert.Empty(ui.Sent);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_row_run_from_a_typed_slash_takes_the_typed_text_away()
     {
         var ui = Open();

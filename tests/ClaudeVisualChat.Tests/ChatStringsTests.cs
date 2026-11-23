@@ -890,4 +890,11 @@ public class ChatStringsTests
         Assert.Equal("Advisor unavailable (overloaded)", En.AdvisorResultLabel(AdvisorOutcome.Unavailable, "overloaded"));
         Assert.Equal("Advisor indisponível (overloaded)", Pt.AdvisorResultLabel(AdvisorOutcome.Unavailable, "overloaded"));
     }
+
+    [Fact]
+    public void The_workflows_command_text_in_both_languages()
+    {
+        Assert.Equal("View running workflows", En.CommandWorkflowsDescription);
+        Assert.Equal("Ver os workflows em execução", Pt.CommandWorkflowsDescription);
+    }
 }
