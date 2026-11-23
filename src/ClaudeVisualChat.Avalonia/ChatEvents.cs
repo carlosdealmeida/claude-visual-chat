@@ -257,6 +257,28 @@ public sealed class TaskOutputRequestedEventArgs : EventArgs
     public string? RequestId { get; set; }
 }
 
+/// <summary>
+/// The user asked to stop a task running in the background (<see cref="ChatConversation.TaskStopRequested"/>): the host makes a new
+/// request id, puts it in <see cref="RequestId"/> inside the handler and sends <see cref="Protocol.StdinMessages.StopTask"/> with it
+/// and <see cref="TaskId"/>.
+/// </summary>
+public sealed class TaskStopRequestedEventArgs : EventArgs
+{
+    public TaskStopRequestedEventArgs(string taskId)
+    {
+        TaskId = taskId ?? "";
+    }
+
+    /// <summary>The claude's task to stop (<see cref="BackgroundTaskInfo.TaskId"/>).</summary>
+    public string TaskId { get; }
+
+    /// <summary>
+    /// The id of the request the host sent; the answer, which names only it, is matched to the task by it. Left null or empty, the
+    /// host sent nothing, and the stop fails at once (<see cref="BackgroundTaskInfo.StopFailed"/>).
+    /// </summary>
+    public string? RequestId { get; set; }
+}
+
 /// <summary>The user asked to open the Remote Control link; the host opens it.</summary>
 public sealed class RemoteControlLinkRequestedEventArgs : EventArgs
 {

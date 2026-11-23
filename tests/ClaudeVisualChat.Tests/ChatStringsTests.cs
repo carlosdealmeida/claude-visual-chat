@@ -387,7 +387,7 @@ public class ChatStringsTests
         nameof(ChatStrings.ChromeToolTitle), nameof(ChatStrings.ArtifactToolTitle), nameof(ChatStrings.TaggedTokens), nameof(ChatStrings.ContextColumnTokens),
         nameof(ChatStrings.Claude), nameof(ChatStrings.ClaudeTool), nameof(ChatStrings.AnnounceReply),
         nameof(ChatStrings.AuthClaudeAi), nameof(ChatStrings.AuthBedrock), nameof(ChatStrings.AuthVertex), nameof(ChatStrings.AuthFoundry),
-        nameof(ChatStrings.AdvisorCall),
+        nameof(ChatStrings.AdvisorCall), nameof(ChatStrings.BackgroundTaskWorkflow),
     };
 
     [Fact]
@@ -896,5 +896,49 @@ public class ChatStringsTests
     {
         Assert.Equal("View running workflows", En.CommandWorkflowsDescription);
         Assert.Equal("Ver os workflows em execução", Pt.CommandWorkflowsDescription);
+    }
+
+    [Fact]
+    public void The_background_task_texts_in_both_languages()
+    {
+        Assert.Equal("{0} background task · click a task for details", En.BackgroundTasksHeaderOne);
+        Assert.Equal("{0} tarefa em segundo plano · clique numa tarefa para ver os detalhes", Pt.BackgroundTasksHeaderOne);
+        Assert.Equal("{0} background tasks · click a task for details", En.BackgroundTasksHeaderMany);
+        Assert.Equal("{0} tarefas em segundo plano · clique numa tarefa para ver os detalhes", Pt.BackgroundTasksHeaderMany);
+        Assert.Equal("{0} background task · tap a task for details", En.BackgroundTasksHeaderTouchOne);
+        Assert.Equal("{0} tarefa em segundo plano · toque numa tarefa para ver os detalhes", Pt.BackgroundTasksHeaderTouchOne);
+        Assert.Equal("{0} background tasks · tap a task for details", En.BackgroundTasksHeaderTouchMany);
+        Assert.Equal("{0} tarefas em segundo plano · toque numa tarefa para ver os detalhes", Pt.BackgroundTasksHeaderTouchMany);
+        Assert.Equal("workflow", En.BackgroundTaskWorkflow);
+        Assert.Equal("workflow", Pt.BackgroundTaskWorkflow);
+        Assert.Equal("Ended", En.BackgroundTaskEnded);
+        Assert.Equal("Encerrado", Pt.BackgroundTaskEnded);
+        Assert.Equal("Stopping…", En.BackgroundTaskStopping);
+        Assert.Equal("Parando…", Pt.BackgroundTaskStopping);
+        Assert.Equal("The task could not be stopped. It may have finished already.", En.BackgroundTaskStopFailed);
+        Assert.Equal("Não foi possível parar a tarefa. Ela pode já ter terminado.", Pt.BackgroundTaskStopFailed);
+    }
+
+    [Fact]
+    public void The_background_tasks_header_counts_and_speaks_of_a_tap_in_the_touch_layout()
+    {
+        Assert.Equal("1 background task · click a task for details", En.FormatBackgroundTasksHeader(1));
+        Assert.Equal("2 background tasks · click a task for details", En.FormatBackgroundTasksHeader(2));
+        Assert.Equal("1 background task · tap a task for details", En.FormatBackgroundTasksHeader(1, touch: true));
+        Assert.Equal("2 background tasks · tap a task for details", En.FormatBackgroundTasksHeader(2, touch: true));
+        Assert.Equal("1 tarefa em segundo plano · clique numa tarefa para ver os detalhes", Pt.FormatBackgroundTasksHeader(1));
+        Assert.Equal("1.200 tarefas em segundo plano · toque numa tarefa para ver os detalhes", Pt.FormatBackgroundTasksHeader(1200, touch: true));
+    }
+
+    [Theory]
+    [InlineData(BackgroundTaskStatus.Running, "Running", "Rodando")]
+    [InlineData(BackgroundTaskStatus.Finished, "Finished", "Terminado")]
+    [InlineData(BackgroundTaskStatus.Failed, "Failed", "Falhou")]
+    [InlineData(BackgroundTaskStatus.Stopped, "Stopped", "Parado")]
+    [InlineData(BackgroundTaskStatus.Ended, "Ended", "Encerrado")]
+    public void A_background_tasks_state_reads_like_an_agents(BackgroundTaskStatus status, string english, string portuguese)
+    {
+        Assert.Equal(english, En.BackgroundTaskStatusLabel(status));
+        Assert.Equal(portuguese, Pt.BackgroundTaskStatusLabel(status));
     }
 }

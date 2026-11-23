@@ -2249,6 +2249,194 @@ public class ChatConversationTests
         Assert.Equal(BackgroundTaskStatus.Ended, w1.Status);
     }
 
+    // ---- stopping a background task ----
+
+    private static string StopAnswer(string requestId) =>
+        "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"" + requestId + "\",\"response\":{}}}";
+
+    private static string StopRefused(string requestId) =>
+        "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"" + requestId + "\",\"error\":\"No task found\"}}";
+
+    /// <summary>A conversation with the workflow <c>w1</c> running, and a host that sends each stop under the next id (s1, s2…).</summary>
+    private static (ChatConversation Conversation, BackgroundTaskInfo Task, List<TaskStopRequestedEventArgs> Asked) StoppableWorkflow()
+    {
+        var c = new ChatConversation();
+        c.Apply(WorkflowStarted("w1"));
+        c.Apply(Workflows("w1"));
+        var asked = new List<TaskStopRequestedEventArgs>();
+        c.TaskStopRequested += (_, e) =>
+        {
+            asked.Add(e);
+            e.RequestId = "s" + asked.Count;
+        };
+        return (c, Assert.Single(c.BackgroundTasks), asked);
+    }
+
+    [Fact]
+    public void A_stop_goes_to_the_host_and_waits_for_its_answer()
+    {
+        var c = new ChatConversation();
+        c.Apply(Workflows("w1"));
+        var w1 = Assert.Single(c.BackgroundTasks);
+        var changes = 0;
+        c.HostHandlersChanged += (_, _) => changes++;
+        Assert.False(c.CanStopTasks);
+
+        var asked = new List<TaskStopRequestedEventArgs>();
+        var stoppingInside = false;
+        EventHandler<TaskStopRequestedEventArgs> handler = (_, e) =>
+        {
+            asked.Add(e);
+            stoppingInside = w1.IsStopping; // the task says so while the host sends the request
+            e.RequestId = "s1";
+        };
+        c.TaskStopRequested += handler;
+        Assert.Equal(1, changes);
+        Assert.True(c.CanStopTasks);
+
+        Assert.True(c.RequestTaskStop(w1));
+        Assert.Equal("w1", Assert.Single(asked).TaskId);
+        Assert.Equal("s1", asked[0].RequestId);
+        Assert.True(stoppingInside);
+        Assert.True(w1.IsStopping);
+        Assert.False(w1.StopFailed);
+        Assert.Equal(BackgroundTaskStatus.Running, w1.Status);
+
+        // while it waits, no second request; the answer to another request leaves it waiting
+        Assert.False(c.RequestTaskStop(w1));
+        Assert.Single(asked);
+        c.AppendLine(StopAnswer("other"));
+        Assert.True(w1.IsStopping);
+
+        c.TaskStopRequested -= handler;
+        Assert.Equal(2, changes);
+        Assert.False(c.CanStopTasks);
+    }
+
+    [Fact]
+    public void A_stop_with_no_host_or_no_request_id()
+    {
+        var c = new ChatConversation();
+        c.Apply(Workflows("w1"));
+        var w1 = Assert.Single(c.BackgroundTasks);
+
+        // no host listening: nothing happens
+        Assert.False(c.RequestTaskStop(w1));
+        Assert.False(w1.IsStopping);
+        Assert.False(w1.StopFailed);
+
+        // a host that sent nothing: the stop failed at once
+        var asked = 0;
+        string? id = null;
+        c.TaskStopRequested += (_, e) =>
+        {
+            asked++;
+            e.RequestId = id;
+        };
+        Assert.True(c.RequestTaskStop(w1));
+        Assert.Equal(1, asked);
+        Assert.False(w1.IsStopping);
+        Assert.True(w1.StopFailed);
+        id = "";
+        Assert.True(c.RequestTaskStop(w1));
+        Assert.True(w1.StopFailed);
+
+        // asked again with a request: the failure goes while it waits
+        id = "s1";
+        Assert.True(c.RequestTaskStop(w1));
+        Assert.True(w1.IsStopping);
+        Assert.False(w1.StopFailed);
+
+        // a task that is no longer running is not stopped
+        c.Apply(Workflows());
+        var ended = asked;
+        Assert.False(c.RequestTaskStop(w1));
+        Assert.Equal(ended, asked);
+    }
+
+    [Fact]
+    public void An_error_answer_fails_the_stop_and_a_success_ends_it()
+    {
+        var (c, w1, asked) = StoppableWorkflow();
+        c.InvokeCommand("context", ""); // a panel waiting for its own answer does not take this one
+        Assert.True(c.RequestTaskStop(w1));
+        c.AppendLine(StopRefused("s1"));
+        Assert.False(w1.IsStopping);
+        Assert.True(w1.StopFailed);
+        Assert.Null(c.ContextError);
+        Assert.Equal(BackgroundTaskStatus.Running, w1.Status);
+
+        // the answer comes once: the same line again changes nothing
+        Assert.True(c.RequestTaskStop(w1));
+        Assert.Equal(2, asked.Count);
+        Assert.False(w1.StopFailed);
+        c.AppendLine(StopRefused("s1"));
+        Assert.True(w1.IsStopping);
+
+        c.AppendLine(StopAnswer("s2"));
+        Assert.False(w1.IsStopping);
+        Assert.False(w1.StopFailed);
+        Assert.Equal(BackgroundTaskStatus.Running, w1.Status); // still in the snapshot
+        Assert.Same(w1, Assert.Single(c.BackgroundTasks));
+    }
+
+    [Fact]
+    public void A_task_stopped_on_request_reads_stopped_without_a_notification()
+    {
+        // the answer first, then the snapshot drops it
+        var (c, w1, _) = StoppableWorkflow();
+        Assert.True(c.RequestTaskStop(w1));
+        c.AppendLine(StopAnswer("s1"));
+        c.Apply(Workflows());
+        Assert.Equal(BackgroundTaskStatus.Stopped, w1.Status);
+
+        // the snapshot first, as the claude does it: the answer turns the end into a stop
+        var (later, w2, _) = StoppableWorkflow();
+        Assert.True(later.RequestTaskStop(w2));
+        later.Apply(Workflows());
+        Assert.Equal(BackgroundTaskStatus.Ended, w2.Status);
+        Assert.True(w2.IsStopping);
+        var endedAt = w2.EndedAt;
+        later.AppendLine(StopAnswer("s1"));
+        Assert.Equal(BackgroundTaskStatus.Stopped, w2.Status);
+        Assert.False(w2.IsStopping);
+        Assert.Equal(endedAt, w2.EndedAt);
+
+        // a notification says how it ended: that stays
+        var (told, w3, _) = StoppableWorkflow();
+        Assert.True(told.RequestTaskStop(w3));
+        told.Apply(new AgentTaskFinished("w1", "toolu_w1", "completed", "done", null, null, null));
+        told.Apply(Workflows());
+        told.AppendLine(StopAnswer("s1"));
+        Assert.Equal(BackgroundTaskStatus.Finished, w3.Status);
+
+        // a refused stop does not make it a stop
+        var (refused, w4, _) = StoppableWorkflow();
+        Assert.True(refused.RequestTaskStop(w4));
+        refused.AppendLine(StopRefused("s1"));
+        refused.Apply(Workflows());
+        Assert.Equal(BackgroundTaskStatus.Ended, w4.Status);
+    }
+
+    [Fact]
+    public void An_answer_from_the_session_before_changes_nothing()
+    {
+        var (c, old, _) = StoppableWorkflow();
+        Assert.True(c.RequestTaskStop(old));
+
+        c.Clear();
+        c.Apply(Workflows("w1"));
+        var w1 = Assert.Single(c.BackgroundTasks);
+        Assert.NotSame(old, w1);
+        c.AppendLine(StopRefused("s1"));
+        c.AppendLine(StopAnswer("s1"));
+        Assert.Equal(BackgroundTaskStatus.Running, w1.Status);
+        Assert.False(w1.IsStopping);
+        Assert.False(w1.StopFailed);
+        c.Apply(Workflows());
+        Assert.Equal(BackgroundTaskStatus.Ended, w1.Status); // not taken for a task stopped on request
+    }
+
     [Fact]
     public void The_title_is_the_hosts_and_observable()
     {

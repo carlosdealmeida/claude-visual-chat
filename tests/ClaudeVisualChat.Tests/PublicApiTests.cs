@@ -1277,4 +1277,37 @@ public class PublicApiTests
         Assert.Equal(typeof(string), description?.PropertyType);
         Assert.Contains(description!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
     }
+
+    [Fact]
+    public void The_stop_a_background_task_api()
+    {
+        // a host event, its arguments and the line to send
+        var conversation = typeof(ChatConversation);
+        Assert.Equal(typeof(System.EventHandler<TaskStopRequestedEventArgs>), conversation.GetEvent("TaskStopRequested")?.EventHandlerType);
+        Assert.Contains("ClaudeVisualChat.TaskStopRequestedEventArgs", Library.GetExportedTypes().Select(t => t.FullName));
+        var args = typeof(TaskStopRequestedEventArgs);
+        Assert.True(args.IsSealed && typeof(System.EventArgs).IsAssignableFrom(args));
+        Assert.NotNull(args.GetConstructor(new[] { typeof(string) }));
+        Assert.Equal(typeof(string), args.GetProperty("TaskId")?.PropertyType);
+        Assert.Null(args.GetProperty("TaskId")!.SetMethod);
+        var requestId = args.GetProperty("RequestId");
+        Assert.Equal(typeof(string), requestId?.PropertyType);
+        Assert.True(requestId!.SetMethod!.IsPublic); // the host sets it
+        Assert.Null(conversation.GetProperty("CanStopTasks")); // the view's, not the host's
+        Assert.Null(conversation.GetMethod("RequestTaskStop"));
+
+        var send = typeof(ClaudeVisualChat.Protocol.StdinMessages);
+        Assert.Equal(typeof(string), send.GetMethod("StopTask", new[] { typeof(string), typeof(string) })?.ReturnType);
+
+        foreach (var name in new[]
+        {
+            "BackgroundTasksHeaderOne", "BackgroundTasksHeaderMany", "BackgroundTasksHeaderTouchOne", "BackgroundTasksHeaderTouchMany",
+            "BackgroundTaskWorkflow", "BackgroundTaskEnded", "BackgroundTaskStopping", "BackgroundTaskStopFailed",
+        })
+        {
+            var text = typeof(ChatStrings).GetProperty(name);
+            Assert.Equal(typeof(string), text?.PropertyType);
+            Assert.Contains(text!.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(), m => m.Name == "IsExternalInit");
+        }
+    }
 }

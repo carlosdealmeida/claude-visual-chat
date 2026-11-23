@@ -277,6 +277,15 @@ public class StdinMessagesTests
     }
 
     [Fact]
+    public void Stop_task_is_a_control_request_with_the_task_id()
+    {
+        Assert.Equal("{\"type\":\"control_request\",\"request_id\":\"s1\",\"request\":{\"subtype\":\"stop_task\",\"task_id\":\"w1\"}}",
+                     StdinMessages.StopTask("s1", "w1"));
+        Assert.Throws<ArgumentNullException>(() => StdinMessages.StopTask("s1", null!));
+        Assert.Throws<ArgumentNullException>(() => StdinMessages.StopTask(null!, "w1"));
+    }
+
+    [Fact]
     public void Null_arguments_are_rejected()
     {
         Assert.Throws<ArgumentNullException>(() => StdinMessages.PermissionResponse(null!));

@@ -182,6 +182,50 @@ public class AgentMapTouchTests
     }
 
     [AvaloniaFact]
+    public void The_task_rows_follow_the_agent_rows_in_the_touch_layout()
+    {
+        var c = ThreeAgents();
+        c.AppendLine("{\"type\":\"system\",\"subtype\":\"background_tasks_changed\",\"tasks\":[{\"task_id\":\"w1\",\"task_type\":\"local_workflow\"," +
+                     "\"description\":\"Ping the agents\"}],\"session_id\":\"s1\"}");
+        var ui = new Opened(c, PhoneWidth);
+        Assert.True(ui.Map.IsNarrow);
+        UiHelpers.DrawFrames();
+        var visor = ui.InMap(ui.Scroller);
+
+        // the header speaks of a tap, and wraps
+        var header = ui.Map.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("ClaudeChatAgentTasksHeader"));
+        Assert.Equal("1 tarefa em segundo plano · toque numa tarefa para ver os detalhes", header.Text);
+        Assert.Equal(TextWrapping.Wrap, header.TextWrapping);
+
+        // the task's row under the agents', as wide as the map
+        var rows = ui.Rows;
+        var task = rows.Single(r => r.Classes.Contains("task"));
+        var agents = rows.Where(r => !r.Classes.Contains("task")).ToList();
+        Assert.Equal(3, agents.Count);
+        var place = ui.InMap(task);
+        Assert.True(agents.All(a => ui.InMap(a).Bottom < ui.InMap(header).Y), "the section is under the agents");
+        Assert.True(ui.InMap(header).Bottom <= place.Y);
+        Near(visor.X, place.X);
+        Near(ui.InMap(ui.Main).Right, place.Right);
+        Assert.True(place.Width >= 200);
+        Assert.True(place.Height >= 44, "a row of " + place.Height);
+        foreach (var text in task.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible))
+            Assert.True(text.LineHeight >= text.FontSize * 1.3, text.Text + ": a line of " + text.LineHeight + " for " + text.FontSize);
+
+        // a tap opens its detail
+        UiHelpers.Click(ui.Window, task);
+        Assert.True(ui.Map.ShowsCard);
+        Assert.Contains("Rodando", UiHelpers.Texts(ui.Map));
+
+        // a tree that fits: the desktop's rows
+        ui.Window.Width = 1000;
+        UiHelpers.Pump();
+        Assert.False(ui.Map.IsNarrow);
+        Near(300, task.Bounds.Width);
+        ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_touch_subtitle_in_both_languages()
     {
         Assert.Equal("2 agents · tap an agent for details", ChatStrings.English.FormatAgentMapSubtitle(2, touch: true));

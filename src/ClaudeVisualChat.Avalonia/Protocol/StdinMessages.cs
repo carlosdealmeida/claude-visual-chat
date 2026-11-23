@@ -175,6 +175,17 @@ namespace ClaudeVisualChat.Protocol
             return ControlRequest(requestId, "get_task_output", w => w.WriteString("task_id", taskId));
         }
 
+        /// <summary>
+        /// Asks the claude to stop the task <paramref name="taskId"/> running in the background
+        /// (<see cref="ChatConversation.TaskStopRequested"/>). The claude ends the task (its <c>task_notification</c> says
+        /// <c>stopped</c>) and then answers; give every line to <see cref="ChatConversation.AppendLine"/> like any other.
+        /// </summary>
+        public static string StopTask(string requestId, string taskId)
+        {
+            if (taskId == null) throw new ArgumentNullException(nameof(taskId));
+            return ControlRequest(requestId, "stop_task", w => w.WriteString("task_id", taskId));
+        }
+
         public static string RemoteControl(string requestId, bool enabled) =>
             ControlRequest(requestId, "remote_control", w => w.WriteBoolean("enabled", enabled));
 

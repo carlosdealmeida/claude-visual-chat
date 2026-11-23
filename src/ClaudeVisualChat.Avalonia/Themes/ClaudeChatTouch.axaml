@@ -843,6 +843,10 @@
   <Style Selector="controls|ClaudeChatView:touch TextBlock.ClaudeChatAgentRowMeta">
     <Setter Property="LineHeight" Value="17" />
   </Style>
+  <!-- a background task's Stop: a finger's height -->
+  <Style Selector="controls|ClaudeChatView:touch Button.ClaudeChatAgentStop">
+    <Setter Property="MinHeight" Value="44" />
+  </Style>
 
   <!-- ===== the bookmarks panel: always below the chat. The ×, the rows, the link and the button are targets of 44 px, and the resize bar
          is one too, with its 6 px still what shows (a line at rest, as there is no pointer to hover with) ===== -->

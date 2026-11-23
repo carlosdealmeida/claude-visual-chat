@@ -418,6 +418,26 @@ one, live or from a session file.
 The main card says `ChatConversation.Title`, which the host sets, or "This session" without one; a click opens it, for
 "Working" or "Idle", the agents and how many are in each state. `/tasks` (and `/bashes`) opens the map. The chip's dot is
 blue while an agent waits for a permission, green while agents work, red when nothing works and one failed, else grey.
+
+Under the tree, while `ChatConversation.BackgroundTasks` has any, the map lists the workflows running in the background:
+"2 background tasks · click a task for details", then a row for each, drawn like an agent's, with its description
+(or "workflow") and "workflow · 2m 3s". A row goes as soon as the claude's snapshot drops its task. A click opens the
+task's detail: "Running · 5s", and a **Stop** button when your app can stop it. While the stop waits the button says
+"Stopping…"; when the claude refuses, "The task could not be stopped. It may have finished already." shows under it and
+the button comes back. A detail left open keeps its task once it ends, with how it ended ("Stopped · 5s", "Finished",
+"Ended") and a time that stands still. The Stop shows only while your app handles `TaskStopRequested`: set
+`e.RequestId` to the id you send, inside the handler, and write `StdinMessages.StopTask` to the claude:
+
+```csharp
+// stopping a workflow in the background: the claude's answer names only the request id you set here
+conversation.TaskStopRequested += (_, e) =>
+    Send(StdinMessages.StopTask(e.RequestId = "req_" + ++ids, e.TaskId));
+```
+
+The claude ends the task and only then answers, so the task usually leaves the snapshot before the answer comes; a task
+the claude says it stopped reads "Stopped" even when no notification says so. A handler that leaves `RequestId` empty
+sent nothing, and the stop fails at once. A new session forgets the stops still waiting.
+
 The extension's card also has
 the agent's prompt, its tool calls, "Open transcript" and "Stop agent", which need the agent's own transcript and a way
 to stop it; they are not here.
@@ -822,6 +842,7 @@ What changes:
 - **The Agent map.** Its subtitle wraps and speaks of a tap. When the tree does not fit the map's width (a phone held
   upright), it goes down: the main agent's card on top and the agents under it, all as wide as the map, an agent another
   one called still 32 px in under its caller, so the map scrolls only down. Where it fits (a tablet), it is the desktop's.
+  The header of the background tasks speaks of a tap too, and their rows, under the agents, are as wide as the agents'.
 - **Targets.** What a finger taps is 44 px at least: the buttons of the bar, the rows of the sheets and of the command
   palette, the ✕ of the banners, of the image preview and of the Agent map, and its back arrow. A row of the palette
   runs its command on a tap, not on the press, so a finger that scrolls the list runs nothing.

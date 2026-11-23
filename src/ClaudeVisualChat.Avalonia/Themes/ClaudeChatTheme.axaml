@@ -3375,6 +3375,50 @@
   <Style Selector="SelectableTextBlock.ClaudeChatAgentResult">
     <Setter Property="LineHeight" Value="18.2" />
   </Style>
+  <!-- the tasks in the background, under the tree: 16 px under it, 8 px at their right and under them, the rows 8 px apart (they are
+       the agents' rows); the header in the secondary color, 4 px more over the first row -->
+  <Style Selector="StackPanel.ClaudeChatAgentTasks">
+    <Setter Property="Spacing" Value="8" />
+    <Setter Property="Margin" Value="0,16,8,8" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAgentTasksHeader">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.ForegroundMuted}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <!-- a task's Stop: the extension's action button (the input's border, 4 px corners, 10 px by 16 px inside, as wide as the card,
+       16 px under the lines) in the error color; the list's hover under the pointer, half seen while it cannot be pressed. The line
+       under it when the stop failed: the error color, 10 px down -->
+  <Style Selector="Button.ClaudeChatAgentStop">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,16,0,0" />
+    <Setter Property="Padding" Value="16,10" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.InputBorder}" />
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.MenuBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Error}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentStop:pointerover /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.ListHoverBackground}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentStop:focus-visible /template/ Border#PART_ChatButton">
+    <Setter Property="BorderBrush" Value="{DynamicResource ClaudeChat.FocusBorder}" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentStop:disabled">
+    <Setter Property="Opacity" Value="0.5" />
+    <Setter Property="Cursor" Value="Arrow" />
+  </Style>
+  <Style Selector="Button.ClaudeChatAgentStop:disabled /template/ Border#PART_ChatButton">
+    <Setter Property="Background" Value="{DynamicResource ClaudeChat.MenuBackground}" />
+  </Style>
+  <Style Selector="TextBlock.ClaudeChatAgentStopFailed">
+    <Setter Property="Foreground" Value="{DynamicResource ClaudeChat.Error}" />
+    <Setter Property="LineHeight" Value="{DynamicResource ClaudeChat.LineHeight}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="0,10,0,0" />
+  </Style>
 
   <!-- ===== the banners over the reply box (the browser's, a Remote Control error) ===== -->
 

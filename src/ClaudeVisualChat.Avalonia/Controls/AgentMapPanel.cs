@@ -35,6 +35,12 @@ namespace ClaudeVisualChat.Controls;
 /// the keyboard in it, gives it back to what had it (<see cref="FocusReturn"/>); when that is gone, or in the touch layout,
 /// <see cref="FocusReleased"/> lets the view put the keyboard back.
 /// <para>
+/// Under the tree, while the conversation has tasks in the background (<see cref="ChatConversation.BackgroundTasks"/>), a section
+/// lists them: "2 background tasks · click a task for details", then a row for each, drawn like an agent's, with "workflow · 2m 3s".
+/// A click opens the task's detail in the agent's card: its state and time, and a Stop while the host can stop it
+/// (<see cref="ChatConversation.TaskStopRequested"/>). The detail keeps its task once the task leaves the list.
+/// </para>
+/// <para>
 /// In the touch layout the subtitle speaks of a tap and wraps, and a tree that does not fit the map's width goes down instead
 /// (<see cref="IsNarrow"/>): the main agent's card on top, as wide as the map, and the agents under it, as wide as the map too,
 /// with the line coming down from the card's left; an agent another one called is still 32 px in, under its caller. The map then
@@ -86,6 +92,13 @@ internal sealed class AgentMapPanel : Border
     /// <summary>The line from the bottom of the main card to the agents, while the tree goes down.</summary>
     private readonly Border _mainDown = Line(vertical: true);
 
+    // the tasks in the background, under the tree: the header, then a row for each
+    private readonly StackPanel _tasks = new StackPanel();
+    private readonly TextBlock _tasksHeader = new TextBlock();
+
+    /// <summary>The tasks' rows, in the list's order, kept while the list keeps its tasks: a change of a task redoes its row in place.</summary>
+    private readonly List<(BackgroundTaskInfo Task, AgentRowParts Parts)> _taskRows = new List<(BackgroundTaskInfo, AgentRowParts)>();
+
     // the card of an agent
     private readonly Border _cardLayer = new Border();
     private readonly Border _card = new Border();
@@ -99,6 +112,14 @@ internal sealed class AgentMapPanel : Border
     private readonly TextBlock _noResult = new TextBlock();
     private readonly SelectableTextBlock _result = new SelectableTextBlock();
 
+    // the detail of a task, in the same card: its Stop, and the line under it when the claude did not stop it
+    private readonly Button _stop = new Button();
+    private readonly TextBlock _stopText = new TextBlock();
+    private readonly TextBlock _stopFailed = new TextBlock();
+
+    /// <summary>The task whose detail is open, kept when it leaves the list (its detail then shows how it ended); null when none.</summary>
+    private BackgroundTaskInfo? _cardTask;
+
     /// <summary>What had the keyboard when the map opened, which gets it back when the map closes with it.</summary>
     private readonly FocusReturn _return = new FocusReturn();
 
@@ -106,6 +127,9 @@ internal sealed class AgentMapPanel : Border
 
     /// <summary>The time lines of the running agents (in the list and on the card), redone every second.</summary>
     private readonly List<(AgentInfo Agent, TextBlock Line)> _clocks = new List<(AgentInfo, TextBlock)>();
+
+    /// <summary>The time lines of the tasks: their rows' (<c>Detail</c> false) and the open detail's while the task runs.</summary>
+    private readonly List<(BackgroundTaskInfo Task, TextBlock Line, bool Detail)> _taskClocks = new List<(BackgroundTaskInfo, TextBlock, bool)>();
 
     /// <summary>
     /// The agents' rows by <see cref="AgentInfo.Id"/>, kept while the tree keeps its shape: a change of an agent redoes
@@ -119,6 +143,11 @@ internal sealed class AgentMapPanel : Border
     /// <summary>The agents whose changes it hears while it shows, and their list.</summary>
     private readonly List<AgentInfo> _watched = new List<AgentInfo>();
     private ObservableCollection<AgentInfo>? _watchedList;
+
+    /// <summary>The tasks whose changes it hears while it shows (the list's, and the open detail's), their list, and the conversation whose host it follows.</summary>
+    private readonly List<BackgroundTaskInfo> _watchedTasks = new List<BackgroundTaskInfo>();
+    private ObservableCollection<BackgroundTaskInfo>? _watchedTaskList;
+    private ChatConversation? _watchedHost;
 
     private ChatConversation? _conversation;
     private ChatConversation? _tracked;
@@ -189,11 +218,16 @@ internal sealed class AgentMapPanel : Border
         _tree.Children.Add(_mainDown);
         _tree.Children.Add(_agents);
         _tree.Children.Add(_mainNode); // drawn over the lines, as the extension's card (z-index 1)
+        // the tasks in the background, under the tree, while there are any
+        _tasksHeader.Classes.Add("ClaudeChatAgentTasksHeader");
+        _tasks.Classes.Add("ClaudeChatAgentTasks");
+        _tasks.Children.Add(_tasksHeader);
+        _tasks.IsVisible = false;
         _scroller = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, // a view narrower than the tree scrolls it sideways
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = _tree,
+            Content = new StackPanel { Children = { _tree, _tasks } },
         };
         _scroller.ScrollChanged += (_, _) => KeepMainInSight();
         _mainNode.PropertyChanged += (_, e) =>
@@ -219,12 +253,23 @@ internal sealed class AgentMapPanel : Border
         _noResult.Classes.Add("ClaudeChatAgentCardMeta");
         _noResult.Classes.Add("ClaudeChatAgentResult");
         _result.Classes.Add("ClaudeChatAgentResult");
+        // a task's Stop: the extension's action button in the error color, as wide as the card
+        _stop.Content = _stopText;
+        _stop.Classes.Add("ClaudeChatButton");
+        _stop.Classes.Add("ClaudeChatAgentStop");
+        _stop.Click += (_, _) => StopTask();
+        _stop.IsVisible = false;
+        _stopFailed.Classes.Add("ClaudeChatAgentStopFailed");
+        _stopFailed.IsVisible = false;
         _card.Classes.Add("ClaudeChatAgentCard");
         _card.Child = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new StackPanel { Children = { cardHeader, _cardStatus, _cardCaller, _cardTime, _activity, _noResult, _result } },
+            Content = new StackPanel
+            {
+                Children = { cardHeader, _cardStatus, _cardCaller, _cardTime, _activity, _noResult, _result, _stop, _stopFailed },
+            },
         };
         KeyboardNavigation.SetTabNavigation(_card, KeyboardNavigationMode.Cycle);
         _cardLayer.Classes.Add("ClaudeChatAgentCardLayer");
@@ -251,17 +296,24 @@ internal sealed class AgentMapPanel : Border
         get => _conversation;
         set
         {
-            if (!ReferenceEquals(value, _conversation)) _cardId = null;
+            if (!ReferenceEquals(value, _conversation))
+            {
+                _cardId = null;
+                _cardTask = null;
+            }
             _conversation = value;
             if (_attached) Track(value);
         }
     }
 
-    /// <summary>True while the timer redoes the running agents' time every second: shown, in a window, with an agent running.</summary>
+    /// <summary>
+    /// True while the timer redoes the running agents' time every second: shown, in a window, with an agent running or a task's
+    /// row in the list.
+    /// </summary>
     internal bool IsTicking => _timer.IsEnabled;
 
-    /// <summary>True while an agent's card is open over the map.</summary>
-    internal bool ShowsCard => _cardId != null && IsVisible;
+    /// <summary>True while an agent's card, or a task's detail, is open over the map.</summary>
+    internal bool ShowsCard => (_cardId != null || _cardTask != null) && IsVisible;
 
     /// <summary>
     /// True while the tree goes down, the agents under the main card: in the touch layout, when the tree laid out as on the desktop
@@ -276,11 +328,21 @@ internal sealed class AgentMapPanel : Border
         var strings = Strings;
         var now = _tracked.Clock();
         foreach (var (agent, line) in _clocks) SetLine(line, TimeAndTokens(agent, strings, now));
+        foreach (var (task, line, detail) in _taskClocks) SetLine(line, detail ? TaskState(task, strings, now) : TaskMeta(task, strings, now));
     }
 
-    /// <summary>From an agent's card back to the list; false when no card is open.</summary>
+    /// <summary>From an agent's card, or a task's detail, back to the list; false when none is open.</summary>
     internal bool Back()
     {
+        if (_cardTask != null)
+        {
+            var task = _cardTask;
+            _cardTask = null;
+            _cardLayer.IsVisible = false;
+            Watch(_tracked); // the detail's task, out of the list, is no longer heard
+            FocusTaskRow(task);
+            return true;
+        }
         if (_cardId == null) return false;
         var id = _cardId;
         _cardId = null;
@@ -315,9 +377,12 @@ internal sealed class AgentMapPanel : Border
         }
         else if (change.Property == LayoutProperty)
         {
-            if (GetValue(LayoutProperty) == ChatLayout.Touch) _subtitle.TextWrapping = TextWrapping.Wrap;
-            else _subtitle.ClearValue(TextBlock.TextWrappingProperty);
-            if (_attached) Update(); // the subtitle's words, and the tree that may go down or come back up
+            foreach (var line in new[] { _subtitle, _tasksHeader })
+            {
+                if (GetValue(LayoutProperty) == ChatLayout.Touch) line.TextWrapping = TextWrapping.Wrap;
+                else line.ClearValue(TextBlock.TextWrappingProperty);
+            }
+            if (_attached) Update(); // the subtitle's and the tasks' words, and the tree that may go down or come back up
         }
         else if (change.Property == BoundsProperty)
         {
@@ -365,6 +430,7 @@ internal sealed class AgentMapPanel : Border
         _mainNode.HorizontalAlignment = narrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         _mainNode.VerticalAlignment = narrow ? VerticalAlignment.Top : VerticalAlignment.Center;
         Stretch(_mainRow, narrow);
+        foreach (var (_, parts) in _taskRows) Stretch(parts.Row, narrow); // the tasks' rows, as wide as the map too
         // the dialog as wide as the map, which scrolls only down
         if (narrow) _dialog.HorizontalAlignment = HorizontalAlignment.Stretch;
         else _dialog.ClearValue(HorizontalAlignmentProperty);
@@ -448,13 +514,26 @@ internal sealed class AgentMapPanel : Border
 
     private void OnAgentsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (e.Action == NotifyCollectionChangedAction.Reset) _cardTask = null; // the session began again (Clear, a history read): its tasks went
         Watch(_tracked);
         QueueBuild();
     }
 
     private void OnAgentChanged(object? sender, PropertyChangedEventArgs e) => QueueBuild();
 
-    /// <summary>Hears the agents' list and each agent, while the map shows.</summary>
+    private void OnTasksChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == NotifyCollectionChangedAction.Reset) _cardTask = null;
+        Watch(_tracked);
+        QueueBuild();
+    }
+
+    private void OnTaskChanged(object? sender, PropertyChangedEventArgs e) => QueueBuild();
+
+    /// <summary>The host began or stopped listening to the stops: the detail's Stop comes or goes.</summary>
+    private void OnHostHandlersChanged(object? sender, EventArgs e) => QueueBuild();
+
+    /// <summary>Hears the agents' list and each agent, the tasks' list, each task and the open detail's, and the host, while the map shows.</summary>
     private void Watch(ChatConversation? conversation)
     {
         Unwatch();
@@ -466,6 +545,18 @@ internal sealed class AgentMapPanel : Border
             agent.PropertyChanged += OnAgentChanged;
             _watched.Add(agent);
         }
+        _watchedTaskList = conversation.BackgroundTasks;
+        _watchedTaskList.CollectionChanged += OnTasksChanged;
+        foreach (var task in _watchedTaskList) WatchTask(task);
+        if (_cardTask != null && !_watchedTasks.Contains(_cardTask)) WatchTask(_cardTask); // it left the list, and its answer may still come
+        _watchedHost = conversation;
+        _watchedHost.HostHandlersChanged += OnHostHandlersChanged;
+    }
+
+    private void WatchTask(BackgroundTaskInfo task)
+    {
+        task.PropertyChanged += OnTaskChanged;
+        _watchedTasks.Add(task);
     }
 
     private void Unwatch()
@@ -474,6 +565,12 @@ internal sealed class AgentMapPanel : Border
         _watchedList = null;
         foreach (var agent in _watched) agent.PropertyChanged -= OnAgentChanged;
         _watched.Clear();
+        if (_watchedTaskList != null) _watchedTaskList.CollectionChanged -= OnTasksChanged;
+        _watchedTaskList = null;
+        foreach (var task in _watchedTasks) task.PropertyChanged -= OnTaskChanged;
+        _watchedTasks.Clear();
+        if (_watchedHost != null) _watchedHost.HostHandlersChanged -= OnHostHandlersChanged;
+        _watchedHost = null;
     }
 
     /// <summary>One build for many changes (a progress line changes four fields of an agent).</summary>
@@ -499,6 +596,7 @@ internal sealed class AgentMapPanel : Border
             if (opening)
             {
                 _cardId = null;
+                _cardTask = null;
                 _mainOpen = false;
             }
             Watch(conversation);
@@ -515,11 +613,14 @@ internal sealed class AgentMapPanel : Border
             Unwatch();
             _timer.Stop();
             _cardId = null;
+            _cardTask = null;
             _cardLayer.IsVisible = false;
             _agents.Children.Clear();
             _rows.Clear();
             _shape.Clear();
             _clocks.Clear();
+            ClearTaskRows();
+            _taskClocks.Clear();
             _result.Text = null;
             IsVisible = false;
             // the keyboard goes back to what had it; the view's rule (a waiting request, the reply box) when that is gone, or in
@@ -537,6 +638,7 @@ internal sealed class AgentMapPanel : Border
         var strings = Strings;
         var now = conversation.Clock();
         _clocks.Clear();
+        _taskClocks.Clear();
 
         _title.Text = strings.AgentMapTitle;
         _subtitle.Text = strings.FormatAgentMapSubtitle(conversation.Agents.Count, GetValue(LayoutProperty) == ChatLayout.Touch);
@@ -554,9 +656,14 @@ internal sealed class AgentMapPanel : Border
         {
             if (_rows.TryGetValue(agent.Id, out var row)) Fill(row, agent, strings, now);
         }
+        BuildTasks(conversation, strings, now);
 
         var card = _cardId == null ? null : tree.Find(_cardId);
-        if (card == null)
+        if (_cardTask != null)
+        {
+            BuildTaskCard(_cardTask, conversation, strings, now);
+        }
+        else if (card == null)
         {
             if (_cardLayer.IsKeyboardFocusWithin) _close.Focus(); // its agent went (a session loaded again)
             _cardId = null;
@@ -621,11 +728,160 @@ internal sealed class AgentMapPanel : Border
         if (_tracked != null && IsVisible) Build(_tracked);
     }
 
-    /// <summary>The timer runs while the map shows in a window with a running agent's time to redo.</summary>
+    /// <summary>The timer runs while the map shows in a window with a running agent's time, or a task's, to redo.</summary>
     private void UpdateTimer()
     {
-        if (_attached && IsVisible && _clocks.Count > 0) _timer.Start();
+        if (_attached && IsVisible && (_clocks.Count > 0 || _taskClocks.Count > 0)) _timer.Start();
         else _timer.Stop();
+    }
+
+    // ---- the tasks in the background ----
+
+    /// <summary>
+    /// The section under the tree, while the conversation has tasks in the background: "2 background tasks · click a task for
+    /// details", then a row for each, in the list's order. The rows are laid out again only when the list's tasks change.
+    /// </summary>
+    private void BuildTasks(ChatConversation conversation, ChatStrings strings, DateTimeOffset now)
+    {
+        var tasks = conversation.BackgroundTasks;
+        _tasks.IsVisible = tasks.Count > 0;
+        _tasksHeader.Text = strings.FormatBackgroundTasksHeader(tasks.Count, GetValue(LayoutProperty) == ChatLayout.Touch);
+        if (!SameTasks(tasks)) LayOutTasks(tasks);
+        foreach (var (task, parts) in _taskRows) FillTask(parts, task, strings, now);
+    }
+
+    private bool SameTasks(IReadOnlyList<BackgroundTaskInfo> tasks)
+    {
+        if (tasks.Count != _taskRows.Count) return false;
+        for (var i = 0; i < tasks.Count; i++)
+        {
+            if (!ReferenceEquals(tasks[i], _taskRows[i].Task)) return false;
+        }
+        return true;
+    }
+
+    /// <summary>The tasks' rows, anew; the keyboard stays on the row it was on, when that task is still listed.</summary>
+    private void LayOutTasks(IReadOnlyList<BackgroundTaskInfo> tasks)
+    {
+        BackgroundTaskInfo? focused = null;
+        foreach (var (task, parts) in _taskRows)
+        {
+            if (parts.Row.IsKeyboardFocusWithin) focused = task;
+        }
+        ClearTaskRows();
+        foreach (var task in tasks)
+        {
+            var parts = new AgentRowParts(task);
+            parts.Row.Classes.Add("task");
+            parts.Dot.Classes.Add("running"); // a listed task runs
+            var opened = task;
+            parts.Row.Click += (_, _) => OpenTaskCard(opened);
+            Stretch(parts.Row, _narrow);
+            _taskRows.Add((task, parts));
+            _tasks.Children.Add(parts.Row);
+        }
+        if (focused != null && _cardTask == null) FocusTaskRow(focused); // the × when its task left the list
+    }
+
+    private void ClearTaskRows()
+    {
+        foreach (var (_, parts) in _taskRows) _tasks.Children.Remove(parts.Row);
+        _taskRows.Clear();
+    }
+
+    /// <summary>A task's row: the running dot, its title, and "workflow · 2m 3s" (the time from its start, none under a second).</summary>
+    private void FillTask(AgentRowParts parts, BackgroundTaskInfo task, ChatStrings strings, DateTimeOffset now)
+    {
+        var title = TaskTitle(task, strings);
+        if (parts.Title.Text != title)
+        {
+            parts.Title.Text = title;
+            ToolTip.SetTip(parts.Row, title);
+            AutomationProperties.SetName(parts.Row, title);
+        }
+        SetLine(parts.Meta, TaskMeta(task, strings, now));
+        _taskClocks.Add((task, parts.Meta, false));
+    }
+
+    /// <summary>What the task does, or its kind when the snapshot does not say.</summary>
+    private static string TaskTitle(BackgroundTaskInfo task, ChatStrings strings) =>
+        task.Description.Length > 0 ? task.Description : strings.BackgroundTaskWorkflow;
+
+    /// <summary>"workflow · 2m 3s": the kind, and the time since its start.</summary>
+    private static string TaskMeta(BackgroundTaskInfo task, ChatStrings strings, DateTimeOffset now) =>
+        Join(strings.BackgroundTaskWorkflow, TaskTime(task, now));
+
+    /// <summary>"Running · 5s": its state ("Stopping…" while a stop waits), and its time, which stands still once it ended.</summary>
+    private static string TaskState(BackgroundTaskInfo task, ChatStrings strings, DateTimeOffset now) =>
+        Join(task.IsStopping ? strings.BackgroundTaskStopping : strings.BackgroundTaskStatusLabel(task.Status), TaskTime(task, now));
+
+    /// <summary>From its start to its end (or now, while it runs); null without a start, or under a second.</summary>
+    private static string? TaskTime(BackgroundTaskInfo task, DateTimeOffset now)
+    {
+        if (task.StartedAt is not DateTimeOffset start) return null;
+        var ms = (long)((task.EndedAt ?? now) - start).TotalMilliseconds;
+        return ms >= 1000 ? ChatStrings.FormatAgentTime(ms) : null;
+    }
+
+    private void OpenTaskCard(BackgroundTaskInfo task)
+    {
+        if (_tracked == null) return;
+        _cardId = null;
+        _cardTask = task;
+        Build(_tracked);
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_attached && ShowsCard && ReferenceEquals(_cardTask, task)) _back.Focus();
+        }, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>
+    /// A task's detail: its dot (at work while it runs or stops, neutral when it ended with nothing telling how, else the
+    /// result's), its title, "Running · 5s", and the Stop while the host listens and the task runs; "Stopping…" and disabled while
+    /// the stop waits, with the line under it when the claude did not stop it. The agent's lines (who called it, the tokens, the
+    /// answer) do not show.
+    /// </summary>
+    private void BuildTaskCard(BackgroundTaskInfo task, ChatConversation conversation, ChatStrings strings, DateTimeOffset now)
+    {
+        var ended = task.Status != BackgroundTaskStatus.Running;
+        _cardDot.Classes.Set("running", !ended || task.IsStopping);
+        _cardDot.Classes.Set("failed", !task.IsStopping && (task.Status == BackgroundTaskStatus.Failed || task.Status == BackgroundTaskStatus.Stopped));
+        var title = TaskTitle(task, strings);
+        _cardTitle.Text = title;
+        ToolTip.SetTip(_cardTitle, title);
+        SetLine(_cardStatus, TaskState(task, strings, now));
+        if (task.EndedAt == null) _taskClocks.Add((task, _cardStatus, true));
+        foreach (var line in new[] { _cardCaller, _cardTime, _activity, _noResult }) SetLine(line, null);
+        _result.IsVisible = false;
+        _result.Text = null;
+
+        var hadKeyboard = _stop.IsKeyboardFocusWithin;
+        _stop.IsVisible = conversation.CanStopTasks && !ended;
+        _stop.IsEnabled = !task.IsStopping;
+        _stopText.Text = task.IsStopping ? strings.BackgroundTaskStopping : strings.Stop;
+        if (hadKeyboard && !(_stop.IsVisible && _stop.IsEnabled)) _back.Focus(); // the keyboard is not left on a button that cannot take it
+        SetLine(_stopFailed, task.StopFailed ? strings.BackgroundTaskStopFailed : null);
+        _cardLayer.IsVisible = true;
+    }
+
+    /// <summary>The detail's Stop: the conversation asks the host, and the detail says what came of it.</summary>
+    private void StopTask()
+    {
+        if (_tracked == null || _cardTask == null) return;
+        _tracked.RequestTaskStop(_cardTask);
+        if (IsVisible) Build(_tracked);
+    }
+
+    /// <summary>The keyboard to the task's row; to the × when the task is no longer listed.</summary>
+    private void FocusTaskRow(BackgroundTaskInfo task)
+    {
+        foreach (var (listed, parts) in _taskRows)
+        {
+            if (!ReferenceEquals(listed, task)) continue;
+            parts.Row.Focus();
+            return;
+        }
+        _close.Focus();
     }
 
     private bool SameShape(IReadOnlyList<AgentInfo> agents)
@@ -779,12 +1035,13 @@ internal sealed class AgentMapPanel : Border
     /// <summary>The parts of an agent's row that change with it.</summary>
     private sealed class AgentRowParts
     {
-        public AgentRowParts(string id)
+        /// <param name="tag">An agent's <see cref="AgentInfo.Id"/>, or a task's <see cref="BackgroundTaskInfo"/>: what the row stands for.</param>
+        public AgentRowParts(object tag)
         {
             Dot.Classes.Add("ClaudeChatAgentDot");
             Title.Classes.Add("ClaudeChatAgentRowTitle");
             Meta.Classes.Add("ClaudeChatAgentRowMeta");
-            Row = new Button { Content = RowBody(Dot, Title, Meta), Tag = id };
+            Row = new Button { Content = RowBody(Dot, Title, Meta), Tag = tag };
             Row.Classes.Add("ClaudeChatButton");
             Row.Classes.Add("ClaudeChatAgentRow");
         }
@@ -813,6 +1070,7 @@ internal sealed class AgentMapPanel : Border
     {
         if (_tracked == null) return;
         _cardId = id;
+        _cardTask = null;
         Build(_tracked);
         // the arrow is in the card's scroller, whose template comes with the card's first layout
         Dispatcher.UIThread.Post(() =>
@@ -844,6 +1102,8 @@ internal sealed class AgentMapPanel : Border
         if (_result.Text != result) _result.Text = result;
         _noResult.Text = strings.AgentNoResult;
         _noResult.IsVisible = string.IsNullOrEmpty(result);
+        _stop.IsVisible = false; // a task's
+        _stopFailed.IsVisible = false;
         _cardLayer.IsVisible = true;
     }
 
@@ -922,7 +1182,9 @@ internal sealed class AgentMapPanel : Border
         if (_narrow) return; // down, the card is over the agents and scrolls away with them: nothing at its side to keep it company
         var natural = _tree.Margin.Top + _mainNode.Bounds.Top - _scroller.Offset.Y;
         var room = _scroller.Viewport.Height - _mainNode.Bounds.Height;
-        var wanted = Math.Max(0, Math.Min(natural, room));
+        // never past the tree's end, as a sticky card in its own box: the tasks under the tree scroll in under it
+        var last = _tree.Margin.Top + _tree.Bounds.Height - _mainNode.Bounds.Height - _scroller.Offset.Y;
+        var wanted = Math.Min(Math.Max(0, Math.Min(natural, room)), Math.Max(natural, last));
         var shift = wanted - natural;
         var current = (_mainNode.RenderTransform as TranslateTransform)?.Y ?? 0;
         if (Math.Abs(current - shift) < 0.01) return;

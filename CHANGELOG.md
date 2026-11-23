@@ -30,6 +30,21 @@ All notable changes to this project are written here. The format follows
   forgets them; a session file never fills the list.
 - `/workflows` ("View running workflows") opens the Agent map, as `/tasks` does, and sends nothing. It is one of
   `ChatConversation.LocalCommands`, and the command palette lists it only once something is typed after the "/".
+- The Agent map lists the workflows running in the background under its tree: "2 background tasks · click a task for
+  details" (a tap in the touch layout), then a row for each in the agents' style, with its description (or "workflow")
+  and "workflow · 2m 3s". A row goes when the claude's snapshot drops its task. A click opens the task's detail: its
+  state and time ("Running · 5s", "Stopping…", then "Stopped", "Finished", "Failed" or "Ended", the time standing still
+  once it ended), kept open after the task ends, and closed by the back arrow, by closing the map, by another
+  conversation and by a new session. The agents' chip does not count the tasks.
+- Stopping a workflow from its detail: `ChatConversation.TaskStopRequested` (`TaskStopRequestedEventArgs`, with `TaskId`
+  and the `RequestId` the host sets) and `Protocol.StdinMessages.StopTask`, which writes the claude's `stop_task` control
+  request. The **Stop** button shows only while the host handles the event; it says "Stopping…" and cannot be pressed
+  while the answer is due, and an error answer (or no request id) shows "The task could not be stopped. It may have
+  finished already." under it and gives it back. A task the claude says it stopped reads `BackgroundTaskStatus.Stopped`
+  even when it left the snapshot with no notification, before the answer or after it; a new session forgets the stops
+  still waiting. New texts: `ChatStrings.BackgroundTasksHeaderOne`, `BackgroundTasksHeaderMany`,
+  `BackgroundTasksHeaderTouchOne`, `BackgroundTasksHeaderTouchMany`, `BackgroundTaskWorkflow`, `BackgroundTaskEnded`,
+  `BackgroundTaskStopping` and `BackgroundTaskStopFailed`.
 
 ### Changed
 

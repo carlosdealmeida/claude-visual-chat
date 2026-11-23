@@ -424,7 +424,29 @@ arquivo de sessão.
 O cartão principal diz o `ChatConversation.Title`, que o host define, ou "Esta sessão" sem ele; um clique o abre, com
 "Trabalhando" ou "Ocioso", os agentes e quantos estão em cada estado. O `/tasks` (e o `/bashes`) abre o mapa. A bolinha
 do chip fica azul enquanto um agente espera uma permissão, verde enquanto os agentes trabalham, vermelha quando nada
-trabalha e um falhou, e cinza no resto. A ficha da extensão
+trabalha e um falhou, e cinza no resto.
+
+Embaixo da árvore, enquanto o `ChatConversation.BackgroundTasks` tiver alguma, o mapa lista os workflows rodando em
+segundo plano: "2 tarefas em segundo plano · clique numa tarefa para ver os detalhes", e uma linha para cada, desenhada
+como a de um agente, com a descrição (ou "workflow") e "workflow · 2m 3s". A linha some assim que o retrato do claude
+deixa de ter a tarefa. Um clique abre o detalhe da tarefa: "Rodando · 5s", e um botão **Parar** quando o seu app sabe
+parar a tarefa. Enquanto o pedido espera, o botão diz "Parando…"; quando o
+claude recusa, "Não foi possível parar a tarefa. Ela pode já ter terminado." aparece embaixo dele e o botão volta. Um
+detalhe que ficou aberto guarda a tarefa depois que ela termina, com o jeito como terminou ("Parado · 5s", "Terminado",
+"Encerrado") e um tempo que não anda mais. O botão só aparece enquanto o seu app trata o `TaskStopRequested`: ponha em
+`e.RequestId` o id que você manda, dentro do tratador, e escreva o `StdinMessages.StopTask` para o claude:
+
+```csharp
+// parar um workflow em segundo plano: a resposta do claude só cita o id de pedido que você põe aqui
+conversation.TaskStopRequested += (_, e) =>
+    Send(StdinMessages.StopTask(e.RequestId = "req_" + ++ids, e.TaskId));
+```
+
+O claude encerra a tarefa e só depois responde, então a tarefa costuma sair do retrato antes de a resposta chegar; uma
+tarefa que o claude diz ter parado fica "Parado" mesmo sem notificação que diga isso. Um tratador que deixa o
+`RequestId` vazio não mandou nada, e o pedido falha na hora. Uma sessão nova esquece os pedidos que ainda esperam.
+
+A ficha da extensão
 também traz o prompt do agente, as chamadas de ferramenta dele, "Open transcript" e "Stop agent", que precisam da
 transcrição do próprio agente e de um jeito de pará-lo; eles não estão aqui.
 
@@ -833,7 +855,8 @@ O que muda:
 - **O mapa de agentes.** O subtítulo quebra a linha e fala em toque. Quando a árvore não cabe na largura do mapa (um
   celular em pé), ela desce: o cartão do agente principal em cima e os agentes embaixo dele, todos na largura do mapa, e
   quem foi chamado por outro agente continua 32 px para dentro, embaixo de quem chamou; o mapa rola só para baixo. Onde
-  ela cabe (um tablet), é a do desktop.
+  ela cabe (um tablet), é a do desktop. O cabeçalho das tarefas em segundo plano também fala em toque, e as linhas
+  delas, embaixo dos agentes, têm a largura das dos agentes.
 - **Alvos.** O que o dedo toca tem 44 px no mínimo: os botões da barra, as linhas das folhas e da paleta de comandos, o
   ✕ das faixas, da prévia de imagem e do mapa de agentes, e a seta de voltar dele. Uma linha da paleta roda o comando
   no toque, não no pressionar, então um dedo que rola a lista não roda nada.

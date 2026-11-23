@@ -134,6 +134,7 @@ public sealed class ChatConversation : ChatObservableObject
     private EventHandler? _userSettingsFileRequested;
     private readonly HashSet<string> _heldPeerMessages = new HashSet<string>(StringComparer.Ordinal); // the uuids shown as held
     private EventHandler<TaskOutputRequestedEventArgs>? _taskOutputRequested;
+    private EventHandler<TaskStopRequestedEventArgs>? _taskStopRequested;
 
     public ChatConversation()
     {
@@ -343,8 +344,31 @@ public sealed class ChatConversation : ChatObservableObject
     }
 
     /// <summary>
+    /// Raised when the user asks to stop a task of <see cref="BackgroundTasks"/> (the Stop of its detail in the Agent map), while it
+    /// runs and no earlier stop of it waits. The task says <see cref="BackgroundTaskInfo.IsStopping"/> already. The host makes a new
+    /// request id, sets <see cref="TaskStopRequestedEventArgs.RequestId"/> to it inside the handler and sends
+    /// <see cref="StdinMessages.StopTask"/> with it; the claude's answer comes back through <see cref="AppendLine"/>, after the handler
+    /// has returned (as for <see cref="TaskOutputRequested"/>). An error answer, or no request id, makes it
+    /// <see cref="BackgroundTaskInfo.StopFailed"/>; a success makes the task <see cref="BackgroundTaskStatus.Stopped"/> when it leaves the
+    /// snapshot (or has left it) with no notification telling how it ended. The Stop shows only while the host listens to this event.
+    /// </summary>
+    public event EventHandler<TaskStopRequestedEventArgs>? TaskStopRequested
+    {
+        add
+        {
+            _taskStopRequested += value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+        remove
+        {
+            _taskStopRequested -= value;
+            HostHandlersChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
     /// The host began or stopped listening to <see cref="LinkRequested"/>, <see cref="FeedbackRequested"/>, <see cref="PathActivated"/>,
-    /// <see cref="UserSettingsFileRequested"/> or <see cref="TaskOutputRequested"/>.
+    /// <see cref="UserSettingsFileRequested"/>, <see cref="TaskOutputRequested"/> or <see cref="TaskStopRequested"/>.
     /// </summary>
     internal event EventHandler? HostHandlersChanged;
 
@@ -1185,6 +1209,8 @@ public sealed class ChatConversation : ChatObservableObject
         if (BackgroundTasks.Count > 0) BackgroundTasks.Clear();
         _backgroundStarts.Clear(); // the next session's tasks are its own
         _backgroundEnds.Clear();
+        _taskStopRequests.Clear(); // and so are its requests, which may reuse the ids
+        _stoppedOnRequest.Clear();
         if (PendingPermissions.Count > 0) PendingPermissions.Clear();
         _tools.Clear();
         _nestedTools.Clear();
@@ -2740,8 +2766,11 @@ public sealed class ChatConversation : ChatObservableObject
             var task = BackgroundTasks[i];
             if (ids.Contains(task.TaskId)) continue;
             task.EndedAt = _clock();
-            task.Status = _backgroundEnds.TryGetValue(task.TaskId, out var end) ? end : BackgroundTaskStatus.Ended;
+            task.Status = _backgroundEnds.TryGetValue(task.TaskId, out var end) ? end
+                : _stoppedOnRequest.Contains(task) ? BackgroundTaskStatus.Stopped
+                : BackgroundTaskStatus.Ended;
             _backgroundEnds.Remove(task.TaskId);
+            _stoppedOnRequest.Remove(task);
             BackgroundTasks.RemoveAt(i);
         }
         // what is left is all in the snapshot: each goes to its place, after the ones already placed
@@ -2783,6 +2812,72 @@ public sealed class ChatConversation : ChatObservableObject
         "stopped" or "killed" => BackgroundTaskStatus.Stopped,
         _ => BackgroundTaskStatus.Ended,
     };
+
+    // ---- stopping a task in the background ----
+
+    /// <summary>The stop requests the host sent and the claude has not answered, by their id, with the task each one stops.</summary>
+    private readonly Dictionary<string, BackgroundTaskInfo> _taskStopRequests = new Dictionary<string, BackgroundTaskInfo>(StringComparer.Ordinal);
+
+    /// <summary>The listed tasks the claude said it stopped: one that leaves the snapshot with no notification was stopped, not ended.</summary>
+    private readonly HashSet<BackgroundTaskInfo> _stoppedOnRequest = new HashSet<BackgroundTaskInfo>();
+
+    /// <summary>Whether the user can stop a task in the background (the host listens to <see cref="TaskStopRequested"/>).</summary>
+    internal bool CanStopTasks => _taskStopRequested != null;
+
+    /// <summary>
+    /// Asks the host to stop <paramref name="task"/> (raises <see cref="TaskStopRequested"/>), when the host listens, the task is one
+    /// of <see cref="BackgroundTasks"/>, it runs and no stop of it waits. True when the event was raised. The task is
+    /// <see cref="BackgroundTaskInfo.IsStopping"/> from before the event; the host's
+    /// <see cref="TaskStopRequestedEventArgs.RequestId"/> becomes the request that waits for its answer, and none fails the stop at
+    /// once. A handler that throws still leaves the request it named.
+    /// </summary>
+    internal bool RequestTaskStop(BackgroundTaskInfo task)
+    {
+        if (task == null) throw new ArgumentNullException(nameof(task));
+        var handler = _taskStopRequested;
+        if (handler == null || task.Status != BackgroundTaskStatus.Running || task.IsStopping || !BackgroundTasks.Contains(task)) return false;
+        task.StopFailed = false;
+        task.IsStopping = true;
+        var args = new TaskStopRequestedEventArgs(task.TaskId);
+        try
+        {
+            handler(this, args);
+        }
+        finally
+        {
+            if (string.IsNullOrEmpty(args.RequestId))
+            {
+                task.IsStopping = false;
+                task.StopFailed = true;
+            }
+            else
+            {
+                _taskStopRequests[args.RequestId!] = task;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// The answer to a stop request, which only this takes (true): an error fails the stop; a success ends the waiting and marks the
+    /// task as stopped on request, so that it reads <see cref="BackgroundTaskStatus.Stopped"/> once out of the snapshot with no
+    /// notification (the claude answers after the task has left it, which turns its <see cref="BackgroundTaskStatus.Ended"/> into a
+    /// stop). False for an answer to any other request.
+    /// </summary>
+    private bool TakeTaskStop(ControlAcknowledged e)
+    {
+        if (!_taskStopRequests.TryGetValue(e.RequestId, out var task)) return false;
+        _taskStopRequests.Remove(e.RequestId);
+        task.IsStopping = false;
+        if (e.IsError)
+        {
+            task.StopFailed = true;
+            return true;
+        }
+        if (task.Status == BackgroundTaskStatus.Running) _stoppedOnRequest.Add(task);
+        else if (task.Status == BackgroundTaskStatus.Ended) task.Status = BackgroundTaskStatus.Stopped;
+        return true;
+    }
 
     // ---- the output of a running command ----
 
@@ -3117,6 +3212,7 @@ public sealed class ChatConversation : ChatObservableObject
     private void OnControlAcknowledged(ControlAcknowledged e)
     {
         if (TakeTaskOutput(e)) return; // the answer to an output request, an error too, is that request's alone
+        if (TakeTaskStop(e)) return; // and so is the answer to a stop
         if (e.IsError)
         {
             // the host asked for the data of the panel that is open, and the claude refused

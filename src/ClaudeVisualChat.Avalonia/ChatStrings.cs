@@ -494,6 +494,14 @@ public sealed record ChatStrings
         AgentMapSubtitleOne = "1 agente · clique num agente para ver detalhes",
         AgentMapSubtitleTouch = "{0} agentes · toque num agente para ver os detalhes",
         AgentMapSubtitleTouchOne = "1 agente · toque num agente para ver os detalhes",
+        BackgroundTasksHeaderOne = "{0} tarefa em segundo plano · clique numa tarefa para ver os detalhes",
+        BackgroundTasksHeaderMany = "{0} tarefas em segundo plano · clique numa tarefa para ver os detalhes",
+        BackgroundTasksHeaderTouchOne = "{0} tarefa em segundo plano · toque numa tarefa para ver os detalhes",
+        BackgroundTasksHeaderTouchMany = "{0} tarefas em segundo plano · toque numa tarefa para ver os detalhes",
+        BackgroundTaskWorkflow = "workflow",
+        BackgroundTaskEnded = "Encerrado",
+        BackgroundTaskStopping = "Parando…",
+        BackgroundTaskStopFailed = "Não foi possível parar a tarefa. Ela pode já ter terminado.",
         AgentMain = "Agente principal",
         AgentSpawnedByMain = "Chamado pelo agente principal",
         AgentSpawnedBy = "Chamado por {0}",
@@ -2010,6 +2018,30 @@ public sealed record ChatStrings
     /// <summary>The line under the Agent map's title in the touch layout, with one agent.</summary>
     public string AgentMapSubtitleTouchOne { get; init; } = "1 agent · tap an agent for details";
 
+    /// <summary>The header of the Agent map's section of background tasks, with one: <c>{0}</c> is how many (1).</summary>
+    public string BackgroundTasksHeaderOne { get; init; } = "{0} background task · click a task for details";
+
+    /// <summary>The header of the Agent map's section of background tasks: <c>{0}</c> is how many.</summary>
+    public string BackgroundTasksHeaderMany { get; init; } = "{0} background tasks · click a task for details";
+
+    /// <summary><see cref="BackgroundTasksHeaderOne"/> in the touch layout, where a task is tapped.</summary>
+    public string BackgroundTasksHeaderTouchOne { get; init; } = "{0} background task · tap a task for details";
+
+    /// <summary><see cref="BackgroundTasksHeaderMany"/> in the touch layout, where a task is tapped.</summary>
+    public string BackgroundTasksHeaderTouchMany { get; init; } = "{0} background tasks · tap a task for details";
+
+    /// <summary>The kind of a workflow running in the background, on its row of the Agent map (and its title when it has no description).</summary>
+    public string BackgroundTaskWorkflow { get; init; } = "workflow";
+
+    /// <summary>A background task that left the claude's list with nothing telling how it ended.</summary>
+    public string BackgroundTaskEnded { get; init; } = "Ended";
+
+    /// <summary>A background task whose stop was asked and not answered yet; also the Stop button meanwhile.</summary>
+    public string BackgroundTaskStopping { get; init; } = "Stopping…";
+
+    /// <summary>The line under the Stop button of a background task when the claude did not stop it.</summary>
+    public string BackgroundTaskStopFailed { get; init; } = "The task could not be stopped. It may have finished already.";
+
     /// <summary>The main agent's card in the Agent map (0.6.0: the card says the conversation's title, or <see cref="AgentThisSession"/>; this stays for hosts that read it).</summary>
     public string AgentMain { get; init; } = "Main agent";
 
@@ -2832,6 +2864,26 @@ public sealed record ChatStrings
     internal string FormatAgentMapSubtitle(int count, bool touch = false) => touch
         ? count == 1 ? AgentMapSubtitleTouchOne : AgentMapSubtitleTouch.Replace("{0}", FormatNumber(count))
         : count == 1 ? AgentMapSubtitleOne : AgentMapSubtitle.Replace("{0}", FormatNumber(count));
+
+    /// <summary>
+    /// <see cref="BackgroundTasksHeaderOne"/> or <see cref="BackgroundTasksHeaderMany"/>: "2 background tasks · click a task for
+    /// details"; in the touch layout <see cref="BackgroundTasksHeaderTouchOne"/> or <see cref="BackgroundTasksHeaderTouchMany"/>,
+    /// which speak of a tap.
+    /// </summary>
+    internal string FormatBackgroundTasksHeader(int count, bool touch = false) =>
+        (touch
+            ? count == 1 ? BackgroundTasksHeaderTouchOne : BackgroundTasksHeaderTouchMany
+            : count == 1 ? BackgroundTasksHeaderOne : BackgroundTasksHeaderMany).Replace("{0}", FormatNumber(count));
+
+    /// <summary>The word for a background task's state: an agent's (<see cref="AgentStatusLabel"/>), or <see cref="BackgroundTaskEnded"/>.</summary>
+    internal string BackgroundTaskStatusLabel(BackgroundTaskStatus status) => status switch
+    {
+        BackgroundTaskStatus.Running => AgentRunning,
+        BackgroundTaskStatus.Finished => AgentFinished,
+        BackgroundTaskStatus.Failed => AgentFailed,
+        BackgroundTaskStatus.Stopped => AgentStopped,
+        _ => BackgroundTaskEnded,
+    };
 
     /// <summary>
     /// A token count, short, like the extension's: as is below 1,000 ("800"), then thousands with one decimal up to
