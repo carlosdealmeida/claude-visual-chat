@@ -811,9 +811,15 @@ internal sealed class AgentMapPanel : Border
     private static string TaskMeta(BackgroundTaskInfo task, ChatStrings strings, DateTimeOffset now) =>
         Join(strings.BackgroundTaskWorkflow, TaskTime(task, now));
 
-    /// <summary>"Running · 5s": its state ("Stopping…" while a stop waits), and its time, which stands still once it ended.</summary>
+    /// <summary>
+    /// "Running · 5s": its state ("Stopping…" while a stop waits and it still runs), and its time, which stands still once it ended.
+    /// </summary>
     private static string TaskState(BackgroundTaskInfo task, ChatStrings strings, DateTimeOffset now) =>
-        Join(task.IsStopping ? strings.BackgroundTaskStopping : strings.BackgroundTaskStatusLabel(task.Status), TaskTime(task, now));
+        Join(IsStopping(task) ? strings.BackgroundTaskStopping : strings.BackgroundTaskStatusLabel(task.Status), TaskTime(task, now));
+
+    /// <summary>A stop waits for its answer and the task still runs: one that ended meanwhile shows how it ended.</summary>
+    private static bool IsStopping(BackgroundTaskInfo task) =>
+        task.IsStopping && task.Status == BackgroundTaskStatus.Running;
 
     /// <summary>From its start to its end (or now, while it runs); null without a start, or under a second.</summary>
     private static string? TaskTime(BackgroundTaskInfo task, DateTimeOffset now)
@@ -844,8 +850,9 @@ internal sealed class AgentMapPanel : Border
     private void BuildTaskCard(BackgroundTaskInfo task, ChatConversation conversation, ChatStrings strings, DateTimeOffset now)
     {
         var ended = task.Status != BackgroundTaskStatus.Running;
-        _cardDot.Classes.Set("running", !ended || task.IsStopping);
-        _cardDot.Classes.Set("failed", !task.IsStopping && (task.Status == BackgroundTaskStatus.Failed || task.Status == BackgroundTaskStatus.Stopped));
+        var stopping = IsStopping(task);
+        _cardDot.Classes.Set("running", !ended); // a stop that waits for its answer does not keep it at work once the task ended
+        _cardDot.Classes.Set("failed", !stopping && (task.Status == BackgroundTaskStatus.Failed || task.Status == BackgroundTaskStatus.Stopped));
         var title = TaskTitle(task, strings);
         _cardTitle.Text = title;
         ToolTip.SetTip(_cardTitle, title);
@@ -857,8 +864,8 @@ internal sealed class AgentMapPanel : Border
 
         var hadKeyboard = _stop.IsKeyboardFocusWithin;
         _stop.IsVisible = conversation.CanStopTasks && !ended;
-        _stop.IsEnabled = !task.IsStopping;
-        _stopText.Text = task.IsStopping ? strings.BackgroundTaskStopping : strings.Stop;
+        _stop.IsEnabled = !stopping;
+        _stopText.Text = stopping ? strings.BackgroundTaskStopping : strings.Stop;
         if (hadKeyboard && !(_stop.IsVisible && _stop.IsEnabled)) _back.Focus(); // the keyboard is not left on a button that cannot take it
         SetLine(_stopFailed, task.StopFailed ? strings.BackgroundTaskStopFailed : null);
         _cardLayer.IsVisible = true;

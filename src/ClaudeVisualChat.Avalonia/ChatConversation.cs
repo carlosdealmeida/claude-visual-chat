@@ -506,7 +506,8 @@ public sealed class ChatConversation : ChatObservableObject
     /// The workflows running in the background, as the claude's last <c>system/background_tasks_changed</c> snapshot has them, in
     /// its order (subagents are in <see cref="Agents"/>; commands are not listed). A task that stays in the snapshot keeps its
     /// instance; one that leaves is taken out after it gets its <see cref="BackgroundTaskInfo.EndedAt"/> and its final
-    /// <see cref="BackgroundTaskInfo.Status"/>. A session file never fills it.
+    /// <see cref="BackgroundTaskInfo.Status"/>. <see cref="Clear"/> takes them all out the same way, each one
+    /// <see cref="BackgroundTaskStatus.Ended"/> first. A session file never fills it.
     /// </summary>
     public ObservableCollection<BackgroundTaskInfo> BackgroundTasks { get; } = new ObservableCollection<BackgroundTaskInfo>();
 
@@ -1192,7 +1193,10 @@ public sealed class ChatConversation : ChatObservableObject
         UpdateRunningAgents();
     }
 
-    /// <summary>Empties the items (and their bookmarks), the queued messages, the agents and the pending requests. Session details stay.</summary>
+    /// <summary>
+    /// Empties the items (and their bookmarks), the queued messages, the agents, the background tasks (each one
+    /// <see cref="BackgroundTaskStatus.Ended"/> first) and the pending requests. Session details stay.
+    /// </summary>
     public void Clear()
     {
         Items.Clear();
@@ -1206,7 +1210,17 @@ public sealed class ChatConversation : ChatObservableObject
         Agents.Clear();
         _agentsStoppedByHistory.Clear();
         _tasksToldLive.Clear();
-        if (BackgroundTasks.Count > 0) BackgroundTasks.Clear();
+        if (BackgroundTasks.Count > 0)
+        {
+            // a host holding a task sees it end, as one that leaves the snapshot with no notification
+            var now = _clock();
+            foreach (var task in BackgroundTasks)
+            {
+                task.EndedAt = now;
+                task.Status = BackgroundTaskStatus.Ended;
+            }
+            BackgroundTasks.Clear();
+        }
         _backgroundStarts.Clear(); // the next session's tasks are its own
         _backgroundEnds.Clear();
         _taskStopRequests.Clear(); // and so are its requests, which may reuse the ids

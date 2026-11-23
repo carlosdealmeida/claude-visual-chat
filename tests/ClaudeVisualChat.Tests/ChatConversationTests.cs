@@ -2249,6 +2249,25 @@ public class ChatConversationTests
         Assert.Equal(BackgroundTaskStatus.Ended, w1.Status);
     }
 
+    [Fact]
+    public void Clearing_ends_the_listed_tasks_before_it_takes_them_out()
+    {
+        var now = new DateTimeOffset(2026, 11, 22, 10, 0, 0, TimeSpan.Zero);
+        var c = new ChatConversation { Clock = () => now };
+        c.Apply(WorkflowStarted("w1"));
+        c.Apply(Workflows("w1", "w2"));
+        var held = c.BackgroundTasks.ToList();
+        var seenWhenRemoved = new List<(BackgroundTaskStatus, DateTimeOffset?)>();
+        c.BackgroundTasks.CollectionChanged += (_, _) => seenWhenRemoved.AddRange(held.Select(t => (t.Status, t.EndedAt)));
+
+        now = now.AddMinutes(1);
+        c.Clear();
+        Assert.Empty(c.BackgroundTasks);
+        // a host holding a task sees it ended, by the conversation's clock, and already so when the list empties
+        Assert.All(held, t => Assert.Equal((BackgroundTaskStatus.Ended, (DateTimeOffset?)now), (t.Status, t.EndedAt)));
+        Assert.Equal(new[] { (BackgroundTaskStatus.Ended, (DateTimeOffset?)now), (BackgroundTaskStatus.Ended, (DateTimeOffset?)now) }, seenWhenRemoved);
+    }
+
     // ---- stopping a background task ----
 
     private static string StopAnswer(string requestId) =>

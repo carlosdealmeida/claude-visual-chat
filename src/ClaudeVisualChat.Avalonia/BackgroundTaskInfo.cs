@@ -17,7 +17,7 @@ public enum BackgroundTaskStatus
     /// <summary>It left the snapshot after its notification said <c>stopped</c> (or <c>killed</c>).</summary>
     Stopped,
 
-    /// <summary>It left the snapshot with no notification telling how.</summary>
+    /// <summary>It left the snapshot with no notification telling how, or the conversation was cleared while it ran.</summary>
     Ended,
 }
 
@@ -62,7 +62,9 @@ public sealed class BackgroundTaskInfo : ChatObservableObject
         internal set => SetField(ref _startedAt, value);
     }
 
-    /// <summary>When it left the snapshot (by <see cref="ChatConversation.Clock"/>); null while it runs.</summary>
+    /// <summary>
+    /// When it left the snapshot, or the conversation was cleared (by <see cref="ChatConversation.Clock"/>); null while it runs.
+    /// </summary>
     public DateTimeOffset? EndedAt
     {
         get => _endedAt;

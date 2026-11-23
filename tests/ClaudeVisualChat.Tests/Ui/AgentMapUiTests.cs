@@ -894,6 +894,39 @@ public class AgentMapUiTests
     }
 
     [AvaloniaFact]
+    public void A_task_that_ends_while_its_stop_waits_shows_how_it_ended_and_no_answer_is_needed()
+    {
+        // with a notification: its status and its dot, not "Stopping…"
+        var w = new Workflow();
+        var o = w.Ui;
+        w.OpenDetail();
+        UiHelpers.Click(o.Window, o.StopButton!);
+        w.Conversation.AppendLine(TaskNotified("w1", "stopped"));
+        w.Conversation.AppendLine(Snapshot());
+        UiHelpers.Pump();
+        Assert.True(o.Map.ShowsCard);
+        Assert.Contains("Stopped · 5s", UiHelpers.Texts(o.Card));
+        Assert.DoesNotContain(UiHelpers.Texts(o.Card), t => t.Contains("Stopping…"));
+        Assert.Null(o.StopButton);
+        Assert.Contains("failed", o.CardDot.Classes);
+        Assert.DoesNotContain("running", o.CardDot.Classes);
+        o.Window.Close();
+
+        // with none: "Ended", the neutral dot
+        var quiet = new Workflow();
+        quiet.OpenDetail();
+        UiHelpers.Click(quiet.Ui.Window, quiet.Ui.StopButton!);
+        quiet.Conversation.AppendLine(Snapshot());
+        UiHelpers.Pump();
+        Assert.Contains("Ended · 5s", UiHelpers.Texts(quiet.Ui.Card));
+        Assert.DoesNotContain(UiHelpers.Texts(quiet.Ui.Card), t => t.Contains("Stopping…"));
+        Assert.Null(quiet.Ui.StopButton);
+        Assert.DoesNotContain("running", quiet.Ui.CardDot.Classes);
+        Assert.DoesNotContain("failed", quiet.Ui.CardDot.Classes);
+        quiet.Ui.Window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_failed_stop_says_so_and_gives_the_button_back()
     {
         const string failure = "The task could not be stopped. It may have finished already.";
