@@ -993,6 +993,10 @@ O exemplo toca uma gravação numa janela do tamanho de um celular:
   corta); e um texto de "Por quê?" para cada categoria da troca de modelo (há um texto genérico). O mapa de agentes não
   tem a linha de cauda para um agente vivo fora de qualquer dobra: o mapa o lista. O CHANGELOG (em inglês) lista o que
   fica de fora em "Waiting".
+- Também fica de fora, como a extensão 2.1.330 os tem: o cartão das primeiras sessões e a tela inicial com sugestões
+  de tarefa (o `claude` só os entrega à extensão); shells e monitors nas tarefas em segundo plano do mapa de agentes
+  (ele lista só os workflows); e o cartão de pergunta. O anel de foco de alto contraste do cartão de permissão e o Esc
+  fora da caixa de mensagem também não foram trazidos.
 
 ## App de exemplo
 

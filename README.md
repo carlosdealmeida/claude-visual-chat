@@ -979,6 +979,10 @@ The sample plays a recording in a phone-sized window: `dotnet run --project samp
   Mode (`claude -p` does not run it); the "Ultracode" suffix of the model chip (it needs `get_settings`, which the
   machine cuts); and a "Why?" text for each category of the model switch (there is one generic text). The CHANGELOG
   lists these under "Waiting". The Agent map has no tail row for a live agent outside any fold: the map lists it.
+- Also left out, as the extension 2.1.330 has them: the card for the first sessions and the home screen with task
+  suggestions (the claude hands them only to the extension); shells and monitors in the background tasks of the Agent
+  map (it lists the workflows only); and the question card. The high-contrast focus ring of the permission card and Esc
+  pressed outside the reply box are not carried over either.
 
 ## Sample app
 

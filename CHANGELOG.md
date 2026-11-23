@@ -86,6 +86,17 @@ All notable changes to this project are written here. The format follows
   the second click of a double click, a click while some of the output is selected and a drag to select do not open it.
   A short text that fits behaves as before, as does a long one.
 
+### Waiting
+
+What stays out of 0.11.0, and why. Each item is waiting for something the component does not have:
+
+- **The card for the first sessions and the home screen with task suggestions.** The claude hands them only to the
+  extension, which it recognizes by its entry point: it keeps the count of sessions itself and asks a service to say
+  who is eligible. A card made in the component alone would change nothing in the claude.
+- **Shells and monitors in the background tasks of the Agent map.** The map lists the workflows only. The section is built
+  so that commands and monitors fit in it by changing the filter; they wait for a round of their own.
+- **The question card.** It needs a change in the protocol the host speaks with the claude, and goes in a round of its own.
+
 ## [0.10.0] - 2026-11-21
 
 ### Added
