@@ -1116,7 +1116,8 @@ internal partial class ToolCallView : UserControl
         if (first && ReferenceEquals(_awaitingFocus, cell))
         {
             _awaitingFocus = null;
-            if (cut) content.Focus(_focusMethod); // drawn again under the keyboard, it keeps it
+            // drawn again under the keyboard, it keeps it, unless another control took it meanwhile
+            if (cut && TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() == null) content.Focus(_focusMethod);
         }
         else if (changed && !cut && focused)
         {

@@ -659,6 +659,49 @@ public class PlanDocumentTests
         ui.Window.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData("cancel", "x")]
+    [InlineData("cancel", "")]
+    [InlineData("escape", "x")]
+    [InlineData("escape", "")]
+    public void Cancelling_offers_no_comment_until_a_new_selection_with_or_without_a_draft(string how, string draft)
+    {
+        var ui = new Opened(Planning());
+        var intro = Block(ui, "Intro line.");
+        var read = ui.Document.Blocks.First(b => b.Words.StartsWith("Read ", StringComparison.Ordinal));
+        Select(ui.Window, read, 0, 4);                                                     // the box opens under it: the passages above stay free
+        ClickAddComment(ui);
+        var box = CommentBox(ui);
+        if (draft.Length > 0)
+        {
+            UiHelpers.Type(ui.Window, draft);
+            Select(ui.Window, intro, 0, 5);                                                // held: this selection is offered nothing
+            Assert.Null(AddCommentButton(ui));
+        }
+        Assert.Equal(draft.Length > 0, box.HasDraft);
+        // "Add Comment" is not shown at any moment of the cancel, not even before the keyboard goes back
+        var add = ui.Document.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("ClaudeChatPlanAddComment"));
+        var shown = 0;
+        EventHandler<AvaloniaPropertyChangedEventArgs> watch = (_, e) =>
+        {
+            if (e.Property == Visual.IsVisibleProperty && add.IsVisible) shown++;
+        };
+        add.PropertyChanged += watch;
+        if (draft.Length > 0) Assert.NotNull(intro.SelectedRange);                         // (the premise: a passage is selected when it cancels)
+        if (how == "cancel") UiHelpers.Click(ui.Window, UiHelpers.ButtonWithText(box, ui.Strings.PlanCommentCancel));
+        else UiHelpers.Press(ui.Window, Key.Escape);
+        UiHelpers.Pump();
+        add.PropertyChanged -= watch;
+        Assert.False(box.IsOpen);
+        Assert.Equal(0, shown);                                                            // cancelling offers nothing, as in 0.10.0
+        Assert.Null(AddCommentButton(ui));
+
+        // a new selection offers it again
+        Select(ui.Window, intro, 6, 10);
+        Assert.NotNull(AddCommentButton(ui));
+        ui.Window.Close();
+    }
+
     [AvaloniaFact]
     public void Opening_over_a_draft_is_refused()
     {

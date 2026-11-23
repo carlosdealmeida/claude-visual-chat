@@ -2135,29 +2135,15 @@ public sealed class ChatConversation : ChatObservableObject
         return images;
     }
 
-    /// <summary>The longest symbol <see cref="CommandOutputText.Symbols"/> writes: <c>\u{10FFFF}</c>.</summary>
-    private const int LongestSymbol = 10;
-
     /// <summary>
     /// The whole result for the item: a command's output as <see cref="CommandOutputText.Result"/> shows it, and cut at the cap, a
-    /// little before it when the cap falls inside a <c>\u{…}</c> or between the two halves of a surrogate pair.
+    /// little before it when the cap falls inside a <c>\u{…}</c> or between the two halves of a surrogate pair
+    /// (<see cref="CommandOutputText.CutOutsideSymbols"/>).
     /// </summary>
     private static string KeptResult(string toolName, string text)
     {
         if (toolName == "Bash" || toolName == "PowerShell" || toolName == "TaskOutput") text = CommandOutputText.Result(text);
-        if (text.Length <= ToolPresentation.MaxKeptResultChars) return text;
-        var cut = ToolPresentation.MaxKeptResultChars;
-        // a symbol that starts in the last characters and closes past the cap goes whole
-        for (var start = cut - LongestSymbol + 1; start < cut; start++)
-        {
-            if (string.CompareOrdinal(text, start, "\\u{", 0, 3) != 0) continue;
-            var close = text.IndexOf('}', start + 3, Math.Min(LongestSymbol - 3, text.Length - start - 3));
-            if (close < cut) continue; // closed before the cap, or no symbol at all
-            cut = start;
-            break;
-        }
-        if (char.IsHighSurrogate(text[cut - 1]) && char.IsLowSurrogate(text[cut])) cut--;
-        return text.Substring(0, cut);
+        return CommandOutputText.CutOutsideSymbols(text, ToolPresentation.MaxKeptResultChars);
     }
 
     /// <summary>

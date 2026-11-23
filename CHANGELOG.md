@@ -63,7 +63,8 @@ All notable changes to this project are written here. The format follows
   selector after a letter as `\u{FE0F}`. `ToolCallItem.FullResultText` carries this text, so a host that reads it gets
   the symbols too; the cap at `ToolPresentation.MaxKeptResultChars` counts it and never cuts a symbol or a surrogate
   pair in two. The error of any tool shows the same symbols, with each carriage return as a line break (the error of a
-  TaskOutput now loses its plain color codes as those of Bash and PowerShell do; before, their text stayed). What a running
+  TaskOutput now loses its plain color codes as those of Bash and PowerShell do; before, their text stayed), and its cut
+  at 2000 characters does not split a symbol or a surrogate pair either. What a running
   command has printed so far still loses every terminal code, and now shows its bidirectional controls as `\u202E`.
 
 ### Fixed

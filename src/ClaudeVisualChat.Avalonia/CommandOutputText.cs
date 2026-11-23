@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Text;
 
@@ -126,6 +127,31 @@ internal static class CommandOutputText
         if (result == null) return text;
         result.Append(text, copied, text.Length - copied);
         return result.ToString();
+    }
+
+    /// <summary>The longest symbol <see cref="Symbols"/> writes: <c>\u{10FFFF}</c>.</summary>
+    internal const int LongestSymbol = 10;
+
+    /// <summary>
+    /// The first <paramref name="maxChars"/> UTF-16 units of a text made by <see cref="Symbols"/> (the text itself when it is no
+    /// longer), a little fewer when the cut falls inside a <c>\u{…}</c> (the symbol goes whole) or between the two halves of a
+    /// surrogate pair.
+    /// </summary>
+    internal static string CutOutsideSymbols(string text, int maxChars)
+    {
+        if (text.Length <= maxChars) return text;
+        var cut = maxChars;
+        // a symbol that starts in the last characters and closes past the cut goes whole
+        for (var start = Math.Max(0, cut - LongestSymbol + 1); start < cut; start++)
+        {
+            if (string.CompareOrdinal(text, start, "\\u{", 0, 3) != 0) continue;
+            var close = text.IndexOf('}', start + 3, Math.Min(LongestSymbol - 3, text.Length - start - 3));
+            if (close < cut) continue; // closed before the cut, or no symbol at all
+            cut = start;
+            break;
+        }
+        if (cut > 0 && char.IsHighSurrogate(text[cut - 1]) && char.IsLowSurrogate(text[cut])) cut--;
+        return text.Substring(0, cut);
     }
 
     /// <summary>The text with each bidirectional control (U+061C, 200E, 200F, 202A to 202E, 2066 to 2069) written as <c>\uXXXX</c>.</summary>

@@ -165,7 +165,8 @@ internal sealed class PlanDocumentPanel : Border
 
     /// <summary>
     /// True while the comment box holds a draft on a passage: no other selection is offered "Add Comment", and the passage the box
-    /// writes about is not changed.
+    /// writes about is not changed. Set back to false, it offers nothing by itself: the next selection does (a cancelled box
+    /// offers "Add Comment" again on no passage, as in 0.10.0).
     /// </summary>
     internal bool IsCommentHeld
     {
@@ -174,7 +175,7 @@ internal sealed class PlanDocumentPanel : Border
         {
             if (_commentHeld == value) return;
             _commentHeld = value;
-            if (_attached) UpdateAddComment();
+            if (_attached && value) UpdateAddComment();
         }
     }
 

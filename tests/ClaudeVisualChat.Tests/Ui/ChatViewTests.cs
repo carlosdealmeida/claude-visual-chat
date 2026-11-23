@@ -1148,6 +1148,28 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
+    public void A_short_command_drawn_again_does_not_take_back_the_keyboard_another_control_took()
+    {
+        var (c, tool) = Answered("ok", command: WideCommand);
+        var (view, window) = OpenNarrow(c);
+        Assert.True(Contents(view, tool)[0].Focus());
+        UiHelpers.Press(window, Key.Enter);
+        Assert.True(tool.IsInputExpanded);
+        Assert.Same(Contents(view, tool)[0], UiHelpers.Focused(window));
+
+        // closed again under the keyboard: the cut cell waits for its first measure to take the keyboard back, and the reply box
+        // takes it before the layout comes
+        tool.IsInputExpanded = false;
+        var input = UiHelpers.Input(view);
+        Assert.True(input.Focus());
+        UiHelpers.Pump();
+        var cell = Contents(view, tool)[0];
+        Assert.Contains("expandable", cell.Classes); // (the premise: the closed command is cut, a stop)
+        Assert.Same(input, UiHelpers.Focused(window)); // the cell does not take it back
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Space_and_a_click_open_it_too()
     {
         var (c, tool) = Answered("ok", command: WideCommand);

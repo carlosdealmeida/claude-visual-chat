@@ -1,6 +1,5 @@
 using System;
 using System.Text.RegularExpressions;
-using ClaudeVisualChat.Controls;
 
 namespace ClaudeVisualChat;
 
@@ -69,6 +68,7 @@ internal static class ToolErrorText
         if (toolName == "Bash" || toolName == "PowerShell" || toolName == "TaskOutput") text = CommandOutputText.WithoutSimpleColors(text);
         text = CommandOutputText.Symbols(text.Replace("\r\n", "\n").Replace('\r', '\n'), keepCarriageReturn: false).Trim();
 
-        return ChatText.Clip(text, MaxChars);
+        var kept = CommandOutputText.CutOutsideSymbols(text, MaxChars);
+        return kept.Length < text.Length ? kept + "…" : text;
     }
 }

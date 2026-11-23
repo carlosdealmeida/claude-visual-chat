@@ -98,4 +98,19 @@ public class ToolErrorTextTests
         Assert.EndsWith("…", cut);
         Assert.Equal(new string('x', 2000), ToolErrorText.Clean("Read", new string('x', 2000)));
     }
+
+    [Fact]
+    public void The_cut_never_ends_inside_a_symbol_or_a_surrogate_pair()
+    {
+        var tail = new string('y', 100);
+        // U+E0001 is shown as \u{E0001}, 9 units from 1995 to 2003: the 2000th unit is inside it, so the cut goes before it
+        var inside = ToolErrorText.Clean("Read", new string('x', 1995) + "\U000E0001" + tail)!;
+        Assert.Equal(new string('x', 1995) + "…", inside);
+        // the same symbol closing on the 2000th unit stays whole
+        var closed = ToolErrorText.Clean("Read", new string('x', 1991) + "\U000E0001" + tail)!;
+        Assert.Equal(new string('x', 1991) + "\\u{E0001}…", closed);
+        // an emoji whose halves are the 2000th and 2001st units is not split
+        var pair = ToolErrorText.Clean("Read", new string('x', 1999) + "\U0001F600" + tail)!;
+        Assert.Equal(new string('x', 1999) + "…", pair);
+    }
 }
