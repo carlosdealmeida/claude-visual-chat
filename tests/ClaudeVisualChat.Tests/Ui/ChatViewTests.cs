@@ -1095,6 +1095,21 @@ public class ChatViewTests
         return (view, UiHelpers.Show(view, 400));
     }
 
+    /// <summary>
+    /// A point of the window on the letters of <paramref name="text"/>, <paramref name="x"/> px from its left. A text takes a press
+    /// only where its letters are drawn, and how high they sit in the line changes with the font, which is not the same on every
+    /// system: the point is in the middle of the rows that reach the text.
+    /// </summary>
+    private static Point OnTheLetters(Window window, TextBlock text, double x)
+    {
+        UiHelpers.DrawFrames();
+        var top = text.TranslatePoint(new Point(x, 0), window)!.Value;
+        var rows = Enumerable.Range(0, (int)Math.Ceiling(text.Bounds.Height) + 1)
+            .Where(y => ReferenceEquals(window.InputHitTest(top + new Point(0, y)), text)).ToList();
+        Assert.True(rows.Count > 0, "no row of the text takes a press");
+        return top + new Point(0, rows[rows.Count / 2]);
+    }
+
     /// <summary>The text block of a row's content (the command's, or the output's).</summary>
     private static TextBlock TextOf(Border content) => content.GetVisualDescendants().OfType<TextBlock>().First();
 
@@ -1324,7 +1339,7 @@ public class ChatViewTests
         var (view, window) = OpenNarrow(c);
         var cell = Contents(view, tool)[1];
         Assert.True(cell.Focusable); // (the premise: the output is cut, and opens)
-        var from = cell.TranslatePoint(new Point(20, 8), window)!.Value;
+        var from = OnTheLetters(window, cell.GetVisualDescendants().OfType<SelectableTextBlock>().Single(), 16);
         var to = from + new Point(40, 0);
 
         window.MouseMove(from, RawInputModifiers.None);
