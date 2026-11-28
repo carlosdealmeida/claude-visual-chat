@@ -186,6 +186,52 @@ public class ChatViewTests
     }
 
     [AvaloniaFact]
+    public void The_conversations_scroll_bar_stays_wide_without_the_pointer_over_it()
+    {
+        // the extension's bar is always there to grab; Fluent's would shrink to a thread until the pointer comes over it
+        var c = new ChatConversation();
+        for (var i = 0; i < 80; i++) c.Items.Add(new NoticeItem(NoticeKind.Compacted));
+        var view = new ClaudeChatView { Conversation = c };
+        var window = UiHelpers.Show(view);
+        var scroller = UiHelpers.Scroller(view);
+        var bar = scroller.GetVisualDescendants().OfType<ScrollBar>()
+            .Single(b => b.Orientation == Avalonia.Layout.Orientation.Vertical && ReferenceEquals(b.TemplatedParent, scroller));
+
+        Assert.False(scroller.AllowAutoHide);
+        Assert.True(bar.IsExpanded);
+        Assert.Equal(16, UiHelpers.ItemList(view).Margin.Right); // and the list still leaves it its room
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_style_of_the_app_on_the_view_brings_the_thin_scroll_bar_back()
+    {
+        var c = new ChatConversation();
+        for (var i = 0; i < 80; i++) c.Items.Add(new NoticeItem(NoticeKind.Compacted));
+        var view = new ClaudeChatView { Conversation = c };
+        view.Styles.Add(new Avalonia.Styling.Style(x => Avalonia.Styling.Selectors.Name(Avalonia.Styling.Selectors.OfType<ScrollViewer>(x), "Scroller"))
+        {
+            Setters = { new Avalonia.Styling.Setter(ScrollViewer.AllowAutoHideProperty, true) },
+        });
+        var window = UiHelpers.Show(view);
+
+        Assert.True(UiHelpers.Scroller(view).AllowAutoHide);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_scroll_bar_of_the_touch_layout_still_hides_itself()
+    {
+        var c = new ChatConversation();
+        for (var i = 0; i < 80; i++) c.Items.Add(new NoticeItem(NoticeKind.Compacted));
+        var view = UiHelpers.TouchView(c);
+        var window = UiHelpers.ShowPhone(view);
+
+        Assert.True(UiHelpers.Scroller(view).AllowAutoHide);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_scroll_bar_beside_the_list_takes_its_room_once()
     {
         // Simple's bar has a column of its own: the list goes up to it, with no room kept twice

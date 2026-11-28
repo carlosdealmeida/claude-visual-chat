@@ -70,7 +70,17 @@ public class MarkdownBlock : ContentControl
                 Name = "PART_ContentPresenter",
                 [~ContentPresenter.ContentProperty] = block[~ContentProperty],
                 [~ContentPresenter.PaddingProperty] = block[~PaddingProperty],
+                [~ContentPresenter.BackgroundProperty] = block[~BackgroundProperty],
             }.RegisterInNameScope(scope)));
+        // a press beside the words (after a short line, between two paragraphs) is the block's too, where a selection may start
+        BackgroundProperty.OverrideDefaultValue<MarkdownBlock>(Avalonia.Media.Brushes.Transparent);
+    }
+
+    private readonly MarkdownSelection _selection;
+
+    public MarkdownBlock()
+    {
+        _selection = new MarkdownSelection(this);
     }
 
     public string? Markdown
@@ -85,6 +95,12 @@ public class MarkdownBlock : ContentControl
         get => GetValue(RenderIntervalProperty);
         set => SetValue(RenderIntervalProperty, value);
     }
+
+    /// <summary>
+    /// Whether a drag of the mouse selects the words of the text (true by default). The plan's document turns it off: its
+    /// paragraphs are selectable blocks of their own, for its comments.
+    /// </summary>
+    internal bool SelectsText { get; set; } = true;
 
     internal IRenderClock Clock { get; set; } = DispatcherClock.Instance;
 
@@ -214,6 +230,7 @@ public class MarkdownBlock : ContentControl
     private void Render()
     {
         CancelPending();
+        _selection.Clear(); // the blocks of text it was made of are about to go
         var text = Markdown;
         _rendered = text;
         _hasRendered = true;

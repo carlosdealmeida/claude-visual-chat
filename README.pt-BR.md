@@ -26,7 +26,7 @@ mensagem, um sim ou não a um pedido de permissão, uma troca de modo, de modelo
   app sobe o `claude` e leva as linhas de um lado para o outro.
 
 Feita para `netstandard2.0` com o Avalonia 11.0.10. As únicas dependências são `Avalonia` 11.0.10,
-`Markdown.Avalonia.Tight` 11.0.2, `SkiaSharp` 2.88.7 (para reduzir e decodificar as imagens anexadas) e
+`Markdown.Avalonia.Tight` 11.0.3, `SkiaSharp` 2.88.7 (para reduzir e decodificar as imagens anexadas) e
 `System.Text.Json` 8.0.5.
 
 ## Instalação
@@ -637,7 +637,10 @@ Em volta da resposta do Claude, um turno mostra o que a extensão 2.1.310 mostra
 (sem realce de sintaxe, como na extensão), uma fileira embaixo do turno terminado para copiá-lo e marcar a resposta, um
 prompt longo dobrado atrás de "Mostrar mais" (`UserMessageItem.IsTextExpanded`), o prompt do turno na tela fixo no topo
 da lista, uma linha de data entre os dias, uma linha de pensamento que conta os tokens, um cartão para a compactação e
-uma linha de trabalho com uma estrela e verbos. Nada a configurar para isso. O que o seu app pode querer saber:
+uma linha de trabalho com uma estrela e verbos. As palavras de uma resposta podem ser selecionadas com o mouse, por
+parágrafos, listas e tabelas, e o Ctrl+C as copia, uma linha por bloco (um bloco de código mantém o "Copiar código"); o
+Esc ou um clique fora desfaz a seleção e devolve o teclado à caixa de resposta. Nada a configurar para isso. O que o seu
+app pode querer saber:
 
 - **Os polegares e os links dependem do seu app.** A fileira embaixo de um turno só tem "Boa resposta" e "Resposta ruim"
   enquanto o seu app assina o `ChatConversation.FeedbackRequested`, e um link ("Saiba como usamos sua avaliação") só
@@ -780,7 +783,10 @@ As chaves, todas com o prefixo `ClaudeChat.`:
 | Layout de toque (veja [Layout de toque](#layout-de-toque)) | `UserBubble`, `SheetBackground`, `SheetGroupBackground`, `SheetHandle`, `SheetOverlay`, `PermissionWarningBorder` |
 
 O `ScrollBarGutter` é o espaço que a lista deixa à direita para uma barra de rolagem desenhada por cima dela, como a do
-Fluent. Uma barra com coluna própria, como a do Simple, já tem o seu espaço, e a lista fica com a largura toda.
+Fluent. Uma barra com coluna própria, como a do Simple, já tem o seu espaço, e a lista fica com a largura toda. No
+desktop a barra da lista fica larga, como a da extensão, onde a do Fluent viraria um fio até o ponteiro passar por cima;
+o layout de toque mantém a barra que se esconde. Um estilo acrescentado aos `Styles` da própria vista (depois dos do
+componente) em `ScrollViewer#Scroller`, com `AllowAutoHide` em true, traz a barra fina de volta.
 
 ## Textos
 

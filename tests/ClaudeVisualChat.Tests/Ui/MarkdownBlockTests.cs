@@ -278,14 +278,17 @@ public class MarkdownBlockTests
         UiHelpers.Pump();
         block.Markdown = table; // and the answer arrived meanwhile
         UiHelpers.Pump();
-        Assert.All(Table(block).ColumnDefinitions, c => Assert.Equal(0, c.Width.Value)); // the engine sized it at 0
+        // the engine sized it with no width to share (11.0.2 left its columns at "0*", 11.0.3 at "1*")
+        Assert.All(Table(block).ColumnDefinitions, c => Assert.Equal(0, c.ActualWidth));
+        var drawn = block.RenderCount;
 
         tab.IsVisible = true;
         UiHelpers.Pump();
         clock.Advance(block.RenderInterval);
         UiHelpers.Pump();
+        Assert.Equal(drawn + 1, block.RenderCount); // shown at a width it was not sized for, the table is drawn again, once
 
-        // sized while hidden, the columns are "0*": 1 px wide once shown, one letter per line
+        // sized while hidden, the columns of 11.0.2 were "0*": 1 px wide once shown, one letter per line
         var grid = Table(block);
         Assert.All(grid.ColumnDefinitions, c => Assert.True(c.ActualWidth > 10, $"column of {c.ActualWidth} px"));
         Assert.All(grid.Children, cell => Assert.True(cell.Bounds.Width > 10, $"cell of {cell.Bounds.Width} px"));

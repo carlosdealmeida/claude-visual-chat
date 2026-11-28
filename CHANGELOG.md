@@ -3,6 +3,29 @@
 All notable changes to this project are written here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.11.1] - Unreleased
+
+### Fixed
+
+- The words of Claude's reply can be selected with the mouse and copied. A drag over the reply, started on the words or
+  beside them, selects the words between the press and the pointer, across its paragraphs, headings, list items, quotes
+  and table cells, painted in the theme's color for selected text, and Ctrl+C (the platform's copy keys) copies them,
+  one line per block; a list item selected from its start is copied with its bullet or number. A click that does not
+  move selects nothing and leaves the keyboard where it was, so a link still opens. Esc, a press elsewhere, another
+  control taking the keyboard or a new drawing of the reply (while it still arrives) ends the selection, and a reply
+  that held the keyboard hands it to the reply box. A code block keeps its "Copy code" and takes no part in a selection,
+  the finger selects nothing (it scrolls the list), and the plan's document keeps the selection of its comments. The
+  same holds for the advisor's text, a compaction summary and a bookmark. While a selection holds the keyboard, Esc ends
+  the selection and does not stop Claude.
+- The conversation's scroll bar stays wide on the desktop, there to grab, as the extension's is. With Fluent it shrank
+  to a thread and only widened under the pointer. The touch layout keeps the bar that hides itself, and an app can bring
+  the thin bar back with a style added to the view's own `Styles` on `ScrollViewer#Scroller` (`AllowAutoHide`).
+
+### Changed
+
+- `Markdown.Avalonia.Tight` goes from 11.0.2 to 11.0.3, whose text control has the selection the reply now uses. It
+  needs the same Avalonia 11.0.
+
 ## [0.11.0] - 2026-11-25
 
 ### Added

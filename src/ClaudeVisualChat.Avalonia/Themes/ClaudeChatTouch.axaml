@@ -92,6 +92,10 @@
   </Style>
 
   <!-- the date line where the day changes: as on the desktop, its date in lines of 1.5 of the larger text -->
+  <!-- on a touch screen the conversation's scroll bar hides itself, as a phone's does (the desktop keeps it wide) -->
+  <Style Selector="controls|ClaudeChatView:touch ScrollViewer#Scroller">
+    <Setter Property="AllowAutoHide" Value="True" />
+  </Style>
   <Style Selector="controls|ClaudeChatView:touch TextBlock.ClaudeChatDateLabel">
     <Setter Property="LineHeight" Value="20.25" />
   </Style>

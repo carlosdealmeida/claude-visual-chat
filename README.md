@@ -26,7 +26,7 @@ permission request, a mode, model or effort change, a slash command, an image or
   starts `claude` and passes the lines in and out.
 
 Targets `netstandard2.0` with Avalonia 11.0.10. Its only dependencies are `Avalonia` 11.0.10,
-`Markdown.Avalonia.Tight` 11.0.2, `SkiaSharp` 2.88.7 (to shrink and decode attached images) and
+`Markdown.Avalonia.Tight` 11.0.3, `SkiaSharp` 2.88.7 (to shrink and decode attached images) and
 `System.Text.Json` 8.0.5.
 
 ## Install
@@ -628,7 +628,9 @@ Around Claude's reply, a turn shows what the extension 2.1.310 shows: "Copy code
 highlighting, as in the extension), a row under the finished turn to copy it and bookmark the reply, a long prompt
 folded behind "Show more" (`UserMessageItem.IsTextExpanded`), the prompt of the turn on screen pinned at the top of the
 list, a date line between days, a thinking line that counts its tokens, a card for a compaction and a working line with
-a star and verbs. Nothing to set up for those. What your app may want to know:
+a star and verbs. The words of a reply can be selected with the mouse, across its paragraphs, lists and tables, and
+Ctrl+C copies them, one line per block (a code block keeps its "Copy code"); Esc or a click elsewhere ends the selection
+and gives the keyboard back to the reply box. Nothing to set up for those. What your app may want to know:
 
 - **The thumbs and the links need your app.** The row under a turn has "Good response" and "Bad response" only while
   your app listens to `ChatConversation.FeedbackRequested`, and a link ("Learn how we use your feedback") only while it
@@ -769,7 +771,10 @@ The keys, all prefixed with `ClaudeChat.`:
 | Touch layout (see [Touch layout](#touch-layout)) | `UserBubble`, `SheetBackground`, `SheetGroupBackground`, `SheetHandle`, `SheetOverlay`, `PermissionWarningBorder` |
 
 `ScrollBarGutter` is the room the list leaves on its right for a scroll bar drawn over it, like Fluent's. A scroll bar
-with a column of its own, like Simple's, already has its room, and the list keeps all of its width.
+with a column of its own, like Simple's, already has its room, and the list keeps all of its width. On the desktop the
+list's bar stays wide, as the extension's does, where Fluent's would shrink to a thread until the pointer comes over it;
+the touch layout keeps the bar that hides itself. A style added to the view's own `Styles` (after the component's) on
+`ScrollViewer#Scroller`, with `AllowAutoHide` set to true, brings the thin bar back.
 
 ## Texts
 

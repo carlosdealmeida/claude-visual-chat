@@ -114,6 +114,7 @@ internal sealed class PlanDocumentPanel : Border
         _banner.Classes.Add("ClaudeChatPlanBanner");
         _banner.Child = new StackPanel { Children = { _bannerTitle, _bannerText } };
         _document.Classes.Add("ClaudeChatPlanDocument");
+        _document.SelectsText = false; // its blocks are selectable on their own, for the comments
         _document.PropertyChanged += (_, e) =>
         {
             if (e.Property == ContentControl.ContentProperty) OnRendered(_document.Content as Control);

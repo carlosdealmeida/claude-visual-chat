@@ -587,6 +587,12 @@
     <Setter Property="FontFamily" Value="{DynamicResource ClaudeChat.FontFamily}" />
     <Setter Property="FontSize" Value="{DynamicResource ClaudeChat.FontSize}" />
   </Style>
+  <!-- the conversation's scroll bar stays wide, there to grab, as the extension's is: Fluent's would shrink to a thread until the
+       pointer comes over it. The touch layout keeps the bar that hides itself (ClaudeChatTouch.axaml). With no pseudo-class in
+       the selector, a style an app adds to the view's own Styles after these brings the thin bar back -->
+  <Style Selector="controls|ClaudeChatView ScrollViewer#Scroller">
+    <Setter Property="AllowAutoHide" Value="False" />
+  </Style>
 
   <Style Selector="ItemsControl.ClaudeChatItems">
     <Setter Property="ItemTemplate" Value="{DynamicResource ClaudeChat.ItemTemplates}" />
